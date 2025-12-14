@@ -1,7 +1,9 @@
-import os, uuid, sqlite3, hashlib, smtplib, ssl, urllib.parse
+import os, uuid, sqlite3, hashlib, smtplib, ssl, urllib.parse, json, base64
 from email.message import EmailMessage
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
+import asyncio
+import threading
 
 import httpx
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException, Depends
@@ -171,6 +173,7 @@ def _startup():
     init_db()
     ensure_migrations()
     seed_default_settings()
+    start_printer_polling()  # Start background printer status polling
 
 
 def require_admin(request: Request):
@@ -197,6 +200,12 @@ DEFAULT_SETTINGS: Dict[str, str] = {
     "requester_email_on_submit": "0",
     # Status change emails to requester: yes
     "requester_email_on_status": "1",
+
+    # Printer API integration (via flashforge-finder-api Flask server)
+    "flashforge_api_url": "http://localhost:5000",
+    "printer_adventurer_4_ip": "192.168.0.198",
+    "printer_ad5x_ip": "192.168.0.157",
+    "enable_printer_polling": "1",
 }
 
 
@@ -245,6 +254,168 @@ def get_bool_setting(key: str, default: bool = False) -> bool:
 
 def parse_email_list(raw: str) -> List[str]:
     return [e.strip() for e in (raw or "").split(",") if e.strip()]
+
+
+# ------------------------
+# FlashForge Printer API (via flashforge-finder-api)
+# ------------------------
+
+class FlashForgeAPI:
+    """Wrapper for flashforge-finder-api Flask server"""
+    def __init__(self, flask_api_url: str, printer_ip: str):
+        self.flask_api_url = flask_api_url.rstrip("/")
+        self.printer_ip = printer_ip
+
+    async def get_progress(self) -> Optional[Dict[str, Any]]:
+        """Get print progress (%, bytes printed, etc)"""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                url = f"{self.flask_api_url}/{self.printer_ip}/progress"
+                r = await client.get(url)
+                if r.status_code == 200:
+                    return r.json()
+        except Exception as e:
+            print(f"[PRINTER] Error fetching progress from {self.printer_ip}: {e}")
+        return None
+
+    async def get_status(self) -> Optional[Dict[str, Any]]:
+        """Get printer status (READY, PRINTING, etc)"""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                url = f"{self.flask_api_url}/{self.printer_ip}/status"
+                r = await client.get(url)
+                if r.status_code == 200:
+                    return r.json()
+        except Exception as e:
+            print(f"[PRINTER] Error fetching status from {self.printer_ip}: {e}")
+        return None
+
+    async def is_printing(self) -> bool:
+        """Check if printer is currently printing"""
+        status = await self.get_status()
+        if not status:
+            return False
+        # FlashForge status format: check if MachineStatus != READY
+        machine_status = status.get("MachineStatus", "READY").strip()
+        return machine_status != "READY"
+
+    async def get_percent_complete(self) -> Optional[int]:
+        """Get print progress percentage"""
+        progress = await self.get_progress()
+        if not progress:
+            return None
+        return progress.get("PercentageCompleted")
+
+
+def get_printer_api(printer_code: str) -> Optional[FlashForgeAPI]:
+    """Get FlashForge API instance for a printer (ADVENTURER_4 or AD5X)"""
+    flask_url = get_setting("flashforge_api_url", "http://localhost:5000")
+    
+    if printer_code == "ADVENTURER_4":
+        ip = get_setting("printer_adventurer_4_ip", "192.168.0.198")
+    elif printer_code == "AD5X":
+        ip = get_setting("printer_ad5x_ip", "192.168.0.157")
+    else:
+        return None
+
+    if not ip:
+        return None
+
+    return FlashForgeAPI(flask_url, ip)
+
+
+async def poll_printer_status_worker():
+    """
+    Background worker that polls all configured printers every 30s.
+    Auto-updates PRINTING -> DONE when printer reports 100% complete.
+    """
+    while True:
+        try:
+            if not get_bool_setting("enable_printer_polling", True):
+                await asyncio.sleep(30)
+                continue
+
+            conn = db()
+            printing_reqs = conn.execute(
+                "SELECT id, printer FROM requests WHERE status = ?",
+                ("PRINTING",)
+            ).fetchall()
+            conn.close()
+
+            for req in printing_reqs:
+                printer_api = get_printer_api(req["printer"])
+                if not printer_api:
+                    continue
+
+                # Check both status and progress
+                is_printing = await printer_api.is_printing()
+                percent_complete = await printer_api.get_percent_complete()
+
+                # Auto-complete if not printing anymore AND at 100%
+                is_complete = (not is_printing) and (percent_complete == 100)
+
+                if is_complete:
+                    rid = req["id"]
+                    print(f"[PRINTER] {req['printer']} complete ({percent_complete}%), auto-updating {rid[:8]} to DONE")
+
+                    # Auto-update status
+                    conn = db()
+                    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+                    conn.execute(
+                        "UPDATE requests SET status = ?, updated_at = ? WHERE id = ?",
+                        ("DONE", now_iso(), rid)
+                    )
+                    conn.execute(
+                        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+                        (str(uuid.uuid4()), rid, now_iso(), "PRINTING", "DONE", "Auto-completed by printer polling")
+                    )
+                    conn.commit()
+                    conn.close()
+
+                    # Send notification emails
+                    admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))
+                    admin_email_on_status = get_bool_setting("admin_email_on_status", True)
+                    requester_email_on_status = get_bool_setting("requester_email_on_status", True)
+
+                    if requester_email_on_status and req_row:
+                        subject = f"[{APP_TITLE}] Print Complete! ({rid[:8]})"
+                        text = f"Your print is done and ready for pickup!\n\nRequest ID: {rid[:8]}\n\nView queue: {BASE_URL}/queue?mine={rid[:8]}\n"
+                        html = build_email_html(
+                            title="Print Complete!",
+                            subtitle="Your request is ready for pickup.",
+                            rows=[("Request ID", rid[:8]), ("Status", "DONE")],
+                            cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
+                            cta_label="View queue",
+                        )
+                        send_email([req_row["requester_email"]], subject, text, html)
+
+                    if admin_email_on_status and admin_emails and req_row:
+                        subject = f"[{APP_TITLE}] Auto-completed: {rid[:8]}"
+                        text = f"Print automatically marked DONE.\n\nID: {rid}\nPrinter: {req['printer']}\nAdmin: {BASE_URL}/admin/request/{rid}\n"
+                        html = build_email_html(
+                            title="Print Auto-Completed",
+                            subtitle="Printer finished and is idle.",
+                            rows=[("Request ID", rid[:8]), ("Printer", req["printer"]), ("Status", "DONE")],
+                            cta_url=f"{BASE_URL}/admin/request/{rid}",
+                            cta_label="Open in admin",
+                        )
+                        send_email(admin_emails, subject, text, html)
+
+            await asyncio.sleep(30)  # Poll every 30 seconds
+        except Exception as e:
+            print(f"[PRINTER WORKER] Error: {e}")
+            await asyncio.sleep(30)
+
+
+def start_printer_polling():
+    """Start background printer polling in a thread (runs once at startup)"""
+    def run_async():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(poll_printer_status_worker())
+
+    thread = threading.Thread(target=run_async, daemon=True)
+    thread.start()
 
 
 # ------------------------
@@ -576,7 +747,7 @@ async def submit(
 
 
 @app.get("/queue", response_class=HTMLResponse)
-def public_queue(request: Request, mine: Optional[str] = None):
+async def public_queue(request: Request, mine: Optional[str] = None):
     conn = db()
     rows = conn.execute(
         "SELECT id, requester_name, printer, material, colors, status, special_notes, print_time_minutes, turnaround_minutes "
@@ -590,9 +761,20 @@ def public_queue(request: Request, mine: Optional[str] = None):
     items = []
     printing_idx = None
     
-    # First pass: build items and find printing index
+    # First pass: build items and find printing index, fetch real progress for PRINTING
     for idx, r in enumerate(rows):
         short_id = r["id"][:8]
+        
+        # Fetch real printer progress if currently printing
+        printer_progress = None
+        if r["status"] == "PRINTING":
+            printer_api = get_printer_api(r["printer"])
+            if printer_api:
+                try:
+                    printer_progress = await printer_api.get_percent_complete()
+                except Exception:
+                    pass  # Fall back to time-based estimate if API fails
+        
         items.append({
             "pos": idx + 1,
             "short_id": short_id,
@@ -606,6 +788,7 @@ def public_queue(request: Request, mine: Optional[str] = None):
             "print_time_minutes": r["print_time_minutes"],
             "turnaround_minutes": r["turnaround_minutes"],
             "estimated_wait_minutes": None,
+            "printer_progress": printer_progress,  # Real progress % from API
         })
         if r["status"] == "PRINTING":
             printing_idx = idx
@@ -750,6 +933,35 @@ def admin_settings_post(
     set_setting("requester_email_on_status", "1" if requester_email_on_status else "0")
 
     return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+
+
+@app.get("/admin/printer-settings", response_class=HTMLResponse)
+def admin_printer_settings(request: Request, _=Depends(require_admin), saved: Optional[str] = None):
+    model = {
+        "flashforge_api_url": get_setting("flashforge_api_url", "http://localhost:5000"),
+        "printer_adventurer_4_ip": get_setting("printer_adventurer_4_ip", "192.168.0.198"),
+        "printer_ad5x_ip": get_setting("printer_ad5x_ip", "192.168.0.157"),
+        "enable_printer_polling": get_bool_setting("enable_printer_polling", True),
+        "saved": bool(saved == "1"),
+    }
+    return templates.TemplateResponse("printer_settings.html", {"request": request, "s": model})
+
+
+@app.post("/admin/printer-settings")
+def admin_printer_settings_post(
+    request: Request,
+    flashforge_api_url: str = Form(""),
+    printer_adventurer_4_ip: str = Form(""),
+    printer_ad5x_ip: str = Form(""),
+    enable_printer_polling: Optional[str] = Form(None),
+    _=Depends(require_admin),
+):
+    set_setting("flashforge_api_url", flashforge_api_url.strip())
+    set_setting("printer_adventurer_4_ip", printer_adventurer_4_ip.strip())
+    set_setting("printer_ad5x_ip", printer_ad5x_ip.strip())
+    set_setting("enable_printer_polling", "1" if enable_printer_polling else "0")
+
+    return RedirectResponse(url="/admin/printer-settings?saved=1", status_code=303)
 
 
 @app.get("/admin/request/{rid}", response_class=HTMLResponse)
@@ -1109,9 +1321,9 @@ def admin_download_file(request: Request, rid: str, file_id: str, _=Depends(requ
 @app.post("/admin/batch-update")
 def admin_batch_update(
     request: Request,
-    request_ids: str = Form(""),  # comma-separated IDs
-    priority: Optional[int] = Form(None),
-    status: Optional[str] = Form(None),
+    request_ids: str = Form(""),
+    priority: str = Form(""),
+    status: str = Form(""),
     _=Depends(require_admin)
 ):
     """Mass update multiple requests at once."""
@@ -1119,22 +1331,35 @@ def admin_batch_update(
     if not ids:
         raise HTTPException(status_code=400, detail="No requests selected")
     
+    # Convert empty strings to None
+    priority_int: Optional[int] = None
+    status_str: Optional[str] = None
+    
+    if priority and priority.strip():
+        try:
+            priority_int = int(priority)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Priority must be a valid integer")
+    
+    if status and status.strip():
+        status_str = status.strip()
+    
     # Validate inputs
-    if priority is not None and (priority < 1 or priority > 5):
+    if priority_int is not None and (priority_int < 1 or priority_int > 5):
         raise HTTPException(status_code=400, detail="Priority must be 1..5")
-    if status is not None and status not in STATUS_FLOW:
+    if status_str is not None and status_str not in STATUS_FLOW:
         raise HTTPException(status_code=400, detail="Invalid status")
     
     # If nothing to update, return early
-    if priority is None and status is None:
+    if priority_int is None and status_str is None:
         return RedirectResponse(url="/admin", status_code=303)
     
     conn = db()
     updates = []
-    if priority is not None:
-        updates.append(f"priority = {priority}")
-    if status is not None:
-        updates.append(f"status = '{status}'")
+    if priority_int is not None:
+        updates.append(f"priority = {priority_int}")
+    if status_str is not None:
+        updates.append(f"status = '{status_str}'")
     
     update_str = ", ".join(updates)
     update_str += f", updated_at = '{now_iso()}'"

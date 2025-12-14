@@ -1,0 +1,119 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Printer Settings</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-4xl mx-auto p-6">
+    <div class="flex items-end justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold">Printer Settings</h1>
+        <p class="text-zinc-400 mt-1">Configure FlashForge printer monitoring via flashforge-finder-api.</p>
+      </div>
+      <a class="text-indigo-400 hover:underline" href="/admin">Back to dashboard</a>
+    </div>
+
+    {% if s.saved %}
+      <div class="mt-5 bg-emerald-900/20 border border-emerald-800 text-emerald-200 rounded-2xl p-4">
+        Printer settings saved.
+      </div>
+    {% endif %}
+
+    <form class="mt-6 space-y-6" method="POST" action="/admin/printer-settings">
+      <!-- Flask API URL -->
+      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <h2 class="text-lg font-semibold">FlashForge Finder API Server</h2>
+        <p class="text-sm text-zinc-400 mt-2">URL to your flashforge-finder-api Flask server</p>
+
+        <div class="mt-4">
+          <label class="text-xs text-zinc-400">API Server URL</label>
+          <input name="flashforge_api_url"
+                 value="{{ s.flashforge_api_url }}"
+                 class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3"
+                 placeholder="http://localhost:5000" />
+          <p class="text-xs text-zinc-500 mt-2">
+            This should point to your running flashforge-finder-api Flask server.
+            <a class="text-indigo-400 hover:underline" href="https://github.com/01F0/flashforge-finder-api" target="_blank">Learn more</a>
+          </p>
+        </div>
+      </section>
+
+      <!-- Printer IPs -->
+      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <h2 class="text-lg font-semibold">Printer IP Addresses</h2>
+        <p class="text-sm text-zinc-400 mt-2">Local IP addresses of your printers on the network</p>
+
+        <div class="mt-4 space-y-4">
+          <div>
+            <label class="text-xs text-zinc-400">FlashForge Adventurer 4</label>
+            <input name="printer_adventurer_4_ip"
+                   value="{{ s.printer_adventurer_4_ip }}"
+                   class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3"
+                   placeholder="192.168.0.198" />
+          </div>
+
+          <div>
+            <label class="text-xs text-zinc-400">FlashForge AD5X</label>
+            <input name="printer_ad5x_ip"
+                   value="{{ s.printer_ad5x_ip }}"
+                   class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3"
+                   placeholder="192.168.0.157" />
+          </div>
+        </div>
+      </section>
+
+      <!-- Polling Features -->
+      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <h2 class="text-lg font-semibold">Printer Monitoring</h2>
+        <p class="text-sm text-zinc-400 mt-2">Enable automatic status polling.</p>
+
+        <div class="mt-4">
+          <label class="flex items-center gap-3">
+            <input type="checkbox" name="enable_printer_polling" class="scale-125"
+                   {% if s.enable_printer_polling %}checked{% endif %} />
+            <span class="flex-1">
+              <span class="font-semibold">Enable printer polling</span>
+              <div class="text-xs text-zinc-400 mt-1">
+                Check printer status every 30 seconds. Automatically mark prints as DONE when 100% complete and idle.
+              </div>
+            </span>
+          </label>
+        </div>
+
+        <div class="mt-6 p-4 bg-blue-900/20 border border-blue-800/40 rounded-xl">
+          <div class="text-sm text-blue-200 font-semibold">ℹ Info:</div>
+          <div class="text-xs text-blue-100/80 mt-2">
+            Polling requires the <strong>flashforge-finder-api</strong> Flask server to be running.
+            The server connects directly to your printers on the local network (port 8899).
+          </div>
+        </div>
+      </section>
+
+      <div class="flex gap-3">
+        <button class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-6 py-3 font-semibold">
+          💾 Save Printer Settings
+        </button>
+        <a class="rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 transition px-6 py-3"
+           href="/admin">
+          Cancel
+        </a>
+      </div>
+
+      <section class="text-xs text-zinc-500 bg-zinc-950/40 border border-zinc-800 rounded-xl p-4">
+        <div class="font-semibold text-zinc-400 mb-3">🚀 Setup Instructions:</div>
+        <ol class="space-y-2 list-decimal list-inside">
+          <li>Clone the repo: <code class="bg-zinc-900 px-1">git clone https://github.com/01F0/flashforge-finder-api.git</code></li>
+          <li>Install dependencies: <code class="bg-zinc-900 px-1">pip install -r requirements.txt</code></li>
+          <li>Run Flask server: <code class="bg-zinc-900 px-1">flask run --host=0.0.0.0 --port=5000</code></li>
+          <li>Update the API URL above if running on a different machine</li>
+          <li>Verify printer IPs (defaults: 192.168.0.198 and 192.168.0.157)</li>
+          <li>Enable polling and save</li>
+        </ol>
+      </section>
+    </form>
+  </div>
+</body>
+</html>
