@@ -9,8 +9,16 @@
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-2xl mx-auto p-6">
-    <h1 class="text-3xl font-bold">3D Print Request</h1>
-    <p class="text-zinc-400 mt-2">Upload an STL/3MF or paste a link. Pick printer, material, colors, and notes.</p>
+    <div class="flex items-end justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold">3D Print Request</h1>
+        <p class="text-zinc-400 mt-2">Upload an STL/3MF or paste a link. Pick printer, material, colors, and notes.</p>
+      </div>
+      <a href="/queue"
+         class="shrink-0 inline-flex items-center justify-center rounded-2xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold">
+        View Queue
+      </a>
+    </div>
 
     {% if error %}
       <div class="mt-4 bg-red-900/30 border border-red-800 text-red-200 p-3 rounded-xl text-sm">
@@ -23,11 +31,15 @@
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label class="text-sm text-zinc-300">Name</label>
-          <input name="requester_name" required class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+          <input name="requester_name" required
+                 value="{{ (form.requester_name if form is defined else '') }}"
+                 class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
         </div>
         <div>
           <label class="text-sm text-zinc-300">Email</label>
-          <input name="requester_email" type="email" required class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+          <input name="requester_email" type="email" required
+                 value="{{ (form.requester_email if form is defined else '') }}"
+                 class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
         </div>
       </div>
 
@@ -35,16 +47,18 @@
         <div>
           <label class="text-sm text-zinc-300">Printer</label>
           <select name="printer" required class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+            {% set selected_printer = (form.printer if form is defined and form.printer else 'ANY') %}
             {% for val, label in printers %}
-              <option value="{{val}}">{{label}}</option>
+              <option value="{{val}}" {% if val == selected_printer %}selected{% endif %}>{{label}}</option>
             {% endfor %}
           </select>
         </div>
         <div>
           <label class="text-sm text-zinc-300">Material</label>
           <select name="material" required class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+            {% set selected_material = (form.material if form is defined and form.material else 'ANY') %}
             {% for val, label in materials %}
-              <option value="{{val}}">{{label}}</option>
+              <option value="{{val}}" {% if val == selected_material %}selected{% endif %}>{{label}}</option>
             {% endfor %}
           </select>
         </div>
@@ -52,12 +66,16 @@
 
       <div>
         <label class="text-sm text-zinc-300">Colors</label>
-        <input name="colors" placeholder="Black / White / Red (comma-separated)" required class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+        <input name="colors" placeholder="Black / White / Red (comma-separated)" required
+               value="{{ (form.colors if form is defined else '') }}"
+               class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
       </div>
 
       <div>
         <label class="text-sm text-zinc-300">Link (optional)</label>
-        <input name="link_url" placeholder="https://printables.com/..." class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+        <input name="link_url" placeholder="https://printables.com/..."
+               value="{{ (form.link_url if form is defined else '') }}"
+               class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
         <p class="text-xs text-zinc-400 mt-1">Note: you must provide either a link or a file upload.</p>
       </div>
 
@@ -73,7 +91,7 @@
           name="notes"
           rows="4"
           placeholder="Helpful details (optional):&#10;• Which color for which part?&#10;• Size/scale changes?&#10;• Infill/strength needs?&#10;• Supports okay? (yes/no)&#10;• Any deadlines?"
-          class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3"></textarea>
+          class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3">{{ (form.notes if form is defined else '') }}</textarea>
       </div>
 
       {% if turnstile_site_key %}
@@ -90,8 +108,6 @@
     </form>
 
     <div class="mt-6 text-sm text-zinc-500 flex gap-4">
-      <a class="text-indigo-400 hover:underline" href="/queue">View Queue</a>
-      <span>•</span>
       <a class="text-indigo-400 hover:underline" href="/admin/login">Admin Login</a>
     </div>
   </div>

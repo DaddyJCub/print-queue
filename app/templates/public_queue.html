@@ -38,14 +38,20 @@
         <tbody>
           {% for r in items %}
           <tr class="border-b border-zinc-800 {% if r.is_mine %}bg-indigo-900/20{% else %}hover:bg-zinc-950/40{% endif %}">
-            <td class="p-3 text-zinc-400">{{ r.pos }}</td>
-            <td class="p-3 font-mono">{{ r.short_id }}</td>
-            <td class="p-3">{{ r.requester_first }}</td>
-            <td class="p-3">{{ r.printer }}</td>
-            <td class="p-3">{{ r.material }}</td>
-            <td class="p-3">{{ r.colors }}</td>
-            <td class="p-3">
-              <span class="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800">{{ r.status }}</span>
+            <td class="p-3 text-zinc-400 align-top">{{ r.pos }}</td>
+            <td class="p-3 font-mono align-top">{{ r.short_id }}</td>
+            <td class="p-3 align-top">{{ r.requester_first }}</td>
+            <td class="p-3 align-top">{{ r.printer }}</td>
+            <td class="p-3 align-top">{{ r.material }}</td>
+            <td class="p-3 align-top">{{ r.colors }}</td>
+            <td class="p-3 align-top">
+              <div class="inline-flex px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800">{{ r.status }}</div>
+              {% if r.special_notes %}
+                <div class="mt-2 text-xs text-zinc-300 bg-zinc-950/60 border border-zinc-800 rounded-xl p-2">
+                  <div class="text-zinc-400 mb-1">Special notes</div>
+                  <div class="whitespace-pre-wrap">{{ r.special_notes }}</div>
+                </div>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}

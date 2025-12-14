@@ -1,7 +1,7 @@
 import os, uuid, sqlite3, hashlib, smtplib, ssl, urllib.parse
 from email.message import EmailMessage
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import httpx
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException, Depends
@@ -109,9 +109,25 @@ def init_db():
     conn.close()
 
 
+def ensure_migrations():
+    """
+    Lightweight migrations for SQLite without external tooling.
+    Adds columns if missing.
+    """
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(requests)")
+    cols = {row[1] for row in cur.fetchall()}  # row[1] = name
+    if "special_notes" not in cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN special_notes TEXT")
+    conn.commit()
+    conn.close()
+
+
 @app.on_event("startup")
 def _startup():
     init_db()
+    ensure_migrations()
 
 
 def now_iso():
@@ -169,21 +185,27 @@ def safe_ext(filename: str) -> str:
 
 
 def first_name_only(name: str) -> str:
-    # "Jacob Zillmer" -> "Jacob"
-    # "  Jacob   " -> "Jacob"
     parts = (name or "").strip().split()
     return parts[0] if parts else ""
 
 
-@app.get("/", response_class=HTMLResponse)
-def home(request: Request):
+def render_form(request: Request, error: Optional[str], form: Dict[str, Any]):
+    """
+    Re-render request form while keeping previously typed values.
+    """
     return templates.TemplateResponse("request_form.html", {
         "request": request,
         "turnstile_site_key": TURNSTILE_SITE_KEY,
         "printers": PRINTERS,
         "materials": MATERIALS,
-        "error": None,
-    })
+        "error": error,
+        "form": form,
+    }, status_code=400 if error else 200)
+
+
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+    return render_form(request, None, form={})
 
 
 @app.post("/submit")
@@ -199,35 +221,28 @@ async def submit(
     turnstile_token: Optional[str] = Form(None, alias="cf-turnstile-response"),
     upload: Optional[UploadFile] = File(None),
 ):
+    # Form values to preserve on error
+    form_state = {
+        "requester_name": requester_name,
+        "requester_email": requester_email,
+        "printer": printer,
+        "material": material,
+        "colors": colors,
+        "link_url": link_url or "",
+        "notes": notes or "",
+    }
+
     # Turnstile verification (if configured)
     ok = await verify_turnstile(turnstile_token or "", request.client.host if request.client else None)
     if not ok:
-        return templates.TemplateResponse("request_form.html", {
-            "request": request,
-            "turnstile_site_key": TURNSTILE_SITE_KEY,
-            "printers": PRINTERS,
-            "materials": MATERIALS,
-            "error": "Human verification failed. Please try again.",
-        }, status_code=400)
+        return render_form(request, "Human verification failed. Please try again.", form_state)
 
     # Validation: printer + material must be from dropdown lists
     if printer not in [p[0] for p in PRINTERS]:
-        return templates.TemplateResponse("request_form.html", {
-            "request": request,
-            "turnstile_site_key": TURNSTILE_SITE_KEY,
-            "printers": PRINTERS,
-            "materials": MATERIALS,
-            "error": "Invalid printer selection.",
-        }, status_code=400)
+        return render_form(request, "Invalid printer selection.", form_state)
 
     if material not in [m[0] for m in MATERIALS]:
-        return templates.TemplateResponse("request_form.html", {
-            "request": request,
-            "turnstile_site_key": TURNSTILE_SITE_KEY,
-            "printers": PRINTERS,
-            "materials": MATERIALS,
-            "error": "Invalid material selection.",
-        }, status_code=400)
+        return render_form(request, "Invalid material selection.", form_state)
 
     # Link validation (if present)
     if link_url:
@@ -236,25 +251,13 @@ async def submit(
             if u.scheme not in ("http", "https"):
                 raise ValueError("Invalid scheme")
         except Exception:
-            return templates.TemplateResponse("request_form.html", {
-                "request": request,
-                "turnstile_site_key": TURNSTILE_SITE_KEY,
-                "printers": PRINTERS,
-                "materials": MATERIALS,
-                "error": "Invalid link URL. Must start with http:// or https://",
-            }, status_code=400)
+            return render_form(request, "Invalid link URL. Must start with http:// or https://", form_state)
 
     # Require either link or file
     has_link = bool(link_url and link_url.strip())
     has_file = bool(upload and upload.filename)
     if not has_link and not has_file:
-        return templates.TemplateResponse("request_form.html", {
-            "request": request,
-            "turnstile_site_key": TURNSTILE_SITE_KEY,
-            "printers": PRINTERS,
-            "materials": MATERIALS,
-            "error": "Please provide either a link OR upload a file (one is required).",
-        }, status_code=400)
+        return render_form(request, "Please provide either a link OR upload a file (one is required).", form_state)
 
     rid = str(uuid.uuid4())
     created = now_iso()
@@ -262,8 +265,8 @@ async def submit(
     conn = db()
     conn.execute(
         """INSERT INTO requests
-           (id, created_at, updated_at, requester_name, requester_email, printer, material, colors, link_url, notes, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (id, created_at, updated_at, requester_name, requester_email, printer, material, colors, link_url, notes, status, special_notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             rid,
             created,
@@ -276,6 +279,7 @@ async def submit(
             link_url.strip() if link_url else None,
             notes,
             "NEW",
+            None,
         )
     )
     conn.execute(
@@ -290,25 +294,13 @@ async def submit(
         ext = safe_ext(upload.filename)
         if ext not in ALLOWED_EXTS:
             conn.close()
-            return templates.TemplateResponse("request_form.html", {
-                "request": request,
-                "turnstile_site_key": TURNSTILE_SITE_KEY,
-                "printers": PRINTERS,
-                "materials": MATERIALS,
-                "error": f"Only these file types are allowed: {', '.join(sorted(ALLOWED_EXTS))}",
-            }, status_code=400)
+            return render_form(request, f"Only these file types are allowed: {', '.join(sorted(ALLOWED_EXTS))}", form_state)
 
         max_bytes = MAX_UPLOAD_MB * 1024 * 1024
         data = await upload.read()
         if len(data) > max_bytes:
             conn.close()
-            return templates.TemplateResponse("request_form.html", {
-                "request": request,
-                "turnstile_site_key": TURNSTILE_SITE_KEY,
-                "printers": PRINTERS,
-                "materials": MATERIALS,
-                "error": f"File too large. Max size is {MAX_UPLOAD_MB}MB.",
-            }, status_code=413)
+            return render_form(request, f"File too large. Max size is {MAX_UPLOAD_MB}MB.", form_state)
 
         stored = f"{uuid.uuid4()}{ext}"
         out_path = os.path.join(UPLOAD_DIR, stored)
@@ -337,11 +329,6 @@ async def submit(
     return RedirectResponse(url=f"/queue?mine={rid[:8]}", status_code=303)
 
 
-@app.get("/thanks", response_class=HTMLResponse)
-def thanks(request: Request, id: str):
-    return templates.TemplateResponse("thanks.html", {"request": request, "rid": id})
-
-
 @app.get("/queue", response_class=HTMLResponse)
 def public_queue(request: Request, mine: Optional[str] = None):
     """
@@ -350,7 +337,7 @@ def public_queue(request: Request, mine: Optional[str] = None):
     """
     conn = db()
     rows = conn.execute(
-        "SELECT id, created_at, requester_name, printer, material, colors, status "
+        "SELECT id, requester_name, printer, material, colors, status, special_notes "
         "FROM requests "
         "WHERE status != ? "
         "ORDER BY created_at ASC",
@@ -369,6 +356,7 @@ def public_queue(request: Request, mine: Optional[str] = None):
             "material": r["material"],
             "colors": r["colors"],
             "status": r["status"],
+            "special_notes": (r["special_notes"] or "").strip(),
             "is_mine": bool(mine and mine == short_id),
         })
 
@@ -476,6 +464,30 @@ def admin_set_status(
         f"[3D Print Queue] Status update ({rid[:8]})",
         f"Your request status changed:\n\n{from_status} → {to_status}\n\nComment: {comment or '(none)'}\n\nRequest ID: {rid}"
     )
+
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@app.post("/admin/request/{rid}/special-notes")
+def admin_set_special_notes(
+    request: Request,
+    rid: str,
+    special_notes: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Not found")
+
+    cleaned = (special_notes or "").strip()
+    if cleaned == "":
+        cleaned = None
+
+    conn.execute("UPDATE requests SET special_notes = ?, updated_at = ? WHERE id = ?", (cleaned, now_iso(), rid))
+    conn.commit()
+    conn.close()
 
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 

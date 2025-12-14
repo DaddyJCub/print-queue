@@ -8,71 +8,91 @@
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-5xl mx-auto p-6">
-    <a class="text-indigo-400 hover:underline" href="/admin">← Back to queue</a>
+    <a class="text-indigo-400 hover:underline text-sm" href="/admin">← Back to queue</a>
 
     <div class="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div class="lg:col-span-2 bg-zinc-900/60 p-6 rounded-2xl border border-zinc-800">
+      <div class="lg:col-span-2 bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <h1 class="text-2xl font-bold">Request {{ req["id"][:8] }}</h1>
+
         <div class="mt-3 text-sm text-zinc-300 space-y-1">
-          <div><span class="text-zinc-500">Requester:</span> {{ req["requester_name"] }} ({{ req["requester_email"] }})</div>
-          <div><span class="text-zinc-500">Printer:</span> {{ req["printer"] }}</div>
-          <div><span class="text-zinc-500">Material:</span> {{ req["material"] }}</div>
-          <div><span class="text-zinc-500">Colors:</span> {{ req["colors"] }}</div>
-          <div><span class="text-zinc-500">Link:</span>
-            {% if req["link_url"] %}
-              <a class="text-indigo-400 hover:underline" href="{{ req['link_url'] }}" target="_blank">open</a>
-            {% else %}
-              <span class="text-zinc-500">none</span>
-            {% endif %}
-          </div>
-          <div><span class="text-zinc-500">Notes:</span> {{ req["notes"] or "" }}</div>
-          <div class="mt-2"><span class="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800">{{ req["status"] }}</span></div>
+          <div>Requester: {{ req["requester_name"] }} ({{ req["requester_email"] }})</div>
+          <div>Printer: {{ req["printer"] }}</div>
+          <div>Material: {{ req["material"] }}</div>
+          <div>Colors: {{ req["colors"] }}</div>
+          <div>Link: {% if req["link_url"] %}<a class="text-indigo-400 hover:underline" href="{{ req['link_url'] }}" target="_blank">{{ req["link_url"] }}</a>{% else %}none{% endif %}</div>
+          <div>Notes: {% if req["notes"] %}{{ req["notes"] }}{% else %}none{% endif %}</div>
         </div>
 
-        <form class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-2" method="POST" action="/admin/request/{{req['id']}}/status">
-          <select name="to_status" class="rounded-xl bg-zinc-950 border border-zinc-800 p-2">
+        <div class="mt-4">
+          <span class="inline-flex px-3 py-1 rounded-xl bg-zinc-950 border border-zinc-800 text-sm">{{ req["status"] }}</span>
+        </div>
+
+        <form class="mt-6 flex gap-3" method="POST" action="/admin/request/{{ req['id'] }}/status">
+          <select name="to_status" class="rounded-xl bg-zinc-950 border border-zinc-800 p-3">
             {% for s in status_flow %}
-              <option value="{{s}}" {% if req["status"]==s %}selected{% endif %}>{{s}}</option>
+              <option value="{{ s }}" {% if s == req["status"] %}selected{% endif %}>{{ s }}</option>
             {% endfor %}
           </select>
-          <input name="comment" placeholder="Comment (optional)" class="rounded-xl bg-zinc-950 border border-zinc-800 p-2 md:col-span-2" />
-          <button class="md:col-span-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 transition p-3 font-semibold">
+          <input name="comment" placeholder="Comment (optional)"
+                 class="flex-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+          <button class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 font-semibold">
             Update status + notify
           </button>
         </form>
+
+        <!-- Special notes (shown publicly only when set) -->
+        <div class="mt-8 border-t border-zinc-800 pt-6">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-semibold">Special notes</h2>
+            <span class="text-xs text-zinc-500">Shown on public queue only if filled</span>
+          </div>
+
+          <form class="mt-3" method="POST" action="/admin/request/{{ req['id'] }}/special-notes">
+            <textarea name="special_notes" rows="3"
+              placeholder="Optional. Example: 'Waiting on specific filament delivery' or 'Needs test fit before printing'."
+              class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3">{{ req["special_notes"] or "" }}</textarea>
+            <div class="mt-3 flex gap-3">
+              <button class="rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
+                Save special notes
+              </button>
+              {% if req["special_notes"] %}
+                <span class="text-xs text-zinc-400 self-center">Currently visible on public queue.</span>
+              {% endif %}
+            </div>
+          </form>
+        </div>
       </div>
 
-      <div class="bg-zinc-900/60 p-6 rounded-2xl border border-zinc-800">
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <h2 class="text-lg font-semibold">Files</h2>
-        <div class="mt-3 space-y-2 text-sm">
-          {% for f in files %}
-            <div class="flex items-center justify-between gap-2 bg-zinc-950 border border-zinc-800 rounded-xl p-3">
-              <div class="truncate">
-                <div class="text-zinc-200 truncate">{{ f["original_filename"] }}</div>
-                <div class="text-zinc-500 text-xs">{{ f["created_at"] }}</div>
-              </div>
-              <a class="text-indigo-400 hover:underline" href="/uploads/{{ f['stored_filename'] }}" target="_blank">download</a>
-            </div>
-          {% endfor %}
-          {% if files|length == 0 %}
-            <div class="text-zinc-500">No files uploaded.</div>
-          {% endif %}
-        </div>
+        {% if files|length == 0 %}
+          <p class="text-zinc-400 text-sm mt-2">No files uploaded.</p>
+        {% else %}
+          <ul class="mt-3 space-y-2">
+            {% for f in files %}
+              <li class="text-sm">
+                <div class="font-mono text-zinc-200">{{ f["original_filename"] }}</div>
+                <div class="text-zinc-400">{{ (f["size_bytes"] / 1024) | round(1) }} KB</div>
+                <a class="text-indigo-400 hover:underline" href="/uploads/{{ f['stored_filename'] }}" target="_blank">Download</a>
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
 
-        <h2 class="text-lg font-semibold mt-6">History</h2>
-        <div class="mt-3 space-y-2 text-sm">
+        <h2 class="text-lg font-semibold mt-8">History</h2>
+        <div class="mt-3 space-y-2">
           {% for e in events %}
-            <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
-              <div class="text-zinc-400 text-xs">{{ e["created_at"] }}</div>
+            <div class="bg-zinc-950/60 border border-zinc-800 rounded-xl p-3 text-sm">
+              <div class="text-zinc-400">{{ e["created_at"] }}</div>
               <div class="mt-1">
                 {% if e["from_status"] %}
-                  <span class="text-zinc-500">{{ e["from_status"] }}</span>
-                  <span class="text-zinc-500">→</span>
+                  {{ e["from_status"] }} → <span class="text-zinc-200">{{ e["to_status"] }}</span>
+                {% else %}
+                  <span class="text-zinc-200">{{ e["to_status"] }}</span>
                 {% endif %}
-                <span class="text-zinc-200">{{ e["to_status"] }}</span>
               </div>
               {% if e["comment"] %}
-                <div class="text-zinc-400 mt-1">{{ e["comment"] }}</div>
+                <div class="text-zinc-300 mt-1">{{ e["comment"] }}</div>
               {% endif %}
             </div>
           {% endfor %}
