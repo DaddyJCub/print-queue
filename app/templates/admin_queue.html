@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Queue</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-6xl mx-auto p-6">
+    <div class="flex items-end justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold">Queue</h1>
+        <p class="text-zinc-400 mt-1">Filter by status/printer. Click a request to manage it.</p>
+      </div>
+
+      <form class="flex gap-2" method="GET" action="/admin">
+        <select name="status" class="rounded-xl bg-zinc-950 border border-zinc-800 p-2">
+          <option value="">All statuses</option>
+          {% for s in status_flow %}
+            <option value="{{s}}" {% if filter_status==s %}selected{% endif %}>{{s}}</option>
+          {% endfor %}
+        </select>
+        <select name="printer" class="rounded-xl bg-zinc-950 border border-zinc-800 p-2">
+          <option value="">All printers</option>
+          {% for val, label in printers %}
+            <option value="{{val}}" {% if filter_printer==val %}selected{% endif %}>{{label}}</option>
+          {% endfor %}
+        </select>
+        <button class="rounded-xl bg-zinc-800 hover:bg-zinc-700 p-2">Filter</button>
+      </form>
+    </div>
+
+    <div class="mt-6 overflow-x-auto bg-zinc-900/60 rounded-2xl border border-zinc-800">
+      <table class="w-full text-sm">
+        <thead class="text-zinc-400">
+          <tr class="border-b border-zinc-800">
+            <th class="text-left p-3">Created</th>
+            <th class="text-left p-3">ID</th>
+            <th class="text-left p-3">Requester</th>
+            <th class="text-left p-3">Printer</th>
+            <th class="text-left p-3">Material</th>
+            <th class="text-left p-3">Colors</th>
+            <th class="text-left p-3">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr class="border-b border-zinc-800 hover:bg-zinc-950/40">
+            <td class="p-3 text-zinc-400">{{ r["created_at"] }}</td>
+            <td class="p-3">
+              <a class="text-indigo-400 hover:underline" href="/admin/request/{{r['id']}}">
+                {{ r["id"][:8] }}
+              </a>
+            </td>
+            <td class="p-3">{{ r["requester_name"] }}</td>
+            <td class="p-3">{{ r["printer"] }}</td>
+            <td class="p-3">{{ r["material"] }}</td>
+            <td class="p-3">{{ r["colors"] }}</td>
+            <td class="p-3"><span class="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800">{{ r["status"] }}</span></td>
+          </tr>
+          {% endfor %}
+          {% if rows|length == 0 %}
+          <tr><td class="p-6 text-zinc-400" colspan="7">No requests yet.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

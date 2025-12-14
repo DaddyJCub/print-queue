@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>3D Print Request</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-2xl mx-auto p-6">
+    <h1 class="text-3xl font-bold">3D Print Request</h1>
+    <p class="text-zinc-400 mt-2">Upload an STL/3MF or paste a link. Pick printer, material, colors, and notes.</p>
+
+    <form class="mt-6 space-y-4 bg-zinc-900/60 p-6 rounded-2xl border border-zinc-800"
+          action="/submit" method="POST" enctype="multipart/form-data">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="text-sm text-zinc-300">Name</label>
+          <input name="requester_name" required class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+        </div>
+        <div>
+          <label class="text-sm text-zinc-300">Email</label>
+          <input name="requester_email" type="email" required class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="text-sm text-zinc-300">Printer</label>
+          <select name="printer" required class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+            {% for val, label in printers %}
+              <option value="{{val}}">{{label}}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="text-sm text-zinc-300">Material</label>
+          <input name="material" placeholder="PLA, PETG, etc." required class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+        </div>
+      </div>
+
+      <div>
+        <label class="text-sm text-zinc-300">Colors</label>
+        <input name="colors" placeholder="Black / White / Red (comma-separated)" required class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+      </div>
+
+      <div>
+        <label class="text-sm text-zinc-300">Link (optional)</label>
+        <input name="link_url" placeholder="https://printables.com/..." class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+      </div>
+
+      <div>
+        <label class="text-sm text-zinc-300">Upload file (optional)</label>
+        <input name="upload" type="file" accept=".stl,.3mf" class="mt-1 w-full" />
+        <p class="text-xs text-zinc-400 mt-1">Allowed: STL, 3MF</p>
+      </div>
+
+      <div>
+        <label class="text-sm text-zinc-300">Notes (optional)</label>
+        <textarea name="notes" rows="4" class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3"></textarea>
+      </div>
+
+      {% if turnstile_site_key %}
+        <div class="cf-turnstile" data-sitekey="{{turnstile_site_key}}" data-theme="dark"></div>
+      {% else %}
+        <div class="text-xs text-amber-300">
+          Turnstile keys not set — submissions allowed (LAN testing).
+        </div>
+      {% endif %}
+
+      <button class="w-full rounded-2xl bg-indigo-600 hover:bg-indigo-500 transition p-3 font-semibold">
+        Submit Request
+      </button>
+    </form>
+
+    <div class="mt-6 text-sm text-zinc-500">
+      Admin? <a class="text-indigo-400 hover:underline" href="/admin/login">Login</a>
+    </div>
+  </div>
+</body>
+</html>
