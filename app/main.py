@@ -326,6 +326,7 @@ async def submit(
 
     conn.close()
 
+    # Request received email (enabled if SMTP configured)
     send_email(
         requester_email.strip(),
         f"[3D Print Queue] Request received ({rid[:8]})",
@@ -706,33 +707,32 @@ async def admin_add_file(
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
 
-@app.get("/download/{stored_filename}")
-def download_file(stored_filename: str, _=Depends(require_admin)):
+@app.get("/admin/download/{file_id}")
+def admin_download_file(file_id: str, _=Depends(require_admin)):
     """
-    Force a real download (Content-Disposition: attachment) so browsers don't try to render STL/3MF as text.
-    Uses original filename from DB when available.
+    Admin-only download that always forces "Save as..." and uses the original filename.
+    This avoids the browser trying to render the file inline.
     """
-    path = os.path.join(UPLOAD_DIR, stored_filename)
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="Not found")
-
-    download_name = stored_filename
     conn = db()
-    row = conn.execute(
-        "SELECT original_filename FROM files WHERE stored_filename = ?",
-        (stored_filename,)
+    f = conn.execute(
+        "SELECT original_filename, stored_filename FROM files WHERE id = ?",
+        (file_id,)
     ).fetchone()
     conn.close()
 
-    if row and row["original_filename"]:
-        download_name = row["original_filename"]
+    if not f:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    path = os.path.join(UPLOAD_DIR, f["stored_filename"])
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="File missing")
 
     return FileResponse(
-        path=path,
+        path,
         media_type="application/octet-stream",
-        filename=download_name,
+        filename=f["original_filename"],
     )
 
-
-# Expose uploads as static (admin pages link directly if needed)
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+# IMPORTANT:
+# We intentionally do NOT mount /uploads publicly anymore.
+# All file access should go through /admin/download/{file_id} (admin-only).
