@@ -540,6 +540,19 @@
                       <div class="text-xs text-zinc-400 mt-1">
                         {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
                       </div>
+                      {% if r.get("printer_progress") is not none %}
+                        <div class="flex items-center gap-2 mt-2">
+                          <div class="w-24 bg-zinc-800 rounded-full h-2">
+                            <div class="bg-emerald-500 h-2 rounded-full" style="width: {{ r.printer_progress }}%"></div>
+                          </div>
+                          <span class="text-xs font-semibold text-emerald-300">{{ r.printer_progress }}%</span>
+                        </div>
+                      {% endif %}
+                      {% if r.get("smart_eta_display") %}
+                        <div class="text-xs text-zinc-400 mt-1">
+                          Est. by <span class="font-semibold text-indigo-300">{{ r.smart_eta_display }}</span>
+                        </div>
+                      {% endif %}
                     </a>
                   </div>
                   <div class="flex items-center gap-2">

@@ -241,25 +241,32 @@
             </td>
             <td class="p-3 align-top">
               {% if r.status == "PRINTING" %}
-                {% if r.printer_progress is not none %}
-                  <!-- Real printer progress from API -->
-                  <div class="flex items-center gap-2">
-                    <div class="w-16 bg-zinc-800 rounded-full h-2">
-                      <div class="bg-emerald-500 h-2 rounded-full" style="width: {{ r.printer_progress }}%"></div>
+                <div class="space-y-1">
+                  {% if r.printer_progress is not none %}
+                    <!-- Real printer progress from API -->
+                    <div class="flex items-center gap-2">
+                      <div class="w-16 bg-zinc-800 rounded-full h-2">
+                        <div class="bg-emerald-500 h-2 rounded-full" style="width: {{ r.printer_progress }}%"></div>
+                      </div>
+                      <span class="text-xs font-semibold text-emerald-300">{{ r.printer_progress }}%</span>
                     </div>
-                    <span class="text-xs font-semibold text-emerald-300">{{ r.printer_progress }}%</span>
-                  </div>
-                {% elif r.print_time_minutes %}
-                  <!-- Fallback: countdown timer if no API -->
-                  <div class="font-mono text-sm font-bold text-emerald-300" data-timer="print-{{ r.short_id }}" data-minutes="{{ r.print_time_minutes }}">
-                    {{ r.print_time_minutes }}m
-                  </div>
-                {% else %}
-                  <div class="text-xs text-zinc-500">Printing...</div>
-                {% endif %}
+                  {% elif r.print_time_minutes %}
+                    <!-- Fallback: countdown timer if no API -->
+                    <div class="font-mono text-sm font-bold text-emerald-300" data-timer="print-{{ r.short_id }}" data-minutes="{{ r.print_time_minutes }}">
+                      {{ r.print_time_minutes }}m
+                    </div>
+                  {% else %}
+                    <div class="text-xs text-zinc-500">Printing...</div>
+                  {% endif %}
+                  {% if r.smart_eta_display %}
+                    <div class="text-xs text-zinc-400">
+                      Est. by <span class="font-semibold text-indigo-300">{{ r.smart_eta_display }}</span>
+                    </div>
+                  {% endif %}
+                </div>
               {% elif r.status == "APPROVED" and r.estimated_wait_minutes %}
                 <div class="text-xs text-zinc-300">
-                  Est. <span class="font-semibold text-indigo-300">{{ (r.estimated_wait_minutes // 60) }}h {{ (r.estimated_wait_minutes % 60) }}m</span>
+                  Est. wait <span class="font-semibold text-indigo-300">{{ (r.estimated_wait_minutes // 60) }}h {{ (r.estimated_wait_minutes % 60) }}m</span>
                 </div>
               {% else %}
                 <div class="text-xs text-zinc-500">—</div>

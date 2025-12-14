@@ -147,6 +147,77 @@
       </div>
     </div>
 
+    <!-- Print History Learning (ETA) -->
+    <div class="mt-6 bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <h2 class="text-lg font-semibold mb-4">🧠 ETA Learning Data</h2>
+      <p class="text-sm text-zinc-400 mb-4">
+        The system learns from completed prints to estimate completion times. More data = more accurate ETAs.
+      </p>
+      
+      {% if stats.print_history.count > 0 %}
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div class="bg-zinc-950/60 border border-zinc-800 rounded-lg p-4">
+            <div class="text-xs text-zinc-400">Prints Recorded</div>
+            <div class="text-2xl font-bold text-indigo-300 mt-1">{{ stats.print_history.count }}</div>
+          </div>
+          <div class="bg-zinc-950/60 border border-zinc-800 rounded-lg p-4">
+            <div class="text-xs text-zinc-400">Avg Duration</div>
+            <div class="text-2xl font-bold text-emerald-300 mt-1">
+              {% if stats.print_history.avg_minutes %}
+                {{ (stats.print_history.avg_minutes // 60) }}h {{ (stats.print_history.avg_minutes % 60)|int }}m
+              {% else %}
+                --
+              {% endif %}
+            </div>
+          </div>
+          <div class="bg-zinc-950/60 border border-zinc-800 rounded-lg p-4">
+            <div class="text-xs text-zinc-400">Shortest</div>
+            <div class="text-2xl font-bold text-amber-300 mt-1">
+              {% if stats.print_history.min_minutes %}
+                {{ (stats.print_history.min_minutes // 60) }}h {{ (stats.print_history.min_minutes % 60)|int }}m
+              {% else %}
+                --
+              {% endif %}
+            </div>
+          </div>
+          <div class="bg-zinc-950/60 border border-zinc-800 rounded-lg p-4">
+            <div class="text-xs text-zinc-400">Longest</div>
+            <div class="text-2xl font-bold text-red-300 mt-1">
+              {% if stats.print_history.max_minutes %}
+                {{ (stats.print_history.max_minutes // 60) }}h {{ (stats.print_history.max_minutes % 60)|int }}m
+              {% else %}
+                --
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        
+        {% if stats.print_history.by_printer %}
+          <h3 class="text-sm font-semibold text-zinc-300 mb-3">By Printer</h3>
+          <div class="space-y-2">
+            {% for ph in stats.print_history.by_printer %}
+              <div class="flex items-center justify-between bg-zinc-950/60 border border-zinc-800 rounded-lg px-4 py-2">
+                <span class="text-sm">{{ ph.printer }}</span>
+                <span class="text-xs text-zinc-400">
+                  {{ ph.count }} prints • Avg: 
+                  {% if ph.avg_minutes %}
+                    <span class="text-emerald-300 font-semibold">{{ (ph.avg_minutes // 60)|int }}h {{ (ph.avg_minutes % 60)|int }}m</span>
+                  {% else %}
+                    --
+                  {% endif %}
+                </span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 text-center">
+          <div class="text-zinc-400 text-sm">No print history yet.</div>
+          <div class="text-zinc-500 text-xs mt-1">Complete prints while the printer polling is enabled to build history.</div>
+        </div>
+      {% endif %}
+    </div>
+
     <!-- Footer with version -->
     <div class="mt-8 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
       3D Print Queue v{{ version }}

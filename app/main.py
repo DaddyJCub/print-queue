@@ -12,8 +12,9 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.6.0"
 # Changelog:
+# 1.6.0 - Smart ETA: learns from print history, shows estimated completion dates
 # 1.5.0 - Extended status API: current filename, layer progress from M119/M27
 # 1.4.0 - Camera streaming, auto-complete with snapshots, login redirect fix
 # 1.3.0 - FlashForge printer integration, ETA calculations, analytics
@@ -131,6 +132,23 @@ def init_db():
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    );
+    """)
+
+    # Print history for learning ETAs
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS print_history (
+      id TEXT PRIMARY KEY,
+      request_id TEXT,
+      printer TEXT NOT NULL,
+      material TEXT,
+      print_name TEXT,
+      started_at TEXT NOT NULL,
+      completed_at TEXT NOT NULL,
+      duration_minutes INTEGER NOT NULL,
+      total_layers INTEGER,
+      file_name TEXT,
+      created_at TEXT NOT NULL
     );
     """)
 
@@ -296,6 +314,101 @@ def get_bool_setting(key: str, default: bool = False) -> bool:
 
 def parse_email_list(raw: str) -> List[str]:
     return [e.strip() for e in (raw or "").split(",") if e.strip()]
+
+
+def get_smart_eta(printer: str = None, material: str = None, 
+                  current_percent: int = None, printing_started_at: str = None) -> Optional[datetime]:
+    """
+    Calculate a smart ETA based on:
+    1. Current progress + elapsed time (most accurate when printing)
+    2. Historical average for this printer/material combo
+    
+    Returns a datetime of estimated completion, or None if can't estimate.
+    """
+    # Method 1: If we have current progress, calculate from elapsed time
+    if current_percent and current_percent > 0 and printing_started_at:
+        try:
+            started_dt = datetime.fromisoformat(printing_started_at)
+            elapsed = (datetime.now() - started_dt).total_seconds()
+            
+            if current_percent >= 100:
+                return datetime.now()
+            
+            # Calculate total expected time based on current progress
+            # If 30% done in 60 minutes, total time = 60 / 0.30 = 200 minutes
+            total_expected = elapsed / (current_percent / 100)
+            remaining_seconds = total_expected - elapsed
+            
+            # Add a small buffer (5%) for accuracy
+            remaining_seconds *= 1.05
+            
+            eta = datetime.now() + __import__('datetime').timedelta(seconds=remaining_seconds)
+            return eta
+        except Exception as e:
+            print(f"[ETA] Error calculating from progress: {e}")
+    
+    # Method 2: Use historical average from print_history
+    try:
+        conn = db()
+        
+        # Try to find average for this specific printer
+        if printer:
+            rows = conn.execute("""
+                SELECT AVG(duration_minutes) as avg_duration, COUNT(*) as count
+                FROM print_history 
+                WHERE printer = ?
+            """, (printer,)).fetchone()
+            
+            if rows and rows["count"] and rows["count"] >= 2 and rows["avg_duration"]:
+                avg_minutes = int(rows["avg_duration"])
+                conn.close()
+                return datetime.now() + __import__('datetime').timedelta(minutes=avg_minutes)
+        
+        # Fall back to global average
+        rows = conn.execute("""
+            SELECT AVG(duration_minutes) as avg_duration, COUNT(*) as count
+            FROM print_history
+        """).fetchone()
+        conn.close()
+        
+        if rows and rows["count"] and rows["count"] >= 2 and rows["avg_duration"]:
+            avg_minutes = int(rows["avg_duration"])
+            return datetime.now() + __import__('datetime').timedelta(minutes=avg_minutes)
+            
+    except Exception as e:
+        print(f"[ETA] Error calculating from history: {e}")
+    
+    return None
+
+
+def format_eta_display(eta_dt: Optional[datetime]) -> str:
+    """Format an ETA datetime for display in the UI"""
+    if not eta_dt:
+        return "Unknown"
+    
+    now = datetime.now()
+    diff = eta_dt - now
+    
+    if diff.total_seconds() < 0:
+        return "Any moment now"
+    
+    # Format time as "3:45 PM" (works cross-platform)
+    def format_time(dt: datetime) -> str:
+        hour = dt.hour % 12
+        if hour == 0:
+            hour = 12
+        minute = dt.minute
+        ampm = "AM" if dt.hour < 12 else "PM"
+        return f"{hour}:{minute:02d} {ampm}"
+    
+    # Format as "Dec 14, 3:45 PM" if more than a day away
+    # or "Today at 3:45 PM" / "Tomorrow at 10:30 AM"
+    if eta_dt.date() == now.date():
+        return f"Today at {format_time(eta_dt)}"
+    elif eta_dt.date() == (now + __import__('datetime').timedelta(days=1)).date():
+        return f"Tomorrow at {format_time(eta_dt)}"
+    else:
+        return f"{eta_dt.strftime('%b %d')}, {format_time(eta_dt)}"
 
 
 # ------------------------
@@ -626,6 +739,7 @@ async def poll_printer_status_worker():
                     # Capture completion data before updating status
                     completion_snapshot = None
                     final_temp = None
+                    extended_info = None
                     
                     # Try to capture a final snapshot
                     if get_bool_setting("enable_camera_snapshot", False):
@@ -645,10 +759,48 @@ async def poll_printer_status_worker():
                             print(f"[PRINTER] Final temperature for {rid[:8]}: {final_temp}")
                     except Exception as e:
                         print(f"[PRINTER] Failed to get final temperature: {e}")
+                    
+                    # Get extended info for history
+                    try:
+                        extended_info = await printer_api.get_extended_status()
+                    except Exception as e:
+                        print(f"[PRINTER] Failed to get extended status: {e}")
 
                     # Auto-update status with completion data
                     conn = db()
                     req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+                    
+                    # Record to print history for learning ETAs
+                    if req_row and req_row.get("printing_started_at"):
+                        try:
+                            started_at = req_row["printing_started_at"]
+                            completed_at = now_iso()
+                            started_dt = datetime.fromisoformat(started_at)
+                            completed_dt = datetime.fromisoformat(completed_at)
+                            duration_minutes = int((completed_dt - started_dt).total_seconds() / 60)
+                            
+                            conn.execute("""
+                                INSERT INTO print_history 
+                                (id, request_id, printer, material, print_name, started_at, completed_at, 
+                                 duration_minutes, total_layers, file_name, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                str(uuid.uuid4()),
+                                rid,
+                                req_row.get("printer", ""),
+                                req_row.get("material", ""),
+                                req_row.get("print_name", ""),
+                                started_at,
+                                completed_at,
+                                duration_minutes,
+                                extended_info.get("total_layers") if extended_info else None,
+                                extended_info.get("current_file") if extended_info else None,
+                                completed_at
+                            ))
+                            print(f"[PRINTER] Recorded print history: {duration_minutes} minutes for {req_row.get('printer', '')}")
+                        except Exception as e:
+                            print(f"[PRINTER] Failed to record print history: {e}")
+                    
                     conn.execute(
                         "UPDATE requests SET status = ?, updated_at = ?, completion_snapshot = ?, final_temperature = ? WHERE id = ?",
                         ("DONE", now_iso(), completion_snapshot, final_temp, rid)
@@ -1067,7 +1219,7 @@ async def submit(
 async def public_queue(request: Request, mine: Optional[str] = None):
     conn = db()
     rows = conn.execute(
-        "SELECT id, requester_name, print_name, printer, material, colors, status, special_notes, print_time_minutes, turnaround_minutes "
+        "SELECT id, requester_name, print_name, printer, material, colors, status, special_notes, print_time_minutes, turnaround_minutes, printing_started_at "
         "FROM requests "
         "WHERE status NOT IN (?, ?, ?) "
         "ORDER BY created_at ASC",
@@ -1108,6 +1260,9 @@ async def public_queue(request: Request, mine: Optional[str] = None):
         
         # Fetch real printer progress if currently printing
         printer_progress = None
+        smart_eta = None
+        smart_eta_display = None
+        
         if r["status"] == "PRINTING":
             printer_api = get_printer_api(r["printer"])
             if printer_api:
@@ -1115,6 +1270,17 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                     printer_progress = await printer_api.get_percent_complete()
                 except Exception:
                     pass  # Fall back to time-based estimate if API fails
+            
+            # Calculate smart ETA based on progress and history
+            eta_dt = get_smart_eta(
+                printer=r["printer"],
+                material=r["material"],
+                current_percent=printer_progress,
+                printing_started_at=r["printing_started_at"]
+            )
+            if eta_dt:
+                smart_eta = eta_dt.isoformat()
+                smart_eta_display = format_eta_display(eta_dt)
         
         # Get printer health status
         printer_health = printer_status.get(r["printer"], {}).get("healthy", None)
@@ -1135,6 +1301,8 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             "estimated_wait_minutes": None,
             "printer_progress": printer_progress,  # Real progress % from API
             "printer_health": printer_health,  # True if ready/printing, False if error, None if unknown
+            "smart_eta": smart_eta,  # ISO datetime of estimated completion
+            "smart_eta_display": smart_eta_display,  # Human-readable "Today at 3:45 PM"
         })
         if r["status"] == "PRINTING":
             printing_idx = idx
@@ -1219,15 +1387,24 @@ def admin_logout():
     return resp
 
 
-def _fetch_requests_by_status(status: str):
+def _fetch_requests_by_status(status: str, include_eta_fields: bool = False):
     conn = db()
-    rows = conn.execute(
-        "SELECT id, created_at, requester_name, printer, material, colors, link_url, status, priority, special_notes "
-        "FROM requests "
-        "WHERE status = ? "
-        "ORDER BY priority ASC, created_at ASC",
-        (status,)
-    ).fetchall()
+    if include_eta_fields:
+        rows = conn.execute(
+            "SELECT id, created_at, requester_name, printer, material, colors, link_url, status, priority, special_notes, printing_started_at "
+            "FROM requests "
+            "WHERE status = ? "
+            "ORDER BY priority ASC, created_at ASC",
+            (status,)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT id, created_at, requester_name, printer, material, colors, link_url, status, priority, special_notes "
+            "FROM requests "
+            "WHERE status = ? "
+            "ORDER BY priority ASC, created_at ASC",
+            (status,)
+        ).fetchall()
     conn.close()
     return rows
 
@@ -1236,8 +1413,35 @@ def _fetch_requests_by_status(status: str):
 async def admin_dashboard(request: Request, _=Depends(require_admin)):
     new_reqs = _fetch_requests_by_status("NEW")
     queued = _fetch_requests_by_status("APPROVED")
-    printing = _fetch_requests_by_status("PRINTING")
+    printing_raw = _fetch_requests_by_status("PRINTING", include_eta_fields=True)
     done = _fetch_requests_by_status("DONE")
+    
+    # Enrich printing requests with smart ETA
+    printing = []
+    for r in printing_raw:
+        # Get current progress from printer for smart ETA calculation
+        printer_progress = None
+        printer_api = get_printer_api(r["printer"])
+        if printer_api:
+            try:
+                printer_progress = await printer_api.get_percent_complete()
+            except Exception:
+                pass
+        
+        # Calculate smart ETA
+        eta_dt = get_smart_eta(
+            printer=r["printer"],
+            material=r["material"],
+            current_percent=printer_progress,
+            printing_started_at=r["printing_started_at"]
+        )
+        
+        # Convert to dict and add ETA fields
+        row_dict = dict(r)
+        row_dict["smart_eta"] = eta_dt.isoformat() if eta_dt else None
+        row_dict["smart_eta_display"] = format_eta_display(eta_dt) if eta_dt else None
+        row_dict["printer_progress"] = printer_progress
+        printing.append(row_dict)
 
     conn = db()
     closed = conn.execute(
@@ -1431,6 +1635,36 @@ def admin_analytics(request: Request, _=Depends(require_admin)):
         "by_material": {k: v for k, v in by_material.items() if v > 0},
         "top_requesters": formatted_requesters,
         "recent_events": formatted_events,
+    }
+    
+    # Print history learning data
+    conn2 = db()
+    ph_overall = conn2.execute("""
+        SELECT AVG(duration_minutes) as avg_minutes,
+               MIN(duration_minutes) as min_minutes,
+               MAX(duration_minutes) as max_minutes,
+               COUNT(*) as count
+        FROM print_history
+    """).fetchone()
+    
+    ph_by_printer = conn2.execute("""
+        SELECT printer, 
+               AVG(duration_minutes) as avg_minutes,
+               COUNT(*) as count
+        FROM print_history
+        GROUP BY printer
+    """).fetchall()
+    conn2.close()
+    
+    stats["print_history"] = {
+        "count": ph_overall["count"] if ph_overall else 0,
+        "avg_minutes": int(ph_overall["avg_minutes"]) if ph_overall and ph_overall["avg_minutes"] else None,
+        "min_minutes": int(ph_overall["min_minutes"]) if ph_overall and ph_overall["min_minutes"] else None,
+        "max_minutes": int(ph_overall["max_minutes"]) if ph_overall and ph_overall["max_minutes"] else None,
+        "by_printer": [
+            {"printer": p["printer"], "avg_minutes": int(p["avg_minutes"]) if p["avg_minutes"] else None, "count": p["count"]}
+            for p in ph_by_printer
+        ] if ph_by_printer else [],
     }
     
     return templates.TemplateResponse("admin_analytics.html", {
@@ -2260,3 +2494,46 @@ async def printer_test_commands(printer_code: str, _=Depends(require_admin)):
             results["commands"][cmd] = {"desc": desc, "error": str(e)}
     
     return results
+
+
+@app.get("/api/print-history")
+async def get_print_history(_=Depends(require_admin)):
+    """Get print history stats for the learning ETA system"""
+    conn = db()
+    
+    # All history entries
+    history = conn.execute("""
+        SELECT id, request_id, printer, material, print_name, started_at, completed_at, 
+               duration_minutes, total_layers, file_name, created_at
+        FROM print_history
+        ORDER BY created_at DESC
+        LIMIT 100
+    """).fetchall()
+    
+    # Stats by printer
+    by_printer = conn.execute("""
+        SELECT printer, 
+               AVG(duration_minutes) as avg_minutes,
+               MIN(duration_minutes) as min_minutes,
+               MAX(duration_minutes) as max_minutes,
+               COUNT(*) as count
+        FROM print_history
+        GROUP BY printer
+    """).fetchall()
+    
+    # Overall stats
+    overall = conn.execute("""
+        SELECT AVG(duration_minutes) as avg_minutes,
+               MIN(duration_minutes) as min_minutes,
+               MAX(duration_minutes) as max_minutes,
+               COUNT(*) as count
+        FROM print_history
+    """).fetchone()
+    
+    conn.close()
+    
+    return {
+        "history": [dict(h) for h in history],
+        "by_printer": [dict(p) for p in by_printer],
+        "overall": dict(overall) if overall else {},
+    }
