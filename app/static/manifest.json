@@ -1,0 +1,49 @@
+{
+  "name": "3D Print Queue",
+  "short_name": "Print Queue",
+  "description": "Submit and track 3D print requests",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#6366f1",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/static/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities", "productivity"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Submit Request",
+      "short_name": "Submit",
+      "description": "Submit a new print request",
+      "url": "/",
+      "icons": [{"src": "/static/icons/icon-192.png", "sizes": "192x192"}]
+    },
+    {
+      "name": "View Queue",
+      "short_name": "Queue",
+      "description": "View the print queue",
+      "url": "/queue",
+      "icons": [{"src": "/static/icons/icon-192.png", "sizes": "192x192"}]
+    },
+    {
+      "name": "My Requests",
+      "short_name": "My Prints",
+      "description": "View your print requests",
+      "url": "/my-requests",
+      "icons": [{"src": "/static/icons/icon-192.png", "sizes": "192x192"}]
+    }
+  ]
+}

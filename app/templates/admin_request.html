@@ -455,6 +455,17 @@
                 <li class="bg-zinc-950/60 border border-zinc-700 rounded-lg p-3">
                   <div class="font-mono text-sm text-zinc-200 truncate">{{ f["original_filename"] }}</div>
                   <div class="text-xs text-zinc-500">{{ (f["size_bytes"] / 1024) | round(1) }} KB • Uploaded {{ f["created_at"]|localtime('%b %d, %Y at %I:%M %p') }}</div>
+                  {% if f.metadata and f.metadata.dimensions_mm %}
+                    <div class="text-xs text-indigo-400 mt-1 flex items-center gap-1">
+                      📐 {{ f.metadata.dimensions_mm.x }} × {{ f.metadata.dimensions_mm.y }} × {{ f.metadata.dimensions_mm.z }} mm
+                      {% if f.metadata.volume_cm3 %}
+                        <span class="text-zinc-500">• {{ f.metadata.volume_cm3 }} cm³</span>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+                  {% if f.metadata and f.metadata.triangle_count %}
+                    <div class="text-xs text-zinc-500">🔺 {{ "{:,}".format(f.metadata.triangle_count) }} triangles</div>
+                  {% endif %}
                   <div class="flex items-center gap-3 mt-1">
                     <a class="text-indigo-400 hover:underline text-xs" href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}">Download</a>
                     <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" onsubmit="return confirm('Delete this file?')">

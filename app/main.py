@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.5"
+APP_VERSION = "1.8.6"
 # Changelog:
 # 1.8.1 - Printer retry logic (3 retries before offline), admin per-status email controls, duplicate request fix
 # 1.8.0 - Store feature, my-request enhancements (cancel/resubmit, live printer view)
@@ -47,6 +47,12 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
 SMTP_FROM = os.getenv("SMTP_FROM", "")
+
+# VAPID keys for Web Push notifications
+# Generate with: python -c "from pywebpush import webpush; import json; from py_vapid import Vapid; v = Vapid(); v.generate_keys(); print(json.dumps({'private': v.private_pem(), 'public': v.public_key}))"
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_CLAIMS_EMAIL = os.getenv("VAPID_CLAIMS_EMAIL", "mailto:admin@example.com")
 
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -325,6 +331,20 @@ def init_db():
     );
     """)
 
+    # Push notification subscriptions
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id TEXT PRIMARY KEY,
+      request_id TEXT,
+      email TEXT,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(request_id) REFERENCES requests(id)
+    );
+    """)
+
     conn.commit()
     conn.close()
 
@@ -415,12 +435,184 @@ def ensure_migrations():
     if history_cols and "estimated_minutes" not in history_cols:
         cur.execute("ALTER TABLE print_history ADD COLUMN estimated_minutes INTEGER")
 
+    # Migrate files table - add file_metadata column for 3D model dimensions
+    cur.execute("PRAGMA table_info(files)")
+    files_cols = {row[1] for row in cur.fetchall()}
+    if files_cols and "file_metadata" not in files_cols:
+        cur.execute("ALTER TABLE files ADD COLUMN file_metadata TEXT")
+
     conn.commit()
     conn.close()
 
 
 def now_iso():
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
+# ─────────────────────────── 3D FILE PARSING ───────────────────────────
+def parse_3d_file_metadata(file_path: str, original_filename: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse a 3D file (STL, 3MF, OBJ) and extract metadata like dimensions and volume.
+    Returns None if file cannot be parsed.
+    """
+    ext = os.path.splitext(original_filename.lower())[1]
+    
+    try:
+        if ext == ".stl":
+            return _parse_stl_file(file_path)
+        elif ext == ".3mf":
+            return _parse_3mf_file(file_path)
+        elif ext == ".obj":
+            return _parse_obj_file(file_path)
+        else:
+            return None
+    except Exception as e:
+        print(f"[FILE_PARSE] Error parsing {original_filename}: {e}")
+        return None
+
+
+def _parse_stl_file(file_path: str) -> Optional[Dict[str, Any]]:
+    """Parse STL file for dimensions and triangle count using numpy-stl"""
+    try:
+        from stl import mesh
+        import numpy as np
+        
+        stl_mesh = mesh.Mesh.from_file(file_path)
+        
+        # Get bounding box dimensions
+        min_coords = stl_mesh.min_
+        max_coords = stl_mesh.max_
+        
+        dimensions = {
+            "x": round(max_coords[0] - min_coords[0], 2),
+            "y": round(max_coords[1] - min_coords[1], 2),
+            "z": round(max_coords[2] - min_coords[2], 2),
+        }
+        
+        # Calculate volume (approximate using signed volume method)
+        # This works for closed meshes
+        try:
+            volume = abs(stl_mesh.get_mass_properties()[0])
+            volume_cm3 = round(volume / 1000, 2)  # Convert mm³ to cm³
+        except:
+            volume_cm3 = None
+        
+        # Triangle count
+        triangle_count = len(stl_mesh.vectors)
+        
+        return {
+            "type": "stl",
+            "dimensions_mm": dimensions,
+            "volume_cm3": volume_cm3,
+            "triangle_count": triangle_count,
+            "is_valid": True,
+        }
+    except ImportError:
+        print("[FILE_PARSE] numpy-stl not installed, skipping STL parsing")
+        return None
+    except Exception as e:
+        print(f"[FILE_PARSE] STL parse error: {e}")
+        return {"type": "stl", "is_valid": False, "error": str(e)}
+
+
+def _parse_3mf_file(file_path: str) -> Optional[Dict[str, Any]]:
+    """Parse 3MF file (ZIP containing XML model data) for basic dimensions"""
+    try:
+        import zipfile
+        import xml.etree.ElementTree as ET
+        
+        with zipfile.ZipFile(file_path, 'r') as zf:
+            # Find the model file (usually 3D/3dmodel.model)
+            model_file = None
+            for name in zf.namelist():
+                if name.endswith('.model'):
+                    model_file = name
+                    break
+            
+            if not model_file:
+                return {"type": "3mf", "is_valid": False, "error": "No model file found"}
+            
+            with zf.open(model_file) as f:
+                tree = ET.parse(f)
+                root = tree.getroot()
+                
+                # 3MF namespace
+                ns = {'m': 'http://schemas.microsoft.com/3dmanufacturing/core/2015/02'}
+                
+                # Find all vertices to calculate bounding box
+                vertices = []
+                for mesh_elem in root.iter():
+                    if mesh_elem.tag.endswith('vertex'):
+                        x = float(mesh_elem.get('x', 0))
+                        y = float(mesh_elem.get('y', 0))
+                        z = float(mesh_elem.get('z', 0))
+                        vertices.append((x, y, z))
+                
+                if vertices:
+                    min_x = min(v[0] for v in vertices)
+                    max_x = max(v[0] for v in vertices)
+                    min_y = min(v[1] for v in vertices)
+                    max_y = max(v[1] for v in vertices)
+                    min_z = min(v[2] for v in vertices)
+                    max_z = max(v[2] for v in vertices)
+                    
+                    return {
+                        "type": "3mf",
+                        "dimensions_mm": {
+                            "x": round(max_x - min_x, 2),
+                            "y": round(max_y - min_y, 2),
+                            "z": round(max_z - min_z, 2),
+                        },
+                        "vertex_count": len(vertices),
+                        "is_valid": True,
+                    }
+                
+                return {"type": "3mf", "is_valid": True, "note": "Could not extract dimensions"}
+                
+    except Exception as e:
+        print(f"[FILE_PARSE] 3MF parse error: {e}")
+        return {"type": "3mf", "is_valid": False, "error": str(e)}
+
+
+def _parse_obj_file(file_path: str) -> Optional[Dict[str, Any]]:
+    """Parse OBJ file for basic dimensions"""
+    try:
+        vertices = []
+        with open(file_path, 'r', errors='ignore') as f:
+            for line in f:
+                if line.startswith('v '):
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        try:
+                            x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
+                            vertices.append((x, y, z))
+                        except ValueError:
+                            continue
+        
+        if vertices:
+            min_x = min(v[0] for v in vertices)
+            max_x = max(v[0] for v in vertices)
+            min_y = min(v[1] for v in vertices)
+            max_y = max(v[1] for v in vertices)
+            min_z = min(v[2] for v in vertices)
+            max_z = max(v[2] for v in vertices)
+            
+            return {
+                "type": "obj",
+                "dimensions_mm": {
+                    "x": round(max_x - min_x, 2),
+                    "y": round(max_y - min_y, 2),
+                    "z": round(max_z - min_z, 2),
+                },
+                "vertex_count": len(vertices),
+                "is_valid": True,
+            }
+        
+        return {"type": "obj", "is_valid": True, "note": "No vertices found"}
+        
+    except Exception as e:
+        print(f"[FILE_PARSE] OBJ parse error: {e}")
+        return {"type": "obj", "is_valid": False, "error": str(e)}
 
 
 @app.on_event("startup")
@@ -1847,6 +2039,69 @@ def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Opt
         return
 
 
+# ─────────────────────────── PUSH NOTIFICATIONS ───────────────────────────
+def send_push_notification(request_id: str, title: str, body: str, url: str = None):
+    """
+    Send push notification to all subscriptions for a request.
+    Silently fails if VAPID keys not configured or no subscriptions exist.
+    """
+    if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
+        return
+    
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        print("[PUSH] pywebpush not installed")
+        return
+    
+    conn = db()
+    subs = conn.execute(
+        "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE request_id = ?",
+        (request_id,)
+    ).fetchall()
+    conn.close()
+    
+    if not subs:
+        return
+    
+    payload = json.dumps({
+        "title": title,
+        "body": body,
+        "url": url or f"/queue?mine={request_id[:8]}",
+        "icon": "/static/icons/icon-192.png",
+    })
+    
+    vapid_claims = {"sub": VAPID_CLAIMS_EMAIL}
+    
+    for sub in subs:
+        subscription_info = {
+            "endpoint": sub["endpoint"],
+            "keys": {
+                "p256dh": sub["p256dh"],
+                "auth": sub["auth"],
+            }
+        }
+        try:
+            webpush(
+                subscription_info=subscription_info,
+                data=payload,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims=vapid_claims,
+            )
+            print(f"[PUSH] Sent notification for {request_id[:8]}")
+        except WebPushException as e:
+            print(f"[PUSH] Failed: {e}")
+            # Remove invalid subscriptions (410 Gone or 404)
+            if e.response and e.response.status_code in [404, 410]:
+                conn = db()
+                conn.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (sub["endpoint"],))
+                conn.commit()
+                conn.close()
+                print(f"[PUSH] Removed expired subscription")
+        except Exception as e:
+            print(f"[PUSH] Error: {e}")
+
+
 def safe_ext(filename: str) -> str:
     return os.path.splitext(filename)[1].lower()
 
@@ -2132,10 +2387,14 @@ async def submit(
         with open(out_path, "wb") as f:
             f.write(data)
 
+        # Parse 3D file metadata (dimensions, volume, etc.)
+        file_metadata = parse_3d_file_metadata(out_path, upload.filename)
+        file_metadata_json = json.dumps(file_metadata) if file_metadata else None
+
         conn.execute(
-            """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (str(uuid.uuid4()), rid, now_iso(), upload.filename, stored, len(data), sha)
+            """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (str(uuid.uuid4()), rid, now_iso(), upload.filename, stored, len(data), sha, file_metadata_json)
         )
         conn.commit()
 
@@ -2670,11 +2929,15 @@ async def requester_upload(request: Request, rid: str, token: str, files: List[U
         with open(path, "wb") as f:
             f.write(content)
         
+        # Parse 3D file metadata (dimensions, volume, etc.)
+        file_metadata = parse_3d_file_metadata(path, upload.filename)
+        file_metadata_json = json.dumps(file_metadata) if file_metadata else None
+        
         # Record in database
         file_id = str(uuid.uuid4())
         conn.execute(
-            "INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (file_id, rid, created, upload.filename, stored_name, len(content), sha256)
+            "INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (file_id, rid, created, upload.filename, stored_name, len(content), sha256, file_metadata_json)
         )
         uploaded_names.append(upload.filename)
     
@@ -4095,6 +4358,19 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
     events = conn.execute("SELECT * FROM status_events WHERE request_id = ? ORDER BY created_at DESC", (rid,)).fetchall()
     messages = conn.execute("SELECT * FROM request_messages WHERE request_id = ? ORDER BY created_at ASC", (rid,)).fetchall()
     
+    # Enrich files with parsed metadata
+    enriched_files = []
+    for f in files:
+        f_dict = dict(f)
+        if f_dict.get("file_metadata"):
+            try:
+                f_dict["metadata"] = json.loads(f_dict["file_metadata"])
+            except:
+                f_dict["metadata"] = None
+        else:
+            f_dict["metadata"] = None
+        enriched_files.append(f_dict)
+    
     # Mark all requester messages as read when admin views the request
     conn.execute("UPDATE request_messages SET is_read = 1 WHERE request_id = ? AND sender_type = 'requester' AND is_read = 0", (rid,))
     conn.commit()
@@ -4109,7 +4385,7 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
     return templates.TemplateResponse("admin_request.html", {
         "request": request,
         "req": req,
-        "files": files,
+        "files": enriched_files,
         "events": events,
         "messages": messages,
         "status_flow": STATUS_FLOW,
@@ -4525,6 +4801,28 @@ def admin_set_status(
         )
         send_email([req["requester_email"]], subject, text, html)
 
+    # Send push notification for important status changes
+    push_statuses = ["NEEDS_INFO", "APPROVED", "PRINTING", "DONE"]
+    if to_status in push_statuses:
+        push_titles = {
+            "NEEDS_INFO": "📝 Action Needed",
+            "APPROVED": "✅ Request Approved",
+            "PRINTING": "🖨️ Now Printing",
+            "DONE": "🎉 Print Complete!",
+        }
+        push_bodies = {
+            "NEEDS_INFO": f"We need more info about '{req['print_name'] or 'your request'}'",
+            "APPROVED": f"'{req['print_name'] or 'Your request'}' is approved and in queue",
+            "PRINTING": f"'{req['print_name'] or 'Your request'}' has started printing",
+            "DONE": f"'{req['print_name'] or 'Your request'}' is ready for pickup!",
+        }
+        send_push_notification(
+            request_id=rid,
+            title=push_titles.get(to_status, "Status Update"),
+            body=push_bodies.get(to_status, f"Status changed to {to_status}"),
+            url=f"/my/{rid}?token={req['access_token']}"
+        )
+
     if admin_email_on_status and admin_emails:
         # Check fine-grain admin notification settings
         admin_notify_settings = {
@@ -4869,6 +5167,10 @@ async def admin_add_file(
     with open(out_path, "wb") as f:
         f.write(data)
 
+    # Parse 3D file metadata (dimensions, volume, etc.)
+    file_metadata = parse_3d_file_metadata(out_path, upload.filename)
+    file_metadata_json = json.dumps(file_metadata) if file_metadata else None
+
     conn = db()
     req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
     if not req:
@@ -4876,9 +5178,9 @@ async def admin_add_file(
         raise HTTPException(status_code=404, detail="Not found")
 
     conn.execute(
-        """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (str(uuid.uuid4()), rid, now_iso(), upload.filename, stored, len(data), sha)
+        """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (str(uuid.uuid4()), rid, now_iso(), upload.filename, stored, len(data), sha, file_metadata_json)
     )
     conn.execute(
         "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
@@ -5164,6 +5466,85 @@ def get_slicer_accuracy_api(printer: str = None, material: str = None, _=Depends
 def get_version():
     """Get application version"""
     return {"version": APP_VERSION, "title": APP_TITLE}
+
+
+# ─────────────────────────── PUSH NOTIFICATION API ───────────────────────────
+
+@app.get("/api/push/vapid-public-key")
+def get_vapid_public_key():
+    """Get the VAPID public key for push subscription"""
+    if not VAPID_PUBLIC_KEY:
+        return {"error": "Push notifications not configured", "publicKey": None}
+    return {"publicKey": VAPID_PUBLIC_KEY}
+
+
+@app.post("/api/push/subscribe")
+async def subscribe_push(request: Request):
+    """Subscribe to push notifications for a request"""
+    data = await request.json()
+    request_id = data.get("request_id")
+    email = data.get("email", "")
+    subscription = data.get("subscription", {})
+    
+    if not request_id or not subscription:
+        return {"error": "Missing request_id or subscription"}
+    
+    endpoint = subscription.get("endpoint")
+    keys = subscription.get("keys", {})
+    p256dh = keys.get("p256dh")
+    auth = keys.get("auth")
+    
+    if not endpoint or not p256dh or not auth:
+        return {"error": "Invalid subscription data"}
+    
+    conn = db()
+    # Check if subscription already exists for this endpoint
+    existing = conn.execute(
+        "SELECT id FROM push_subscriptions WHERE endpoint = ? AND request_id = ?",
+        (endpoint, request_id)
+    ).fetchone()
+    
+    if existing:
+        conn.close()
+        return {"status": "already_subscribed"}
+    
+    conn.execute(
+        """INSERT INTO push_subscriptions (id, request_id, email, endpoint, p256dh, auth, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (str(uuid.uuid4()), request_id, email, endpoint, p256dh, auth, now_iso())
+    )
+    conn.commit()
+    conn.close()
+    
+    return {"status": "subscribed"}
+
+
+@app.post("/api/push/unsubscribe")
+async def unsubscribe_push(request: Request):
+    """Unsubscribe from push notifications"""
+    data = await request.json()
+    request_id = data.get("request_id")
+    endpoint = data.get("endpoint")
+    
+    if not request_id:
+        return {"error": "Missing request_id"}
+    
+    conn = db()
+    if endpoint:
+        conn.execute(
+            "DELETE FROM push_subscriptions WHERE request_id = ? AND endpoint = ?",
+            (request_id, endpoint)
+        )
+    else:
+        # Remove all subscriptions for this request
+        conn.execute(
+            "DELETE FROM push_subscriptions WHERE request_id = ?",
+            (request_id,)
+        )
+    conn.commit()
+    conn.close()
+    
+    return {"status": "unsubscribed"}
 
 
 @app.get("/api/rush-pricing")

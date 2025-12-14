@@ -4,7 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>My Request - {{ req.print_name or req.id[:8] }}</title>
+  <!-- PWA Support -->
+  <link rel="manifest" href="/static/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/static/sw.js').catch(() => {}));
+    }
+  </script>
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-2xl mx-auto p-6">
@@ -62,6 +72,175 @@
       {% endif %}
     </div>
     
+    <!-- Push Notification Toggle -->
+    <div id="notification-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 mb-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="font-medium flex items-center gap-2">
+            <span id="notif-icon">🔔</span>
+            <span id="notif-label">Get Notifications</span>
+          </h3>
+          <p class="text-xs text-zinc-500 mt-1" id="notif-desc">Get push notifications when your print status changes</p>
+        </div>
+        <button id="notif-toggle" onclick="toggleNotifications()" 
+                class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none bg-zinc-700">
+          <span id="notif-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-zinc-400 transition-transform translate-x-1"></span>
+        </button>
+      </div>
+    </div>
+    
+    <script>
+      // Push Notification Subscription Management
+      const requestId = '{{ req.id }}';
+      const requestEmail = '{{ req.requester_email }}';
+      let pushSubscription = null;
+      
+      async function initNotifications() {
+        const section = document.getElementById('notification-section');
+        
+        // Check if push notifications are supported
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+          section.style.display = 'none';
+          return;
+        }
+        
+        // Check if already subscribed (from localStorage)
+        const savedSub = localStorage.getItem(`push_subscribed_${requestId}`);
+        if (savedSub) {
+          updateNotificationUI(true);
+        }
+        
+        // Check permission status
+        if (Notification.permission === 'denied') {
+          document.getElementById('notif-desc').textContent = 'Notifications are blocked. Enable in browser settings.';
+          document.getElementById('notif-toggle').disabled = true;
+          document.getElementById('notif-toggle').classList.add('opacity-50', 'cursor-not-allowed');
+        }
+      }
+      
+      async function toggleNotifications() {
+        const isSubscribed = localStorage.getItem(`push_subscribed_${requestId}`);
+        
+        if (isSubscribed) {
+          await unsubscribeFromPush();
+        } else {
+          await subscribeToPush();
+        }
+      }
+      
+      async function subscribeToPush() {
+        try {
+          // Request permission
+          const permission = await Notification.requestPermission();
+          if (permission !== 'granted') {
+            alert('Please allow notifications to receive updates about your print.');
+            return;
+          }
+          
+          // Get VAPID public key
+          const response = await fetch('/api/push/vapid-public-key');
+          const data = await response.json();
+          if (!data.publicKey) {
+            document.getElementById('notif-desc').textContent = 'Push notifications not available';
+            return;
+          }
+          
+          // Get service worker registration
+          const registration = await navigator.serviceWorker.ready;
+          
+          // Subscribe to push
+          const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(data.publicKey)
+          });
+          
+          // Send subscription to server
+          const subResponse = await fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              request_id: requestId,
+              email: requestEmail,
+              subscription: subscription.toJSON()
+            })
+          });
+          
+          if (subResponse.ok) {
+            localStorage.setItem(`push_subscribed_${requestId}`, 'true');
+            updateNotificationUI(true);
+          }
+        } catch (err) {
+          console.error('Push subscription error:', err);
+          document.getElementById('notif-desc').textContent = 'Failed to enable notifications';
+        }
+      }
+      
+      async function unsubscribeFromPush() {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.getSubscription();
+          
+          if (subscription) {
+            // Unsubscribe from server
+            await fetch('/api/push/unsubscribe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                request_id: requestId,
+                endpoint: subscription.endpoint
+              })
+            });
+          }
+          
+          localStorage.removeItem(`push_subscribed_${requestId}`);
+          updateNotificationUI(false);
+        } catch (err) {
+          console.error('Push unsubscribe error:', err);
+        }
+      }
+      
+      function updateNotificationUI(enabled) {
+        const toggle = document.getElementById('notif-toggle');
+        const dot = document.getElementById('notif-toggle-dot');
+        const icon = document.getElementById('notif-icon');
+        const label = document.getElementById('notif-label');
+        const desc = document.getElementById('notif-desc');
+        
+        if (enabled) {
+          toggle.classList.remove('bg-zinc-700');
+          toggle.classList.add('bg-indigo-600');
+          dot.classList.remove('translate-x-1', 'bg-zinc-400');
+          dot.classList.add('translate-x-6', 'bg-white');
+          icon.textContent = '🔔';
+          label.textContent = 'Notifications On';
+          desc.textContent = "You'll be notified when your print status changes";
+        } else {
+          toggle.classList.add('bg-zinc-700');
+          toggle.classList.remove('bg-indigo-600');
+          dot.classList.add('translate-x-1', 'bg-zinc-400');
+          dot.classList.remove('translate-x-6', 'bg-white');
+          icon.textContent = '🔕';
+          label.textContent = 'Get Notifications';
+          desc.textContent = 'Get push notifications when your print status changes';
+        }
+      }
+      
+      // Convert VAPID key
+      function urlBase64ToUint8Array(base64String) {
+        const padding = '='.repeat((4 - base64String.length % 4) % 4);
+        const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) {
+          outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
+      }
+      
+      // Initialize on page load
+      document.addEventListener('DOMContentLoaded', initNotifications);
+    </script>
+
     <!-- Live Printer View (when PRINTING) -->
     {% if req.status == 'PRINTING' and printer_status %}
       <div class="bg-gradient-to-br from-indigo-900/30 to-purple-900/20 border border-indigo-500/30 rounded-2xl p-5 mb-6">
@@ -275,14 +454,89 @@
     {% if req.status in ['NEW', 'NEEDS_INFO'] %}
       <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
         <h2 class="font-semibold mb-4">📎 Add More Files</h2>
-        <form method="POST" action="/my/{{ req.id }}/upload?token={{ token }}" enctype="multipart/form-data" class="space-y-3">
-          <input type="file" name="files" multiple accept=".stl,.obj,.3mf,.gcode,.step,.stp,.fpp,.zip"
-                 class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white file:font-semibold file:cursor-pointer" />
-          <p class="text-xs text-zinc-500">Accepted formats: STL, OBJ, 3MF, GCODE, STEP, FPP, ZIP</p>
-          <button type="submit" class="rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
-            Upload Files
+        <form method="POST" action="/my/{{ req.id }}/upload?token={{ token }}" enctype="multipart/form-data" class="space-y-3" id="multi-upload-form">
+          <div id="multi-drop-zone" 
+               class="w-full border-2 border-dashed border-zinc-700 hover:border-emerald-500 rounded-xl p-6 text-center cursor-pointer transition-colors"
+               ondrop="handleMultiDrop(event)" 
+               ondragover="handleMultiDragOver(event)" 
+               ondragleave="handleMultiDragLeave(event)"
+               onclick="document.getElementById('multi-file-input').click()">
+            <div id="multi-drop-content">
+              <div class="text-3xl mb-2">📁</div>
+              <p class="text-zinc-400 text-sm">Drag & drop files here, or <span class="text-emerald-400">click to browse</span></p>
+              <p class="text-xs text-zinc-500 mt-1">Multiple files allowed • STL, 3MF, OBJ, GCODE, STEP, ZIP</p>
+            </div>
+            <div id="multi-file-list" class="hidden space-y-2 text-left"></div>
+          </div>
+          <input id="multi-file-input" type="file" name="files" multiple accept=".stl,.obj,.3mf,.gcode,.step,.stp,.fpp,.zip" class="hidden" onchange="handleMultiSelect(this)" />
+          <button type="submit" id="multi-upload-btn" class="hidden rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+            Upload <span id="file-count">0</span> File(s)
           </button>
         </form>
+        
+        <script>
+          let selectedFiles = [];
+          function handleMultiDragOver(e) {
+            e.preventDefault();
+            document.getElementById('multi-drop-zone').classList.add('border-emerald-500', 'bg-emerald-500/10');
+          }
+          function handleMultiDragLeave(e) {
+            e.preventDefault();
+            document.getElementById('multi-drop-zone').classList.remove('border-emerald-500', 'bg-emerald-500/10');
+          }
+          function handleMultiDrop(e) {
+            e.preventDefault();
+            handleMultiDragLeave(e);
+            addFiles(e.dataTransfer.files);
+          }
+          function handleMultiSelect(input) {
+            addFiles(input.files);
+          }
+          function addFiles(files) {
+            for (let f of files) {
+              selectedFiles.push(f);
+            }
+            updateFileList();
+          }
+          function removeFile(idx) {
+            selectedFiles.splice(idx, 1);
+            updateFileList();
+          }
+          function updateFileList() {
+            const listEl = document.getElementById('multi-file-list');
+            const contentEl = document.getElementById('multi-drop-content');
+            const btnEl = document.getElementById('multi-upload-btn');
+            const countEl = document.getElementById('file-count');
+            
+            if (selectedFiles.length === 0) {
+              listEl.classList.add('hidden');
+              contentEl.classList.remove('hidden');
+              btnEl.classList.add('hidden');
+              return;
+            }
+            
+            contentEl.classList.add('hidden');
+            listEl.classList.remove('hidden');
+            btnEl.classList.remove('hidden');
+            countEl.textContent = selectedFiles.length;
+            
+            listEl.innerHTML = selectedFiles.map((f, i) => `
+              <div class="flex items-center justify-between bg-zinc-950/50 rounded-lg px-3 py-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-lg">📄</span>
+                  <span class="text-sm text-zinc-200">${f.name}</span>
+                  <span class="text-xs text-zinc-500">${(f.size/1024/1024).toFixed(2)} MB</span>
+                </div>
+                <button type="button" onclick="removeFile(${i})" class="text-red-400 hover:text-red-300 text-sm">✕</button>
+              </div>
+            `).join('');
+            
+            // Update the actual input with selected files
+            const dt = new DataTransfer();
+            selectedFiles.forEach(f => dt.items.add(f));
+            document.getElementById('multi-file-input').files = dt.files;
+          }
+        </script>
       </div>
     {% endif %}
     

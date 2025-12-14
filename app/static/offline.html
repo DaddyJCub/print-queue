@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline | 3D Print Queue</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #09090b; }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6">
+  <div class="text-center max-w-md">
+    <div class="text-6xl mb-4">📡</div>
+    <h1 class="text-2xl font-bold text-zinc-100 mb-2">You're Offline</h1>
+    <p class="text-zinc-400 mb-6">
+      Unable to connect to the print queue. Please check your internet connection and try again.
+    </p>
+    <button onclick="location.reload()" 
+            class="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition">
+      Try Again
+    </button>
+    <p class="text-xs text-zinc-600 mt-8">
+      Some previously viewed pages may be available while offline.
+    </p>
+  </div>
+</body>
+</html>

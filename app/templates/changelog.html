@@ -4,7 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Changelog | 3D Print Queue</title>
+  <!-- PWA Support -->
+  <link rel="manifest" href="/static/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/static/sw.js').catch(() => {}));
+    }
+  </script>
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-4xl mx-auto p-6">
@@ -24,12 +34,39 @@
     <!-- Changelog Entries -->
     <div class="space-y-6">
       
-      <!-- v1.8.5 -->
+      <!-- v1.8.6 -->
       <div class="bg-zinc-900/50 border border-indigo-500/50 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg">v1.8.6</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50">Latest</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">File Preview, PWA & Upload Improvements</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>3D file dimensions</strong> - STL, 3MF, and OBJ files now show model dimensions (X × Y × Z mm) and volume/triangle count in admin view</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>PWA support</strong> - Install the app on mobile devices for quick access and offline queue viewing</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Drag & drop file upload</strong> - Modern file upload with drag-and-drop and file preview on the request form</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Bulk file upload</strong> - Add multiple files at once when editing requests, with visual file list management</span>
+          </li>
+        </ul>
+      </div>
+      
+      <!-- v1.8.5 -->
+      <div class="bg-zinc-900/50 border border-zinc-700/50 rounded-xl p-6">
         <div class="flex items-center gap-3 mb-4">
           <span class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg">v1.8.5</span>
           <span class="text-zinc-400 text-sm">December 2024</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50">Latest</span>
         </div>
         <h3 class="text-lg font-semibold mb-3">Feedback System</h3>
         <ul class="space-y-2 text-sm text-zinc-300">

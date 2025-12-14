@@ -4,7 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{ item.name }} - 3D Print Store</title>
+  <!-- PWA Support -->
+  <link rel="manifest" href="/static/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/static/sw.js').catch(() => {}));
+    }
+  </script>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen">
   <div class="max-w-4xl mx-auto p-6">
