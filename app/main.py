@@ -938,7 +938,7 @@ def _human_material(code: str) -> str:
     return code
 
 
-def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta_url: Optional[str] = None, cta_label: str = "Open", header_color: str = "#4f46e5", image_base64: Optional[str] = None) -> str:
+def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta_url: Optional[str] = None, cta_label: str = "Open", header_color: str = "#4f46e5", image_base64: Optional[str] = None, footer_note: Optional[str] = None) -> str:
     """Build HTML email with optional header color customization and embedded image"""
     def esc(s: str) -> str:
         return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -950,6 +950,15 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
             <td style="padding:12px 0;color:#6b7280;font-size:13px;vertical-align:top;width:120px;font-weight:600;">{esc(k)}</td>
             <td style="padding:12px 0;color:#1f2937;font-size:14px;vertical-align:top;">{esc(v)}</td>
           </tr>
+        """
+
+    # Footer note (not escaped - allows HTML)
+    note_html = ""
+    if footer_note:
+        note_html = f"""
+          <div style="margin-top:16px;padding:12px;background:#f8fafc;border-radius:8px;border-left:4px solid #f59e0b;">
+            <div style="color:#92400e;font-size:13px;">⚠️ {footer_note}</div>
+          </div>
         """
 
     cta = ""
@@ -993,6 +1002,7 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
             <table style="width:100%;border-collapse:collapse;">
               {row_html}
             </table>
+            {note_html}
             {image_html}
             {cta}
           </div>
@@ -1498,11 +1508,12 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             "printing_started_at": printing_started_at,
         })
     
-    # Separate PRINTING items from queue items
+    # Separate items by status for display
     printing_items = [it for it in items if it["status"] == "PRINTING"]
-    queue_items = [it for it in items if it["status"] != "PRINTING"]
+    approved_items = [it for it in items if it["status"] == "APPROVED"]
+    done_items = [it for it in items if it["status"] == "DONE"]
     
-    # Group printing items by printer
+    # Group printing items by printer (for printer card display)
     printing_by_printer = {
         "ADVENTURER_4": None,
         "AD5X": None,
@@ -1511,8 +1522,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
         if pit["printer"] in printing_by_printer:
             printing_by_printer[pit["printer"]] = pit
     
-    # Calculate smart wait times for queue items
-    # Per-printer: estimate remaining time for current print, then queue time
+    # Helper to estimate remaining time for a printing item
     def estimate_remaining_minutes(item):
         """Estimate remaining time for a printing item based on progress"""
         if item.get("printer_progress") and item["printer_progress"] > 0:
@@ -1540,56 +1550,58 @@ async def public_queue(request: Request, mine: Optional[str] = None):
         
         return None
     
-    # Track remaining time per printer
+    # Track remaining time per printer for wait calculations
     printer_remaining = {}
-    for printer_code, pit in printing_by_printer.items():
+    for printer_code in ["ADVENTURER_4", "AD5X"]:
+        pit = printing_by_printer.get(printer_code)
         if pit:
             remaining = estimate_remaining_minutes(pit)
-            printer_remaining[printer_code] = remaining if remaining else 30  # Default 30 min if unknown
+            # Store remaining time for the current print
+            printer_remaining[printer_code] = remaining if remaining is not None else 30
+            # Also store on the item for display
+            pit["remaining_minutes"] = remaining
         else:
             printer_remaining[printer_code] = 0  # Printer idle
     
-    # Calculate wait times for queued items
-    # Items go to specific printers or ANY (whichever finishes first)
-    for item in queue_items:
+    # Build unified queue: PRINTING first, then APPROVED
+    # This gives continuous queue numbering
+    active_queue = printing_items + approved_items
+    
+    # Number the queue continuously
+    for idx, item in enumerate(active_queue):
+        item["queue_pos"] = idx + 1
+    
+    # Calculate wait times for APPROVED items only
+    # (PRINTING items show remaining time, not wait time)
+    for item in approved_items:
         target_printer = item["printer"]
-        turnaround = item.get("turnaround_minutes") or 30
         
         if target_printer == "ANY":
             # Goes to whichever printer finishes first
-            wait = min(printer_remaining.values()) + turnaround
+            wait = min(printer_remaining.values()) if printer_remaining else 0
         elif target_printer in printer_remaining:
-            wait = printer_remaining[target_printer] + turnaround
+            wait = printer_remaining[target_printer]
         else:
-            wait = turnaround
+            wait = 0
         
+        # Only show wait time if there's actually a wait
         item["estimated_wait_minutes"] = wait if wait > 0 else None
         
-        # Update the printer's queue time for next item
+        # Update the printer's queue time for next item in line
         item_time = item.get("print_time_minutes") or 60  # Default 60 min for unknown prints
         if target_printer == "ANY":
             # Add to the printer with shortest queue
             shortest = min(printer_remaining, key=printer_remaining.get)
-            printer_remaining[shortest] += item_time + turnaround
+            printer_remaining[shortest] += item_time
         elif target_printer in printer_remaining:
-            printer_remaining[target_printer] += item_time + turnaround
-    
-    # Re-number queue items (PRINTING items shown separately)
-    for idx, item in enumerate(queue_items):
-        item["queue_pos"] = idx + 1
+            printer_remaining[target_printer] += item_time
 
     my_pos = None
     if mine:
-        for idx, it in enumerate(queue_items):
+        for it in active_queue:
             if it["short_id"] == mine:
-                my_pos = idx + 1
+                my_pos = it["queue_pos"]
                 break
-        # Also check printing items
-        if not my_pos:
-            for it in printing_items:
-                if it["short_id"] == mine:
-                    my_pos = 0  # Currently printing
-                    break
 
     counts = {"NEW": 0, "APPROVED": 0, "PRINTING": 0, "DONE": 0}
     for it in items:
@@ -1599,7 +1611,8 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     return templates.TemplateResponse("public_queue.html", {
         "request": request,
         "items": items,  # All items for backwards compat
-        "queue_items": queue_items,  # Non-printing items for the queue table
+        "active_queue": active_queue,  # PRINTING + APPROVED items with continuous numbering
+        "done_items": done_items,  # DONE items for pickup section
         "printing_by_printer": printing_by_printer,  # PRINTING items grouped by printer
         "mine": mine,
         "my_pos": my_pos,
@@ -2230,8 +2243,9 @@ def admin_set_status(
         
         # Add disclaimer for APPROVED
         subtitle = f"Request {rid[:8]} has been {to_status.lower().replace('_', ' ')}"
+        footer_note = None
         if to_status == "APPROVED" and queue_position:
-            subtitle += f"<br><small style='color: #94a3b8; font-weight: normal;'>⚠ Wait times are estimates. Check the queue for live updates.</small>"
+            footer_note = "Wait times are estimates and may vary. Check the live queue for the most accurate status."
         
         html = build_email_html(
             title=status_title,
@@ -2240,6 +2254,7 @@ def admin_set_status(
             cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
             cta_label="View in Queue",
             header_color=header_color,
+            footer_note=footer_note,
         )
         send_email([req["requester_email"]], subject, text, html)
 
