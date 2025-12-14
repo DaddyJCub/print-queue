@@ -32,7 +32,10 @@ SMTP_FROM = os.getenv("SMTP_FROM", "")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# FastAPI app with reverse proxy support (trust X-Forwarded-* headers for HTTPS detection)
 app = FastAPI(title=APP_TITLE)
+app.trust_proxy_headers = True
+
 templates = Jinja2Templates(directory="app/templates")
 
 # NOTE: app/static must exist in your repo (can be empty with a .gitkeep)
@@ -624,7 +627,7 @@ def admin_login_post(password: str = Form(...)):
         return RedirectResponse(url="/admin/login?bad=1", status_code=303)
 
     resp = RedirectResponse(url="/admin", status_code=303)
-    resp.set_cookie("admin_pw", password, httponly=True, samesite="lax", max_age=604800)  # 7 days
+    resp.set_cookie("admin_pw", password, httponly=True, samesite="lax", secure=True, max_age=604800)  # 7 days, HTTPS only
     return resp
 
 

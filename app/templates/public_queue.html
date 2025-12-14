@@ -8,60 +8,81 @@
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-6xl mx-auto p-6">
-    <div class="flex items-end justify-between gap-4">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
       <div>
         <h1 class="text-3xl font-bold">Print Queue</h1>
         <p class="text-zinc-400 mt-1">
-          The filament gremlins are hard at work. 🛠️ Showing active requests (not yet picked up).
+          The filament gremlins are hard at work. 🛠️ See where your request stands.
         </p>
       </div>
-      <a class="text-indigo-400 hover:underline" href="/">Submit a request</a>
+      <a href="/" class="rounded-2xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold text-center">
+        → Submit a request
+      </a>
     </div>
 
     <!-- Quick stats -->
-    <div class="mt-5 grid grid-cols-1 md:grid-cols-3 gap-3">
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
-        <div class="text-xs text-zinc-400">Currently printing</div>
-        <div class="mt-1 text-2xl font-bold">{{ counts["PRINTING"] }}</div>
+    <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3">
+        <div class="text-xs text-zinc-400">New</div>
+        <div class="mt-1 text-2xl font-bold text-zinc-200">{{ counts["NEW"] }}</div>
       </div>
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
-        <div class="text-xs text-zinc-400">Approved / waiting</div>
-        <div class="mt-1 text-2xl font-bold">{{ counts["APPROVED"] }}</div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3">
+        <div class="text-xs text-zinc-400">Approved</div>
+        <div class="mt-1 text-2xl font-bold text-indigo-300">{{ counts["APPROVED"] }}</div>
       </div>
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
-        <div class="text-xs text-zinc-400">New requests</div>
-        <div class="mt-1 text-2xl font-bold">{{ counts["NEW"] }}</div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3">
+        <div class="text-xs text-zinc-400">Printing Now</div>
+        <div class="mt-1 text-2xl font-bold text-emerald-300">{{ counts["PRINTING"] }}</div>
+      </div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3">
+        <div class="text-xs text-zinc-400">Done</div>
+        <div class="mt-1 text-2xl font-bold text-amber-300">{{ counts["DONE"] }}</div>
       </div>
     </div>
 
-    <!-- Mine callout -->
-    {% if mine %}
-      <div class="mt-5 bg-indigo-600/10 border border-indigo-500/40 rounded-2xl p-4">
-        <div class="text-sm text-zinc-200">
-          Highlighting your request: <span class="font-mono text-indigo-200">{{ mine }}</span>
-          {% if my_pos %}
-            <span class="text-zinc-300">•</span>
-            You’re currently <span class="font-semibold text-indigo-200">#{{ my_pos }}</span> in the active queue.
-          {% endif %}
+    <!-- Your Position (if mine param present) -->
+    {% if mine and my_pos %}
+      <div class="mt-6 bg-gradient-to-br from-indigo-600/20 to-indigo-900/10 border border-indigo-500/40 rounded-2xl p-5">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <div class="text-sm text-zinc-300">Your Request ID</div>
+            <div class="mt-2 font-mono text-lg font-semibold text-indigo-200">{{ mine }}</div>
+          </div>
+          <div>
+            <div class="text-sm text-zinc-300">Position in Queue</div>
+            <div class="mt-2 text-4xl font-bold text-indigo-300">#{{ my_pos }}</div>
+          </div>
+          <div>
+            <div class="text-sm text-zinc-300">Total Active</div>
+            <div class="mt-2 text-2xl font-semibold text-zinc-200">{{ items|length }} requests</div>
+          </div>
         </div>
-        <div class="text-xs text-zinc-400 mt-1">
-          Tip: bookmark this page if you want to check status later.
+        <div class="mt-3 text-xs text-zinc-400">
+          💡 Bookmark this page to check your status anytime. Estimated wait depends on print times and printer availability.
         </div>
       </div>
     {% endif %}
 
-    <!-- Legend -->
-    <div class="mt-5 flex flex-wrap gap-2 text-xs text-zinc-300">
-      <span class="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800">NEW</span>
-      <span class="px-2 py-1 rounded-lg bg-indigo-600/20 border border-indigo-500/40">APPROVED</span>
-      <span class="px-2 py-1 rounded-lg bg-emerald-600/20 border border-emerald-500/40">PRINTING</span>
-      <span class="px-2 py-1 rounded-lg bg-amber-600/20 border border-amber-500/40">DONE</span>
-      <span class="text-zinc-500 self-center ml-1">Status legend</span>
+    <!-- Status Legend -->
+    <div class="mt-6 flex flex-wrap gap-2 text-xs">
+      <span class="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300">
+        <span class="inline-block w-2 h-2 rounded-full bg-zinc-500"></span> NEW — Awaiting review
+      </span>
+      <span class="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-indigo-600/20 border border-indigo-500/40 text-indigo-200">
+        <span class="inline-block w-2 h-2 rounded-full bg-indigo-400"></span> APPROVED — In queue
+      </span>
+      <span class="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-emerald-200">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span> PRINTING — Active now
+      </span>
+      <span class="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-amber-600/20 border border-amber-500/40 text-amber-200">
+        <span class="inline-block w-2 h-2 rounded-full bg-amber-400"></span> DONE — Ready to pick up
+      </span>
     </div>
 
     <div class="mt-6 overflow-x-auto bg-zinc-900/60 rounded-2xl border border-zinc-800">
       <table class="w-full text-sm">
-        <thead class="text-zinc-400">
+        <thead class="text-zinc-400 bg-zinc-950/40">
           <tr class="border-b border-zinc-800">
             <th class="text-left p-3">#</th>
             <th class="text-left p-3">ID</th>
@@ -75,45 +96,62 @@
         <tbody>
           {% for r in items %}
           <tr class="border-b border-zinc-800
-                     {% if r.is_mine %}bg-indigo-900/20 ring-1 ring-indigo-500/30{% else %}hover:bg-zinc-950/40{% endif %}">
-            <td class="p-3 text-zinc-400 align-top">{{ r.pos }}</td>
-            <td class="p-3 font-mono align-top">{{ r.short_id }}</td>
+                     {% if r.is_mine %}bg-indigo-900/30 ring-1 ring-indigo-500/50{% else %}hover:bg-zinc-950/40 transition{% endif %}">
+            <td class="p-3 text-zinc-400 align-top font-semibold">{{ r.pos }}</td>
+            <td class="p-3 font-mono text-zinc-300 align-top text-xs">{{ r.short_id }}</td>
             <td class="p-3 align-top">{{ r.requester_first }}</td>
-            <td class="p-3 align-top">{{ r.printer }}</td>
-            <td class="p-3 align-top">{{ r.material }}</td>
-            <td class="p-3 align-top">{{ r.colors }}</td>
+            <td class="p-3 align-top text-sm text-zinc-300">{{ r.printer }}</td>
+            <td class="p-3 align-top text-sm text-zinc-300">{{ r.material }}</td>
+            <td class="p-3 align-top text-sm text-zinc-300">{{ r.colors }}</td>
             <td class="p-3 align-top">
               {% set s = r.status %}
-              <span class="inline-flex px-2 py-1 rounded-lg border
-                {% if s == "PRINTING" %}bg-emerald-600/20 border-emerald-500/40 text-emerald-200
-                {% elif s == "APPROVED" %}bg-indigo-600/20 border-indigo-500/40 text-indigo-200
-                {% elif s == "DONE" %}bg-amber-600/20 border-amber-500/40 text-amber-200
-                {% else %}bg-zinc-950 border-zinc-800 text-zinc-200{% endif %}">
-                {{ s }}
-              </span>
+              <div class="space-y-2">
+                <span class="inline-flex px-3 py-1 rounded-lg text-xs font-semibold border
+                  {% if s == "PRINTING" %}bg-emerald-600/25 border-emerald-500/50 text-emerald-200
+                  {% elif s == "APPROVED" %}bg-indigo-600/25 border-indigo-500/50 text-indigo-200
+                  {% elif s == "DONE" %}bg-amber-600/25 border-amber-500/50 text-amber-200
+                  {% else %}bg-zinc-950 border-zinc-700 text-zinc-400{% endif %}">
+                  {{ s }}
+                </span>
 
-              {% if r.special_notes %}
-                <div class="mt-2">
-                  <span class="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-lg bg-amber-900/20 border border-amber-800 text-amber-200">
-                    Special note
-                  </span>
-                </div>
-                <div class="mt-2 text-xs text-zinc-300 bg-zinc-950/60 border border-zinc-800 rounded-xl p-2">
-                  <div class="whitespace-pre-wrap">{{ r.special_notes }}</div>
-                </div>
-              {% endif %}
+                {% if r.special_notes %}
+                  <div class="mt-2">
+                    <span class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-amber-900/30 border border-amber-800/50 text-amber-200 font-medium">
+                      ⚠ Special note
+                    </span>
+                    <div class="mt-2 text-xs text-zinc-300 bg-zinc-950/60 border border-zinc-800 rounded-lg p-2">
+                      {{ r.special_notes }}
+                    </div>
+                  </div>
+                {% endif %}
+              </div>
             </td>
           </tr>
           {% endfor %}
           {% if items|length == 0 %}
-          <tr><td class="p-6 text-zinc-400" colspan="7">No active requests.</td></tr>
+          <tr><td class="p-6 text-center text-zinc-400" colspan="7">Queue is empty! First request wins. ✨</td></tr>
           {% endif %}
         </tbody>
       </table>
     </div>
 
-    <div class="mt-6 text-xs text-zinc-500">
-      Tip: after you submit, you’ll be redirected here and your row will be highlighted.
+    <!-- Footer CTA -->
+    <div class="mt-8 flex flex-col md:flex-row gap-4 items-center justify-between bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5">
+      <div class="text-sm text-zinc-300">
+        Want to join the queue?
+      </div>
+      <div class="flex gap-3">
+        <button onclick="location.reload()" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm font-medium">
+          ↻ Refresh queue
+        </button>
+        <a href="/" class="rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
+          + Submit request
+        </a>
+      </div>
+    </div>
+
+    <div class="mt-6 text-xs text-zinc-600 text-center">
+      Queue updates automatically. You can close and reopen this page anytime.
     </div>
   </div>
 </body>
