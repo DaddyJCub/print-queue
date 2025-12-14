@@ -16,7 +16,7 @@ APP_VERSION = "1.7.3"
 # Changelog:
 # 1.7.3 - Timelapse API: list and download timelapse videos from printers
 # 1.7.2 - Request templates: save and reuse common form configurations
-# 1.7.1 - Dynamic rush pricing based on queue size + Brandon Tax™ x5 multiplier
+# 1.7.1 - Dynamic rush pricing based on queue size
 # 1.7.0 - Auto-refresh queue, printer suggestions, repeat requests, rush priority, changelog page
 # 1.6.0 - Smart ETA: learns from print history, shows estimated completion dates
 # 1.5.0 - Extended status API: current filename, layer progress from M119/M27
