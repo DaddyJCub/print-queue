@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Print Queue</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-6xl mx-auto p-6">
+    <div class="flex items-end justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold">Print Queue</h1>
+        <p class="text-zinc-400 mt-1">Showing active requests (not yet picked up).</p>
+      </div>
+      <a class="text-indigo-400 hover:underline" href="/">Submit a request</a>
+    </div>
+
+    {% if mine %}
+      <div class="mt-4 text-sm text-zinc-300">
+        Highlighting your request ID: <span class="font-mono text-indigo-300">{{ mine }}</span>
+      </div>
+    {% endif %}
+
+    <div class="mt-6 overflow-x-auto bg-zinc-900/60 rounded-2xl border border-zinc-800">
+      <table class="w-full text-sm">
+        <thead class="text-zinc-400">
+          <tr class="border-b border-zinc-800">
+            <th class="text-left p-3">#</th>
+            <th class="text-left p-3">ID</th>
+            <th class="text-left p-3">Requester</th>
+            <th class="text-left p-3">Printer</th>
+            <th class="text-left p-3">Material</th>
+            <th class="text-left p-3">Colors</th>
+            <th class="text-left p-3">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in items %}
+          <tr class="border-b border-zinc-800 {% if r.is_mine %}bg-indigo-900/20{% else %}hover:bg-zinc-950/40{% endif %}">
+            <td class="p-3 text-zinc-400">{{ r.pos }}</td>
+            <td class="p-3 font-mono">{{ r.short_id }}</td>
+            <td class="p-3">{{ r.requester_first }}</td>
+            <td class="p-3">{{ r.printer }}</td>
+            <td class="p-3">{{ r.material }}</td>
+            <td class="p-3">{{ r.colors }}</td>
+            <td class="p-3">
+              <span class="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800">{{ r.status }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+          {% if items|length == 0 %}
+          <tr><td class="p-6 text-zinc-400" colspan="7">No active requests.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-6 text-xs text-zinc-500">
+      Tip: after you submit, you’ll be redirected here and your row will be highlighted.
+    </div>
+  </div>
+</body>
+</html>

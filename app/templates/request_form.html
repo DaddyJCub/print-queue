@@ -12,6 +12,12 @@
     <h1 class="text-3xl font-bold">3D Print Request</h1>
     <p class="text-zinc-400 mt-2">Upload an STL/3MF or paste a link. Pick printer, material, colors, and notes.</p>
 
+    {% if error %}
+      <div class="mt-4 bg-red-900/30 border border-red-800 text-red-200 p-3 rounded-xl text-sm">
+        {{ error }}
+      </div>
+    {% endif %}
+
     <form class="mt-6 space-y-4 bg-zinc-900/60 p-6 rounded-2xl border border-zinc-800"
           action="/submit" method="POST" enctype="multipart/form-data">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -36,7 +42,11 @@
         </div>
         <div>
           <label class="text-sm text-zinc-300">Material</label>
-          <input name="material" placeholder="PLA, PETG, etc." required class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+          <select name="material" required class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+            {% for val, label in materials %}
+              <option value="{{val}}">{{label}}</option>
+            {% endfor %}
+          </select>
         </div>
       </div>
 
@@ -48,17 +58,22 @@
       <div>
         <label class="text-sm text-zinc-300">Link (optional)</label>
         <input name="link_url" placeholder="https://printables.com/..." class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+        <p class="text-xs text-zinc-400 mt-1">Note: you must provide either a link or a file upload.</p>
       </div>
 
       <div>
         <label class="text-sm text-zinc-300">Upload file (optional)</label>
         <input name="upload" type="file" accept=".stl,.3mf" class="mt-1 w-full" />
-        <p class="text-xs text-zinc-400 mt-1">Allowed: STL, 3MF</p>
+        <p class="text-xs text-zinc-400 mt-1">Allowed: STL, 3MF (you must provide either a link or a file upload)</p>
       </div>
 
       <div>
         <label class="text-sm text-zinc-300">Notes (optional)</label>
-        <textarea name="notes" rows="4" class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3"></textarea>
+        <textarea
+          name="notes"
+          rows="4"
+          placeholder="Helpful details (optional):&#10;• Which color for which part?&#10;• Size/scale changes?&#10;• Infill/strength needs?&#10;• Supports okay? (yes/no)&#10;• Any deadlines?"
+          class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3"></textarea>
       </div>
 
       {% if turnstile_site_key %}
@@ -74,8 +89,10 @@
       </button>
     </form>
 
-    <div class="mt-6 text-sm text-zinc-500">
-      Admin? <a class="text-indigo-400 hover:underline" href="/admin/login">Login</a>
+    <div class="mt-6 text-sm text-zinc-500 flex gap-4">
+      <a class="text-indigo-400 hover:underline" href="/queue">View Queue</a>
+      <span>•</span>
+      <a class="text-indigo-400 hover:underline" href="/admin/login">Admin Login</a>
     </div>
   </div>
 </body>
