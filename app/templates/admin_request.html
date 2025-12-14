@@ -148,6 +148,7 @@
               const snapshot = document.getElementById('camera-snapshot');
               const stream = document.getElementById('camera-stream');
               const btn = document.getElementById('stream-toggle');
+              const errorDiv = document.getElementById('camera-error');
               
               if (isStreaming) {
                 stream.src = '';
@@ -156,9 +157,11 @@
                 btn.textContent = '▶ Live Stream';
                 isStreaming = false;
               } else {
-                stream.src = '{{ camera_url }}';
+                // Use the proxy endpoint instead of direct camera URL
+                stream.src = '/api/camera/{{ req["printer"] }}/stream?t=' + Date.now();
                 stream.style.display = 'block';
                 snapshot.style.display = 'none';
+                errorDiv.style.display = 'none';
                 btn.textContent = '⏹ Stop Stream';
                 isStreaming = true;
               }

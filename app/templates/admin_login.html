@@ -19,6 +19,10 @@
 
       <form class="mt-6 space-y-4"
             action="/admin/login" method="POST">
+        {% set next_url = next or request.query_params.get("next") %}
+        {% if next_url %}
+        <input type="hidden" name="next" value="{{ next_url }}" />
+        {% endif %}
         <div>
           <label class="text-sm text-zinc-300">Password</label>
           <input name="password" type="password" required autofocus class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />

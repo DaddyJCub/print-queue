@@ -7,7 +7,7 @@ import threading
 
 import httpx
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
@@ -193,6 +193,18 @@ def require_admin(request: Request):
     if not ADMIN_PASSWORD:
         raise HTTPException(status_code=500, detail="ADMIN_PASSWORD is not set")
     if pw != ADMIN_PASSWORD:
+        # For browser requests (HTML pages), redirect to login with next param
+        accept = request.headers.get("Accept", "")
+        if "text/html" in accept:
+            from urllib.parse import quote
+            next_url = str(request.url.path)
+            if request.url.query:
+                next_url += f"?{request.url.query}"
+            raise HTTPException(
+                status_code=303,
+                detail="Redirect to login",
+                headers={"Location": f"/admin/login?next={quote(next_url)}"}
+            )
         raise HTTPException(status_code=401, detail="Unauthorized")
     return True
 
@@ -949,18 +961,25 @@ async def public_queue(request: Request, mine: Optional[str] = None):
 
 
 @app.get("/admin/login", response_class=HTMLResponse)
-def admin_login(request: Request):
-    return templates.TemplateResponse("admin_login.html", {"request": request})
+def admin_login(request: Request, next: Optional[str] = None):
+    return templates.TemplateResponse("admin_login.html", {"request": request, "next": next})
 
 
 @app.post("/admin/login")
-def admin_login_post(password: str = Form(...)):
+def admin_login_post(password: str = Form(...), next: Optional[str] = Form(None)):
     if not ADMIN_PASSWORD:
         raise HTTPException(status_code=500, detail="ADMIN_PASSWORD is not set")
     if password != ADMIN_PASSWORD:
-        return RedirectResponse(url="/admin/login?bad=1", status_code=303)
+        # Preserve the next parameter on failed login
+        redirect_url = "/admin/login?bad=1"
+        if next:
+            from urllib.parse import quote
+            redirect_url += f"&next={quote(next)}"
+        return RedirectResponse(url=redirect_url, status_code=303)
 
-    resp = RedirectResponse(url="/admin", status_code=303)
+    # Redirect to next URL if provided, otherwise admin dashboard
+    redirect_to = next if next and next.startswith("/admin") else "/admin"
+    resp = RedirectResponse(url=redirect_to, status_code=303)
     resp.set_cookie("admin_pw", password, httponly=True, samesite="lax", secure=True, max_age=604800)  # 7 days, HTTPS only
     return resp
 
@@ -1697,9 +1716,21 @@ async def camera_stream_proxy(request: Request, printer_code: str, _=Depends(req
     if not camera_url:
         raise HTTPException(status_code=503, detail="Camera not configured for this printer")
     
-    # Return the direct camera URL for the client to use
-    # (streaming proxy is complex, so we just tell the client where to look)
-    return {"stream_url": camera_url}
+    # Create a streaming response that proxies the MJPEG stream
+    async def stream_generator():
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("GET", camera_url) as response:
+                    async for chunk in response.aiter_bytes(chunk_size=4096):
+                        yield chunk
+        except Exception as e:
+            print(f"[CAMERA] Stream error for {printer_code}: {e}")
+    
+    return StreamingResponse(
+        stream_generator(),
+        media_type="multipart/x-mixed-replace; boundary=BoundaryString",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+    )
 
 
 @app.get("/api/camera/status")
