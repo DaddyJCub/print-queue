@@ -71,12 +71,12 @@
       <!-- Fine-grain notification controls -->
       <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <h2 class="text-lg font-semibold">📧 Per-Status Email Controls</h2>
-        <p class="text-sm text-zinc-400 mt-1">Fine-tune which status changes trigger emails to requesters. Only applies if "Email requester when status changes" is enabled above.</p>
+        <p class="text-sm text-zinc-400 mt-1">Fine-tune which status changes trigger emails. Only applies if the master toggle above is enabled.</p>
 
-        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
           <!-- Requester notifications by status -->
           <div class="space-y-3">
-            <p class="text-sm text-zinc-300 font-medium">Notify requester when status changes to:</p>
+            <p class="text-sm text-zinc-300 font-medium">📤 Notify <span class="text-cyan-400">Requester</span> when:</p>
             
             <label class="flex items-center gap-3">
               <input type="checkbox" name="notify_requester_needs_info" class="scale-110"
@@ -142,32 +142,116 @@
             </label>
           </div>
           
+          <!-- Admin notifications by status -->
+          <div class="space-y-3">
+            <p class="text-sm text-zinc-300 font-medium">📥 Notify <span class="text-indigo-400">Admin</span> when:</p>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_admin_needs_info" class="scale-110"
+                     {% if s.notify_admin_needs_info != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-orange-400"></span>
+                Needs Info
+              </span>
+            </label>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_admin_approved" class="scale-110"
+                     {% if s.notify_admin_approved != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-green-400"></span>
+                Approved
+              </span>
+            </label>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_admin_printing" class="scale-110"
+                     {% if s.notify_admin_printing != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                Printing
+              </span>
+            </label>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_admin_done" class="scale-110"
+                     {% if s.notify_admin_done != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                Done
+              </span>
+            </label>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_admin_picked_up" class="scale-110"
+                     {% if s.notify_admin_picked_up != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+                Picked Up
+              </span>
+            </label>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_admin_rejected" class="scale-110"
+                     {% if s.notify_admin_rejected != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-red-400"></span>
+                Rejected
+              </span>
+            </label>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_admin_cancelled" class="scale-110"
+                     {% if s.notify_admin_cancelled != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                Cancelled
+              </span>
+            </label>
+          </div>
+          
           <!-- Quick presets -->
           <div class="space-y-3">
-            <p class="text-sm text-zinc-300 font-medium">Quick presets:</p>
+            <p class="text-sm text-zinc-300 font-medium">⚡ Quick presets:</p>
             
-            <button type="button" onclick="setAllRequesterNotifications(true)" 
-                    class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition">
-              ✅ Enable all requester notifications
-            </button>
+            <div class="border-b border-zinc-700 pb-3">
+              <p class="text-xs text-zinc-500 mb-2">Requester:</p>
+              <button type="button" onclick="setAllRequesterNotifications(true)" 
+                      class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition mb-1">
+                ✅ Enable all
+              </button>
+              <button type="button" onclick="setAllRequesterNotifications(false)" 
+                      class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition mb-1">
+                ❌ Disable all
+              </button>
+              <button type="button" onclick="setMinimalNotifications()" 
+                      class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition mb-1">
+                📭 Minimal (Needs Info + Done)
+              </button>
+              <button type="button" onclick="setStandardNotifications()" 
+                      class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition">
+                📬 Standard (Approved, Printing, Done)
+              </button>
+            </div>
             
-            <button type="button" onclick="setAllRequesterNotifications(false)" 
-                    class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition">
-              ❌ Disable all requester notifications
-            </button>
-            
-            <button type="button" onclick="setMinimalNotifications()" 
-                    class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition">
-              📭 Minimal (only Needs Info + Done)
-            </button>
-            
-            <button type="button" onclick="setStandardNotifications()" 
-                    class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition">
-              📬 Standard (Approved, Printing, Done)
-            </button>
+            <div class="pt-2">
+              <p class="text-xs text-zinc-500 mb-2">Admin:</p>
+              <button type="button" onclick="setAllAdminNotifications(true)" 
+                      class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition mb-1">
+                ✅ Enable all
+              </button>
+              <button type="button" onclick="setAllAdminNotifications(false)" 
+                      class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition mb-1">
+                ❌ Disable all
+              </button>
+              <button type="button" onclick="setAdminMinimalNotifications()" 
+                      class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition">
+                📭 Minimal (Done only)
+              </button>
+            </div>
             
             <p class="text-xs text-zinc-500 mt-4">
-              💡 <strong>Tip:</strong> Most users only want to know when their print is approved and when it's ready for pickup.
+              💡 <strong>Tip:</strong> Admins often only need Done notifications since they trigger the status changes themselves.
             </p>
           </div>
         </div>
@@ -226,7 +310,7 @@
   
   <script>
     // Per-status notification checkbox names
-    const statusCheckboxes = [
+    const requesterStatusCheckboxes = [
       'notify_requester_needs_info',
       'notify_requester_approved', 
       'notify_requester_printing',
@@ -236,15 +320,32 @@
       'notify_requester_cancelled'
     ];
     
+    const adminStatusCheckboxes = [
+      'notify_admin_needs_info',
+      'notify_admin_approved', 
+      'notify_admin_printing',
+      'notify_admin_done',
+      'notify_admin_picked_up',
+      'notify_admin_rejected',
+      'notify_admin_cancelled'
+    ];
+    
     function setAllRequesterNotifications(enabled) {
-      statusCheckboxes.forEach(name => {
+      requesterStatusCheckboxes.forEach(name => {
+        const cb = document.querySelector(`input[name="${name}"]`);
+        if (cb) cb.checked = enabled;
+      });
+    }
+    
+    function setAllAdminNotifications(enabled) {
+      adminStatusCheckboxes.forEach(name => {
         const cb = document.querySelector(`input[name="${name}"]`);
         if (cb) cb.checked = enabled;
       });
     }
     
     function setMinimalNotifications() {
-      statusCheckboxes.forEach(name => {
+      requesterStatusCheckboxes.forEach(name => {
         const cb = document.querySelector(`input[name="${name}"]`);
         if (cb) cb.checked = false;
       });
@@ -253,13 +354,21 @@
     }
     
     function setStandardNotifications() {
-      statusCheckboxes.forEach(name => {
+      requesterStatusCheckboxes.forEach(name => {
         const cb = document.querySelector(`input[name="${name}"]`);
         if (cb) cb.checked = false;
       });
       document.querySelector('input[name="notify_requester_approved"]').checked = true;
       document.querySelector('input[name="notify_requester_printing"]').checked = true;
       document.querySelector('input[name="notify_requester_done"]').checked = true;
+    }
+    
+    function setAdminMinimalNotifications() {
+      adminStatusCheckboxes.forEach(name => {
+        const cb = document.querySelector(`input[name="${name}"]`);
+        if (cb) cb.checked = false;
+      });
+      document.querySelector('input[name="notify_admin_done"]').checked = true;
     }
   </script>
 </body>

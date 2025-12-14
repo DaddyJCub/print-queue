@@ -90,6 +90,29 @@ templates.env.filters["localtime"] = format_datetime_local
 # NOTE: app/static must exist in your repo (can be empty with a .gitkeep)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+# Global printer status cache with retry logic
+# Stores last successful status and failure count per printer
+_printer_status_cache: Dict[str, Dict[str, Any]] = {}
+_printer_failure_count: Dict[str, int] = {}
+
+def get_cached_printer_status(printer_code: str) -> Optional[Dict[str, Any]]:
+    """Get cached printer status (used during retry period)"""
+    return _printer_status_cache.get(printer_code)
+
+def update_printer_status_cache(printer_code: str, status: Dict[str, Any]):
+    """Update cached printer status on successful poll"""
+    _printer_status_cache[printer_code] = status
+    _printer_failure_count[printer_code] = 0  # Reset failure count on success
+
+def record_printer_failure(printer_code: str) -> int:
+    """Record a printer poll failure and return the new failure count"""
+    _printer_failure_count[printer_code] = _printer_failure_count.get(printer_code, 0) + 1
+    return _printer_failure_count[printer_code]
+
+def get_printer_failure_count(printer_code: str) -> int:
+    """Get current failure count for a printer"""
+    return _printer_failure_count.get(printer_code, 0)
+
 # Status flow for admin actions
 STATUS_FLOW = ["NEW", "NEEDS_INFO", "APPROVED", "PRINTING", "DONE", "PICKED_UP", "REJECTED", "CANCELLED"]
 
@@ -399,11 +422,21 @@ DEFAULT_SETTINGS: Dict[str, str] = {
     "printer_adventurer_4_ip": "192.168.0.198",
     "printer_ad5x_ip": "192.168.0.157",
     "enable_printer_polling": "1",
+    "printer_offline_retries": "3",  # Retries before marking printer offline
     
     # Rush payment settings
     "rush_fee_amount": "5",
     "venmo_handle": "@YourVenmoHandle",
     "enable_rush_option": "1",
+    
+    # Admin per-status email settings (default all enabled)
+    "notify_admin_needs_info": "1",
+    "notify_admin_approved": "1",
+    "notify_admin_printing": "1",
+    "notify_admin_done": "1",
+    "notify_admin_picked_up": "1",
+    "notify_admin_rejected": "1",
+    "notify_admin_cancelled": "1",
 }
 
 
@@ -2602,7 +2635,7 @@ def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[s
         "admin_email_on_status": get_bool_setting("admin_email_on_status", True),
         "requester_email_on_submit": get_bool_setting("requester_email_on_submit", False),
         "requester_email_on_status": get_bool_setting("requester_email_on_status", True),
-        # Per-status notifications (default to enabled)
+        # Per-status notifications for requesters (default to enabled)
         "notify_requester_needs_info": get_setting("notify_requester_needs_info", "1"),
         "notify_requester_approved": get_setting("notify_requester_approved", "1"),
         "notify_requester_printing": get_setting("notify_requester_printing", "1"),
@@ -2610,6 +2643,14 @@ def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[s
         "notify_requester_picked_up": get_setting("notify_requester_picked_up", "1"),
         "notify_requester_rejected": get_setting("notify_requester_rejected", "1"),
         "notify_requester_cancelled": get_setting("notify_requester_cancelled", "1"),
+        # Per-status notifications for admins (default to enabled)
+        "notify_admin_needs_info": get_setting("notify_admin_needs_info", "1"),
+        "notify_admin_approved": get_setting("notify_admin_approved", "1"),
+        "notify_admin_printing": get_setting("notify_admin_printing", "1"),
+        "notify_admin_done": get_setting("notify_admin_done", "1"),
+        "notify_admin_picked_up": get_setting("notify_admin_picked_up", "1"),
+        "notify_admin_rejected": get_setting("notify_admin_rejected", "1"),
+        "notify_admin_cancelled": get_setting("notify_admin_cancelled", "1"),
         # Rush settings
         "enable_rush_option": get_bool_setting("enable_rush_option", True),
         "rush_fee_amount": get_setting("rush_fee_amount", "5"),
@@ -2627,7 +2668,7 @@ def admin_settings_post(
     admin_email_on_status: Optional[str] = Form(None),
     requester_email_on_submit: Optional[str] = Form(None),
     requester_email_on_status: Optional[str] = Form(None),
-    # Per-status notifications
+    # Per-status notifications for requesters
     notify_requester_needs_info: Optional[str] = Form(None),
     notify_requester_approved: Optional[str] = Form(None),
     notify_requester_printing: Optional[str] = Form(None),
@@ -2635,6 +2676,14 @@ def admin_settings_post(
     notify_requester_picked_up: Optional[str] = Form(None),
     notify_requester_rejected: Optional[str] = Form(None),
     notify_requester_cancelled: Optional[str] = Form(None),
+    # Per-status notifications for admins
+    notify_admin_needs_info: Optional[str] = Form(None),
+    notify_admin_approved: Optional[str] = Form(None),
+    notify_admin_printing: Optional[str] = Form(None),
+    notify_admin_done: Optional[str] = Form(None),
+    notify_admin_picked_up: Optional[str] = Form(None),
+    notify_admin_rejected: Optional[str] = Form(None),
+    notify_admin_cancelled: Optional[str] = Form(None),
     # Rush settings
     enable_rush_option: Optional[str] = Form(None),
     rush_fee_amount: str = Form("5"),
@@ -2647,7 +2696,7 @@ def admin_settings_post(
     set_setting("admin_email_on_status", "1" if admin_email_on_status else "0")
     set_setting("requester_email_on_submit", "1" if requester_email_on_submit else "0")
     set_setting("requester_email_on_status", "1" if requester_email_on_status else "0")
-    # Per-status notifications
+    # Per-status notifications for requesters
     set_setting("notify_requester_needs_info", "1" if notify_requester_needs_info else "0")
     set_setting("notify_requester_approved", "1" if notify_requester_approved else "0")
     set_setting("notify_requester_printing", "1" if notify_requester_printing else "0")
@@ -2655,6 +2704,14 @@ def admin_settings_post(
     set_setting("notify_requester_picked_up", "1" if notify_requester_picked_up else "0")
     set_setting("notify_requester_rejected", "1" if notify_requester_rejected else "0")
     set_setting("notify_requester_cancelled", "1" if notify_requester_cancelled else "0")
+    # Per-status notifications for admins
+    set_setting("notify_admin_needs_info", "1" if notify_admin_needs_info else "0")
+    set_setting("notify_admin_approved", "1" if notify_admin_approved else "0")
+    set_setting("notify_admin_printing", "1" if notify_admin_printing else "0")
+    set_setting("notify_admin_done", "1" if notify_admin_done else "0")
+    set_setting("notify_admin_picked_up", "1" if notify_admin_picked_up else "0")
+    set_setting("notify_admin_rejected", "1" if notify_admin_rejected else "0")
+    set_setting("notify_admin_cancelled", "1" if notify_admin_cancelled else "0")
     # Rush settings
     set_setting("enable_rush_option", "1" if enable_rush_option else "0")
     set_setting("rush_fee_amount", (rush_fee_amount or "5").strip())
@@ -3576,31 +3633,44 @@ def admin_set_status(
         send_email([req["requester_email"]], subject, text, html)
 
     if admin_email_on_status and admin_emails:
-        subject = f"[{APP_TITLE}] {rid[:8]}: {from_status} → {to_status}"
-        text = (
-            f"Request status changed.\n\n"
-            f"ID: {rid}\n"
-            f"Status: {from_status} → {to_status}\n"
-            f"Comment: {comment or '(none)'}\n"
-            f"Requester: {req['requester_name']} ({req['requester_email']})\n"
-            f"Admin: {BASE_URL}/admin/request/{rid}\n"
-        )
-        html = build_email_html(
-            title=f"{from_status} → {to_status}",
-            subtitle=f"Request {rid[:8]} status changed",
-            rows=[
-                ("Request ID", rid[:8]),
-                ("Requester", req["requester_name"] or "—"),
-                ("Email", req["requester_email"] or "—"),
-                ("Printer", req["printer"] or "ANY"),
-                ("Status", to_status),
-                ("Comment", (comment or "—")),
-            ],
-            cta_url=f"{BASE_URL}/admin/request/{rid}",
-            cta_label="Open in Admin",
-            header_color=header_color,
-        )
-        send_email(admin_emails, subject, text, html)
+        # Check fine-grain admin notification settings
+        admin_notify_settings = {
+            "NEEDS_INFO": get_bool_setting("notify_admin_needs_info", True),
+            "APPROVED": get_bool_setting("notify_admin_approved", True),
+            "PRINTING": get_bool_setting("notify_admin_printing", True),
+            "DONE": get_bool_setting("notify_admin_done", True),
+            "PICKED_UP": get_bool_setting("notify_admin_picked_up", True),
+            "REJECTED": get_bool_setting("notify_admin_rejected", True),
+            "CANCELLED": get_bool_setting("notify_admin_cancelled", True),
+        }
+        should_notify_admin = admin_notify_settings.get(to_status, True)
+        
+        if should_notify_admin:
+            subject = f"[{APP_TITLE}] {rid[:8]}: {from_status} → {to_status}"
+            text = (
+                f"Request status changed.\n\n"
+                f"ID: {rid}\n"
+                f"Status: {from_status} → {to_status}\n"
+                f"Comment: {comment or '(none)'}\n"
+                f"Requester: {req['requester_name']} ({req['requester_email']})\n"
+                f"Admin: {BASE_URL}/admin/request/{rid}\n"
+            )
+            html = build_email_html(
+                title=f"{from_status} → {to_status}",
+                subtitle=f"Request {rid[:8]} status changed",
+                rows=[
+                    ("Request ID", rid[:8]),
+                    ("Requester", req["requester_name"] or "—"),
+                    ("Email", req["requester_email"] or "—"),
+                    ("Printer", req["printer"] or "ANY"),
+                    ("Status", to_status),
+                    ("Comment", (comment or "—")),
+                ],
+                cta_url=f"{BASE_URL}/admin/request/{rid}",
+                cta_label="Open in Admin",
+                header_color=header_color,
+            )
+            send_email(admin_emails, subject, text, html)
 
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
@@ -4243,8 +4313,10 @@ async def printer_job(printer_code: str, _=Depends(require_admin)):
 
 @app.get("/api/printers/status")
 async def get_all_printers_status(_=Depends(require_admin)):
-    """Get status of all printers - for AJAX refresh"""
+    """Get status of all printers - for AJAX refresh with retry logic"""
     printer_status = {}
+    max_retries = int(get_setting("printer_offline_retries", "3"))
+    
     for printer_code in ["ADVENTURER_4", "AD5X"]:
         try:
             printer_api = get_printer_api(printer_code)
@@ -4258,7 +4330,7 @@ async def get_all_printers_status(_=Depends(require_admin)):
                     machine_status = status.get("MachineStatus", "UNKNOWN")
                     is_printing = machine_status in ["BUILDING", "BUILDING_FROM_SD"]
                     
-                    printer_status[printer_code] = {
+                    current_status = {
                         "status": machine_status.replace("_FROM_SD", ""),
                         "raw_status": machine_status,
                         "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
@@ -4271,12 +4343,44 @@ async def get_all_printers_status(_=Depends(require_admin)):
                         "total_layers": extended.get("total_layers") if extended else None,
                         "camera_url": get_camera_url(printer_code),
                     }
+                    # Successful poll - update cache and reset failure count
+                    update_printer_status_cache(printer_code, current_status)
+                    printer_status[printer_code] = current_status
                 else:
-                    printer_status[printer_code] = {"status": "OFFLINE", "healthy": False}
+                    # No status returned - count as failure
+                    failure_count = record_printer_failure(printer_code)
+                    cached = get_cached_printer_status(printer_code)
+                    
+                    if failure_count < max_retries and cached:
+                        # Use cached status during retry period
+                        printer_status[printer_code] = {
+                            **cached,
+                            "retrying": True,
+                            "retry_count": failure_count,
+                            "max_retries": max_retries,
+                        }
+                    else:
+                        # Max retries exceeded - mark as offline
+                        printer_status[printer_code] = {"status": "OFFLINE", "healthy": False}
             else:
                 printer_status[printer_code] = {"status": "NOT_CONFIGURED", "healthy": False}
         except Exception as e:
-            printer_status[printer_code] = {"status": "ERROR", "error": str(e), "healthy": False}
+            # Exception during poll - count as failure
+            failure_count = record_printer_failure(printer_code)
+            cached = get_cached_printer_status(printer_code)
+            
+            if failure_count < max_retries and cached:
+                # Use cached status during retry period
+                printer_status[printer_code] = {
+                    **cached,
+                    "retrying": True,
+                    "retry_count": failure_count,
+                    "max_retries": max_retries,
+                    "last_error": str(e),
+                }
+            else:
+                # Max retries exceeded - mark as error/offline
+                printer_status[printer_code] = {"status": "ERROR", "error": str(e), "healthy": False}
     
     return printer_status
 
