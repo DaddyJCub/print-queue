@@ -872,21 +872,23 @@ async def poll_printer_status_worker():
                     if requester_email_on_status and req_row:
                         subject = f"[{APP_TITLE}] Print Complete! ({rid[:8]})"
                         text = f"Your print is done and ready for pickup!\n\nRequest ID: {rid[:8]}\n\nView queue: {BASE_URL}/queue?mine={rid[:8]}\n"
+                        snapshot_to_send = completion_snapshot if get_bool_setting("enable_camera_snapshot", False) else None
                         html = build_email_html(
                             title="Print Complete!",
                             subtitle="Your request is ready for pickup.",
                             rows=email_rows,
                             cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
                             cta_label="View queue",
-                            image_base64=completion_snapshot if get_bool_setting("enable_camera_snapshot", False) else None,
+                            image_base64=snapshot_to_send,
                         )
-                        send_email([req_row["requester_email"]], subject, text, html)
+                        send_email([req_row["requester_email"]], subject, text, html, image_base64=snapshot_to_send)
 
                     if admin_email_on_status and admin_emails and req_row:
                         admin_rows = [("Request ID", rid[:8]), ("Printer", req["printer"]), ("Status", "DONE")]
                         if final_temp:
                             admin_rows.append(("Final Temp", final_temp))
                         
+                        admin_snapshot = completion_snapshot if get_bool_setting("enable_camera_snapshot", False) else None
                         subject = f"[{APP_TITLE}] Auto-completed: {rid[:8]}"
                         text = f"Print automatically marked DONE.\n\nID: {rid}\nPrinter: {req['printer']}\nAdmin: {BASE_URL}/admin/request/{rid}\n"
                         html = build_email_html(
@@ -895,9 +897,9 @@ async def poll_printer_status_worker():
                             rows=admin_rows,
                             cta_url=f"{BASE_URL}/admin/request/{rid}",
                             cta_label="Open in admin",
-                            image_base64=completion_snapshot if get_bool_setting("enable_camera_snapshot", False) else None,
+                            image_base64=admin_snapshot,
                         )
-                        send_email(admin_emails, subject, text, html)
+                        send_email(admin_emails, subject, text, html, image_base64=admin_snapshot)
 
             await asyncio.sleep(30)  # Poll every 30 seconds
         except Exception as e:
@@ -990,13 +992,13 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
           </div>
         """
 
-    # Embedded snapshot image
+    # Embedded snapshot image - use CID reference for email attachment
     image_html = ""
     if image_base64:
         image_html = f"""
           <div style="margin-top:20px;border-radius:8px;overflow:hidden;">
             <div style="color:#6b7280;font-size:12px;margin-bottom:8px;font-weight:600;">📷 Completion Snapshot</div>
-            <img src="data:image/jpeg;base64,{image_base64}" alt="Print completion snapshot" 
+            <img src="cid:completion_snapshot" alt="Print completion snapshot" 
                  style="max-width:100%;height:auto;border-radius:8px;border:1px solid #e5e7eb;" />
           </div>
         """
@@ -1036,9 +1038,10 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
 """
 
 
-def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Optional[str] = None):
+def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Optional[str] = None, image_base64: Optional[str] = None):
     """
     Best-effort email. Never raises to the web request.
+    image_base64: Optional base64-encoded JPEG to attach as inline image with CID "completion_snapshot"
     """
     to_addrs = [a.strip() for a in (to_addrs or []) if a and a.strip()]
     if not to_addrs:
@@ -1054,6 +1057,25 @@ def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Opt
 
     if html_body:
         msg.add_alternative(html_body, subtype="html")
+        
+        # Attach inline image if provided
+        if image_base64:
+            try:
+                import base64
+                image_data = base64.b64decode(image_base64)
+                # Get the HTML part and attach the image to it
+                for part in msg.walk():
+                    if part.get_content_type() == "text/html":
+                        # Add the image as a related part
+                        msg.get_payload()[1].add_related(
+                            image_data,
+                            maintype="image",
+                            subtype="jpeg",
+                            cid="completion_snapshot"
+                        )
+                        break
+            except Exception as e:
+                print(f"[EMAIL] Failed to attach image: {e}")
 
     context = ssl.create_default_context()
     try:
