@@ -64,6 +64,50 @@
               Update status + notify
             </button>
           </form>
+
+          <!-- Print time estimate -->
+          <div class="mt-6 bg-emerald-900/20 border border-emerald-700/40 rounded-2xl p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-semibold">Print Time Estimate</h2>
+              {% if req["print_time_minutes"] %}
+                <span class="text-xs text-emerald-300 bg-emerald-900/40 px-2 py-1 rounded-lg">
+                  ⏱ {{ (req["print_time_minutes"] // 60) }}h {{ (req["print_time_minutes"] % 60) }}m
+                </span>
+              {% endif %}
+            </div>
+
+            <form class="space-y-3" method="POST" action="/admin/request/{{ req['id'] }}/print-time">
+              <p class="text-xs text-zinc-300 mb-3">
+                Set the estimated print duration and turnaround time. This helps the queue show accurate wait times.
+              </p>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="text-xs text-zinc-400">Hours</label>
+                  <input type="number" name="hours" min="0" max="999" value="{{ (req['print_time_minutes'] or 0) // 60 }}"
+                         class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm" />
+                </div>
+                <div>
+                  <label class="text-xs text-zinc-400">Minutes</label>
+                  <input type="number" name="minutes" min="0" max="59" value="{{ (req['print_time_minutes'] or 0) % 60 }}"
+                         class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm" />
+                </div>
+              </div>
+
+              <div>
+                <label class="text-xs text-zinc-400">Turnaround time (minutes between prints)</label>
+                <input type="number" name="turnaround_minutes" min="0" max="1440" value="{{ req['turnaround_minutes'] or 30 }}"
+                       class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm"
+                       placeholder="30" />
+              </div>
+
+              <div class="pt-2">
+                <button class="rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+                  💾 Save print time
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
 
         <!-- Edit request (admin-only) -->

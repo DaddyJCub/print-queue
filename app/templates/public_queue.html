@@ -91,6 +91,7 @@
             <th class="text-left p-3">Material</th>
             <th class="text-left p-3">Colors</th>
             <th class="text-left p-3">Status</th>
+            <th class="text-left p-3">Time</th>
           </tr>
         </thead>
         <tbody>
@@ -126,14 +127,62 @@
                 {% endif %}
               </div>
             </td>
+            <td class="p-3 align-top">
+              {% if r.status == "PRINTING" and r.print_time_minutes %}
+                <div class="font-mono text-sm font-bold text-emerald-300" data-timer="print-{{ r.short_id }}" data-minutes="{{ r.print_time_minutes }}">
+                  {{ r.print_time_minutes }}m
+                </div>
+              {% elif r.status == "APPROVED" and r.estimated_wait_minutes %}
+                <div class="text-xs text-zinc-300">
+                  Est. <span class="font-semibold text-indigo-300">{{ (r.estimated_wait_minutes // 60) }}h {{ (r.estimated_wait_minutes % 60) }}m</span>
+                </div>
+              {% else %}
+                <div class="text-xs text-zinc-500">—</div>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
           {% if items|length == 0 %}
-          <tr><td class="p-6 text-center text-zinc-400" colspan="7">Queue is empty! First request wins. ✨</td></tr>
+          <tr><td class="p-6 text-center text-zinc-400" colspan="8">Queue is empty! First request wins. ✨</td></tr>
           {% endif %}
         </tbody>
       </table>
     </div>
+
+    <!-- Print Timer Script -->
+    <script>
+      // Find all print timers and start countdown
+      document.querySelectorAll('[data-timer^="print-"]').forEach(el => {
+        const minutes = parseInt(el.getAttribute('data-minutes'), 10);
+        if (!minutes || isNaN(minutes)) return;
+        
+        let remainingSeconds = minutes * 60;
+        
+        function formatTime(seconds) {
+          const h = Math.floor(seconds / 3600);
+          const m = Math.floor((seconds % 3600) / 60);
+          const s = seconds % 60;
+          return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+        
+        function updateTimer() {
+          if (remainingSeconds <= 0) {
+            el.textContent = 'Done! ✓';
+            el.classList.add('text-amber-300');
+            el.classList.remove('text-emerald-300');
+            // Auto-refresh in 3 seconds to show next print
+            setTimeout(() => location.reload(), 3000);
+            return;
+          }
+          el.textContent = formatTime(remainingSeconds);
+          remainingSeconds--;
+        }
+        
+        // Update immediately, then every second
+        updateTimer();
+        setInterval(updateTimer, 1000);
+      });
+    </script>
 
     <!-- Footer CTA -->
     <div class="mt-8 flex flex-col md:flex-row gap-4 items-center justify-between bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5">

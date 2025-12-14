@@ -27,6 +27,94 @@
       </div>
     </div>
 
+    <!-- Batch Edit Form (initially hidden) -->
+    <div id="batch-edit-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-sm w-full">
+        <h2 class="text-xl font-bold mb-4">Batch Edit Selected</h2>
+        <form method="POST" action="/admin/batch-update" class="space-y-4">
+          <input type="hidden" id="batch-ids" name="request_ids" />
+          
+          <div>
+            <label class="text-sm text-zinc-400">Change Priority (optional)</label>
+            <select name="priority" class="w-full mt-2 rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+              <option value="">— Keep current —</option>
+              {% for p in [1,2,3,4,5] %}
+                <option value="{{ p }}">Priority {{ p }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <label class="text-sm text-zinc-400">Change Status (optional)</label>
+            <select name="status" class="w-full mt-2 rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+              <option value="">— Keep current —</option>
+              {% for s in ["APPROVED", "PRINTING", "DONE", "REJECTED", "CANCELLED"] %}
+                <option value="{{ s }}">{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="flex gap-3 pt-4">
+            <button type="button" onclick="hideBatchEditModal()" class="flex-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
+              Cancel
+            </button>
+            <button type="submit" class="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
+              Update <span id="batch-count">0</span> requests
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      let selectedIds = new Set();
+
+      function toggleSelectAll(sectionId) {
+        const checkboxes = document.querySelectorAll(`#${sectionId} input[type="checkbox"][data-request-id]`);
+        const allChecked = Array.from(checkboxes).every(c => c.checked);
+        checkboxes.forEach(c => {
+          c.checked = !allChecked;
+          toggleRequestId(c.value);
+        });
+        updateBatchUI(sectionId);
+      }
+
+      function toggleRequestId(id) {
+        if (selectedIds.has(id)) {
+          selectedIds.delete(id);
+        } else {
+          selectedIds.add(id);
+        }
+      }
+
+      function updateBatchUI(sectionId) {
+        const checkboxes = document.querySelectorAll(`#${sectionId} input[type="checkbox"][data-request-id]`);
+        const allChecked = Array.from(checkboxes).every(c => c.checked);
+        const selectAll = document.querySelector(`#${sectionId} input[data-select-all]`);
+        if (selectAll) selectAll.checked = allChecked;
+        
+        document.getElementById('batch-count').textContent = selectedIds.size;
+      }
+
+      function showBatchEditModal() {
+        if (selectedIds.size === 0) {
+          alert('Please select at least one request');
+          return;
+        }
+        document.getElementById('batch-ids').value = Array.from(selectedIds).join(',');
+        document.getElementById('batch-edit-modal').classList.remove('hidden');
+      }
+
+      function hideBatchEditModal() {
+        document.getElementById('batch-edit-modal').classList.add('hidden');
+      }
+
+      // Close modal when clicking outside
+      document.getElementById('batch-edit-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'batch-edit-modal') hideBatchEditModal();
+      });
+    </script>
+
     <!-- Helper macro-ish (simple patterns) -->
     {% macro badge(text) -%}
       <span class="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-xs">{{ text }}</span>
@@ -47,7 +135,7 @@
     <div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
 
       <!-- NEW REQUESTS -->
-      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <section id="new-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
         <div class="flex items-center justify-between">
           <div>
             <div class="flex items-center gap-3">
@@ -62,6 +150,12 @@
             </div>
             <p class="text-xs text-zinc-500 mt-1">Approve + ask question is the main workflow here.</p>
           </div>
+          {% if new_reqs|length > 0 %}
+            <label class="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" data-select-all onchange="toggleSelectAll('new-section'); updateBatchUI('new-section')" />
+              Select all
+            </label>
+          {% endif %}
         </div>
 
         {% if new_reqs|length == 0 %}
@@ -73,12 +167,16 @@
             {% for r in new_reqs %}
               <div class="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-4">
                 <div class="flex items-start justify-between gap-3">
-                  <a class="hover:underline" href="/admin/request/{{ r['id'] }}">
-                    <div class="font-semibold">Request {{ r["id"][:8] }}</div>
-                    <div class="text-xs text-zinc-400 mt-1">
-                      {{ r["requester_name"] }} • {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
-                    </div>
-                  </a>
+                  <div class="flex items-start gap-3 flex-1">
+                    <input type="checkbox" class="mt-1" data-request-id value="{{ r['id'] }}" 
+                           onchange="toggleRequestId(this.value); updateBatchUI('new-section')" />
+                    <a class="hover:underline" href="/admin/request/{{ r['id'] }}">
+                      <div class="font-semibold">Request {{ r["id"][:8] }}</div>
+                      <div class="text-xs text-zinc-400 mt-1">
+                        {{ r["requester_name"] }} • {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
+                      </div>
+                    </a>
+                  </div>
                   <div class="flex items-center gap-2">
                     {{ prio_badge(r["priority"]) }}
                     {{ badge(r["status"]) }}
@@ -139,11 +237,16 @@
               </div>
             {% endfor %}
           </div>
+          <div class="mt-4">
+            <button onclick="showBatchEditModal()" class="w-full rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
+              ✏ Batch Edit Selected
+            </button>
+          </div>
         {% endif %}
       </section>
 
       <!-- PRINTING NOW -->
-      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <section id="printing-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <h2 class="text-xl font-semibold">Printing now</h2>
@@ -155,6 +258,12 @@
               <span class="text-xs text-zinc-500">None printing</span>
             {% endif %}
           </div>
+          {% if printing|length > 0 %}
+            <label class="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" data-select-all onchange="toggleSelectAll('printing-section'); updateBatchUI('printing-section')" />
+              Select all
+            </label>
+          {% endif %}
         </div>
 
         {% if printing|length == 0 %}
@@ -166,12 +275,16 @@
             {% for r in printing %}
               <div class="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-4">
                 <div class="flex items-start justify-between gap-3">
-                  <a class="hover:underline" href="/admin/request/{{ r['id'] }}">
-                    <div class="font-semibold">Request {{ r["id"][:8] }}</div>
-                    <div class="text-xs text-zinc-400 mt-1">
-                      {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
-                    </div>
-                  </a>
+                  <div class="flex items-start gap-3 flex-1">
+                    <input type="checkbox" class="mt-1" data-request-id value="{{ r['id'] }}" 
+                           onchange="toggleRequestId(this.value); updateBatchUI('printing-section')" />
+                    <a class="hover:underline" href="/admin/request/{{ r['id'] }}">
+                      <div class="font-semibold">Request {{ r["id"][:8] }}</div>
+                      <div class="text-xs text-zinc-400 mt-1">
+                        {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
+                      </div>
+                    </a>
+                  </div>
                   <div class="flex items-center gap-2">
                     {{ prio_badge(r["priority"]) }}
                     {{ badge(r["status"]) }}
@@ -190,11 +303,16 @@
               </div>
             {% endfor %}
           </div>
+          <div class="mt-4">
+            <button onclick="showBatchEditModal()" class="w-full rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
+              ✏ Batch Edit Selected
+            </button>
+          </div>
         {% endif %}
       </section>
 
       <!-- WAITING TO PRINT (APPROVED) -->
-      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <section id="approved-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <h2 class="text-xl font-semibold">Waiting to print</h2>
@@ -206,7 +324,12 @@
               <span class="text-xs text-zinc-500">Empty</span>
             {% endif %}
           </div>
-          <span class="text-xs text-zinc-500">Sorted by priority then oldest</span>
+          {% if queued|length > 0 %}
+            <label class="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" data-select-all onchange="toggleSelectAll('approved-section'); updateBatchUI('approved-section')" />
+              Select all
+            </label>
+          {% endif %}
         </div>
 
         {% if queued|length == 0 %}
@@ -218,12 +341,16 @@
             {% for r in queued %}
               <div class="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-4">
                 <div class="flex items-start justify-between gap-3">
-                  <a class="hover:underline" href="/admin/request/{{ r['id'] }}">
-                    <div class="font-semibold">Request {{ r["id"][:8] }}</div>
-                    <div class="text-xs text-zinc-400 mt-1">
-                      {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
-                    </div>
-                  </a>
+                  <div class="flex items-start gap-3 flex-1">
+                    <input type="checkbox" class="mt-1" data-request-id value="{{ r['id'] }}" 
+                           onchange="toggleRequestId(this.value); updateBatchUI('approved-section')" />
+                    <a class="hover:underline" href="/admin/request/{{ r['id'] }}">
+                      <div class="font-semibold">Request {{ r["id"][:8] }}</div>
+                      <div class="text-xs text-zinc-400 mt-1">
+                        {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
+                      </div>
+                    </a>
+                  </div>
                   <div class="flex items-center gap-2">
                     {{ prio_badge(r["priority"]) }}
                     {{ badge(r["status"]) }}
@@ -265,11 +392,16 @@
               </div>
             {% endfor %}
           </div>
+          <div class="mt-4">
+            <button onclick="showBatchEditModal()" class="w-full rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
+              ✏ Batch Edit Selected
+            </button>
+          </div>
         {% endif %}
       </section>
 
       <!-- READY FOR PICKUP -->
-      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <section id="done-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <h2 class="text-xl font-semibold">Ready for pickup</h2>
@@ -281,6 +413,12 @@
               <span class="text-xs text-zinc-500">None</span>
             {% endif %}
           </div>
+          {% if done|length > 0 %}
+            <label class="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" data-select-all onchange="toggleSelectAll('done-section'); updateBatchUI('done-section')" />
+              Select all
+            </label>
+          {% endif %}
         </div>
 
         {% if done|length == 0 %}
@@ -292,12 +430,16 @@
             {% for r in done %}
               <div class="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-4">
                 <div class="flex items-start justify-between gap-3">
-                  <a class="hover:underline" href="/admin/request/{{ r['id'] }}">
-                    <div class="font-semibold">Request {{ r["id"][:8] }}</div>
-                    <div class="text-xs text-zinc-400 mt-1">
-                      {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
-                    </div>
-                  </a>
+                  <div class="flex items-start gap-3 flex-1">
+                    <input type="checkbox" class="mt-1" data-request-id value="{{ r['id'] }}" 
+                           onchange="toggleRequestId(this.value); updateBatchUI('done-section')" />
+                    <a class="hover:underline" href="/admin/request/{{ r['id'] }}">
+                      <div class="font-semibold">Request {{ r["id"][:8] }}</div>
+                      <div class="text-xs text-zinc-400 mt-1">
+                        {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
+                      </div>
+                    </a>
+                  </div>
                   <div class="flex items-center gap-2">
                     {{ prio_badge(r["priority"]) }}
                     {{ badge(r["status"]) }}
@@ -315,6 +457,11 @@
                 </div>
               </div>
             {% endfor %}
+          </div>
+          <div class="mt-4">
+            <button onclick="showBatchEditModal()" class="w-full rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
+              ✏ Batch Edit Selected
+            </button>
           </div>
         {% endif %}
       </section>

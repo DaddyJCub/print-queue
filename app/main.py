@@ -149,6 +149,15 @@ def ensure_migrations():
         # Internal work notes (admin-only)
         cur.execute("ALTER TABLE requests ADD COLUMN admin_notes TEXT")
 
+    if "print_time_minutes" not in cols:
+        # Estimated print time in minutes (set when PRINTING status)
+        cur.execute("ALTER TABLE requests ADD COLUMN print_time_minutes INTEGER")
+
+    if "turnaround_minutes" not in cols:
+        # Time between prints (admin-set default: 30 min)
+        cur.execute("ALTER TABLE requests ADD COLUMN turnaround_minutes INTEGER")
+        cur.execute("UPDATE requests SET turnaround_minutes = 30 WHERE turnaround_minutes IS NULL")
+
     conn.commit()
     conn.close()
 
@@ -570,7 +579,7 @@ async def submit(
 def public_queue(request: Request, mine: Optional[str] = None):
     conn = db()
     rows = conn.execute(
-        "SELECT id, requester_name, printer, material, colors, status, special_notes "
+        "SELECT id, requester_name, printer, material, colors, status, special_notes, print_time_minutes, turnaround_minutes "
         "FROM requests "
         "WHERE status NOT IN (?, ?, ?) "
         "ORDER BY created_at ASC",
@@ -579,10 +588,13 @@ def public_queue(request: Request, mine: Optional[str] = None):
     conn.close()
 
     items = []
-    for idx, r in enumerate(rows, start=1):
+    printing_idx = None
+    
+    # First pass: build items and find printing index
+    for idx, r in enumerate(rows):
         short_id = r["id"][:8]
         items.append({
-            "pos": idx,
+            "pos": idx + 1,
             "short_id": short_id,
             "requester_first": first_name_only(r["requester_name"]),
             "printer": r["printer"],
@@ -591,7 +603,34 @@ def public_queue(request: Request, mine: Optional[str] = None):
             "status": r["status"],
             "special_notes": (r["special_notes"] or "").strip(),
             "is_mine": bool(mine and mine == short_id),
+            "print_time_minutes": r["print_time_minutes"],
+            "turnaround_minutes": r["turnaround_minutes"],
+            "estimated_wait_minutes": None,
         })
+        if r["status"] == "PRINTING":
+            printing_idx = idx
+    
+    # Second pass: calculate wait times from printing point onwards
+    if printing_idx is not None:
+        cumulative = 0
+        for i in range(printing_idx, len(items)):
+            if i == printing_idx:
+                # Current printing: show its print time
+                if items[i]["print_time_minutes"]:
+                    cumulative = items[i]["print_time_minutes"]
+                    items[i]["estimated_wait_minutes"] = cumulative
+            else:
+                # Queued item: add previous item's turnaround + this item's print time
+                prev_item = items[i - 1]
+                if prev_item["turnaround_minutes"] is not None:
+                    cumulative += prev_item["turnaround_minutes"]
+                else:
+                    cumulative += 30  # default turnaround
+                
+                if items[i]["print_time_minutes"]:
+                    cumulative += items[i]["print_time_minutes"]
+                
+                items[i]["estimated_wait_minutes"] = cumulative if cumulative > 0 else None
 
     my_pos = None
     if mine:
@@ -838,7 +877,37 @@ def admin_set_priority(
     return RedirectResponse(url="/admin", status_code=303)
 
 
-@app.post("/admin/request/{rid}/special-notes")
+@app.post("/admin/request/{rid}/print-time")
+def admin_set_print_time(
+    request: Request,
+    rid: str,
+    hours: int = Form(0),
+    minutes: int = Form(0),
+    turnaround_minutes: int = Form(30),
+    _=Depends(require_admin)
+):
+    """Set print time estimate (hours + minutes) for a request."""
+    # Convert hours and minutes to total minutes
+    total_minutes = hours * 60 + minutes
+    
+    if total_minutes < 1 or total_minutes > 999 * 60:  # up to 999 hours
+        raise HTTPException(status_code=400, detail="Print time must be at least 1 minute (up to 999 hours)")
+    if turnaround_minutes < 0 or turnaround_minutes > 1440:  # 0 to 24 hours
+        raise HTTPException(status_code=400, detail="Turnaround must be 0..1440 minutes")
+
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Not found")
+
+    conn.execute(
+        "UPDATE requests SET print_time_minutes = ?, turnaround_minutes = ?, updated_at = ? WHERE id = ?",
+        (total_minutes, turnaround_minutes, now_iso(), rid)
+    )
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 def admin_set_special_notes(
     request: Request,
     rid: str,
@@ -1035,3 +1104,47 @@ def admin_download_file(request: Request, rid: str, file_id: str, _=Depends(requ
         filename=file_info["original_filename"],
         media_type="application/octet-stream"
     )
+
+
+@app.post("/admin/batch-update")
+def admin_batch_update(
+    request: Request,
+    request_ids: str = Form(""),  # comma-separated IDs
+    priority: Optional[int] = Form(None),
+    status: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """Mass update multiple requests at once."""
+    ids = [rid.strip() for rid in request_ids.split(",") if rid.strip()]
+    if not ids:
+        raise HTTPException(status_code=400, detail="No requests selected")
+    
+    # Validate inputs
+    if priority is not None and (priority < 1 or priority > 5):
+        raise HTTPException(status_code=400, detail="Priority must be 1..5")
+    if status is not None and status not in STATUS_FLOW:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    
+    # If nothing to update, return early
+    if priority is None and status is None:
+        return RedirectResponse(url="/admin", status_code=303)
+    
+    conn = db()
+    updates = []
+    if priority is not None:
+        updates.append(f"priority = {priority}")
+    if status is not None:
+        updates.append(f"status = '{status}'")
+    
+    update_str = ", ".join(updates)
+    update_str += f", updated_at = '{now_iso()}'"
+    
+    placeholders = ",".join(["?" for _ in ids])
+    conn.execute(
+        f"UPDATE requests SET {update_str} WHERE id IN ({placeholders})",
+        ids
+    )
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url="/admin", status_code=303)
