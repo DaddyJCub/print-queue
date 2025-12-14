@@ -1262,8 +1262,18 @@ async def public_queue(request: Request, mine: Optional[str] = None):
         printer_progress = None
         smart_eta = None
         smart_eta_display = None
+        printing_started_at = r.get("printing_started_at")
         
         if r["status"] == "PRINTING":
+            # Fix missing printing_started_at for legacy requests
+            if not printing_started_at:
+                printing_started_at = now_iso()
+                conn_fix = db()
+                conn_fix.execute("UPDATE requests SET printing_started_at = ? WHERE id = ? AND printing_started_at IS NULL", 
+                               (printing_started_at, r["id"]))
+                conn_fix.commit()
+                conn_fix.close()
+            
             printer_api = get_printer_api(r["printer"])
             if printer_api:
                 try:
@@ -1276,7 +1286,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                 printer=r["printer"],
                 material=r["material"],
                 current_percent=printer_progress,
-                printing_started_at=r["printing_started_at"]
+                printing_started_at=printing_started_at
             )
             if eta_dt:
                 smart_eta = eta_dt.isoformat()
@@ -1428,12 +1438,22 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
             except Exception:
                 pass
         
+        # If printing_started_at is missing, set it now (for legacy requests)
+        printing_started_at = r.get("printing_started_at")
+        if not printing_started_at and r["status"] == "PRINTING":
+            printing_started_at = now_iso()
+            conn_fix = db()
+            conn_fix.execute("UPDATE requests SET printing_started_at = ? WHERE id = ? AND printing_started_at IS NULL", 
+                           (printing_started_at, r["id"]))
+            conn_fix.commit()
+            conn_fix.close()
+        
         # Calculate smart ETA
         eta_dt = get_smart_eta(
             printer=r["printer"],
             material=r["material"],
             current_percent=printer_progress,
-            printing_started_at=r["printing_started_at"]
+            printing_started_at=printing_started_at
         )
         
         # Convert to dict and add ETA fields
