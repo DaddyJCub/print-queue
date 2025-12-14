@@ -134,7 +134,7 @@
         <thead class="text-zinc-400 bg-zinc-950/40">
           <tr class="border-b border-zinc-800">
             <th class="text-left p-3">#</th>
-            <th class="text-left p-3">ID</th>
+            <th class="text-left p-3">Print Name</th>
             <th class="text-left p-3">Requester</th>
             <th class="text-left p-3">Printer</th>
             <th class="text-left p-3">Material</th>
@@ -148,7 +148,14 @@
           <tr class="border-b border-zinc-800
                      {% if r.is_mine %}bg-indigo-900/30 ring-1 ring-indigo-500/50{% else %}hover:bg-zinc-950/40 transition{% endif %}">
             <td class="p-3 text-zinc-400 align-top font-semibold">{{ r.pos }}</td>
-            <td class="p-3 font-mono text-zinc-300 align-top text-xs">{{ r.short_id }}</td>
+            <td class="p-3 align-top">
+              {% if r.print_name %}
+                <span class="font-semibold text-zinc-200">{{ r.print_name }}</span>
+                <div class="text-xs text-zinc-500 font-mono mt-1">{{ r.short_id }}</div>
+              {% else %}
+                <span class="font-mono text-zinc-300 text-xs">{{ r.short_id }}</span>
+              {% endif %}
+            </td>
             <td class="p-3 align-top">{{ r.requester_first }}</td>
             <td class="p-3 align-top text-sm text-zinc-300">{{ r.printer }}</td>
             <td class="p-3 align-top text-sm text-zinc-300">{{ r.material }}</td>

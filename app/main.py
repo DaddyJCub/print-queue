@@ -168,6 +168,10 @@ def ensure_migrations():
         cur.execute("ALTER TABLE requests ADD COLUMN estimated_finish_time TEXT")
         cur.execute("UPDATE requests SET turnaround_minutes = 30 WHERE turnaround_minutes IS NULL")
 
+    if "print_name" not in cols:
+        # User-friendly name for the print (e.g., "Dragon Statue", "Phone Holder")
+        cur.execute("ALTER TABLE requests ADD COLUMN print_name TEXT")
+
     conn.commit()
     conn.close()
 
@@ -626,6 +630,7 @@ async def submit(
     request: Request,
     requester_name: str = Form(...),
     requester_email: str = Form(...),
+    print_name: str = Form(...),
     printer: str = Form(...),
     material: str = Form(...),
     colors: str = Form(...),
@@ -637,6 +642,7 @@ async def submit(
     form_state = {
         "requester_name": requester_name,
         "requester_email": requester_email,
+        "print_name": print_name,
         "printer": printer,
         "material": material,
         "colors": colors,
@@ -673,14 +679,15 @@ async def submit(
     conn = db()
     conn.execute(
         """INSERT INTO requests
-           (id, created_at, updated_at, requester_name, requester_email, printer, material, colors, link_url, notes, status, special_notes, priority, admin_notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, special_notes, priority, admin_notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             rid,
             created,
             created,
             requester_name.strip(),
             requester_email.strip(),
+            print_name.strip() if print_name else None,
             printer,
             material,
             colors.strip(),
@@ -799,7 +806,7 @@ async def submit(
 async def public_queue(request: Request, mine: Optional[str] = None):
     conn = db()
     rows = conn.execute(
-        "SELECT id, requester_name, printer, material, colors, status, special_notes, print_time_minutes, turnaround_minutes "
+        "SELECT id, requester_name, print_name, printer, material, colors, status, special_notes, print_time_minutes, turnaround_minutes "
         "FROM requests "
         "WHERE status NOT IN (?, ?, ?) "
         "ORDER BY created_at ASC",
@@ -847,6 +854,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             "pos": idx + 1,
             "short_id": short_id,
             "requester_first": first_name_only(r["requester_name"]),
+            "print_name": r["print_name"],
             "printer": r["printer"],
             "material": r["material"],
             "colors": r["colors"],
@@ -948,7 +956,7 @@ def _fetch_requests_by_status(status: str):
 
 
 @app.get("/admin", response_class=HTMLResponse)
-def admin_dashboard(request: Request, _=Depends(require_admin)):
+async def admin_dashboard(request: Request, _=Depends(require_admin)):
     new_reqs = _fetch_requests_by_status("NEW")
     queued = _fetch_requests_by_status("APPROVED")
     printing = _fetch_requests_by_status("PRINTING")
@@ -965,6 +973,24 @@ def admin_dashboard(request: Request, _=Depends(require_admin)):
     ).fetchall()
     conn.close()
 
+    # Fetch printer status
+    printer_status = {}
+    for printer_code in ["ADVENTURER_4", "AD5X"]:
+        try:
+            printer_api = get_printer_api(printer_code)
+            if printer_api:
+                status = await printer_api.get_status()
+                progress = await printer_api.get_progress()
+                if status:
+                    printer_status[printer_code] = {
+                        "status": status.get("MachineStatus", "UNKNOWN"),
+                        "temp": status.get("Temperature"),
+                        "healthy": status.get("MachineStatus") in ["READY", "PRINTING"],
+                        "progress": progress.get("PercentageCompleted") if progress else None,
+                    }
+        except Exception as e:
+            print(f"[ADMIN] Error fetching printer {printer_code} status: {e}")
+
     return templates.TemplateResponse("admin_queue.html", {
         "request": request,
         "new_reqs": new_reqs,
@@ -972,6 +998,10 @@ def admin_dashboard(request: Request, _=Depends(require_admin)):
         "printing": printing,
         "done": done,
         "closed": closed,
+        "printer_status": {
+            "ADVENTURER_4": printer_status.get("ADVENTURER_4", {}),
+            "AD5X": printer_status.get("AD5X", {}),
+        },
     })
 
 
@@ -1399,6 +1429,7 @@ def admin_edit_request(
     rid: str,
     requester_name: str = Form(...),
     requester_email: str = Form(...),
+    print_name: str = Form(""),
     printer: str = Form(...),
     material: str = Form(...),
     colors: str = Form(...),
@@ -1429,11 +1460,12 @@ def admin_edit_request(
 
     conn.execute(
         """UPDATE requests
-           SET requester_name = ?, requester_email = ?, printer = ?, material = ?, colors = ?, link_url = ?, notes = ?, updated_at = ?
+           SET requester_name = ?, requester_email = ?, print_name = ?, printer = ?, material = ?, colors = ?, link_url = ?, notes = ?, updated_at = ?
            WHERE id = ?""",
         (
             requester_name.strip(),
             requester_email.strip(),
+            print_name.strip() if print_name else None,
             printer,
             material,
             (colors or "").strip(),
