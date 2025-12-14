@@ -1941,7 +1941,7 @@ async def printer_debug(printer_code: str, _=Depends(require_admin)):
     if not printer_api:
         raise HTTPException(status_code=503, detail="Printer not configured")
     
-    results = {}
+    results = {"_printer": printer_code}
     
     # Test standard endpoints
     results["info"] = await printer_api.get_info()
@@ -1950,93 +1950,138 @@ async def printer_debug(printer_code: str, _=Depends(require_admin)):
     results["temperature"] = await printer_api.get_temperature()
     results["head_location"] = await printer_api.get_head_location()
     
-    # Get settings for debug
-    results["_settings"] = {
-        "enable_camera_snapshot": get_bool_setting("enable_camera_snapshot", False),
-        "camera_url": get_camera_url(printer_code),
-    }
+    return results
+
+
+@app.get("/api/printer/{printer_code}/raw/{command}")
+async def printer_raw_command(printer_code: str, command: str, _=Depends(require_admin)):
+    """Send a raw M-code command to the printer and return the response"""
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
     
-    # Test additional potential endpoints on the Flask API
-    flask_url = get_setting("flashforge_api_url", "http://localhost:5000")
     if printer_code == "ADVENTURER_4":
         ip = get_setting("printer_adventurer_4_ip", "192.168.0.198")
     else:
         ip = get_setting("printer_ad5x_ip", "192.168.0.157")
     
-    # Try more potential API paths
-    test_paths = [
-        # Standard M-code equivalents
-        "print-time",       # M31 - print time elapsed
-        "sd-list",          # M20 - list SD files
-        "sd-status",        # M27 extended
-        "job-name",         # Current job/file name
-        "file-info",        # File information
-        "print-stats",      # Print statistics (M78)
-        "firmware",         # Firmware details
-        # Potential FlashForge-specific
-        "led",              # LED status
-        "light",            # Light control
-        "fan",              # Fan speed
-        "bed-temp",         # Bed temperature
-        "chamber-temp",     # Chamber temperature  
-        "filament",         # Filament info
-        "network",          # Network info
-        "wifi",             # WiFi info
-        "settings",         # Printer settings
-        "config",           # Configuration
-        "machine",          # Machine info
-        "model",            # Model info
-        "system",           # System info
-        "version",          # Version info
-        "all",              # All info combined
-        "full-status",      # Full status
-        "extended-status",  # Extended status
-    ]
-    
-    async with httpx.AsyncClient(timeout=5) as client:
-        for path in test_paths:
-            try:
-                url = f"{flask_url}/{ip}/{path}"
-                r = await client.get(url)
-                if r.status_code == 200:
-                    try:
-                        results[f"test_{path}"] = r.json()
-                    except:
-                        results[f"test_{path}"] = {"raw": r.text[:500]}
-                else:
-                    results[f"test_{path}"] = f"HTTP {r.status_code}"
-            except Exception as e:
-                results[f"test_{path}"] = f"Error: {str(e)[:100]}"
-    
-    # Also try to connect directly to printer on port 8899 and send raw commands
-    results["_direct_tests"] = {}
-    direct_commands = [
-        ("M20", "List SD card files"),
-        ("M31", "Print time"),
-        ("M78", "Print statistics"),
-        ("M503", "Report settings"),
-        ("M117", "Display message (read)"),
-        ("M118", "Serial echo"),
-    ]
-    
+    import socket
     try:
-        import socket
-        for cmd, desc in direct_commands:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        sock.connect((ip, 8899))
+        
+        # Send control request first
+        sock.send(b"~M601 S1\r\n")
+        control_resp = sock.recv(1024).decode('utf-8', errors='ignore')
+        
+        # Send the command (add ~ prefix if not present)
+        cmd = command if command.startswith("~") else f"~{command}"
+        sock.send(f"{cmd}\r\n".encode())
+        
+        # Read response
+        response = b""
+        while True:
             try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(3)
-                sock.connect((ip, 8899))
-                # Send control request first
-                sock.send(b"~M601 S1\r\n")
-                sock.recv(1024)
-                # Send the test command
-                sock.send(f"~{cmd}\r\n".encode())
-                response = sock.recv(4096).decode('utf-8', errors='ignore')
-                sock.close()
-                results["_direct_tests"][cmd] = {"desc": desc, "response": response[:500]}
-            except Exception as e:
-                results["_direct_tests"][cmd] = {"desc": desc, "error": str(e)[:100]}
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+                if b"ok\r\n" in response or b"ok\n" in response:
+                    break
+            except socket.timeout:
+                break
+        
+        sock.close()
+        return {
+            "command": cmd,
+            "control_response": control_resp.strip(),
+            "response": response.decode('utf-8', errors='ignore').strip(),
+            "response_lines": response.decode('utf-8', errors='ignore').strip().split('\n')
+        }
     except Exception as e:
-        results["_direct_tests"]["_error"] = str(e)
+        return {"command": command, "error": str(e)}
+
+
+@app.get("/api/printer/{printer_code}/test-commands")
+async def printer_test_commands(printer_code: str, _=Depends(require_admin)):
+    """Test a bunch of M-codes to see what data we can get"""
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    if printer_code == "ADVENTURER_4":
+        ip = get_setting("printer_adventurer_4_ip", "192.168.0.198")
+    else:
+        ip = get_setting("printer_ad5x_ip", "192.168.0.157")
+    
+    # Commands to test - focused on read-only status/info commands
+    test_commands = [
+        ("M20", "List SD card files"),
+        ("M21", "Init SD card"),
+        ("M27", "SD print status (extended)"),
+        ("M31", "Print time"),
+        ("M36", "Print file info"),
+        ("M73", "Set/get print progress"),
+        ("M78", "Print statistics"),
+        ("M105", "Temperature report"),
+        ("M114", "Current position"),
+        ("M115", "Firmware info"),
+        ("M119", "Endstop status"),
+        ("M503", "Report settings"),
+        ("M524", "Abort (just query, won't abort)"),
+        ("M552", "Network status"),
+        ("M650", "FlashForge specific?"),
+        ("M651", "FlashForge specific?"),
+        ("M652", "FlashForge specific?"),
+        ("M660", "FlashForge specific?"),
+        ("M661", "FlashForge specific?"),
+        ("M662", "FlashForge specific?"),
+        ("M25", "Pause status query"),
+        ("M994", "File list?"),
+        ("M995", "Current file?"),
+    ]
+    
+    results = {"_printer": printer_code, "_ip": ip, "commands": {}}
+    
+    import socket
+    
+    for cmd, desc in test_commands:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(3)
+            sock.connect((ip, 8899))
+            
+            # Control request
+            sock.send(b"~M601 S1\r\n")
+            sock.recv(1024)
+            
+            # Send command
+            sock.send(f"~{cmd}\r\n".encode())
+            
+            # Read response
+            response = b""
+            try:
+                while True:
+                    chunk = sock.recv(2048)
+                    if not chunk:
+                        break
+                    response += chunk
+                    if b"ok\r\n" in response or b"ok\n" in response or len(response) > 8000:
+                        break
+            except socket.timeout:
+                pass
+            
+            sock.close()
+            
+            resp_text = response.decode('utf-8', errors='ignore').strip()
+            # Mark as interesting if it has more than just "ok" or "Error"
+            is_interesting = len(resp_text) > 20 and "Error" not in resp_text
+            
+            results["commands"][cmd] = {
+                "desc": desc,
+                "response": resp_text[:1000],
+                "interesting": is_interesting
+            }
+        except Exception as e:
+            results["commands"][cmd] = {"desc": desc, "error": str(e)}
     
     return results
