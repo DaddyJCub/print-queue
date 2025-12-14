@@ -824,11 +824,13 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             printer_api = get_printer_api(printer_code)
             if printer_api:
                 status = await printer_api.get_status()
+                progress = await printer_api.get_percent_complete()
                 if status:
                     printer_status[printer_code] = {
                         "status": status.get("MachineStatus", "UNKNOWN"),
                         "temp": status.get("Temperature"),
-                        "healthy": status.get("MachineStatus") in ["READY", "PRINTING"]
+                        "progress": progress,
+                        "healthy": status.get("MachineStatus") in ["READY", "PRINTING", "BUILDING"]
                     }
         except Exception:
             pass
@@ -985,7 +987,7 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
                     printer_status[printer_code] = {
                         "status": status.get("MachineStatus", "UNKNOWN"),
                         "temp": status.get("Temperature"),
-                        "healthy": status.get("MachineStatus") in ["READY", "PRINTING"],
+                        "healthy": status.get("MachineStatus") in ["READY", "PRINTING", "BUILDING"],
                         "progress": progress.get("PercentageCompleted") if progress else None,
                     }
         except Exception as e:
@@ -1149,6 +1151,7 @@ def admin_analytics(request: Request, _=Depends(require_admin)):
 
 
 
+@app.get("/admin/printer-settings", response_class=HTMLResponse)
 def admin_printer_settings(request: Request, _=Depends(require_admin), saved: Optional[str] = None):
     model = {
         "flashforge_api_url": get_setting("flashforge_api_url", "http://localhost:5000"),

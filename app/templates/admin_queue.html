@@ -148,20 +148,21 @@
             <span>🖨</span>
             <span>FlashForge Adventurer 4</span>
           </h3>
-          {% if printer_status.ADVENTURER_4.healthy %}
-            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-green-500/20 text-green-300 border border-green-500/50">
-              <span class="inline-block w-2 h-2 rounded-full bg-green-400"></span>
-              {{ printer_status.ADVENTURER_4.status or 'Ready' }}
-            </span>
-          {% elif printer_status.ADVENTURER_4.status %}
-            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-red-500/20 text-red-300 border border-red-500/50">
-              <span class="inline-block w-2 h-2 rounded-full bg-red-400"></span>
+          {% if printer_status.ADVENTURER_4.status %}
+            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium
+              {% if printer_status.ADVENTURER_4.status in ['READY', 'PRINTING', 'BUILDING'] %}
+                bg-green-500/20 text-green-300 border border-green-500/50
+              {% else %}
+                bg-amber-500/20 text-amber-300 border border-amber-500/50
+              {% endif %}">
+              <span class="inline-block w-2 h-2 rounded-full 
+                {% if printer_status.ADVENTURER_4.status in ['READY', 'PRINTING', 'BUILDING'] %}bg-green-400{% else %}bg-amber-400{% endif %}"></span>
               {{ printer_status.ADVENTURER_4.status }}
             </span>
           {% else %}
             <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-zinc-600/20 text-zinc-300 border border-zinc-600/50">
               <span class="inline-block w-2 h-2 rounded-full bg-zinc-400"></span>
-              Unknown
+              Offline
             </span>
           {% endif %}
         </div>
@@ -170,7 +171,7 @@
             <div>Nozzle: <span class="text-zinc-200">{{ printer_status.ADVENTURER_4.temp }}°C</span></div>
           {% endif %}
           {% if printer_status.ADVENTURER_4.progress %}
-            <div>Progress: <span class="text-zinc-200">{{ printer_status.ADVENTURER_4.progress }}%</span></div>
+            <div>Progress: <span class="text-emerald-300 font-semibold">{{ printer_status.ADVENTURER_4.progress }}%</span></div>
           {% endif %}
         </div>
       </div>
@@ -181,20 +182,21 @@
             <span>🖨</span>
             <span>FlashForge AD5X</span>
           </h3>
-          {% if printer_status.AD5X.healthy %}
-            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-green-500/20 text-green-300 border border-green-500/50">
-              <span class="inline-block w-2 h-2 rounded-full bg-green-400"></span>
-              {{ printer_status.AD5X.status or 'Ready' }}
-            </span>
-          {% elif printer_status.AD5X.status %}
-            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-red-500/20 text-red-300 border border-red-500/50">
-              <span class="inline-block w-2 h-2 rounded-full bg-red-400"></span>
+          {% if printer_status.AD5X.status %}
+            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium
+              {% if printer_status.AD5X.status in ['READY', 'PRINTING', 'BUILDING'] %}
+                bg-green-500/20 text-green-300 border border-green-500/50
+              {% else %}
+                bg-amber-500/20 text-amber-300 border border-amber-500/50
+              {% endif %}">
+              <span class="inline-block w-2 h-2 rounded-full 
+                {% if printer_status.AD5X.status in ['READY', 'PRINTING', 'BUILDING'] %}bg-green-400{% else %}bg-amber-400{% endif %}"></span>
               {{ printer_status.AD5X.status }}
             </span>
           {% else %}
             <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-zinc-600/20 text-zinc-300 border border-zinc-600/50">
               <span class="inline-block w-2 h-2 rounded-full bg-zinc-400"></span>
-              Unknown
+              Offline
             </span>
           {% endif %}
         </div>
@@ -203,7 +205,7 @@
             <div>Nozzle: <span class="text-zinc-200">{{ printer_status.AD5X.temp }}°C</span></div>
           {% endif %}
           {% if printer_status.AD5X.progress %}
-            <div>Progress: <span class="text-zinc-200">{{ printer_status.AD5X.progress }}%</span></div>
+            <div>Progress: <span class="text-emerald-300 font-semibold">{{ printer_status.AD5X.progress }}%</span></div>
           {% endif %}
         </div>
       </div>
