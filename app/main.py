@@ -1989,6 +1989,64 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
     })
 
 
+@app.post("/admin/request/{rid}/duplicate")
+def admin_duplicate_request(request: Request, rid: str, _=Depends(require_admin)):
+    """Duplicate a request directly into the queue (for batch printing)"""
+    conn = db()
+    original = conn.execute(
+        "SELECT requester_name, requester_email, print_name, printer, material, colors, link_url, notes FROM requests WHERE id = ?",
+        (rid,)
+    ).fetchone()
+    
+    if not original:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    # Create new request with same details
+    new_id = str(uuid.uuid4())
+    created = now_iso()
+    
+    conn.execute(
+        """INSERT INTO requests
+           (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, priority)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            new_id,
+            created,
+            created,
+            original["requester_name"],
+            original["requester_email"],
+            original["print_name"],
+            original["printer"],
+            original["material"],
+            original["colors"],
+            original["link_url"],
+            original["notes"],
+            "NEW",  # Start as NEW
+            3,  # Default priority
+        )
+    )
+    
+    # Copy files if any exist
+    files = conn.execute("SELECT * FROM files WHERE request_id = ?", (rid,)).fetchall()
+    for f in files:
+        conn.execute(
+            "INSERT INTO files (id, request_id, original_name, stored_name, created_at) VALUES (?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), new_id, f["original_name"], f["stored_name"], created)
+        )
+    
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), new_id, created, None, "NEW", f"Duplicated from request {rid[:8]}")
+    )
+    
+    conn.commit()
+    conn.close()
+    
+    # Redirect to the new request
+    return RedirectResponse(url=f"/admin/request/{new_id}", status_code=303)
+
+
 @app.post("/admin/request/{rid}/status")
 def admin_set_status(
     request: Request,

@@ -25,6 +25,19 @@
         <p class="text-zinc-400 mt-1 text-sm">Created {{ req["created_at"] }}</p>
       </div>
       <div class="flex items-center gap-3">
+        <!-- Quick Actions -->
+        <a href="/repeat/{{ req['short_id'] }}" 
+           class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/50 text-emerald-300 text-sm font-medium transition"
+           title="Submit another request with same details">
+          🔄 Submit Another
+        </a>
+        <form action="/admin/request/{{ req['id'] }}/duplicate" method="POST" class="inline">
+          <button type="submit" 
+                  class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 text-sm font-medium transition"
+                  title="Duplicate this request directly into queue">
+            📋 Duplicate to Queue
+          </button>
+        </form>
         <span class="inline-block px-4 py-2 rounded-lg border text-sm font-medium status-badge-{{ req['status'].lower() }}">
           {{ req["status"] }}
         </span>
