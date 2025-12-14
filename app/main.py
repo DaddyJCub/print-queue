@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.4"
+APP_VERSION = "1.8.5"
 # Changelog:
 # 1.8.1 - Printer retry logic (3 retries before offline), admin per-status email controls, duplicate request fix
 # 1.8.0 - Store feature, my-request enhancements (cancel/resubmit, live printer view)
@@ -305,6 +305,23 @@ def init_db():
       sha256 TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY(store_item_id) REFERENCES store_items(id)
+    );
+    """)
+
+    # Feedback table for bug reports and suggestions
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS feedback (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      name TEXT,
+      email TEXT,
+      message TEXT NOT NULL,
+      page_url TEXT,
+      user_agent TEXT,
+      status TEXT DEFAULT 'new',
+      admin_notes TEXT,
+      created_at TEXT NOT NULL,
+      resolved_at TEXT
     );
     """)
 
@@ -3015,6 +3032,164 @@ async def my_requests_view(request: Request, token: str):
 def changelog(request: Request):
     """Version history and release notes"""
     return templates.TemplateResponse("changelog.html", {"request": request, "version": APP_VERSION})
+
+
+# ─────────────────────────── FEEDBACK (Bug Reports & Suggestions) ───────────────────────────
+
+@app.get("/feedback", response_class=HTMLResponse)
+def feedback_form(request: Request, type: str = "bug", submitted: Optional[str] = None):
+    """Form for submitting bug reports or suggestions"""
+    feedback_type = type if type in ("bug", "suggestion") else "bug"
+    return templates.TemplateResponse("feedback_form.html", {
+        "request": request,
+        "feedback_type": feedback_type,
+        "turnstile_site_key": TURNSTILE_SITE_KEY,
+        "submitted": submitted == "1",
+        "version": APP_VERSION,
+    })
+
+
+@app.post("/feedback")
+async def feedback_submit(
+    request: Request,
+    feedback_type: str = Form(...),
+    name: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    message: str = Form(...),
+    page_url: Optional[str] = Form(None),
+    turnstile_token: Optional[str] = Form(None, alias="cf-turnstile-response"),
+):
+    """Submit bug report or suggestion"""
+    # Verify Turnstile
+    ok = await verify_turnstile(turnstile_token or "", request.client.host if request.client else None)
+    if not ok:
+        return templates.TemplateResponse("feedback_form.html", {
+            "request": request,
+            "feedback_type": feedback_type,
+            "turnstile_site_key": TURNSTILE_SITE_KEY,
+            "error": "Please complete the security check.",
+            "form_data": {"name": name, "email": email, "message": message},
+            "version": APP_VERSION,
+        })
+    
+    # Validate
+    if not message or len(message.strip()) < 10:
+        return templates.TemplateResponse("feedback_form.html", {
+            "request": request,
+            "feedback_type": feedback_type,
+            "turnstile_site_key": TURNSTILE_SITE_KEY,
+            "error": "Please provide a more detailed message (at least 10 characters).",
+            "form_data": {"name": name, "email": email, "message": message},
+            "version": APP_VERSION,
+        })
+    
+    if feedback_type not in ("bug", "suggestion"):
+        feedback_type = "bug"
+    
+    # Get user agent
+    user_agent = request.headers.get("user-agent", "")[:500]
+    
+    # Save to database
+    conn = db()
+    feedback_id = str(uuid.uuid4())
+    conn.execute(
+        """INSERT INTO feedback (id, type, name, email, message, page_url, user_agent, status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?)""",
+        (feedback_id, feedback_type, name, email, message.strip(), page_url, user_agent, now_iso())
+    )
+    conn.commit()
+    conn.close()
+    
+    # Send admin notification email
+    admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))
+    if admin_emails:
+        type_label = "🐛 Bug Report" if feedback_type == "bug" else "💡 Suggestion"
+        subject = f"[{APP_TITLE}] {type_label} Submitted"
+        
+        rows = [
+            ("Type", type_label),
+            ("From", name or "Anonymous"),
+        ]
+        if email:
+            rows.append(("Email", email))
+        rows.append(("Message", message[:200] + "..." if len(message) > 200 else message))
+        if page_url:
+            rows.append(("Page", page_url))
+        
+        text = f"{type_label}\n\nFrom: {name or 'Anonymous'}\nEmail: {email or 'N/A'}\n\nMessage:\n{message}\n"
+        html = build_email_html(
+            title=type_label,
+            subtitle="New feedback submitted",
+            rows=rows,
+            cta_url=f"{BASE_URL}/admin/feedback",
+            cta_label="View Feedback",
+            header_color="#8b5cf6" if feedback_type == "suggestion" else "#ef4444",
+        )
+        send_email(admin_emails, subject, text, html)
+    
+    return RedirectResponse(url=f"/feedback?type={feedback_type}&submitted=1", status_code=303)
+
+
+@app.get("/admin/feedback", response_class=HTMLResponse)
+def admin_feedback_list(request: Request, status: Optional[str] = None, _=Depends(require_admin)):
+    """Admin view of all feedback"""
+    conn = db()
+    
+    if status and status in ("new", "reviewed", "resolved", "dismissed"):
+        feedback = conn.execute(
+            "SELECT * FROM feedback WHERE status = ? ORDER BY created_at DESC",
+            (status,)
+        ).fetchall()
+    else:
+        feedback = conn.execute(
+            "SELECT * FROM feedback ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'reviewed' THEN 1 ELSE 2 END, created_at DESC"
+        ).fetchall()
+    
+    # Count by status
+    counts = conn.execute("""
+        SELECT status, COUNT(*) as count FROM feedback GROUP BY status
+    """).fetchall()
+    conn.close()
+    
+    status_counts = {row["status"]: row["count"] for row in counts}
+    
+    return templates.TemplateResponse("admin_feedback.html", {
+        "request": request,
+        "feedback": feedback,
+        "status_filter": status,
+        "status_counts": status_counts,
+        "version": APP_VERSION,
+    })
+
+
+@app.post("/admin/feedback/{fid}/status")
+def admin_feedback_update(
+    request: Request,
+    fid: str,
+    status: str = Form(...),
+    admin_notes: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """Update feedback status"""
+    if status not in ("new", "reviewed", "resolved", "dismissed"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    
+    conn = db()
+    feedback = conn.execute("SELECT * FROM feedback WHERE id = ?", (fid,)).fetchone()
+    if not feedback:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Feedback not found")
+    
+    resolved_at = now_iso() if status == "resolved" else None
+    
+    conn.execute(
+        "UPDATE feedback SET status = ?, admin_notes = ?, resolved_at = ? WHERE id = ?",
+        (status, admin_notes, resolved_at, fid)
+    )
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url="/admin/feedback", status_code=303)
 
 
 @app.get("/admin/login", response_class=HTMLResponse)

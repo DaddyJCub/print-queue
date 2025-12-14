@@ -24,12 +24,39 @@
     <!-- Changelog Entries -->
     <div class="space-y-6">
       
-      <!-- v1.8.4 -->
+      <!-- v1.8.5 -->
       <div class="bg-zinc-900/50 border border-indigo-500/50 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg">v1.8.5</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50">Latest</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Feedback System</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Bug reports & suggestions</strong> - Users can submit bug reports and suggestions via a new feedback form (Turnstile-protected)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Admin feedback management</strong> - New Feedback page in admin dashboard to review, respond to, and track feedback status</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Footer quick links</strong> - 🐛 and 💡 icons in footer for easy access to report bugs or submit suggestions</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Email notifications</strong> - Admins receive email alerts for new feedback submissions</span>
+          </li>
+        </ul>
+      </div>
+      
+      <!-- v1.8.4 -->
+      <div class="bg-zinc-900/50 border border-zinc-700/50 rounded-xl p-6">
         <div class="flex items-center gap-3 mb-4">
           <span class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg">v1.8.4</span>
           <span class="text-zinc-400 text-sm">December 2024</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50">Latest</span>
         </div>
         <h3 class="text-lg font-semibold mb-3">Auto-Match Prints & File Management</h3>
         <ul class="space-y-2 text-sm text-zinc-300">
@@ -532,7 +559,11 @@
 
     <!-- Footer -->
     <div class="mt-8 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
-      <a href="/changelog" class="hover:text-indigo-400 transition">3D Print Queue v{{ version }}</a>
+      <div class="flex items-center gap-3">
+        <a href="/feedback?type=bug" class="hover:text-red-400 transition" title="Report a Bug">🐛</a>
+        <a href="/feedback?type=suggestion" class="hover:text-yellow-400 transition" title="Submit a Suggestion">💡</a>
+        <span class="text-indigo-400">v{{ version }}</span>
+      </div>
     </div>
 
   </div>

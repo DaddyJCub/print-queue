@@ -1,0 +1,165 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ "Bug Report" if feedback_type == "bug" else "Suggestion" }} | 3D Print Queue</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  {% if turnstile_site_key %}
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  {% endif %}
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-2xl mx-auto p-6">
+    
+    <!-- Header -->
+    <div class="text-center mb-8">
+      <a href="/" class="text-indigo-400 hover:underline text-sm">← Back to Print Queue</a>
+      <h1 class="text-3xl font-bold mt-4">
+        {% if feedback_type == "bug" %}
+          🐛 Report a Bug
+        {% else %}
+          💡 Submit a Suggestion
+        {% endif %}
+      </h1>
+      <p class="text-zinc-400 mt-2">
+        {% if feedback_type == "bug" %}
+          Found something that's not working right? Let us know!
+        {% else %}
+          Have an idea to make this better? We'd love to hear it!
+        {% endif %}
+      </p>
+    </div>
+
+    <!-- Type Switcher -->
+    <div class="flex justify-center gap-4 mb-6">
+      <a href="/feedback?type=bug" 
+         class="px-4 py-2 rounded-lg border transition {% if feedback_type == 'bug' %}bg-red-600/20 border-red-500 text-red-300{% else %}bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-600{% endif %}">
+        🐛 Bug Report
+      </a>
+      <a href="/feedback?type=suggestion" 
+         class="px-4 py-2 rounded-lg border transition {% if feedback_type == 'suggestion' %}bg-purple-600/20 border-purple-500 text-purple-300{% else %}bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-600{% endif %}">
+        💡 Suggestion
+      </a>
+    </div>
+
+    <!-- Success Message -->
+    {% if submitted %}
+      <div class="bg-emerald-900/30 border border-emerald-600/50 rounded-xl p-6 mb-6 text-center">
+        <div class="text-4xl mb-2">✅</div>
+        <h2 class="text-lg font-semibold text-emerald-300">Thank you!</h2>
+        <p class="text-sm text-zinc-300 mt-2">
+          Your {{ "bug report" if feedback_type == "bug" else "suggestion" }} has been submitted.
+          We appreciate your feedback!
+        </p>
+        <div class="mt-4 flex justify-center gap-4">
+          <a href="/" class="text-indigo-400 hover:underline text-sm">Return to Print Queue</a>
+          <a href="/feedback?type={{ feedback_type }}" class="text-zinc-400 hover:underline text-sm">Submit Another</a>
+        </div>
+      </div>
+    {% else %}
+      <!-- Error Message -->
+      {% if error %}
+        <div class="bg-red-900/30 border border-red-600/50 rounded-xl p-4 mb-6">
+          <p class="text-red-300 text-sm">{{ error }}</p>
+        </div>
+      {% endif %}
+
+      <!-- Form -->
+      <form method="POST" action="/feedback" class="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6">
+        <input type="hidden" name="feedback_type" value="{{ feedback_type }}" />
+        <input type="hidden" name="page_url" value="" id="page_url_input" />
+        
+        <div class="space-y-5">
+          <!-- Name (optional) -->
+          <div>
+            <label class="block text-sm font-medium text-zinc-300 mb-2">
+              Your Name <span class="text-zinc-500">(optional)</span>
+            </label>
+            <input type="text" name="name" 
+                   value="{{ form_data.name if form_data else '' }}"
+                   class="w-full rounded-xl bg-zinc-950 border border-zinc-700 p-3 text-zinc-100 placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
+                   placeholder="John Doe" />
+          </div>
+
+          <!-- Email (optional) -->
+          <div>
+            <label class="block text-sm font-medium text-zinc-300 mb-2">
+              Email <span class="text-zinc-500">(optional, for follow-up)</span>
+            </label>
+            <input type="email" name="email" 
+                   value="{{ form_data.email if form_data else '' }}"
+                   class="w-full rounded-xl bg-zinc-950 border border-zinc-700 p-3 text-zinc-100 placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
+                   placeholder="john@example.com" />
+          </div>
+
+          <!-- Message -->
+          <div>
+            <label class="block text-sm font-medium text-zinc-300 mb-2">
+              {% if feedback_type == "bug" %}
+                What happened? <span class="text-red-400">*</span>
+              {% else %}
+                Your suggestion <span class="text-red-400">*</span>
+              {% endif %}
+            </label>
+            <textarea name="message" rows="6" required
+                      class="w-full rounded-xl bg-zinc-950 border border-zinc-700 p-3 text-zinc-100 placeholder-zinc-500 focus:border-indigo-500 focus:outline-none resize-none"
+                      placeholder="{% if feedback_type == 'bug' %}Please describe what happened, what you expected to happen, and any steps to reproduce the issue...{% else %}Share your idea for improving the print queue system...{% endif %}">{{ form_data.message if form_data else '' }}</textarea>
+            <p class="text-xs text-zinc-500 mt-1">Minimum 10 characters</p>
+          </div>
+
+          <!-- Tips -->
+          {% if feedback_type == "bug" %}
+            <div class="bg-amber-900/20 border border-amber-800/40 rounded-xl p-4">
+              <div class="text-sm text-amber-200 font-semibold mb-2">💡 Tips for a helpful bug report:</div>
+              <ul class="text-xs text-amber-100/70 space-y-1 list-disc list-inside">
+                <li>Describe what you were trying to do</li>
+                <li>What did you expect to happen?</li>
+                <li>What actually happened instead?</li>
+                <li>Include any error messages you saw</li>
+                <li>Which browser are you using?</li>
+              </ul>
+            </div>
+          {% endif %}
+
+          <!-- Turnstile -->
+          {% if turnstile_site_key %}
+            <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="dark"></div>
+          {% endif %}
+
+          <!-- Submit -->
+          <button type="submit" 
+                  class="w-full rounded-xl py-3 font-semibold transition
+                    {% if feedback_type == 'bug' %}
+                      bg-red-600 hover:bg-red-500
+                    {% else %}
+                      bg-purple-600 hover:bg-purple-500
+                    {% endif %}">
+            {% if feedback_type == "bug" %}
+              🐛 Submit Bug Report
+            {% else %}
+              💡 Submit Suggestion
+            {% endif %}
+          </button>
+        </div>
+      </form>
+    {% endif %}
+
+    <!-- Footer -->
+    <div class="mt-8 pt-4 border-t border-zinc-800 flex items-center justify-center gap-4 text-xs text-zinc-500">
+      <a href="/changelog" class="hover:text-indigo-400 transition">Changelog</a>
+      <span>•</span>
+      <a href="/feedback?type=bug" class="hover:text-red-400 transition">Report Bug</a>
+      <span>•</span>
+      <a href="/feedback?type=suggestion" class="hover:text-purple-400 transition">Suggestion</a>
+      <span>•</span>
+      <span>v{{ version }}</span>
+    </div>
+  </div>
+
+  <script>
+    // Capture referrer URL
+    document.getElementById('page_url_input').value = document.referrer || window.location.href;
+  </script>
+</body>
+</html>

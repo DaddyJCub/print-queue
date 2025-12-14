@@ -120,7 +120,11 @@
         <span class="text-zinc-700">•</span>
         <a href="/my-requests" class="hover:text-indigo-400 transition">My Requests</a>
       </div>
-      <a href="/changelog" class="hover:text-indigo-400 transition">3D Print Queue v{{ version }}</a>
+      <div class="flex items-center gap-3">
+        <a href="/feedback?type=bug" class="hover:text-red-400 transition" title="Report a Bug">🐛</a>
+        <a href="/feedback?type=suggestion" class="hover:text-yellow-400 transition" title="Submit a Suggestion">💡</a>
+        <a href="/changelog" class="hover:text-indigo-400 transition">v{{ version }}</a>
+      </div>
     </div>
   </div>
 </body>
