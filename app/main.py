@@ -97,6 +97,23 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 _printer_status_cache: Dict[str, Dict[str, Any]] = {}
 _printer_failure_count: Dict[str, int] = {}
 
+# Debug log storage for polling diagnostics (circular buffer of last 100 entries)
+_poll_debug_log: List[Dict[str, Any]] = []
+_poll_debug_max_entries = 100
+
+def add_poll_debug_log(entry: Dict[str, Any]):
+    """Add an entry to the polling debug log"""
+    global _poll_debug_log
+    entry["timestamp"] = now_iso()
+    _poll_debug_log.append(entry)
+    # Keep only the last N entries
+    if len(_poll_debug_log) > _poll_debug_max_entries:
+        _poll_debug_log = _poll_debug_log[-_poll_debug_max_entries:]
+
+def get_poll_debug_log() -> List[Dict[str, Any]]:
+    """Get the polling debug log (newest first)"""
+    return list(reversed(_poll_debug_log))
+
 def get_cached_printer_status(printer_code: str) -> Optional[Dict[str, Any]]:
     """Get cached printer status (used during retry period)"""
     return _printer_status_cache.get(printer_code)
@@ -912,6 +929,7 @@ async def poll_printer_status_worker():
                 continue
             
             print("[POLL] Checking for PRINTING requests...")
+            add_poll_debug_log({"type": "poll_start", "message": "Checking for PRINTING requests"})
 
             conn = db()
             printing_reqs = conn.execute(
@@ -919,10 +937,18 @@ async def poll_printer_status_worker():
                 ("PRINTING",)
             ).fetchall()
             conn.close()
+            
+            add_poll_debug_log({"type": "poll_found", "message": f"Found {len(printing_reqs)} PRINTING requests"})
 
             for req in printing_reqs:
                 printer_api = get_printer_api(req["printer"])
                 if not printer_api:
+                    add_poll_debug_log({
+                        "type": "poll_skip",
+                        "request_id": req["id"][:8],
+                        "printer": req["printer"],
+                        "message": "No printer API configured"
+                    })
                     continue
 
                 # Check both status and progress
@@ -934,6 +960,20 @@ async def poll_printer_status_worker():
                 status_info = await printer_api.get_status()
                 machine_status = status_info.get("MachineStatus", "?") if status_info else "?"
                 print(f"[POLL] {req['printer']}: status={machine_status}, printing={is_printing}, complete={is_complete}, progress={percent_complete}%")
+                
+                # Add to debug log
+                add_poll_debug_log({
+                    "type": "poll_check",
+                    "request_id": req["id"][:8],
+                    "print_name": req["print_name"],
+                    "printer": req["printer"],
+                    "machine_status": machine_status,
+                    "is_printing": is_printing,
+                    "is_complete": is_complete,
+                    "percent_complete": percent_complete,
+                    "should_complete": is_complete or ((not is_printing) and (percent_complete == 100)),
+                    "message": f"Status: {machine_status}, Progress: {percent_complete}%"
+                })
 
                 rid = req["id"]
 
@@ -951,7 +991,9 @@ async def poll_printer_status_worker():
                         conn.close()
 
                 # Send PRINTING notification email with live printer data (if not already sent)
-                if not req.get("printing_email_sent") and is_printing:
+                # Note: sqlite3.Row doesn't have .get(), so we use bracket notation with fallback
+                printing_email_sent = req["printing_email_sent"] if req["printing_email_sent"] else 0
+                if not printing_email_sent and is_printing:
                     # Get extended info with layer count and file name
                     extended_info = await printer_api.get_extended_status()
                     current_layer = extended_info.get("current_layer") if extended_info else None
@@ -1076,12 +1118,26 @@ async def poll_printer_status_worker():
                         conn.commit()
                         conn.close()
                         print(f"[POLL] PRINTING email sent for {rid[:8]}")
+                        add_poll_debug_log({
+                            "type": "email_sent",
+                            "request_id": rid[:8],
+                            "message": "PRINTING notification email sent"
+                        })
 
                 # Auto-complete if printer reports complete OR (not printing AND at 100%)
                 should_complete = is_complete or ((not is_printing) and (percent_complete == 100))
 
                 if should_complete:
                     print(f"[PRINTER] {req['printer']} complete ({percent_complete}%), auto-updating {rid[:8]} to DONE")
+                    add_poll_debug_log({
+                        "type": "auto_complete",
+                        "request_id": rid[:8],
+                        "printer": req["printer"],
+                        "percent_complete": percent_complete,
+                        "is_complete": is_complete,
+                        "is_printing": is_printing,
+                        "message": f"Auto-completing: complete={is_complete}, printing={is_printing}, progress={percent_complete}%"
+                    })
 
                     # Capture completion data before updating status
                     completion_snapshot = None
@@ -1204,7 +1260,16 @@ async def poll_printer_status_worker():
 
             await asyncio.sleep(30)  # Poll every 30 seconds
         except Exception as e:
+            import traceback
+            error_traceback = traceback.format_exc()
             print(f"[PRINTER WORKER] Error: {e}")
+            print(f"[PRINTER WORKER] Traceback: {error_traceback}")
+            add_poll_debug_log({
+                "type": "error",
+                "error": str(e),
+                "traceback": error_traceback,
+                "message": f"Polling error: {e}"
+            })
             await asyncio.sleep(30)
 
 
@@ -2996,6 +3061,19 @@ def admin_analytics(request: Request, _=Depends(require_admin)):
     })
 
 
+@app.get("/admin/debug", response_class=HTMLResponse)
+def admin_debug(request: Request, _=Depends(require_admin)):
+    """Polling debug logs for troubleshooting"""
+    logs = get_poll_debug_log()
+    return templates.TemplateResponse("admin_debug.html", {
+        "request": request,
+        "logs": logs,
+        "printer_cache": _printer_status_cache,
+        "failure_counts": _printer_failure_count,
+        "version": APP_VERSION,
+    })
+
+
 # ─────────────────────────── STORE MANAGEMENT ───────────────────────────
 
 @app.get("/admin/store", response_class=HTMLResponse)
@@ -4318,6 +4396,16 @@ def get_completion_snapshot(rid: str, _=Depends(require_admin)):
         return Response(content=image_data, media_type="image/jpeg")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to decode snapshot")
+
+
+@app.get("/api/poll-debug")
+def get_poll_debug(_=Depends(require_admin)):
+    """Get polling debug logs for troubleshooting auto-complete issues"""
+    return {
+        "logs": get_poll_debug_log(),
+        "printer_cache": {k: v for k, v in _printer_status_cache.items()},
+        "failure_counts": {k: v for k, v in _printer_failure_count.items()},
+    }
 
 
 @app.get("/api/version")

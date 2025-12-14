@@ -1,0 +1,152 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Polling Debug | Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .log-error { background-color: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; }
+    .log-auto_complete { background-color: rgba(34, 197, 94, 0.1); border-left: 3px solid #22c55e; }
+    .log-email_sent { background-color: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; }
+    .log-poll_check { background-color: rgba(107, 114, 128, 0.05); border-left: 3px solid #6b7280; }
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  {% include "admin_nav.html" %}
+  
+  <div class="max-w-6xl mx-auto p-6">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-bold">🔧 Polling Debug</h1>
+        <p class="text-zinc-400 text-sm">Troubleshoot printer polling and auto-complete issues</p>
+      </div>
+      <button onclick="location.reload()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm flex items-center gap-2">
+        🔄 Refresh
+      </button>
+    </div>
+
+    <!-- Printer Status Cache -->
+    <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">🖨️ Printer Status Cache</h2>
+      {% if printer_cache %}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {% for printer, status in printer_cache.items() %}
+            <div class="bg-zinc-950 border border-zinc-700 rounded-lg p-4">
+              <h3 class="font-semibold text-indigo-400 mb-2">{{ printer }}</h3>
+              <pre class="text-xs text-zinc-400 overflow-auto max-h-32">{{ status | tojson(indent=2) }}</pre>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-zinc-500 text-sm">No cached printer status available</p>
+      {% endif %}
+    </div>
+
+    <!-- Failure Counts -->
+    <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">⚠️ Printer Failure Counts</h2>
+      {% if failure_counts %}
+        <div class="flex flex-wrap gap-4">
+          {% for printer, count in failure_counts.items() %}
+            <div class="bg-zinc-950 border {% if count > 0 %}border-amber-500/50{% else %}border-zinc-700{% endif %} rounded-lg px-4 py-2">
+              <span class="font-mono">{{ printer }}</span>: 
+              <span class="{% if count > 0 %}text-amber-400{% else %}text-emerald-400{% endif %} font-bold">{{ count }}</span> failures
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-zinc-500 text-sm">No failure counts recorded</p>
+      {% endif %}
+    </div>
+
+    <!-- Debug Logs -->
+    <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold">📋 Recent Poll Logs</h2>
+        <span class="text-xs text-zinc-500">Last {{ logs|length }} entries (newest first)</span>
+      </div>
+      
+      {% if logs %}
+        <div class="space-y-2 max-h-[600px] overflow-y-auto">
+          {% for log in logs %}
+            <div class="log-{{ log.type }} rounded-lg p-3 text-sm">
+              <div class="flex items-center justify-between mb-1">
+                <div class="flex items-center gap-2">
+                  {% if log.type == 'error' %}
+                    <span class="text-red-400">❌ ERROR</span>
+                  {% elif log.type == 'auto_complete' %}
+                    <span class="text-emerald-400">✅ AUTO-COMPLETE</span>
+                  {% elif log.type == 'email_sent' %}
+                    <span class="text-blue-400">📧 EMAIL SENT</span>
+                  {% elif log.type == 'poll_check' %}
+                    <span class="text-zinc-400">🔍 CHECK</span>
+                  {% elif log.type == 'poll_start' %}
+                    <span class="text-zinc-500">🕐 POLL START</span>
+                  {% elif log.type == 'poll_found' %}
+                    <span class="text-zinc-500">📊 FOUND</span>
+                  {% elif log.type == 'poll_skip' %}
+                    <span class="text-amber-400">⏭️ SKIP</span>
+                  {% else %}
+                    <span class="text-zinc-400">{{ log.type }}</span>
+                  {% endif %}
+                  
+                  {% if log.request_id %}
+                    <span class="font-mono text-xs bg-zinc-800 px-2 py-0.5 rounded">{{ log.request_id }}</span>
+                  {% endif %}
+                  
+                  {% if log.printer %}
+                    <span class="text-xs text-zinc-500">{{ log.printer }}</span>
+                  {% endif %}
+                </div>
+                <span class="text-xs text-zinc-600">{{ log.timestamp|localtime('%H:%M:%S') }}</span>
+              </div>
+              
+              <p class="text-zinc-300">{{ log.message }}</p>
+              
+              {% if log.type == 'poll_check' %}
+                <div class="mt-2 text-xs text-zinc-500 grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <span>Machine: <span class="text-zinc-300">{{ log.machine_status }}</span></span>
+                  <span>Printing: <span class="{% if log.is_printing %}text-emerald-400{% else %}text-zinc-400{% endif %}">{{ log.is_printing }}</span></span>
+                  <span>Complete: <span class="{% if log.is_complete %}text-emerald-400{% else %}text-zinc-400{% endif %}">{{ log.is_complete }}</span></span>
+                  <span>Should Complete: <span class="{% if log.should_complete %}text-emerald-400 font-bold{% else %}text-zinc-400{% endif %}">{{ log.should_complete }}</span></span>
+                </div>
+              {% endif %}
+              
+              {% if log.traceback %}
+                <details class="mt-2">
+                  <summary class="text-xs text-red-400 cursor-pointer hover:underline">Show Traceback</summary>
+                  <pre class="mt-2 text-xs bg-zinc-950 p-2 rounded overflow-auto max-h-48 text-red-300">{{ log.traceback }}</pre>
+                </details>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-zinc-500 text-sm">No poll logs yet. Polling runs every 30 seconds when there are PRINTING requests.</p>
+      {% endif %}
+    </div>
+    
+    <!-- Tips -->
+    <div class="mt-6 bg-indigo-900/20 border border-indigo-500/30 rounded-xl p-4">
+      <h3 class="font-semibold text-indigo-300 mb-2">💡 Auto-Complete Criteria</h3>
+      <p class="text-sm text-zinc-400 mb-2">A print is auto-completed when:</p>
+      <ul class="text-sm text-zinc-400 list-disc list-inside space-y-1">
+        <li><code class="bg-zinc-800 px-1 rounded">is_complete = True</code> (printer reports BUILDING_COMPLETED status)</li>
+        <li>OR <code class="bg-zinc-800 px-1 rounded">is_printing = False AND percent_complete = 100%</code></li>
+      </ul>
+      <p class="text-sm text-zinc-500 mt-2">If <code>should_complete</code> shows <span class="text-emerald-400">True</span> but no auto-complete happened, check for errors above.</p>
+    </div>
+  </div>
+  
+  <!-- Footer -->
+  <footer class="mt-12 pb-6 text-center text-xs text-zinc-600">
+    v{{ version }}
+  </footer>
+  
+  <script>
+    // Auto-refresh every 30 seconds
+    setTimeout(() => location.reload(), 30000);
+  </script>
+</body>
+</html>
