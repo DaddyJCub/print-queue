@@ -12,8 +12,10 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.0"
+APP_VERSION = "1.8.1"
 # Changelog:
+# 1.8.1 - Printer retry logic (3 retries before offline), admin per-status email controls, duplicate request fix
+# 1.8.0 - Store feature, my-request enhancements (cancel/resubmit, live printer view)
 # 1.7.3 - Timelapse API: list and download timelapse videos from printers
 # 1.7.2 - Request templates: save and reuse common form configurations
 # 1.7.1 - Dynamic rush pricing based on queue size
@@ -2217,14 +2219,16 @@ def requester_resubmit(request: Request, rid: str, token: str):
         INSERT INTO requests (
             id, created_at, updated_at, requester_name, requester_email,
             printer, material, colors, link_url, notes, print_name,
-            status, access_token, priority
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            status, access_token, priority, special_notes, print_time_minutes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         new_id, created, created,
         req["requester_name"], req["requester_email"],
         req["printer"], req["material"], req["colors"],
         req["link_url"], req["notes"], req["print_name"],
-        "NEW", new_token, req["priority"] or 0
+        "NEW", new_token, 3,  # Reset to default priority P3 for resubmitted requests
+        None,  # Clear special_notes for fresh start
+        req["print_time_minutes"]  # Keep estimated print time
     ))
     
     # Copy files
@@ -3312,7 +3316,7 @@ def admin_duplicate_request(request: Request, rid: str, _=Depends(require_admin)
     """Duplicate a request directly into the queue (for batch printing)"""
     conn = db()
     original = conn.execute(
-        "SELECT requester_name, requester_email, print_name, printer, material, colors, link_url, notes FROM requests WHERE id = ?",
+        "SELECT requester_name, requester_email, print_name, printer, material, colors, link_url, notes, priority, special_notes FROM requests WHERE id = ?",
         (rid,)
     ).fetchone()
     
@@ -3322,12 +3326,13 @@ def admin_duplicate_request(request: Request, rid: str, _=Depends(require_admin)
     
     # Create new request with same details
     new_id = str(uuid.uuid4())
+    new_token = secrets.token_urlsafe(32)
     created = now_iso()
     
     conn.execute(
         """INSERT INTO requests
-           (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, priority)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, priority, special_notes, access_token)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             new_id,
             created,
@@ -3341,16 +3346,18 @@ def admin_duplicate_request(request: Request, rid: str, _=Depends(require_admin)
             original["link_url"],
             original["notes"],
             "NEW",  # Start as NEW
-            3,  # Default priority
+            original["priority"] or 3,  # Keep original priority or default P3
+            original["special_notes"],  # Copy special notes too
+            new_token,  # Generate access token
         )
     )
     
     # Copy files if any exist
-    files = conn.execute("SELECT * FROM files WHERE request_id = ?", (rid,)).fetchall()
+    files = conn.execute("SELECT original_filename, stored_filename, size_bytes, sha256 FROM files WHERE request_id = ?", (rid,)).fetchall()
     for f in files:
         conn.execute(
-            "INSERT INTO files (id, request_id, original_name, stored_name, created_at) VALUES (?, ?, ?, ?, ?)",
-            (str(uuid.uuid4()), new_id, f["original_name"], f["stored_name"], created)
+            "INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), new_id, created, f["original_filename"], f["stored_filename"], f["size_bytes"], f["sha256"])
         )
     
     conn.execute(
