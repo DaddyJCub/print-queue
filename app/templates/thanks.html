@@ -3,16 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Thanks</title>
+  <title>Request Submitted</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-xl mx-auto p-6">
-    <div class="bg-zinc-900/60 p-6 rounded-2xl border border-zinc-800">
-      <h1 class="text-2xl font-bold">Request submitted</h1>
-      <p class="text-zinc-400 mt-2">Your request ID:</p>
-      <code class="block mt-2 p-3 bg-zinc-950 border border-zinc-800 rounded-xl">{{ rid }}</code>
-      <a class="inline-block mt-6 text-indigo-400 hover:underline" href="/">Submit another</a>
+    <div class="bg-gradient-to-br from-emerald-600/20 to-emerald-900/10 border border-emerald-500/40 rounded-2xl p-6">
+      <div class="text-emerald-300 text-lg font-semibold">✓ Request submitted</div>
+      <p class="text-zinc-400 mt-3 text-sm">Your request ID (save this!):</p>
+      <code class="block mt-2 p-3 bg-zinc-950 border border-zinc-800 rounded-xl font-mono text-indigo-200 font-semibold">{{ rid }}</code>
+      <p class="text-zinc-400 mt-3 text-sm">You'll be redirected to the queue shortly. Bookmark the link!</p>
+      <div class="mt-6 flex gap-3">
+        <a href="/queue" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold text-center flex-1">
+          View Queue
+        </a>
+        <a href="/" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-center">
+          Submit Another
+        </a>
+      </div>
     </div>
   </div>
 </body>

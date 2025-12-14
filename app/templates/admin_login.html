@@ -8,25 +8,29 @@
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-md mx-auto p-6">
-    <h1 class="text-3xl font-bold">Admin Login</h1>
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+      <h1 class="text-3xl font-bold">Admin Login</h1>
 
-    {% if request.query_params.get("bad") %}
-      <div class="mt-4 text-sm text-red-300">Wrong password.</div>
-    {% endif %}
+      {% if request.query_params.get("bad") %}
+        <div class="mt-4 bg-red-900/20 border border-red-800 text-red-200 rounded-lg p-3 text-sm">
+          Wrong password. Try again.
+        </div>
+      {% endif %}
 
-    <form class="mt-6 space-y-4 bg-zinc-900/60 p-6 rounded-2xl border border-zinc-800"
-          action="/admin/login" method="POST">
-      <div>
-        <label class="text-sm text-zinc-300">Password</label>
-        <input name="password" type="password" required class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+      <form class="mt-6 space-y-4"
+            action="/admin/login" method="POST">
+        <div>
+          <label class="text-sm text-zinc-300">Password</label>
+          <input name="password" type="password" required autofocus class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+        </div>
+        <button class="w-full rounded-2xl bg-indigo-600 hover:bg-indigo-500 transition p-3 font-semibold">
+          Login
+        </button>
+      </form>
+
+      <div class="mt-6 text-sm text-zinc-500">
+        <a class="text-indigo-400 hover:underline" href="/">← Back to request form</a>
       </div>
-      <button class="w-full rounded-2xl bg-indigo-600 hover:bg-indigo-500 transition p-3 font-semibold">
-        Login
-      </button>
-    </form>
-
-    <div class="mt-6 text-sm text-zinc-500">
-      <a class="text-indigo-400 hover:underline" href="/">Back to request form</a>
     </div>
   </div>
 </body>
