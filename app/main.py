@@ -128,6 +128,10 @@ def ensure_migrations():
         cur.execute("ALTER TABLE requests ADD COLUMN priority INTEGER")
         cur.execute("UPDATE requests SET priority = 3 WHERE priority IS NULL")
 
+    if "admin_notes" not in cols:
+        # Internal work notes (admin-only)
+        cur.execute("ALTER TABLE requests ADD COLUMN admin_notes TEXT")
+
     conn.commit()
     conn.close()
 
@@ -268,8 +272,8 @@ async def submit(
     conn = db()
     conn.execute(
         """INSERT INTO requests
-           (id, created_at, updated_at, requester_name, requester_email, printer, material, colors, link_url, notes, status, special_notes, priority)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (id, created_at, updated_at, requester_name, requester_email, printer, material, colors, link_url, notes, status, special_notes, priority, admin_notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             rid,
             created,
@@ -284,6 +288,7 @@ async def submit(
             "NEW",
             None,
             3,
+            None,
         )
     )
     conn.execute(
@@ -360,10 +365,25 @@ def public_queue(request: Request, mine: Optional[str] = None):
             "is_mine": bool(mine and mine == short_id),
         })
 
+    my_pos = None
+    if mine:
+        for it in items:
+            if it["short_id"] == mine:
+                my_pos = it["pos"]
+                break
+
+    # A simple "what's happening now" summary:
+    counts = {"NEW": 0, "APPROVED": 0, "PRINTING": 0, "DONE": 0}
+    for it in items:
+        if it["status"] in counts:
+            counts[it["status"]] += 1
+
     return templates.TemplateResponse("public_queue.html", {
         "request": request,
         "items": items,
         "mine": mine,
+        "my_pos": my_pos,
+        "counts": counts,
     })
 
 
@@ -446,7 +466,10 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
         "files": files,
         "events": events,
         "status_flow": STATUS_FLOW,
-        "printers": PRINTERS
+        "printers": PRINTERS,
+        "materials": MATERIALS,
+        "allowed_exts": ", ".join(sorted(ALLOWED_EXTS)),
+        "max_upload_mb": MAX_UPLOAD_MB,
     })
 
 
@@ -476,6 +499,7 @@ def admin_set_status(
     conn.commit()
     conn.close()
 
+    # Status updates DO notify
     send_email(
         req["requester_email"],
         f"[3D Print Queue] Status update ({rid[:8]})",
@@ -525,18 +549,161 @@ def admin_set_special_notes(
         cleaned = None
 
     conn.execute("UPDATE requests SET special_notes = ?, updated_at = ? WHERE id = ?", (cleaned, now_iso(), rid))
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now_iso(), req["status"], req["status"], "Updated special notes")
+    )
     conn.commit()
     conn.close()
 
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
 
-@app.get("/download/{stored_filename}")
-def download_file(stored_filename: str, _=Depends(require_admin)):
-    path = os.path.join(UPLOAD_DIR, stored_filename)
-    if not os.path.exists(path):
+@app.post("/admin/request/{rid}/admin-notes")
+def admin_set_admin_notes(
+    request: Request,
+    rid: str,
+    admin_notes: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """
+    Admin-only work notes. No email.
+    """
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
         raise HTTPException(status_code=404, detail="Not found")
-    return RedirectResponse(url=f"/uploads/{stored_filename}", status_code=302)
+
+    cleaned = (admin_notes or "").strip()
+    if cleaned == "":
+        cleaned = None
+
+    conn.execute("UPDATE requests SET admin_notes = ?, updated_at = ? WHERE id = ?", (cleaned, now_iso(), rid))
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now_iso(), req["status"], req["status"], "Updated admin work notes")
+    )
+    conn.commit()
+    conn.close()
+
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@app.post("/admin/request/{rid}/edit")
+def admin_edit_request(
+    request: Request,
+    rid: str,
+    requester_name: str = Form(...),
+    requester_email: str = Form(...),
+    printer: str = Form(...),
+    material: str = Form(...),
+    colors: str = Form(...),
+    link_url: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """
+    Admin edit request details. No email by default.
+    """
+    if printer not in [p[0] for p in PRINTERS]:
+        raise HTTPException(status_code=400, detail="Invalid printer selection")
+    if material not in [m[0] for m in MATERIALS]:
+        raise HTTPException(status_code=400, detail="Invalid material selection")
+
+    cleaned_link = (link_url or "").strip()
+    if cleaned_link:
+        try:
+            u = urllib.parse.urlparse(cleaned_link)
+            if u.scheme not in ("http", "https"):
+                raise ValueError("Invalid scheme")
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid link URL")
+
+    cleaned_link = cleaned_link or None
+
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Not found")
+
+    conn.execute(
+        """UPDATE requests
+           SET requester_name = ?, requester_email = ?, printer = ?, material = ?, colors = ?, link_url = ?, notes = ?, updated_at = ?
+           WHERE id = ?""",
+        (
+            requester_name.strip(),
+            requester_email.strip(),
+            printer,
+            material,
+            (colors or "").strip(),
+            cleaned_link,
+            notes,
+            now_iso(),
+            rid,
+        )
+    )
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now_iso(), req["status"], req["status"], "Admin edited request details")
+    )
+    conn.commit()
+    conn.close()
+
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@app.post("/admin/request/{rid}/add-file")
+async def admin_add_file(
+    request: Request,
+    rid: str,
+    upload: UploadFile = File(...),
+    _=Depends(require_admin)
+):
+    """
+    Admin can attach additional files to an existing request (does not replace originals).
+    No email.
+    """
+    if not upload or not upload.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    ext = safe_ext(upload.filename)
+    if ext not in ALLOWED_EXTS:
+        raise HTTPException(status_code=400, detail=f"Only these file types are allowed: {', '.join(sorted(ALLOWED_EXTS))}")
+
+    data = await upload.read()
+    max_bytes = MAX_UPLOAD_MB * 1024 * 1024
+    if len(data) > max_bytes:
+        raise HTTPException(status_code=400, detail=f"File too large. Max size is {MAX_UPLOAD_MB}MB.")
+
+    stored = f"{uuid.uuid4()}{ext}"
+    out_path = os.path.join(UPLOAD_DIR, stored)
+
+    sha = hashlib.sha256(data).hexdigest()
+    with open(out_path, "wb") as f:
+        f.write(data)
+
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Not found")
+
+    conn.execute(
+        """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (str(uuid.uuid4()), rid, now_iso(), upload.filename, stored, len(data), sha)
+    )
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now_iso(), req["status"], req["status"], f"Admin added file: {upload.filename}")
+    )
+    conn.execute("UPDATE requests SET updated_at = ? WHERE id = ?", (now_iso(), rid))
+    conn.commit()
+    conn.close()
+
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
 
 # Expose uploads as static (admin pages link directly)

@@ -7,62 +7,158 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-zinc-950 text-zinc-100">
-  <div class="max-w-5xl mx-auto p-6">
+  <div class="max-w-6xl mx-auto p-6">
     <a class="text-indigo-400 hover:underline text-sm" href="/admin">← Back to dashboard</a>
 
     <div class="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div class="lg:col-span-2 bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
-        <h1 class="text-2xl font-bold">Request {{ req["id"][:8] }}</h1>
+      <!-- LEFT: DETAILS + ACTIONS -->
+      <div class="lg:col-span-2 space-y-4">
 
-        <div class="mt-3 text-sm text-zinc-300 space-y-1">
-          <div>Requester: {{ req["requester_name"] }} ({{ req["requester_email"] }})</div>
-          <div>Printer: {{ req["printer"] }}</div>
-          <div>Material: {{ req["material"] }}</div>
-          <div>Colors: {{ req["colors"] }}</div>
-          <div>
-            Link:
-            {% if req["link_url"] %}
-              <a class="text-indigo-400 hover:underline" href="{{ req['link_url'] }}" target="_blank">{{ req["link_url"] }}</a>
-            {% else %}
-              none
-            {% endif %}
+        <!-- Summary -->
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+          <h1 class="text-2xl font-bold">Request {{ req["id"][:8] }}</h1>
+
+          <div class="mt-3 text-sm text-zinc-300 space-y-1">
+            <div>Requester: {{ req["requester_name"] }} ({{ req["requester_email"] }})</div>
+            <div>Printer: {{ req["printer"] }}</div>
+            <div>Material: {{ req["material"] }}</div>
+            <div>Colors: {{ req["colors"] }}</div>
+            <div>
+              Link:
+              {% if req["link_url"] %}
+                <a class="text-indigo-400 hover:underline" href="{{ req['link_url'] }}" target="_blank">{{ req["link_url"] }}</a>
+              {% else %}
+                none
+              {% endif %}
+            </div>
+            <div>Notes: {% if req["notes"] %}{{ req["notes"] }}{% else %}none{% endif %}</div>
           </div>
-          <div>Notes: {% if req["notes"] %}{{ req["notes"] }}{% else %}none{% endif %}</div>
+
+          <div class="mt-4 flex flex-wrap items-center gap-3">
+            <span class="inline-flex px-3 py-1 rounded-xl bg-zinc-950 border border-zinc-800 text-sm">{{ req["status"] }}</span>
+            <span class="inline-flex px-3 py-1 rounded-xl bg-zinc-950 border border-zinc-800 text-sm">Priority P{{ req["priority"] or 3 }}</span>
+          </div>
+
+          <!-- Priority -->
+          <form class="mt-5 flex gap-2" method="POST" action="/admin/request/{{ req['id'] }}/priority">
+            <select name="priority" class="rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm">
+              {% for p in [1,2,3,4,5] %}
+                <option value="{{ p }}" {% if (req["priority"] or 3) == p %}selected{% endif %}>Priority {{ p }} {% if p==1 %}(highest){% endif %}</option>
+              {% endfor %}
+            </select>
+            <button class="rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 text-sm">
+              Save priority
+            </button>
+          </form>
+
+          <!-- Status update -->
+          <form class="mt-6 flex flex-col md:flex-row gap-3" method="POST" action="/admin/request/{{ req['id'] }}/status">
+            <select name="to_status" class="rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+              {% for s in status_flow %}
+                <option value="{{ s }}" {% if s == req["status"] %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+            <input name="comment" placeholder="Comment / question for requester (optional)"
+                   class="flex-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            <button class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 font-semibold">
+              Update status + notify
+            </button>
+          </form>
         </div>
 
-        <div class="mt-4 flex items-center gap-3">
-          <span class="inline-flex px-3 py-1 rounded-xl bg-zinc-950 border border-zinc-800 text-sm">{{ req["status"] }}</span>
-          <span class="inline-flex px-3 py-1 rounded-xl bg-zinc-950 border border-zinc-800 text-sm">Priority P{{ req["priority"] or 3 }}</span>
+        <!-- Edit request (admin-only) -->
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-semibold">Edit request details</h2>
+            <span class="text-xs text-zinc-500">Does not email requester</span>
+          </div>
+
+          <form class="mt-4 space-y-3" method="POST" action="/admin/request/{{ req['id'] }}/edit">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-zinc-400">Requester name (first name)</label>
+                <input name="requester_name" value="{{ req['requester_name'] }}"
+                       class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+              </div>
+              <div>
+                <label class="text-xs text-zinc-400">Requester email</label>
+                <input name="requester_email" value="{{ req['requester_email'] }}"
+                       class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-zinc-400">Printer</label>
+                <select name="printer" class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+                  {% for code, label in printers %}
+                    <option value="{{ code }}" {% if code == req["printer"] %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label class="text-xs text-zinc-400">Material</label>
+                <select name="material" class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+                  {% for code, label in materials %}
+                    <option value="{{ code }}" {% if code == req["material"] %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-zinc-400">Colors</label>
+                <input name="colors" value="{{ req['colors'] }}"
+                       class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+              </div>
+              <div>
+                <label class="text-xs text-zinc-400">Link (http/https)</label>
+                <input name="link_url" value="{{ req['link_url'] or '' }}"
+                       placeholder="https://printables.com/..."
+                       class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+              </div>
+            </div>
+
+            <div>
+              <label class="text-xs text-zinc-400">Requester notes</label>
+              <textarea name="notes" rows="3"
+                        class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3"
+                        placeholder="Anything the requester added...">{{ req["notes"] or "" }}</textarea>
+            </div>
+
+            <div class="pt-2">
+              <button class="rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
+                Save changes
+              </button>
+            </div>
+          </form>
         </div>
 
-        <!-- Priority -->
-        <form class="mt-5 flex gap-2" method="POST" action="/admin/request/{{ req['id'] }}/priority">
-          <select name="priority" class="rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm">
-            {% for p in [1,2,3,4,5] %}
-              <option value="{{ p }}" {% if (req["priority"] or 3) == p %}selected{% endif %}>Priority {{ p }} {% if p==1 %}(highest){% endif %}</option>
-            {% endfor %}
-          </select>
-          <button class="rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 text-sm">
-            Save priority
-          </button>
-        </form>
+        <!-- Admin work notes (private) -->
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-semibold">Work notes (admin-only)</h2>
+            <span class="text-xs text-zinc-500">Never shown publicly</span>
+          </div>
 
-        <!-- Status update -->
-        <form class="mt-6 flex gap-3" method="POST" action="/admin/request/{{ req['id'] }}/status">
-          <select name="to_status" class="rounded-xl bg-zinc-950 border border-zinc-800 p-3">
-            {% for s in status_flow %}
-              <option value="{{ s }}" {% if s == req["status"] %}selected{% endif %}>{{ s }}</option>
-            {% endfor %}
-          </select>
-          <input name="comment" placeholder="Comment / question for requester (optional)"
-                 class="flex-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
-          <button class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 font-semibold">
-            Update status + notify
-          </button>
-        </form>
+          <form class="mt-3" method="POST" action="/admin/request/{{ req['id'] }}/admin-notes">
+            <textarea name="admin_notes" rows="4"
+              placeholder="Examples: slicer profile used, print time estimate, post-processing steps, issues, reprint notes…"
+              class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3">{{ req["admin_notes"] or "" }}</textarea>
+            <div class="mt-3 flex gap-3">
+              <button class="rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
+                Save work notes
+              </button>
+              {% if req["admin_notes"] %}
+                <span class="text-xs text-zinc-400 self-center">Saved.</span>
+              {% endif %}
+            </div>
+          </form>
+        </div>
 
         <!-- Special notes -->
-        <div class="mt-8 border-t border-zinc-800 pt-6">
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
           <div class="flex items-center justify-between">
             <h2 class="text-lg font-semibold">Special notes</h2>
             <span class="text-xs text-zinc-500">Shown on public queue only if filled</span>
@@ -82,16 +178,32 @@
             </div>
           </form>
         </div>
+
       </div>
 
+      <!-- RIGHT: FILES + HISTORY -->
       <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <h2 class="text-lg font-semibold">Files</h2>
+
+        <!-- Add file -->
+        <form class="mt-3" method="POST" action="/admin/request/{{ req['id'] }}/add-file" enctype="multipart/form-data">
+          <div class="text-xs text-zinc-500 mb-2">
+            Add an additional file (does not replace originals). Allowed: {{ allowed_exts }} • Max: {{ max_upload_mb }}MB
+          </div>
+          <div class="flex gap-2 items-center">
+            <input type="file" name="upload" class="text-sm" />
+            <button class="rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-3 py-2 text-sm">
+              Upload
+            </button>
+          </div>
+        </form>
+
         {% if files|length == 0 %}
-          <p class="text-zinc-400 text-sm mt-2">No files uploaded.</p>
+          <p class="text-zinc-400 text-sm mt-4">No files uploaded.</p>
         {% else %}
-          <ul class="mt-3 space-y-2">
+          <ul class="mt-4 space-y-2">
             {% for f in files %}
-              <li class="text-sm">
+              <li class="text-sm bg-zinc-950/50 border border-zinc-800 rounded-xl p-3">
                 <div class="font-mono text-zinc-200">{{ f["original_filename"] }}</div>
                 <div class="text-zinc-400">{{ (f["size_bytes"] / 1024) | round(1) }} KB</div>
                 <a class="text-indigo-400 hover:underline" href="/uploads/{{ f['stored_filename'] }}" target="_blank">Download</a>
@@ -113,12 +225,13 @@
                 {% endif %}
               </div>
               {% if e["comment"] %}
-                <div class="text-zinc-300 mt-1">{{ e["comment"] }}</div>
+                <div class="text-zinc-300 mt-1 whitespace-pre-wrap">{{ e["comment"] }}</div>
               {% endif %}
             </div>
           {% endfor %}
         </div>
       </div>
+
     </div>
   </div>
 </body>

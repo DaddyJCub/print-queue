@@ -11,16 +11,53 @@
     <div class="flex items-end justify-between gap-4">
       <div>
         <h1 class="text-3xl font-bold">Print Queue</h1>
-        <p class="text-zinc-400 mt-1">Showing active requests (not yet picked up).</p>
+        <p class="text-zinc-400 mt-1">
+          The filament gremlins are hard at work. 🛠️ Showing active requests (not yet picked up).
+        </p>
       </div>
       <a class="text-indigo-400 hover:underline" href="/">Submit a request</a>
     </div>
 
+    <!-- Quick stats -->
+    <div class="mt-5 grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+        <div class="text-xs text-zinc-400">Currently printing</div>
+        <div class="mt-1 text-2xl font-bold">{{ counts["PRINTING"] }}</div>
+      </div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+        <div class="text-xs text-zinc-400">Approved / waiting</div>
+        <div class="mt-1 text-2xl font-bold">{{ counts["APPROVED"] }}</div>
+      </div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+        <div class="text-xs text-zinc-400">New requests</div>
+        <div class="mt-1 text-2xl font-bold">{{ counts["NEW"] }}</div>
+      </div>
+    </div>
+
+    <!-- Mine callout -->
     {% if mine %}
-      <div class="mt-4 text-sm text-zinc-300">
-        Highlighting your request ID: <span class="font-mono text-indigo-300">{{ mine }}</span>
+      <div class="mt-5 bg-indigo-600/10 border border-indigo-500/40 rounded-2xl p-4">
+        <div class="text-sm text-zinc-200">
+          Highlighting your request: <span class="font-mono text-indigo-200">{{ mine }}</span>
+          {% if my_pos %}
+            <span class="text-zinc-300">•</span>
+            You’re currently <span class="font-semibold text-indigo-200">#{{ my_pos }}</span> in the active queue.
+          {% endif %}
+        </div>
+        <div class="text-xs text-zinc-400 mt-1">
+          Tip: bookmark this page if you want to check status later.
+        </div>
       </div>
     {% endif %}
+
+    <!-- Legend -->
+    <div class="mt-5 flex flex-wrap gap-2 text-xs text-zinc-300">
+      <span class="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800">NEW</span>
+      <span class="px-2 py-1 rounded-lg bg-indigo-600/20 border border-indigo-500/40">APPROVED</span>
+      <span class="px-2 py-1 rounded-lg bg-emerald-600/20 border border-emerald-500/40">PRINTING</span>
+      <span class="px-2 py-1 rounded-lg bg-amber-600/20 border border-amber-500/40">DONE</span>
+      <span class="text-zinc-500 self-center ml-1">Status legend</span>
+    </div>
 
     <div class="mt-6 overflow-x-auto bg-zinc-900/60 rounded-2xl border border-zinc-800">
       <table class="w-full text-sm">
@@ -37,7 +74,8 @@
         </thead>
         <tbody>
           {% for r in items %}
-          <tr class="border-b border-zinc-800 {% if r.is_mine %}bg-indigo-900/20{% else %}hover:bg-zinc-950/40{% endif %}">
+          <tr class="border-b border-zinc-800
+                     {% if r.is_mine %}bg-indigo-900/20 ring-1 ring-indigo-500/30{% else %}hover:bg-zinc-950/40{% endif %}">
             <td class="p-3 text-zinc-400 align-top">{{ r.pos }}</td>
             <td class="p-3 font-mono align-top">{{ r.short_id }}</td>
             <td class="p-3 align-top">{{ r.requester_first }}</td>
@@ -45,10 +83,22 @@
             <td class="p-3 align-top">{{ r.material }}</td>
             <td class="p-3 align-top">{{ r.colors }}</td>
             <td class="p-3 align-top">
-              <div class="inline-flex px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800">{{ r.status }}</div>
+              {% set s = r.status %}
+              <span class="inline-flex px-2 py-1 rounded-lg border
+                {% if s == "PRINTING" %}bg-emerald-600/20 border-emerald-500/40 text-emerald-200
+                {% elif s == "APPROVED" %}bg-indigo-600/20 border-indigo-500/40 text-indigo-200
+                {% elif s == "DONE" %}bg-amber-600/20 border-amber-500/40 text-amber-200
+                {% else %}bg-zinc-950 border-zinc-800 text-zinc-200{% endif %}">
+                {{ s }}
+              </span>
+
               {% if r.special_notes %}
+                <div class="mt-2">
+                  <span class="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-lg bg-amber-900/20 border border-amber-800 text-amber-200">
+                    Special note
+                  </span>
+                </div>
                 <div class="mt-2 text-xs text-zinc-300 bg-zinc-950/60 border border-zinc-800 rounded-xl p-2">
-                  <div class="text-zinc-400 mb-1">Special notes</div>
                   <div class="whitespace-pre-wrap">{{ r.special_notes }}</div>
                 </div>
               {% endif %}
