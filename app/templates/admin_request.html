@@ -289,23 +289,62 @@
         <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
           <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
             <span>⏱ Print Time Estimate</span>
-            {% if req["print_time_minutes"] %}
+            {% if req["slicer_estimate_minutes"] or req["print_time_minutes"] %}
               <span class="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded-lg">
-                {{ (req["print_time_minutes"] // 60) }}h {{ (req["print_time_minutes"] % 60) }}m
+                {% set display_mins = req["print_time_minutes"] or req["slicer_estimate_minutes"] or 0 %}
+                {{ (display_mins // 60) }}h {{ (display_mins % 60) }}m
               </span>
             {% endif %}
           </h2>
+          
+          <!-- Accuracy Info -->
+          {% if accuracy_info and accuracy_info.sample_count >= 2 %}
+            <div class="mb-4 p-3 rounded-lg {% if accuracy_info.factor > 1.1 %}bg-amber-500/10 border border-amber-500/30{% elif accuracy_info.factor < 0.9 %}bg-emerald-500/10 border border-emerald-500/30{% else %}bg-zinc-800/50 border border-zinc-700{% endif %}">
+              <div class="flex items-center gap-2 text-sm">
+                {% if accuracy_info.factor > 1.1 %}
+                  <span class="text-amber-400">📊</span>
+                  <span class="text-amber-300">{{ accuracy_info.message }}</span>
+                {% elif accuracy_info.factor < 0.9 %}
+                  <span class="text-emerald-400">📊</span>
+                  <span class="text-emerald-300">{{ accuracy_info.message }}</span>
+                {% else %}
+                  <span class="text-zinc-400">📊</span>
+                  <span class="text-zinc-300">{{ accuracy_info.message }}</span>
+                {% endif %}
+              </div>
+              <p class="text-xs text-zinc-500 mt-1">Based on {{ accuracy_info.sample_count }} completed prints for this printer</p>
+            </div>
+          {% elif accuracy_info and accuracy_info.sample_count < 2 %}
+            <div class="mb-4 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700">
+              <p class="text-xs text-zinc-500">💡 After a few prints complete, we'll learn how accurate your slicer estimates are and auto-adjust future predictions.</p>
+            </div>
+          {% endif %}
+          
+          <!-- Time Display -->
+          {% if req["slicer_estimate_minutes"] and req["print_time_minutes"] and req["slicer_estimate_minutes"] != req["print_time_minutes"] %}
+            <div class="grid grid-cols-2 gap-3 mb-4">
+              <div class="bg-zinc-950/50 rounded-lg p-3">
+                <p class="text-xs text-zinc-500 uppercase mb-1">Slicer Says</p>
+                <p class="text-lg font-semibold">{{ (req["slicer_estimate_minutes"] // 60) }}h {{ (req["slicer_estimate_minutes"] % 60) }}m</p>
+              </div>
+              <div class="bg-zinc-950/50 rounded-lg p-3 border border-emerald-500/30">
+                <p class="text-xs text-emerald-400 uppercase mb-1">Adjusted Estimate</p>
+                <p class="text-lg font-semibold text-emerald-300">{{ (req["print_time_minutes"] // 60) }}h {{ (req["print_time_minutes"] % 60) }}m</p>
+              </div>
+            </div>
+          {% endif %}
+          
           <form class="space-y-3" method="POST" action="/admin/request/{{ req['id'] }}/print-time">
-            <p class="text-xs text-zinc-400 mb-3">Set estimated duration for queue predictions</p>
+            <p class="text-xs text-zinc-400 mb-3">Enter the time from your slicer. We'll auto-adjust based on historical accuracy.</p>
             <div class="grid grid-cols-3 gap-3">
               <div>
-                <label class="text-xs text-zinc-400 uppercase tracking-wide block mb-2">Hours</label>
-                <input type="number" name="hours" min="0" max="999" value="{{ (req['print_time_minutes'] or 0) // 60 }}"
+                <label class="text-xs text-zinc-400 uppercase tracking-wide block mb-2">Slicer Hours</label>
+                <input type="number" name="hours" min="0" max="999" value="{{ (req['slicer_estimate_minutes'] or req['print_time_minutes'] or 0) // 60 }}"
                        class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm" />
               </div>
               <div>
-                <label class="text-xs text-zinc-400 uppercase tracking-wide block mb-2">Minutes</label>
-                <input type="number" name="minutes" min="0" max="59" value="{{ (req['print_time_minutes'] or 0) % 60 }}"
+                <label class="text-xs text-zinc-400 uppercase tracking-wide block mb-2">Slicer Minutes</label>
+                <input type="number" name="minutes" min="0" max="59" value="{{ (req['slicer_estimate_minutes'] or req['print_time_minutes'] or 0) % 60 }}"
                        class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm" />
               </div>
               <div>

@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.2"
+APP_VERSION = "1.8.3"
 # Changelog:
 # 1.8.1 - Printer retry logic (3 retries before offline), admin per-status email controls, duplicate request fix
 # 1.8.0 - Store feature, my-request enhancements (cancel/resubmit, live printer view)
@@ -224,6 +224,7 @@ def init_db():
       started_at TEXT NOT NULL,
       completed_at TEXT NOT NULL,
       duration_minutes INTEGER NOT NULL,
+      estimated_minutes INTEGER,
       total_layers INTEGER,
       file_name TEXT,
       created_at TEXT NOT NULL
@@ -387,6 +388,16 @@ def ensure_migrations():
     if "printing_email_sent" not in cols:
         cur.execute("ALTER TABLE requests ADD COLUMN printing_email_sent INTEGER DEFAULT 0")
 
+    # Add slicer_estimate_minutes column if missing (stores original slicer estimate for accuracy tracking)
+    if "slicer_estimate_minutes" not in cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN slicer_estimate_minutes INTEGER")
+
+    # Migrate print_history table - add estimated_minutes column
+    cur.execute("PRAGMA table_info(print_history)")
+    history_cols = {row[1] for row in cur.fetchall()}
+    if history_cols and "estimated_minutes" not in history_cols:
+        cur.execute("ALTER TABLE print_history ADD COLUMN estimated_minutes INTEGER")
+
     conn.commit()
     conn.close()
 
@@ -508,6 +519,124 @@ def get_bool_setting(key: str, default: bool = False) -> bool:
 
 def parse_email_list(raw: str) -> List[str]:
     return [e.strip() for e in (raw or "").split(",") if e.strip()]
+
+
+def get_slicer_accuracy_factor(printer: str = None, material: str = None) -> Dict[str, Any]:
+    """
+    Calculate how accurate slicer estimates are based on historical data.
+    Returns a dict with:
+      - factor: multiplier to apply to slicer estimates (e.g., 1.15 = takes 15% longer)
+      - sample_count: number of prints used to calculate
+      - avg_accuracy: average accuracy percentage (100 = perfect)
+      - message: human-readable explanation
+    """
+    try:
+        conn = db()
+        
+        # Query for prints with both actual and estimated times
+        if printer and material:
+            rows = conn.execute("""
+                SELECT duration_minutes, estimated_minutes 
+                FROM print_history 
+                WHERE printer = ? AND material = ? 
+                AND estimated_minutes IS NOT NULL AND estimated_minutes > 0
+                AND duration_minutes IS NOT NULL AND duration_minutes > 0
+                ORDER BY created_at DESC
+                LIMIT 20
+            """, (printer, material)).fetchall()
+        elif printer:
+            rows = conn.execute("""
+                SELECT duration_minutes, estimated_minutes 
+                FROM print_history 
+                WHERE printer = ?
+                AND estimated_minutes IS NOT NULL AND estimated_minutes > 0
+                AND duration_minutes IS NOT NULL AND duration_minutes > 0
+                ORDER BY created_at DESC
+                LIMIT 20
+            """, (printer,)).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT duration_minutes, estimated_minutes 
+                FROM print_history 
+                WHERE estimated_minutes IS NOT NULL AND estimated_minutes > 0
+                AND duration_minutes IS NOT NULL AND duration_minutes > 0
+                ORDER BY created_at DESC
+                LIMIT 30
+            """).fetchall()
+        
+        conn.close()
+        
+        if not rows or len(rows) < 2:
+            return {
+                "factor": 1.0,
+                "sample_count": len(rows) if rows else 0,
+                "avg_accuracy": None,
+                "message": "Not enough data yet"
+            }
+        
+        # Calculate average ratio of actual/estimated
+        ratios = []
+        for row in rows:
+            actual = row["duration_minutes"]
+            estimated = row["estimated_minutes"]
+            if estimated > 0:
+                ratios.append(actual / estimated)
+        
+        if not ratios:
+            return {
+                "factor": 1.0,
+                "sample_count": 0,
+                "avg_accuracy": None,
+                "message": "Not enough data yet"
+            }
+        
+        avg_factor = sum(ratios) / len(ratios)
+        avg_accuracy = (1 / avg_factor) * 100 if avg_factor > 0 else 100
+        
+        # Generate message
+        if avg_factor > 1.1:
+            diff_pct = int((avg_factor - 1) * 100)
+            message = f"Typically takes {diff_pct}% longer than slicer"
+        elif avg_factor < 0.9:
+            diff_pct = int((1 - avg_factor) * 100)
+            message = f"Typically finishes {diff_pct}% faster than slicer"
+        else:
+            message = "Slicer estimates are accurate"
+        
+        return {
+            "factor": round(avg_factor, 2),
+            "sample_count": len(ratios),
+            "avg_accuracy": round(avg_accuracy, 1),
+            "message": message
+        }
+        
+    except Exception as e:
+        print(f"[ETA] Error calculating slicer accuracy: {e}")
+        return {
+            "factor": 1.0,
+            "sample_count": 0,
+            "avg_accuracy": None,
+            "message": "Error calculating"
+        }
+
+
+def get_adjusted_print_time(slicer_minutes: int, printer: str = None, material: str = None) -> Dict[str, Any]:
+    """
+    Get adjusted print time based on slicer estimate and historical accuracy.
+    Returns dict with original, adjusted, and accuracy info.
+    """
+    accuracy = get_slicer_accuracy_factor(printer, material)
+    adjusted = int(slicer_minutes * accuracy["factor"])
+    
+    return {
+        "slicer_minutes": slicer_minutes,
+        "adjusted_minutes": adjusted,
+        "factor": accuracy["factor"],
+        "sample_count": accuracy["sample_count"],
+        "message": accuracy["message"],
+        "slicer_display": f"{slicer_minutes // 60}h {slicer_minutes % 60}m" if slicer_minutes else None,
+        "adjusted_display": f"{adjusted // 60}h {adjusted % 60}m" if adjusted else None,
+    }
 
 
 def get_smart_eta(printer: str = None, material: str = None, 
@@ -1186,8 +1315,8 @@ async def poll_printer_status_worker():
                             conn.execute("""
                                 INSERT INTO print_history 
                                 (id, request_id, printer, material, print_name, started_at, completed_at, 
-                                 duration_minutes, total_layers, file_name, created_at)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                 duration_minutes, estimated_minutes, total_layers, file_name, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """, (
                                 str(uuid.uuid4()),
                                 rid,
@@ -1197,11 +1326,12 @@ async def poll_printer_status_worker():
                                 started_at,
                                 completed_at,
                                 duration_minutes,
+                                req_row["slicer_estimate_minutes"] or req_row["print_time_minutes"],  # Use slicer estimate if available
                                 extended_info.get("total_layers") if extended_info else None,
                                 extended_info.get("current_file") if extended_info else None,
                                 completed_at
                             ))
-                            print(f"[PRINTER] Recorded print history: {duration_minutes} minutes for {req_row['printer']}")
+                            print(f"[PRINTER] Recorded print history: {duration_minutes} min actual, {req_row.get('slicer_estimate_minutes') or req_row.get('print_time_minutes') or '?'} min estimated for {req_row['printer']}")
                         except Exception as e:
                             print(f"[PRINTER] Failed to record print history: {e}")
                     
@@ -3503,6 +3633,9 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
     # Get camera URL for the printer if configured
     camera_url = get_camera_url(req["printer"]) if req["printer"] in ["ADVENTURER_4", "AD5X"] else None
     
+    # Get slicer accuracy info for this printer/material combo
+    accuracy_info = get_slicer_accuracy_factor(req["printer"], req["material"])
+    
     return templates.TemplateResponse("admin_request.html", {
         "request": request,
         "req": req,
@@ -3516,6 +3649,7 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
         "max_upload_mb": MAX_UPLOAD_MB,
         "camera_url": camera_url,
         "now": datetime.now().timestamp(),  # For cache-busting
+        "accuracy_info": accuracy_info,
         "version": APP_VERSION,
     })
 
@@ -4028,10 +4162,10 @@ def admin_set_print_time(
 ):
     """Set print time estimate (hours + minutes) for a request."""
     # Convert hours and minutes to total minutes
-    total_minutes = hours * 60 + minutes
+    slicer_minutes = hours * 60 + minutes
     
-    if total_minutes < 1 or total_minutes > 999 * 60:  # up to 999 hours
-        raise HTTPException(status_code=400, detail="Print time must be at least 1 minute (up to 999 hours)")
+    if slicer_minutes < 0 or slicer_minutes > 999 * 60:  # up to 999 hours (0 allowed to clear)
+        raise HTTPException(status_code=400, detail="Print time must be 0 to 999 hours")
     if turnaround_minutes < 0 or turnaround_minutes > 1440:  # 0 to 24 hours
         raise HTTPException(status_code=400, detail="Turnaround must be 0..1440 minutes")
 
@@ -4041,13 +4175,23 @@ def admin_set_print_time(
         conn.close()
         raise HTTPException(status_code=404, detail="Not found")
 
+    # Get adjusted time based on historical accuracy
+    if slicer_minutes > 0:
+        adjusted = get_adjusted_print_time(slicer_minutes, req["printer"], req["material"])
+        adjusted_minutes = adjusted["adjusted_minutes"]
+    else:
+        adjusted_minutes = 0
+
+    # Store both the slicer estimate (for accuracy tracking) and the adjusted time (for queue predictions)
     conn.execute(
-        "UPDATE requests SET print_time_minutes = ?, turnaround_minutes = ?, updated_at = ? WHERE id = ?",
-        (total_minutes, turnaround_minutes, now_iso(), rid)
+        "UPDATE requests SET slicer_estimate_minutes = ?, print_time_minutes = ?, turnaround_minutes = ?, updated_at = ? WHERE id = ?",
+        (slicer_minutes if slicer_minutes > 0 else None, adjusted_minutes if adjusted_minutes > 0 else None, turnaround_minutes, now_iso(), rid)
     )
     conn.commit()
     conn.close()
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
 def admin_set_special_notes(
     request: Request,
     rid: str,
@@ -4405,6 +4549,43 @@ def get_poll_debug(_=Depends(require_admin)):
         "logs": get_poll_debug_log(),
         "printer_cache": {k: v for k, v in _printer_status_cache.items()},
         "failure_counts": {k: v for k, v in _printer_failure_count.items()},
+    }
+
+
+@app.get("/api/slicer-accuracy")
+def get_slicer_accuracy_api(printer: str = None, material: str = None, _=Depends(require_admin)):
+    """Get slicer accuracy stats for a printer/material combo"""
+    accuracy = get_slicer_accuracy_factor(printer, material)
+    
+    # Also get recent history
+    conn = db()
+    recent = conn.execute("""
+        SELECT printer, material, print_name, duration_minutes, estimated_minutes, completed_at
+        FROM print_history 
+        WHERE estimated_minutes IS NOT NULL AND estimated_minutes > 0
+        ORDER BY completed_at DESC
+        LIMIT 20
+    """).fetchall()
+    conn.close()
+    
+    history = []
+    for row in recent:
+        actual = row["duration_minutes"]
+        est = row["estimated_minutes"]
+        diff_pct = round((actual / est - 1) * 100, 1) if est > 0 else 0
+        history.append({
+            "printer": row["printer"],
+            "material": row["material"],
+            "print_name": row["print_name"],
+            "actual_minutes": actual,
+            "estimated_minutes": est,
+            "diff_percent": diff_pct,
+            "completed_at": row["completed_at"],
+        })
+    
+    return {
+        "accuracy": accuracy,
+        "recent_history": history,
     }
 
 
