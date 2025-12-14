@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.7.3"
+APP_VERSION = "1.7.4"
 # Changelog:
 # 1.7.3 - Timelapse API: list and download timelapse videos from printers
 # 1.7.2 - Request templates: save and reuse common form configurations
@@ -1495,38 +1495,101 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             "printer_health": printer_health,  # True if ready/printing, False if error, None if unknown
             "smart_eta": smart_eta,  # ISO datetime of estimated completion
             "smart_eta_display": smart_eta_display,  # Human-readable "Today at 3:45 PM"
+            "printing_started_at": printing_started_at,
         })
-        if r["status"] == "PRINTING":
-            printing_idx = idx
     
-    # Second pass: calculate wait times from printing point onwards
-    if printing_idx is not None:
-        cumulative = 0
-        for i in range(printing_idx, len(items)):
-            if i == printing_idx:
-                # Current printing: show its print time
-                if items[i]["print_time_minutes"]:
-                    cumulative = items[i]["print_time_minutes"]
-                    items[i]["estimated_wait_minutes"] = cumulative
-            else:
-                # Queued item: add previous item's turnaround + this item's print time
-                prev_item = items[i - 1]
-                if prev_item["turnaround_minutes"] is not None:
-                    cumulative += prev_item["turnaround_minutes"]
-                else:
-                    cumulative += 30  # default turnaround
-                
-                if items[i]["print_time_minutes"]:
-                    cumulative += items[i]["print_time_minutes"]
-                
-                items[i]["estimated_wait_minutes"] = cumulative if cumulative > 0 else None
+    # Separate PRINTING items from queue items
+    printing_items = [it for it in items if it["status"] == "PRINTING"]
+    queue_items = [it for it in items if it["status"] != "PRINTING"]
+    
+    # Group printing items by printer
+    printing_by_printer = {
+        "ADVENTURER_4": None,
+        "AD5X": None,
+    }
+    for pit in printing_items:
+        if pit["printer"] in printing_by_printer:
+            printing_by_printer[pit["printer"]] = pit
+    
+    # Calculate smart wait times for queue items
+    # Per-printer: estimate remaining time for current print, then queue time
+    def estimate_remaining_minutes(item):
+        """Estimate remaining time for a printing item based on progress"""
+        if item.get("printer_progress") and item["printer_progress"] > 0:
+            # Calculate based on elapsed time and progress
+            if item.get("printing_started_at"):
+                try:
+                    from datetime import datetime
+                    started = datetime.fromisoformat(item["printing_started_at"].replace("Z", "+00:00"))
+                    now = datetime.now(started.tzinfo) if started.tzinfo else datetime.utcnow()
+                    elapsed_minutes = (now - started).total_seconds() / 60
+                    
+                    # Need at least 2 minutes elapsed for reliable estimate
+                    if elapsed_minutes >= 2 and item["printer_progress"] > 5:
+                        total_estimated = elapsed_minutes / (item["printer_progress"] / 100)
+                        remaining = total_estimated - elapsed_minutes
+                        return max(0, int(remaining))
+                except Exception:
+                    pass
+        
+        # Fall back to manual estimate minus progress-based portion
+        if item.get("print_time_minutes"):
+            progress = item.get("printer_progress") or 0
+            remaining = item["print_time_minutes"] * (1 - progress / 100)
+            return max(0, int(remaining))
+        
+        return None
+    
+    # Track remaining time per printer
+    printer_remaining = {}
+    for printer_code, pit in printing_by_printer.items():
+        if pit:
+            remaining = estimate_remaining_minutes(pit)
+            printer_remaining[printer_code] = remaining if remaining else 30  # Default 30 min if unknown
+        else:
+            printer_remaining[printer_code] = 0  # Printer idle
+    
+    # Calculate wait times for queued items
+    # Items go to specific printers or ANY (whichever finishes first)
+    for item in queue_items:
+        target_printer = item["printer"]
+        turnaround = item.get("turnaround_minutes") or 30
+        
+        if target_printer == "ANY":
+            # Goes to whichever printer finishes first
+            wait = min(printer_remaining.values()) + turnaround
+        elif target_printer in printer_remaining:
+            wait = printer_remaining[target_printer] + turnaround
+        else:
+            wait = turnaround
+        
+        item["estimated_wait_minutes"] = wait if wait > 0 else None
+        
+        # Update the printer's queue time for next item
+        item_time = item.get("print_time_minutes") or 60  # Default 60 min for unknown prints
+        if target_printer == "ANY":
+            # Add to the printer with shortest queue
+            shortest = min(printer_remaining, key=printer_remaining.get)
+            printer_remaining[shortest] += item_time + turnaround
+        elif target_printer in printer_remaining:
+            printer_remaining[target_printer] += item_time + turnaround
+    
+    # Re-number queue items (PRINTING items shown separately)
+    for idx, item in enumerate(queue_items):
+        item["queue_pos"] = idx + 1
 
     my_pos = None
     if mine:
-        for it in items:
+        for idx, it in enumerate(queue_items):
             if it["short_id"] == mine:
-                my_pos = it["pos"]
+                my_pos = idx + 1
                 break
+        # Also check printing items
+        if not my_pos:
+            for it in printing_items:
+                if it["short_id"] == mine:
+                    my_pos = 0  # Currently printing
+                    break
 
     counts = {"NEW": 0, "APPROVED": 0, "PRINTING": 0, "DONE": 0}
     for it in items:
@@ -1535,7 +1598,9 @@ async def public_queue(request: Request, mine: Optional[str] = None):
 
     return templates.TemplateResponse("public_queue.html", {
         "request": request,
-        "items": items,
+        "items": items,  # All items for backwards compat
+        "queue_items": queue_items,  # Non-printing items for the queue table
+        "printing_by_printer": printing_by_printer,  # PRINTING items grouped by printer
         "mine": mine,
         "my_pos": my_pos,
         "counts": counts,
@@ -2109,23 +2174,69 @@ def admin_set_status(
     
     header_color = status_colors.get(to_status, "#4f46e5")
     status_title = status_titles.get(to_status, "Status Update")
+    
+    # Calculate queue position and estimated wait for APPROVED status
+    queue_position = None
+    estimated_wait_str = None
+    if to_status == "APPROVED":
+        conn2 = db()
+        # Count how many approved items are ahead (by priority, then created_at)
+        queue_count = conn2.execute("""
+            SELECT COUNT(*) FROM requests 
+            WHERE status = 'APPROVED' 
+            AND (priority > ? OR (priority = ? AND created_at < ?))
+        """, (req["priority"], req["priority"], req["created_at"])).fetchone()[0]
+        queue_position = queue_count + 1
+        
+        # Rough wait estimate: each print ~60 min avg + 30 min turnaround
+        # This is very approximate
+        estimated_wait_minutes = queue_count * 90  # 90 min per item ahead
+        if estimated_wait_minutes > 0:
+            hours = estimated_wait_minutes // 60
+            mins = estimated_wait_minutes % 60
+            if hours > 0:
+                estimated_wait_str = f"{hours}h {mins}m"
+            else:
+                estimated_wait_str = f"{mins}m"
+        else:
+            estimated_wait_str = "You're next!"
+        conn2.close()
 
     if requester_email_on_status:
         subject = f"[{APP_TITLE}] {status_title} ({rid[:8]})"
-        text = (
-            f"Your request status changed:\n\n"
-            f"{from_status} → {to_status}\n\n"
-            f"Comment: {comment or '(none)'}\n\n"
-            f"View queue: {BASE_URL}/queue?mine={rid[:8]}\n"
-        )
+        
+        # Build text version
+        text_lines = [
+            f"Your request status changed:\n",
+            f"{from_status} → {to_status}\n",
+        ]
+        if to_status == "APPROVED" and queue_position:
+            text_lines.append(f"\nQueue Position: #{queue_position}")
+            text_lines.append(f"Estimated Wait: {estimated_wait_str}")
+            text_lines.append(f"\n⚠ Note: Wait times are estimates and may vary. Check the live queue for the most accurate status.\n")
+        text_lines.append(f"\nComment: {comment or '(none)'}\n")
+        text_lines.append(f"\nView queue: {BASE_URL}/queue?mine={rid[:8]}\n")
+        text = "\n".join(text_lines)
+        
+        # Build HTML rows
+        email_rows = [
+            ("Request ID", rid[:8]),
+            ("Status", to_status),
+        ]
+        if to_status == "APPROVED" and queue_position:
+            email_rows.append(("Queue Position", f"#{queue_position}"))
+            email_rows.append(("Estimated Wait", estimated_wait_str))
+        email_rows.append(("Comment", (comment or "—")))
+        
+        # Add disclaimer for APPROVED
+        subtitle = f"Request {rid[:8]} has been {to_status.lower().replace('_', ' ')}"
+        if to_status == "APPROVED" and queue_position:
+            subtitle += f"<br><small style='color: #94a3b8; font-weight: normal;'>⚠ Wait times are estimates. Check the queue for live updates.</small>"
+        
         html = build_email_html(
             title=status_title,
-            subtitle=f"Request {rid[:8]} has been {to_status.lower().replace('_', ' ')}",
-            rows=[
-                ("Request ID", rid[:8]),
-                ("Status", to_status),
-                ("Comment", (comment or "—")),
-            ],
+            subtitle=subtitle,
+            rows=email_rows,
             cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
             cta_label="View in Queue",
             header_color=header_color,

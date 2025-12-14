@@ -128,6 +128,21 @@
                 <div class="h-full bg-gradient-to-r from-emerald-500 to-emerald-400" style="width: {{ printer_status.ADVENTURER_4.progress }}%"></div>
               </div>
             {% endif %}
+            <!-- Current print info -->
+            {% if printing_by_printer.ADVENTURER_4 %}
+              {% set pit = printing_by_printer.ADVENTURER_4 %}
+              <div class="mt-3 pt-3 border-t border-zinc-700/50">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <span class="font-semibold text-zinc-200">{{ pit.print_name or pit.short_id }}</span>
+                    <span class="text-zinc-500 ml-2">by {{ pit.requester_first }}</span>
+                  </div>
+                  {% if pit.smart_eta_display %}
+                    <span class="text-xs text-emerald-300">Est. done {{ pit.smart_eta_display }}</span>
+                  {% endif %}
+                </div>
+              </div>
+            {% endif %}
             <!-- Live Camera Preview -->
             <div class="mt-3">
               <button onclick="toggleCameraPreview('ADVENTURER_4')" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
@@ -191,6 +206,21 @@
                 <div class="h-full bg-gradient-to-r from-emerald-500 to-emerald-400" style="width: {{ printer_status.AD5X.progress }}%"></div>
               </div>
             {% endif %}
+            <!-- Current print info -->
+            {% if printing_by_printer.AD5X %}
+              {% set pit = printing_by_printer.AD5X %}
+              <div class="mt-3 pt-3 border-t border-zinc-700/50">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <span class="font-semibold text-zinc-200">{{ pit.print_name or pit.short_id }}</span>
+                    <span class="text-zinc-500 ml-2">by {{ pit.requester_first }}</span>
+                  </div>
+                  {% if pit.smart_eta_display %}
+                    <span class="text-xs text-emerald-300">Est. done {{ pit.smart_eta_display }}</span>
+                  {% endif %}
+                </div>
+              </div>
+            {% endif %}
             <!-- Live Camera Preview -->
             <div class="mt-3">
               <button onclick="toggleCameraPreview('AD5X')" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
@@ -212,105 +242,119 @@
       </div>
     </div>
 
-    <div class="mt-6 overflow-x-auto bg-zinc-900/60 rounded-2xl border border-zinc-800">
-      <table class="w-full text-sm">
-        <thead class="text-zinc-400 bg-zinc-950/40">
-          <tr class="border-b border-zinc-800">
-            <th class="text-left p-3">#</th>
-            <th class="text-left p-3">Print Name</th>
-            <th class="text-left p-3">Requester</th>
-            <th class="text-left p-3">Printer</th>
-            <th class="text-left p-3">Material</th>
-            <th class="text-left p-3">Colors</th>
-            <th class="text-left p-3">Status</th>
-            <th class="text-left p-3">Time</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in items %}
-          <tr class="border-b border-zinc-800
-                     {% if r.is_mine %}bg-indigo-900/30 ring-1 ring-indigo-500/50{% else %}hover:bg-zinc-950/40 transition{% endif %}">
-            <td class="p-3 text-zinc-400 align-top font-semibold">{{ r.pos }}</td>
-            <td class="p-3 align-top">
-              {% if r.print_name %}
-                <span class="font-semibold text-zinc-200">{{ r.print_name }}</span>
-                <div class="text-xs text-zinc-500 font-mono mt-1">{{ r.short_id }}</div>
-              {% else %}
-                <span class="font-mono text-zinc-300 text-xs">{{ r.short_id }}</span>
-              {% endif %}
-            </td>
-            <td class="p-3 align-top">{{ r.requester_first }}</td>
-            <td class="p-3 align-top text-sm text-zinc-300">{{ r.printer }}</td>
-            <td class="p-3 align-top text-sm text-zinc-300">{{ r.material }}</td>
-            <td class="p-3 align-top text-sm text-zinc-300">{{ r.colors }}</td>
-            <td class="p-3 align-top">
-              {% set s = r.status %}
-              <div class="space-y-2">
+    <!-- Queue Table (non-printing items only) -->
+    {% if queue_items %}
+    <div class="mt-6">
+      <h2 class="text-lg font-semibold mb-3 text-zinc-300">📋 Up Next in Queue</h2>
+      <div class="overflow-x-auto bg-zinc-900/60 rounded-2xl border border-zinc-800">
+        <table class="w-full text-sm">
+          <thead class="text-zinc-400 bg-zinc-950/40">
+            <tr class="border-b border-zinc-800">
+              <th class="text-left p-3">#</th>
+              <th class="text-left p-3">Print Name</th>
+              <th class="text-left p-3">Requester</th>
+              <th class="text-left p-3">Printer</th>
+              <th class="text-left p-3">Material</th>
+              <th class="text-left p-3">Colors</th>
+              <th class="text-left p-3">Status</th>
+              <th class="text-left p-3">Est. Wait</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in queue_items %}
+            <tr class="border-b border-zinc-800
+                       {% if r.is_mine %}bg-indigo-900/30 ring-1 ring-indigo-500/50{% else %}hover:bg-zinc-950/40 transition{% endif %}">
+              <td class="p-3 text-zinc-400 align-top font-semibold">{{ r.queue_pos }}</td>
+              <td class="p-3 align-top">
+                {% if r.print_name %}
+                  <span class="font-semibold text-zinc-200">{{ r.print_name }}</span>
+                  <div class="text-xs text-zinc-500 font-mono mt-1">{{ r.short_id }}</div>
+                {% else %}
+                  <span class="font-mono text-zinc-300 text-xs">{{ r.short_id }}</span>
+                {% endif %}
+              </td>
+              <td class="p-3 align-top">{{ r.requester_first }}</td>
+              <td class="p-3 align-top text-sm text-zinc-300">{{ r.printer }}</td>
+              <td class="p-3 align-top text-sm text-zinc-300">{{ r.material }}</td>
+              <td class="p-3 align-top text-sm text-zinc-300">{{ r.colors }}</td>
+              <td class="p-3 align-top">
+                {% set s = r.status %}
                 <span class="inline-flex px-3 py-1 rounded-lg text-xs font-semibold border
-                  {% if s == "PRINTING" %}bg-emerald-600/25 border-emerald-500/50 text-emerald-200
-                  {% elif s == "APPROVED" %}bg-indigo-600/25 border-indigo-500/50 text-indigo-200
+                  {% if s == "APPROVED" %}bg-indigo-600/25 border-indigo-500/50 text-indigo-200
                   {% elif s == "DONE" %}bg-amber-600/25 border-amber-500/50 text-amber-200
                   {% else %}bg-zinc-950 border-zinc-700 text-zinc-400{% endif %}">
                   {{ s }}
                 </span>
-
-                {% if r.special_notes %}
-                  <div class="mt-2">
-                    <span class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-amber-900/30 border border-amber-800/50 text-amber-200 font-medium">
-                      ⚠ Special note
-                    </span>
-                    <div class="mt-2 text-xs text-zinc-300 bg-zinc-950/60 border border-zinc-800 rounded-lg p-2">
-                      {{ r.special_notes }}
-                    </div>
-                  </div>
+              </td>
+              <td class="p-3 align-top">
+                {% if r.estimated_wait_minutes %}
+                  {% set hours = r.estimated_wait_minutes // 60 %}
+                  {% set mins = r.estimated_wait_minutes % 60 %}
+                  <span class="text-zinc-300 text-sm">
+                    Est. wait {% if hours > 0 %}{{ hours }}h {% endif %}{{ mins }}m
+                  </span>
+                {% elif r.status == "DONE" %}
+                  <span class="text-amber-300 text-sm">Ready! 🎉</span>
+                {% else %}
+                  <span class="text-zinc-500 text-sm">—</span>
                 {% endif %}
-              </div>
-            </td>
-            <td class="p-3 align-top">
-              {% if r.status == "PRINTING" %}
-                <div class="space-y-1">
-                  {% if r.printer_progress is not none %}
-                    <!-- Real printer progress from API -->
-                    <div class="flex items-center gap-2">
-                      <div class="w-16 bg-zinc-800 rounded-full h-2">
-                        <div class="bg-emerald-500 h-2 rounded-full" style="width: {{ r.printer_progress }}%"></div>
-                      </div>
-                      <span class="text-xs font-semibold text-emerald-300">{{ r.printer_progress }}%</span>
-                    </div>
-                  {% elif r.print_time_minutes %}
-                    <!-- Fallback: countdown timer if no API -->
-                    <div class="font-mono text-sm font-bold text-emerald-300" data-timer="print-{{ r.short_id }}" data-minutes="{{ r.print_time_minutes }}">
-                      {{ r.print_time_minutes }}m
-                    </div>
-                  {% else %}
-                    <div class="text-xs text-zinc-500">Printing...</div>
-                  {% endif %}
-                  {% if r.smart_eta_display %}
-                    <div class="text-xs text-zinc-400">
-                      Est. by <span class="font-semibold text-indigo-300">{{ r.smart_eta_display }}</span>
-                    </div>
-                  {% endif %}
-                </div>
-              {% elif r.status == "APPROVED" and r.estimated_wait_minutes %}
-                <div class="text-xs text-zinc-300">
-                  Est. wait <span class="font-semibold text-indigo-300">{{ (r.estimated_wait_minutes // 60) }}h {{ (r.estimated_wait_minutes % 60) }}m</span>
-                </div>
-              {% elif r.status == "DONE" %}
-                <a href="/repeat/{{ r.short_id }}" class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-indigo-600/20 border border-indigo-500/50 text-indigo-300 hover:bg-indigo-600/30 transition">
-                  🔄 Repeat
-                </a>
-              {% else %}
-                <div class="text-xs text-zinc-500">—</div>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-          {% if items|length == 0 %}
-          <tr><td class="p-6 text-center text-zinc-400" colspan="8">Queue is empty! First request wins. ✨</td></tr>
-          {% endif %}
-        </tbody>
-      </table>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
+    {% elif counts.PRINTING == 0 and counts.APPROVED == 0 %}
+    <div class="mt-6 text-center py-12 bg-zinc-900/30 rounded-2xl border border-zinc-800">
+      <div class="text-4xl mb-3">🎉</div>
+      <h3 class="text-lg font-semibold text-zinc-300">Queue is empty!</h3>
+      <p class="text-zinc-500 mt-1">No prints waiting. Submit a request to get started.</p>
+    </div>
+    {% endif %}
+
+    <!-- Done Items (if any) -->
+    {% set done_items = items | selectattr('status', 'equalto', 'DONE') | list %}
+    {% if done_items %}
+    <div class="mt-6">
+      <h2 class="text-lg font-semibold mb-3 text-amber-300">✅ Ready for Pickup</h2>
+      <div class="overflow-x-auto bg-zinc-900/60 rounded-2xl border border-amber-800/30">
+        <table class="w-full text-sm">
+          <thead class="text-zinc-400 bg-zinc-950/40">
+            <tr class="border-b border-zinc-800">
+              <th class="text-left p-3">Print Name</th>
+              <th class="text-left p-3">Requester</th>
+              <th class="text-left p-3">Printer</th>
+              <th class="text-left p-3">Material</th>
+              <th class="text-left p-3">Colors</th>
+              <th class="text-left p-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in done_items %}
+            <tr class="border-b border-zinc-800 {% if r.is_mine %}bg-amber-900/20{% else %}hover:bg-zinc-950/40{% endif %} transition">
+              <td class="p-3 align-top">
+                {% if r.print_name %}
+                  <span class="font-semibold text-zinc-200">{{ r.print_name }}</span>
+                  <div class="text-xs text-zinc-500 font-mono mt-1">{{ r.short_id }}</div>
+                {% else %}
+                  <span class="font-mono text-zinc-300 text-xs">{{ r.short_id }}</span>
+                {% endif %}
+              </td>
+              <td class="p-3 align-top">{{ r.requester_first }}</td>
+              <td class="p-3 align-top text-sm text-zinc-300">{{ r.printer }}</td>
+              <td class="p-3 align-top text-sm text-zinc-300">{{ r.material }}</td>
+              <td class="p-3 align-top text-sm text-zinc-300">{{ r.colors }}</td>
+              <td class="p-3 align-top">
+                <a href="/repeat/{{ r.short_id }}" class="text-xs text-indigo-400 hover:text-indigo-300">🔄 Repeat</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Print Timer Script -->
     <script>
