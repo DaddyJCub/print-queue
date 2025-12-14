@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any, List, Tuple
 
 import httpx
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
@@ -624,7 +624,15 @@ def admin_login_post(password: str = Form(...)):
         return RedirectResponse(url="/admin/login?bad=1", status_code=303)
 
     resp = RedirectResponse(url="/admin", status_code=303)
-    resp.set_cookie("admin_pw", password, httponly=True, samesite="lax")
+    resp.set_cookie("admin_pw", password, httponly=True, samesite="lax", max_age=604800)  # 7 days
+    return resp
+
+
+@app.get("/admin/logout")
+def admin_logout():
+    """Clear admin session cookie and redirect to home."""
+    resp = RedirectResponse(url="/", status_code=303)
+    resp.delete_cookie("admin_pw")
     return resp
 
 
@@ -991,5 +999,36 @@ async def admin_add_file(
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
 
-# Expose uploads as static (admin pages link directly)
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+@app.get("/admin/request/{rid}/file/{file_id}")
+def admin_download_file(request: Request, rid: str, file_id: str, _=Depends(require_admin)):
+    """Protected file download endpoint for admins only."""
+    conn = db()
+    
+    # Verify request exists
+    req = conn.execute("SELECT id FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    # Verify file exists and belongs to this request
+    file_info = conn.execute(
+        "SELECT id, stored_filename, original_filename FROM files WHERE id = ? AND request_id = ?",
+        (file_id, rid)
+    ).fetchone()
+    conn.close()
+    
+    if not file_info:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    file_path = os.path.join(UPLOAD_DIR, file_info["stored_filename"])
+    
+    # Verify file exists on disk
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    
+    # Serve with Content-Disposition to force download
+    return FileResponse(
+        path=file_path,
+        filename=file_info["original_filename"],
+        media_type="application/octet-stream"
+    )
