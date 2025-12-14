@@ -596,18 +596,21 @@ class FlashForgeAPI:
         if not status:
             return False
         # FlashForge status format: check if MachineStatus is actively printing
-        machine_status = status.get("MachineStatus", "READY").strip()
-        # BUILDING_COMPLETED means done, not actively printing
-        return machine_status not in ["READY", "BUILDING_COMPLETED", "BUILDING_FROM_SD_COMPLETED"]
+        machine_status = status.get("MachineStatus", "READY").strip().upper()
+        # Not printing if READY or any COMPLETED state
+        if machine_status == "READY" or "COMPLETED" in machine_status:
+            return False
+        # Actively printing states: BUILDING, BUILDING_FROM_SD, etc.
+        return "BUILDING" in machine_status or "PRINTING" in machine_status
 
     async def is_complete(self) -> bool:
         """Check if printer just finished a print (BUILDING_COMPLETED state or READY with 100%)"""
         status = await self.get_status()
         if not status:
             return False
-        machine_status = status.get("MachineStatus", "").strip()
-        # Completed states
-        if machine_status in ["BUILDING_COMPLETED", "BUILDING_FROM_SD_COMPLETED"]:
+        machine_status = status.get("MachineStatus", "").strip().upper()
+        # Completed states (case insensitive)
+        if "COMPLETED" in machine_status:
             return True
         # Also check if READY and at 100%
         if machine_status == "READY":
@@ -722,15 +725,18 @@ async def poll_printer_status_worker():
     Background worker that polls all configured printers every 30s.
     Auto-updates PRINTING -> DONE when printer reports 100% complete.
     """
+    print("[POLL] Background printer polling started")
     while True:
         try:
             if not get_bool_setting("enable_printer_polling", True):
                 await asyncio.sleep(30)
                 continue
+            
+            print("[POLL] Checking for PRINTING requests...")
 
             conn = db()
             printing_reqs = conn.execute(
-                "SELECT id, printer FROM requests WHERE status = ?",
+                "SELECT id, printer, printing_started_at FROM requests WHERE status = ?",
                 ("PRINTING",)
             ).fetchall()
             conn.close()
@@ -744,6 +750,11 @@ async def poll_printer_status_worker():
                 is_printing = await printer_api.is_printing()
                 is_complete = await printer_api.is_complete()
                 percent_complete = await printer_api.get_percent_complete()
+                
+                # Debug logging
+                status_info = await printer_api.get_status()
+                machine_status = status_info.get("MachineStatus", "?") if status_info else "?"
+                print(f"[POLL] {req['printer']}: status={machine_status}, printing={is_printing}, complete={is_complete}, progress={percent_complete}%")
 
                 rid = req["id"]
 
