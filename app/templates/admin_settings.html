@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-zinc-950 text-zinc-100">
-  <div class="max-w-4xl mx-auto p-6">
+  <div class="max-w-7xl mx-auto p-6">
     <!-- Navigation -->
     {% set active_page = 'settings' %}
     {% include 'admin_nav.html' %}
@@ -37,7 +37,7 @@
 
       <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <h2 class="text-lg font-semibold">Email toggles</h2>
-        <p class="text-sm text-zinc-400 mt-1">These control who gets notifications and when.</p>
+        <p class="text-sm text-zinc-400 mt-1">Control who gets notifications and when.</p>
 
         <div class="mt-4 space-y-3">
           <label class="flex items-center gap-3">
@@ -65,6 +65,111 @@
                    {% if s.requester_email_on_status %}checked{% endif %} />
             <span>Email requester when status changes</span>
           </label>
+        </div>
+      </section>
+      
+      <!-- Fine-grain notification controls -->
+      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <h2 class="text-lg font-semibold">📧 Per-Status Email Controls</h2>
+        <p class="text-sm text-zinc-400 mt-1">Fine-tune which status changes trigger emails to requesters. Only applies if "Email requester when status changes" is enabled above.</p>
+
+        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Requester notifications by status -->
+          <div class="space-y-3">
+            <p class="text-sm text-zinc-300 font-medium">Notify requester when status changes to:</p>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_requester_needs_info" class="scale-110"
+                     {% if s.notify_requester_needs_info != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-orange-400"></span>
+                Needs Info
+              </span>
+            </label>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_requester_approved" class="scale-110"
+                     {% if s.notify_requester_approved != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-green-400"></span>
+                Approved
+              </span>
+            </label>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_requester_printing" class="scale-110"
+                     {% if s.notify_requester_printing != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                Printing
+              </span>
+            </label>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_requester_done" class="scale-110"
+                     {% if s.notify_requester_done != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                Done / Ready for Pickup
+              </span>
+            </label>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_requester_picked_up" class="scale-110"
+                     {% if s.notify_requester_picked_up != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+                Picked Up
+              </span>
+            </label>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_requester_rejected" class="scale-110"
+                     {% if s.notify_requester_rejected != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-red-400"></span>
+                Rejected
+              </span>
+            </label>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_requester_cancelled" class="scale-110"
+                     {% if s.notify_requester_cancelled != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                Cancelled
+              </span>
+            </label>
+          </div>
+          
+          <!-- Quick presets -->
+          <div class="space-y-3">
+            <p class="text-sm text-zinc-300 font-medium">Quick presets:</p>
+            
+            <button type="button" onclick="setAllRequesterNotifications(true)" 
+                    class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition">
+              ✅ Enable all requester notifications
+            </button>
+            
+            <button type="button" onclick="setAllRequesterNotifications(false)" 
+                    class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition">
+              ❌ Disable all requester notifications
+            </button>
+            
+            <button type="button" onclick="setMinimalNotifications()" 
+                    class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition">
+              📭 Minimal (only Needs Info + Done)
+            </button>
+            
+            <button type="button" onclick="setStandardNotifications()" 
+                    class="w-full text-left px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition">
+              📬 Standard (Approved, Printing, Done)
+            </button>
+            
+            <p class="text-xs text-zinc-500 mt-4">
+              💡 <strong>Tip:</strong> Most users only want to know when their print is approved and when it's ready for pickup.
+            </p>
+          </div>
         </div>
       </section>
 
@@ -118,5 +223,44 @@
       <a href="/changelog" class="hover:text-indigo-400 transition">3D Print Queue v{{ version }}</a>
     </div>
   </div>
+  
+  <script>
+    // Per-status notification checkbox names
+    const statusCheckboxes = [
+      'notify_requester_needs_info',
+      'notify_requester_approved', 
+      'notify_requester_printing',
+      'notify_requester_done',
+      'notify_requester_picked_up',
+      'notify_requester_rejected',
+      'notify_requester_cancelled'
+    ];
+    
+    function setAllRequesterNotifications(enabled) {
+      statusCheckboxes.forEach(name => {
+        const cb = document.querySelector(`input[name="${name}"]`);
+        if (cb) cb.checked = enabled;
+      });
+    }
+    
+    function setMinimalNotifications() {
+      statusCheckboxes.forEach(name => {
+        const cb = document.querySelector(`input[name="${name}"]`);
+        if (cb) cb.checked = false;
+      });
+      document.querySelector('input[name="notify_requester_needs_info"]').checked = true;
+      document.querySelector('input[name="notify_requester_done"]').checked = true;
+    }
+    
+    function setStandardNotifications() {
+      statusCheckboxes.forEach(name => {
+        const cb = document.querySelector(`input[name="${name}"]`);
+        if (cb) cb.checked = false;
+      });
+      document.querySelector('input[name="notify_requester_approved"]').checked = true;
+      document.querySelector('input[name="notify_requester_printing"]').checked = true;
+      document.querySelector('input[name="notify_requester_done"]').checked = true;
+    }
+  </script>
 </body>
 </html>

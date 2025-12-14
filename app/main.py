@@ -2113,7 +2113,7 @@ def my_requests_send_link(request: Request, email: str = Form(...)):
         cta_url=magic_link,
         cta_label="View My Requests",
         header_color="#6366f1",
-        footer_text="This link expires in 24 hours. If you didn't request this, you can safely ignore this email.",
+        footer_note="This link expires in 24 hours. If you didn't request this, you can safely ignore this email.",
     )
     send_email([email], subject, text, html)
     
@@ -2368,6 +2368,15 @@ def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[s
         "admin_email_on_status": get_bool_setting("admin_email_on_status", True),
         "requester_email_on_submit": get_bool_setting("requester_email_on_submit", False),
         "requester_email_on_status": get_bool_setting("requester_email_on_status", True),
+        # Per-status notifications (default to enabled)
+        "notify_requester_needs_info": get_setting("notify_requester_needs_info", "1"),
+        "notify_requester_approved": get_setting("notify_requester_approved", "1"),
+        "notify_requester_printing": get_setting("notify_requester_printing", "1"),
+        "notify_requester_done": get_setting("notify_requester_done", "1"),
+        "notify_requester_picked_up": get_setting("notify_requester_picked_up", "1"),
+        "notify_requester_rejected": get_setting("notify_requester_rejected", "1"),
+        "notify_requester_cancelled": get_setting("notify_requester_cancelled", "1"),
+        # Rush settings
         "enable_rush_option": get_bool_setting("enable_rush_option", True),
         "rush_fee_amount": get_setting("rush_fee_amount", "5"),
         "venmo_handle": get_setting("venmo_handle", "@YourVenmoHandle"),
@@ -2384,6 +2393,15 @@ def admin_settings_post(
     admin_email_on_status: Optional[str] = Form(None),
     requester_email_on_submit: Optional[str] = Form(None),
     requester_email_on_status: Optional[str] = Form(None),
+    # Per-status notifications
+    notify_requester_needs_info: Optional[str] = Form(None),
+    notify_requester_approved: Optional[str] = Form(None),
+    notify_requester_printing: Optional[str] = Form(None),
+    notify_requester_done: Optional[str] = Form(None),
+    notify_requester_picked_up: Optional[str] = Form(None),
+    notify_requester_rejected: Optional[str] = Form(None),
+    notify_requester_cancelled: Optional[str] = Form(None),
+    # Rush settings
     enable_rush_option: Optional[str] = Form(None),
     rush_fee_amount: str = Form("5"),
     venmo_handle: str = Form("@YourVenmoHandle"),
@@ -2395,6 +2413,15 @@ def admin_settings_post(
     set_setting("admin_email_on_status", "1" if admin_email_on_status else "0")
     set_setting("requester_email_on_submit", "1" if requester_email_on_submit else "0")
     set_setting("requester_email_on_status", "1" if requester_email_on_status else "0")
+    # Per-status notifications
+    set_setting("notify_requester_needs_info", "1" if notify_requester_needs_info else "0")
+    set_setting("notify_requester_approved", "1" if notify_requester_approved else "0")
+    set_setting("notify_requester_printing", "1" if notify_requester_printing else "0")
+    set_setting("notify_requester_done", "1" if notify_requester_done else "0")
+    set_setting("notify_requester_picked_up", "1" if notify_requester_picked_up else "0")
+    set_setting("notify_requester_rejected", "1" if notify_requester_rejected else "0")
+    set_setting("notify_requester_cancelled", "1" if notify_requester_cancelled else "0")
+    # Rush settings
     set_setting("enable_rush_option", "1" if enable_rush_option else "0")
     set_setting("rush_fee_amount", (rush_fee_amount or "5").strip())
     set_setting("venmo_handle", (venmo_handle or "").strip())
@@ -2783,7 +2810,19 @@ def admin_set_status(
             estimated_wait_str = "You're next!"
         conn2.close()
 
-    if requester_email_on_status:
+    # Check fine-grain notification settings
+    status_notify_settings = {
+        "NEEDS_INFO": get_bool_setting("notify_requester_needs_info", True),
+        "APPROVED": get_bool_setting("notify_requester_approved", True),
+        "PRINTING": get_bool_setting("notify_requester_printing", True),
+        "DONE": get_bool_setting("notify_requester_done", True),
+        "PICKED_UP": get_bool_setting("notify_requester_picked_up", True),
+        "REJECTED": get_bool_setting("notify_requester_rejected", True),
+        "CANCELLED": get_bool_setting("notify_requester_cancelled", True),
+    }
+    should_notify_requester = status_notify_settings.get(to_status, True)
+
+    if requester_email_on_status and should_notify_requester:
         print_label = req["print_name"] or f"Request {rid[:8]}"
         subject = f"[{APP_TITLE}] {status_title} - {print_label}"
         
@@ -2807,18 +2846,34 @@ def admin_set_status(
         email_rows = [
             ("Print Name", req["print_name"] or "—"),
             ("Request ID", rid[:8]),
-            ("Printer", req["printer"] or "ANY"),
-            ("Material", req["material"]),
+            ("Printer", _human_printer(printer or req["printer"]) if (printer or req["printer"]) else "ANY"),
+            ("Material", _human_material(material or req["material"]) if (material or req["material"]) else "—"),
             ("Status", to_status),
         ]
         if to_status == "APPROVED" and queue_position:
             email_rows.append(("Queue Position", f"#{queue_position}"))
             email_rows.append(("Estimated Wait", estimated_wait_str))
+        
+        # Add ETA for PRINTING status
+        if to_status == "PRINTING" and req.get("print_time_minutes"):
+            hours = req["print_time_minutes"] // 60
+            mins = req["print_time_minutes"] % 60
+            if hours > 0:
+                eta_str = f"~{hours}h {mins}m"
+            else:
+                eta_str = f"~{mins}m"
+            email_rows.append(("Est. Print Time", eta_str))
+            
+            # Calculate approximate completion time
+            from datetime import timedelta
+            completion_time = datetime.utcnow() + timedelta(minutes=req["print_time_minutes"])
+            email_rows.append(("Est. Completion", completion_time.strftime("%I:%M %p UTC")))
+        
         email_rows.append(("Comment", (comment or "—")))
         
         # Status-specific subtitles and notes
         print_label = req["print_name"] or f"Request {rid[:8]}"
-        subtitle = f"'{print_label}' has been {to_status.lower().replace('_', ' ')}"
+        subtitle = f"'{print_label}' status: {to_status.replace('_', ' ').title()}"
         footer_note = None
         cta_label = "View in Queue"
         cta_url = f"{BASE_URL}/queue?mine={rid[:8]}"
@@ -2830,6 +2885,16 @@ def admin_set_status(
             cta_url = f"{BASE_URL}/my/{rid}?token={req['access_token']}"
         elif to_status == "APPROVED" and queue_position:
             footer_note = "Wait times are estimates and may vary. Check the live queue for the most accurate status."
+        elif to_status == "PRINTING":
+            subtitle = f"'{print_label}' is now printing!"
+        elif to_status == "DONE":
+            subtitle = f"'{print_label}' is complete and ready for pickup!"
+        elif to_status == "PICKED_UP":
+            subtitle = f"'{print_label}' has been picked up. Thanks!"
+        elif to_status == "REJECTED":
+            subtitle = f"'{print_label}' could not be completed"
+        elif to_status == "CANCELLED":
+            subtitle = f"'{print_label}' has been cancelled"
         
         html = build_email_html(
             title=status_title,
