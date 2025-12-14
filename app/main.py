@@ -3043,14 +3043,19 @@ async def probe_printer_timelapse_access(printer_code: str, _=Depends(require_ad
         "printer": printer_code,
         "ip": ip,
         "web_interfaces": [],
+        "mcode_responses": {},
         "file_listing": None,
     }
     
-    # Check for web interfaces
-    ports_to_check = [80, 8080, 8888, 8899, 443]
-    paths_to_check = ["/", "/index.html", "/timelapse", "/video", "/sd", "/sdcard"]
+    # Check for web interfaces - expanded port and path list
+    ports_to_check = [80, 8080, 8888, 8899, 443, 8000, 5000, 3000, 9000, 10000]
+    paths_to_check = [
+        "/", "/index.html", "/timelapse", "/video", "/sd", "/sdcard",
+        "/api", "/api/timelapse", "/api/files", "/files", "/media",
+        "/recording", "/recordings", "/camera", "/stream",
+    ]
     
-    async with httpx.AsyncClient(timeout=3.0) as client:
+    async with httpx.AsyncClient(timeout=2.0) as client:
         for port in ports_to_check:
             for path in paths_to_check:
                 try:
@@ -3066,6 +3071,69 @@ async def probe_printer_timelapse_access(printer_code: str, _=Depends(require_ad
                         })
                 except Exception:
                     continue
+    
+    # Try various M-codes to find file/timelapse info - capture raw responses
+    import socket
+    mcode_commands = [
+        "M20",      # Standard SD card file list
+        "M21",      # Init SD card
+        "M661",     # FlashForge file list
+        "M662",     # FlashForge specific
+        "M115",     # Firmware info
+        "M119",     # Status
+        "M650",     # FlashForge specific
+        "M651",     # FlashForge specific
+        "M652",     # FlashForge specific
+        "M660",     # FlashForge specific
+        "M663",     # FlashForge specific
+        "M664",     # FlashForge specific
+        "M665",     # FlashForge specific
+        "M700",     # Could be video related
+        "M701",     # Could be video related
+        "M800",     # Could be video related
+        "M20 /timelapse",  # Try listing timelapse folder
+        "M20 /video",      # Try listing video folder
+        "M20 /recording",  # Try listing recording folder
+    ]
+    
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(3)
+        sock.connect((ip, 8899))
+        
+        # Control request
+        sock.send(b"~M601 S1\r\n")
+        sock.recv(1024)
+        
+        for cmd in mcode_commands:
+            try:
+                sock.send(f"~{cmd}\r\n".encode())
+                response = b""
+                try:
+                    while True:
+                        chunk = sock.recv(4096)
+                        if not chunk:
+                            break
+                        response += chunk
+                        if b"ok\r\n" in response or b"ok\n" in response or len(response) > 10000:
+                            break
+                except socket.timeout:
+                    pass
+                
+                resp_text = response.decode('utf-8', errors='ignore').strip()
+                # Only save if response has content beyond just "ok"
+                if resp_text and len(resp_text) > 5:
+                    results["mcode_responses"][cmd] = {
+                        "response": resp_text,
+                        "lines": resp_text.split('\n'),
+                        "length": len(resp_text),
+                    }
+            except Exception as e:
+                results["mcode_responses"][cmd] = {"error": str(e)}
+        
+        sock.close()
+    except Exception as e:
+        results["mcode_error"] = str(e)
     
     # Try file listing via M-code
     files = await list_printer_files_via_mcode(printer_code)
