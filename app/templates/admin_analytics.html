@@ -147,11 +147,11 @@
     <div class="mt-6 bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
       <h2 class="text-lg font-semibold mb-4">🧠 ETA Learning Data</h2>
       <p class="text-sm text-zinc-400 mb-4">
-        The system learns from completed prints to estimate completion times. More data = more accurate ETAs.
+        The system learns from completed prints to estimate completion times. ETAs are calculated using <strong>layer progress</strong> (most accurate) with percent fallback.
       </p>
       
       {% if stats.print_history.count > 0 %}
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
           <div class="bg-zinc-950/60 border border-zinc-800 rounded-lg p-4">
             <div class="text-xs text-zinc-400">Prints Recorded</div>
             <div class="text-2xl font-bold text-indigo-300 mt-1">{{ stats.print_history.count }}</div>
@@ -186,24 +186,94 @@
               {% endif %}
             </div>
           </div>
+          <div class="bg-zinc-950/60 border border-zinc-800 rounded-lg p-4">
+            <div class="text-xs text-zinc-400">Avg Layers</div>
+            <div class="text-2xl font-bold text-blue-300 mt-1">
+              {% if stats.print_history.avg_layers %}
+                {{ stats.print_history.avg_layers }}
+              {% else %}
+                --
+              {% endif %}
+            </div>
+          </div>
+          <div class="bg-zinc-950/60 border border-zinc-800 rounded-lg p-4">
+            <div class="text-xs text-zinc-400">Max Layers</div>
+            <div class="text-2xl font-bold text-purple-300 mt-1">
+              {% if stats.print_history.max_layers %}
+                {{ stats.print_history.max_layers }}
+              {% else %}
+                --
+              {% endif %}
+            </div>
+          </div>
         </div>
         
         {% if stats.print_history.by_printer %}
           <h3 class="text-sm font-semibold text-zinc-300 mb-3">By Printer</h3>
-          <div class="space-y-2">
+          <div class="space-y-2 mb-6">
             {% for ph in stats.print_history.by_printer %}
               <div class="flex items-center justify-between bg-zinc-950/60 border border-zinc-800 rounded-lg px-4 py-2">
-                <span class="text-sm">{{ ph.printer }}</span>
+                <span class="text-sm">{{ ph.printer or 'Unknown' }}</span>
                 <span class="text-xs text-zinc-400">
-                  {{ ph.count }} prints • Avg: 
+                  {{ ph.count }} prints • 
+                  Avg: 
                   {% if ph.avg_minutes %}
                     <span class="text-emerald-300 font-semibold">{{ (ph.avg_minutes // 60)|int }}h {{ (ph.avg_minutes % 60)|int }}m</span>
                   {% else %}
                     --
                   {% endif %}
+                  {% if ph.avg_layers %}
+                    • ~{{ ph.avg_layers }} layers
+                  {% endif %}
                 </span>
               </div>
             {% endfor %}
+          </div>
+        {% endif %}
+        
+        <!-- Slicer Accuracy Section -->
+        {% if stats.slicer_accuracy %}
+          <h3 class="text-sm font-semibold text-zinc-300 mb-3">📐 Slicer Accuracy (Estimated vs Actual)</h3>
+          <p class="text-xs text-zinc-500 mb-3">Shows how accurate slicer estimates are compared to actual print times.</p>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="text-zinc-400 bg-zinc-950/40 border-b border-zinc-800">
+                <tr>
+                  <th class="text-left p-2">Printer</th>
+                  <th class="text-left p-2">Material</th>
+                  <th class="text-center p-2">Factor</th>
+                  <th class="text-left p-2">Accuracy</th>
+                  <th class="text-center p-2">Samples</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for acc in stats.slicer_accuracy %}
+                  <tr class="border-b border-zinc-800/50">
+                    <td class="p-2">{{ acc.printer }}</td>
+                    <td class="p-2">{{ acc.material }}</td>
+                    <td class="p-2 text-center font-mono">
+                      <span class="{% if acc.factor > 1.1 %}text-amber-300{% elif acc.factor < 0.9 %}text-emerald-300{% else %}text-green-300{% endif %}">
+                        {{ acc.factor }}x
+                      </span>
+                    </td>
+                    <td class="p-2 text-xs">
+                      {% if acc.factor > 1.1 %}
+                        <span class="text-amber-300">⚠️ {{ acc.message }}</span>
+                      {% elif acc.factor < 0.9 %}
+                        <span class="text-emerald-300">⚡ {{ acc.message }}</span>
+                      {% else %}
+                        <span class="text-green-300">✓ {{ acc.message }}</span>
+                      {% endif %}
+                    </td>
+                    <td class="p-2 text-center text-zinc-400">{{ acc.sample_count }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 mt-4">
+            <div class="text-zinc-400 text-sm">📐 Slicer accuracy data will appear after prints complete with estimated times.</div>
           </div>
         {% endif %}
       {% else %}

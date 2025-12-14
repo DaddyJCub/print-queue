@@ -254,6 +254,51 @@
       ⏱️ <strong>Note:</strong> ETAs are estimates only and may vary based on print complexity, material, and other factors.
     </div>
 
+    <!-- Print Match Suggestions -->
+    {% if print_match_suggestions %}
+      {% for printer_code, suggestion in print_match_suggestions.items() %}
+        <div class="mb-4 bg-amber-900/20 border border-amber-600/50 rounded-xl p-4">
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="text-amber-400">🔗</span>
+                <span class="font-semibold text-amber-200">
+                  {% if printer_code == 'ADVENTURER_4' %}Adventurer 4{% elif printer_code == 'AD5X' %}AD5X{% else %}{{ printer_code }}{% endif %}
+                  is printing "{{ suggestion.file_display }}"
+                </span>
+              </div>
+              <p class="text-sm text-zinc-300 mb-3">
+                {% if suggestion.matches|length == 1 %}
+                  Found 1 matching request. Would you like to assign it?
+                {% else %}
+                  Found {{ suggestion.matches|length }} potential matches. Select one to assign:
+                {% endif %}
+              </p>
+              <div class="flex flex-wrap gap-2">
+                {% for match in suggestion.matches %}
+                  <form method="POST" action="/admin/match-print/{{ match.id }}" class="inline">
+                    <input type="hidden" name="printer" value="{{ printer_code }}" />
+                    <button type="submit" class="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-600/30 hover:bg-amber-600/50 border border-amber-500/50 rounded-lg text-sm transition">
+                      <span class="font-medium">{{ match.print_name or match.id[:8] }}</span>
+                      <span class="text-xs text-amber-300/70">{{ match.requester_name }}</span>
+                      {% if match.printer == printer_code %}
+                        <span class="text-xs bg-green-600/30 text-green-300 px-1 rounded">assigned</span>
+                      {% endif %}
+                    </button>
+                  </form>
+                {% endfor %}
+              </div>
+            </div>
+            <form method="POST" action="/admin/dismiss-match/{{ printer_code }}" class="flex-shrink-0">
+              <button type="submit" class="text-zinc-400 hover:text-zinc-200 p-1" title="Dismiss">
+                ✕
+              </button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    {% endif %}
+
     <!-- Printer Status Cards -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="printer-status-cards">
       <!-- Adventurer 4 -->

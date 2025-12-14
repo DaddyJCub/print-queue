@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.3"
+APP_VERSION = "1.8.4"
 # Changelog:
 # 1.8.1 - Printer retry logic (3 retries before offline), admin per-status email controls, duplicate request fix
 # 1.8.0 - Store feature, my-request enhancements (cancel/resubmit, live printer view)
@@ -456,6 +456,7 @@ DEFAULT_SETTINGS: Dict[str, str] = {
     "printer_adventurer_4_ip": "192.168.0.198",
     "printer_ad5x_ip": "192.168.0.157",
     "enable_printer_polling": "1",
+    "enable_auto_print_match": "1",  # Auto-match printing file to queued requests
     "printer_offline_retries": "3",  # Retries before marking printer offline
     
     # Rush payment settings
@@ -639,7 +640,161 @@ def get_adjusted_print_time(slicer_minutes: int, printer: str = None, material: 
     }
 
 
-def get_smart_eta(printer: str = None, material: str = None, 
+# ─────────────────────────── FILENAME MATCHING FOR AUTO-PRINT ───────────────────────────
+
+def normalize_filename(filename: str) -> str:
+    """
+    Normalize a filename for fuzzy matching.
+    Strips extension, converts to lowercase, replaces spaces/underscores with nothing.
+    e.g., "Pencil Holder.stl" -> "pencilholder"
+         "Pencil_Holder_0.2mm_PLA.gcode" -> "pencilholder02mmpla"
+    """
+    if not filename:
+        return ""
+    # Get base name (remove path)
+    name = filename.split("/")[-1].split("\\")[-1]
+    # Remove extension
+    name = name.rsplit(".", 1)[0] if "." in name else name
+    # Lowercase, remove spaces/underscores/dashes
+    name = name.lower().replace(" ", "").replace("_", "").replace("-", "")
+    return name
+
+
+def get_filename_base(filename: str) -> str:
+    """
+    Get a cleaner base name for display (keeps some structure).
+    e.g., "Pencil_Holder_0.2mm_PLA.gcode" -> "Pencil_Holder"
+    """
+    if not filename:
+        return ""
+    name = filename.split("/")[-1].split("\\")[-1]
+    # Remove extension
+    name = name.rsplit(".", 1)[0] if "." in name else name
+    # Remove common slicer suffixes (0.2mm, PLA, PETG, etc.)
+    import re
+    # Remove things like _0.2mm, _PLA, _PETG, _ABS at the end
+    name = re.sub(r'[_-]?\d+\.?\d*mm[_-]?(PLA|PETG|ABS|TPU)?$', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'[_-]?(PLA|PETG|ABS|TPU)$', '', name, flags=re.IGNORECASE)
+    return name.strip("_- ")
+
+
+def find_matching_requests_for_file(printer_file: str, printer_code: str) -> List[Dict]:
+    """
+    Find QUEUED or APPROVED requests that match the filename being printed.
+    Returns list of matching requests, sorted by priority (best match first).
+    
+    Matching priority:
+    1. Requests assigned to this specific printer
+    2. Requests with no printer assigned
+    3. By priority number (lower = higher priority)
+    4. By created_at (older first - FIFO)
+    """
+    if not printer_file:
+        return []
+    
+    normalized_printer_file = normalize_filename(printer_file)
+    if not normalized_printer_file or len(normalized_printer_file) < 3:
+        return []  # Too short to match reliably
+    
+    conn = db()
+    
+    # Get all QUEUED/APPROVED requests with their files
+    requests = conn.execute("""
+        SELECT r.id, r.print_name, r.printer, r.priority, r.created_at, r.requester_name,
+               r.status, r.material
+        FROM requests r
+        WHERE r.status IN ('QUEUED', 'APPROVED')
+        ORDER BY 
+            CASE WHEN r.printer = ? THEN 0 ELSE 1 END,  -- This printer first
+            COALESCE(r.priority, 999),                   -- Then by priority
+            r.created_at                                  -- Then FIFO
+    """, (printer_code,)).fetchall()
+    
+    matches = []
+    
+    for req in requests:
+        # Check print_name for match
+        if req["print_name"]:
+            normalized_print_name = normalize_filename(req["print_name"])
+            if normalized_print_name and (
+                normalized_printer_file in normalized_print_name or 
+                normalized_print_name in normalized_printer_file
+            ):
+                matches.append({
+                    "id": req["id"],
+                    "print_name": req["print_name"],
+                    "printer": req["printer"],
+                    "priority": req["priority"],
+                    "created_at": req["created_at"],
+                    "requester_name": req["requester_name"],
+                    "status": req["status"],
+                    "material": req["material"],
+                    "match_source": "print_name"
+                })
+                continue
+        
+        # Check files for this request
+        files = conn.execute(
+            "SELECT original_filename FROM files WHERE request_id = ?",
+            (req["id"],)
+        ).fetchall()
+        
+        for f in files:
+            normalized_file = normalize_filename(f["original_filename"])
+            if normalized_file and (
+                normalized_printer_file in normalized_file or 
+                normalized_file in normalized_printer_file
+            ):
+                matches.append({
+                    "id": req["id"],
+                    "print_name": req["print_name"] or f["original_filename"],
+                    "printer": req["printer"],
+                    "priority": req["priority"],
+                    "created_at": req["created_at"],
+                    "requester_name": req["requester_name"],
+                    "status": req["status"],
+                    "material": req["material"],
+                    "match_source": "file",
+                    "matched_file": f["original_filename"]
+                })
+                break  # Only need one file match per request
+    
+    conn.close()
+    return matches
+
+
+# Global storage for print match suggestions (cleared on restart)
+_print_match_suggestions: Dict[str, Dict] = {}  # printer_code -> {file, matches, timestamp}
+
+
+def get_print_match_suggestions() -> Dict[str, Dict]:
+    """Get current print match suggestions for all printers."""
+    return _print_match_suggestions.copy()
+
+
+def set_print_match_suggestion(printer_code: str, current_file: str, matches: List[Dict]):
+    """Store print match suggestions for a printer."""
+    global _print_match_suggestions
+    if matches:
+        _print_match_suggestions[printer_code] = {
+            "file": current_file,
+            "file_display": get_filename_base(current_file),
+            "matches": matches,
+            "timestamp": now_iso(),
+            "auto_matched": False
+        }
+    elif printer_code in _print_match_suggestions:
+        del _print_match_suggestions[printer_code]
+
+
+def clear_print_match_suggestion(printer_code: str):
+    """Clear suggestion for a printer (after match or print finished)."""
+    global _print_match_suggestions
+    if printer_code in _print_match_suggestions:
+        del _print_match_suggestions[printer_code]
+
+
+def get_smart_eta(printer: str = None, material: str = None,
                   current_percent: int = None, printing_started_at: str = None,
                   current_layer: int = None, total_layers: int = None) -> Optional[datetime]:
     """
@@ -1387,6 +1542,94 @@ async def poll_printer_status_worker():
                             image_base64=admin_snapshot,
                         )
                         send_email(admin_emails, subject, text, html, image_base64=admin_snapshot)
+
+            # ─────────────────────────── AUTO-MATCH PRINTING FILE TO REQUESTS ───────────────────────────
+            # Check each printer for current file and try to match to QUEUED requests
+            for printer_code in ["ADVENTURER_4", "AD5X"]:
+                try:
+                    printer_api = get_printer_api(printer_code)
+                    if not printer_api:
+                        continue
+                    
+                    is_printing = await printer_api.is_printing()
+                    if not is_printing:
+                        # Printer not printing, clear any suggestions
+                        clear_print_match_suggestion(printer_code)
+                        continue
+                    
+                    # Get current file being printed
+                    extended = await printer_api.get_extended_status()
+                    current_file = extended.get("current_file") if extended else None
+                    
+                    if not current_file:
+                        continue
+                    
+                    # Check if there's already a PRINTING request for this printer
+                    conn = db()
+                    existing_printing = conn.execute(
+                        "SELECT id FROM requests WHERE printer = ? AND status = 'PRINTING'",
+                        (printer_code,)
+                    ).fetchone()
+                    conn.close()
+                    
+                    if existing_printing:
+                        # Already have a request assigned to this printer, no need to match
+                        clear_print_match_suggestion(printer_code)
+                        continue
+                    
+                    # Find matching QUEUED/APPROVED requests
+                    matches = find_matching_requests_for_file(current_file, printer_code)
+                    
+                    if not matches:
+                        # No matches found
+                        clear_print_match_suggestion(printer_code)
+                        continue
+                    
+                    # Check if auto-match is enabled
+                    auto_match_enabled = get_bool_setting("enable_auto_print_match", True)
+                    
+                    if len(matches) == 1 and auto_match_enabled:
+                        # Exactly one match - auto-assign!
+                        match = matches[0]
+                        rid = match["id"]
+                        
+                        print(f"[AUTO-MATCH] Auto-matching request {rid[:8]} to {printer_code} (file: {current_file})")
+                        add_poll_debug_log({
+                            "type": "auto_match",
+                            "request_id": rid[:8],
+                            "printer": printer_code,
+                            "file": current_file,
+                            "message": f"Auto-matched to {printer_code}"
+                        })
+                        
+                        conn = db()
+                        old_status = match["status"]
+                        conn.execute(
+                            "UPDATE requests SET status = 'PRINTING', printer = ?, printing_started_at = ?, updated_at = ? WHERE id = ?",
+                            (printer_code, now_iso(), now_iso(), rid)
+                        )
+                        conn.execute(
+                            "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+                            (str(uuid.uuid4()), rid, now_iso(), old_status, "PRINTING", f"Auto-matched to printer (file: {get_filename_base(current_file)})")
+                        )
+                        conn.commit()
+                        conn.close()
+                        
+                        clear_print_match_suggestion(printer_code)
+                        
+                    else:
+                        # Multiple matches or auto-match disabled - store suggestion for admin UI
+                        set_print_match_suggestion(printer_code, current_file, matches)
+                        add_poll_debug_log({
+                            "type": "match_suggestion",
+                            "printer": printer_code,
+                            "file": current_file,
+                            "match_count": len(matches),
+                            "message": f"Found {len(matches)} potential matches for {get_filename_base(current_file)}"
+                        })
+                        
+                except Exception as e:
+                    print(f"[AUTO-MATCH] Error checking {printer_code}: {e}")
 
             await asyncio.sleep(30)  # Poll every 30 seconds
         except Exception as e:
@@ -2940,6 +3183,9 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
         except Exception as e:
             print(f"[ADMIN] Error fetching printer {printer_code} status: {e}")
 
+    # Get print match suggestions
+    print_match_suggestions = get_print_match_suggestions()
+
     return templates.TemplateResponse("admin_queue.html", {
         "request": request,
         "new_reqs": new_reqs,
@@ -2951,6 +3197,7 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
             "ADVENTURER_4": printer_status.get("ADVENTURER_4", {}),
             "AD5X": printer_status.get("AD5X", {}),
         },
+        "print_match_suggestions": print_match_suggestions,
         "printers": PRINTERS,
         "materials": MATERIALS,
         "version": APP_VERSION,
@@ -3160,17 +3407,33 @@ def admin_analytics(request: Request, _=Depends(require_admin)):
         SELECT AVG(duration_minutes) as avg_minutes,
                MIN(duration_minutes) as min_minutes,
                MAX(duration_minutes) as max_minutes,
-               COUNT(*) as count
+               COUNT(*) as count,
+               AVG(total_layers) as avg_layers,
+               MAX(total_layers) as max_layers
         FROM print_history
     """).fetchone()
     
     ph_by_printer = conn2.execute("""
         SELECT printer, 
                AVG(duration_minutes) as avg_minutes,
+               AVG(total_layers) as avg_layers,
                COUNT(*) as count
         FROM print_history
         GROUP BY printer
     """).fetchall()
+    
+    # Slicer accuracy data
+    accuracy_stats = conn2.execute("""
+        SELECT printer, material,
+               AVG(CAST(duration_minutes AS FLOAT) / NULLIF(estimated_minutes, 0)) as avg_factor,
+               COUNT(*) as sample_count
+        FROM print_history
+        WHERE estimated_minutes IS NOT NULL AND estimated_minutes > 0
+              AND duration_minutes IS NOT NULL AND duration_minutes > 0
+        GROUP BY printer, material
+        ORDER BY sample_count DESC
+    """).fetchall()
+    
     conn2.close()
     
     stats["print_history"] = {
@@ -3178,11 +3441,40 @@ def admin_analytics(request: Request, _=Depends(require_admin)):
         "avg_minutes": int(ph_overall["avg_minutes"]) if ph_overall and ph_overall["avg_minutes"] else None,
         "min_minutes": int(ph_overall["min_minutes"]) if ph_overall and ph_overall["min_minutes"] else None,
         "max_minutes": int(ph_overall["max_minutes"]) if ph_overall and ph_overall["max_minutes"] else None,
+        "avg_layers": int(ph_overall["avg_layers"]) if ph_overall and ph_overall["avg_layers"] else None,
+        "max_layers": int(ph_overall["max_layers"]) if ph_overall and ph_overall["max_layers"] else None,
         "by_printer": [
-            {"printer": p["printer"], "avg_minutes": int(p["avg_minutes"]) if p["avg_minutes"] else None, "count": p["count"]}
+            {
+                "printer": p["printer"], 
+                "avg_minutes": int(p["avg_minutes"]) if p["avg_minutes"] else None, 
+                "avg_layers": int(p["avg_layers"]) if p["avg_layers"] else None,
+                "count": p["count"]
+            }
             for p in ph_by_printer
         ] if ph_by_printer else [],
     }
+    
+    # Format accuracy stats
+    stats["slicer_accuracy"] = []
+    for row in accuracy_stats:
+        factor = row["avg_factor"]
+        if factor:
+            if factor > 1.1:
+                diff_pct = int((factor - 1) * 100)
+                msg = f"{diff_pct}% longer than slicer"
+            elif factor < 0.9:
+                diff_pct = int((1 - factor) * 100)
+                msg = f"{diff_pct}% faster than slicer"
+            else:
+                msg = "Accurate"
+            
+            stats["slicer_accuracy"].append({
+                "printer": row["printer"] or "Any",
+                "material": row["material"] or "Any",
+                "factor": round(factor, 2),
+                "message": msg,
+                "sample_count": row["sample_count"]
+            })
     
     return templates.TemplateResponse("admin_analytics.html", {
         "request": request,
@@ -3586,6 +3878,7 @@ def admin_printer_settings(request: Request, _=Depends(require_admin), saved: Op
         "camera_ad5x_url": get_setting("camera_ad5x_url", ""),
         "enable_printer_polling": get_bool_setting("enable_printer_polling", True),
         "enable_camera_snapshot": get_bool_setting("enable_camera_snapshot", False),
+        "enable_auto_print_match": get_bool_setting("enable_auto_print_match", True),
         "saved": bool(saved == "1"),
     }
     return templates.TemplateResponse("printer_settings.html", {"request": request, "s": model, "version": APP_VERSION})
@@ -3601,6 +3894,7 @@ def admin_printer_settings_post(
     camera_ad5x_url: str = Form(""),
     enable_printer_polling: Optional[str] = Form(None),
     enable_camera_snapshot: Optional[str] = Form(None),
+    enable_auto_print_match: Optional[str] = Form(None),
     _=Depends(require_admin),
 ):
     set_setting("flashforge_api_url", flashforge_api_url.strip())
@@ -3610,6 +3904,7 @@ def admin_printer_settings_post(
     set_setting("camera_ad5x_url", camera_ad5x_url.strip())
     set_setting("enable_printer_polling", "1" if enable_printer_polling else "0")
     set_setting("enable_camera_snapshot", "1" if enable_camera_snapshot else "0")
+    set_setting("enable_auto_print_match", "1" if enable_auto_print_match else "0")
 
     return RedirectResponse(url="/admin/printer-settings?saved=1", status_code=303)
 
@@ -3777,6 +4072,70 @@ def admin_add_request_to_store(
     conn.close()
     
     return RedirectResponse(url=f"/admin/store/item/{item_id}?created=1", status_code=303)
+
+
+@app.post("/admin/match-print/{rid}")
+def admin_match_print_to_request(
+    request: Request,
+    rid: str,
+    printer: str = Form(...),
+    _=Depends(require_admin)
+):
+    """
+    Manually match a printing file to a request.
+    Called from the suggestion banner in admin queue.
+    """
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    if req["status"] not in ("QUEUED", "APPROVED"):
+        conn.close()
+        raise HTTPException(status_code=400, detail="Request must be in QUEUED or APPROVED status")
+    
+    old_status = req["status"]
+    
+    # Get the suggestion info for the comment
+    suggestions = get_print_match_suggestions()
+    current_file = suggestions.get(printer, {}).get("file", "unknown file")
+    
+    conn.execute(
+        "UPDATE requests SET status = 'PRINTING', printer = ?, printing_started_at = ?, printing_email_sent = 0, updated_at = ? WHERE id = ?",
+        (printer, now_iso(), now_iso(), rid)
+    )
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now_iso(), old_status, "PRINTING", f"Manually matched to printer (file: {get_filename_base(current_file)})")
+    )
+    conn.commit()
+    conn.close()
+    
+    # Clear the suggestion for this printer
+    clear_print_match_suggestion(printer)
+    
+    add_poll_debug_log({
+        "type": "manual_match",
+        "request_id": rid[:8],
+        "printer": printer,
+        "file": current_file,
+        "message": f"Manually matched to {printer}"
+    })
+    
+    return RedirectResponse(url="/admin", status_code=303)
+
+
+@app.post("/admin/dismiss-match/{printer}")
+def admin_dismiss_match_suggestion(
+    request: Request,
+    printer: str,
+    _=Depends(require_admin)
+):
+    """Dismiss a print match suggestion."""
+    clear_print_match_suggestion(printer)
+    return RedirectResponse(url="/admin", status_code=303)
+
 
 @app.post("/admin/request/{rid}/status")
 def admin_set_status(
@@ -4390,6 +4749,43 @@ def admin_download_file(request: Request, rid: str, file_id: str, _=Depends(requ
         filename=file_info["original_filename"],
         media_type="application/octet-stream"
     )
+
+
+@app.post("/admin/request/{rid}/file/{file_id}/delete")
+def admin_delete_file(request: Request, rid: str, file_id: str, _=Depends(require_admin)):
+    """Delete a file from a request."""
+    conn = db()
+    
+    # Verify request exists
+    req = conn.execute("SELECT id FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    # Get file info before deleting
+    file_info = conn.execute(
+        "SELECT id, stored_filename, original_filename FROM files WHERE id = ? AND request_id = ?",
+        (file_id, rid)
+    ).fetchone()
+    
+    if not file_info:
+        conn.close()
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Delete from database
+    conn.execute("DELETE FROM files WHERE id = ? AND request_id = ?", (file_id, rid))
+    conn.commit()
+    conn.close()
+    
+    # Try to delete from disk (don't fail if file doesn't exist)
+    file_path = os.path.join(UPLOAD_DIR, file_info["stored_filename"])
+    if os.path.isfile(file_path):
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass  # File couldn't be deleted, but DB record is gone
+    
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
 
 @app.post("/admin/batch-update")

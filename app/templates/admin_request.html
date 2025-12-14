@@ -455,7 +455,12 @@
                 <li class="bg-zinc-950/60 border border-zinc-700 rounded-lg p-3">
                   <div class="font-mono text-sm text-zinc-200 truncate">{{ f["original_filename"] }}</div>
                   <div class="text-xs text-zinc-500">{{ (f["size_bytes"] / 1024) | round(1) }} KB • Uploaded {{ f["created_at"]|localtime('%b %d, %Y at %I:%M %p') }}</div>
-                  <a class="text-indigo-400 hover:underline text-xs" href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}">Download</a>
+                  <div class="flex items-center gap-3 mt-1">
+                    <a class="text-indigo-400 hover:underline text-xs" href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}">Download</a>
+                    <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" onsubmit="return confirm('Delete this file?')">
+                      <button type="submit" class="text-red-400 hover:text-red-300 text-xs">Delete</button>
+                    </form>
+                  </div>
                 </li>
               {% endfor %}
             </ul>

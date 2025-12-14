@@ -121,9 +121,9 @@
       <!-- Polling Features -->
       <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <h2 class="text-lg font-semibold">Printer Monitoring</h2>
-        <p class="text-sm text-zinc-400 mt-2">Enable automatic status polling.</p>
+        <p class="text-sm text-zinc-400 mt-2">Enable automatic status polling and print matching.</p>
 
-        <div class="mt-4">
+        <div class="mt-4 space-y-4">
           <label class="flex items-center gap-3">
             <input type="checkbox" name="enable_printer_polling" class="scale-125"
                    {% if s.enable_printer_polling %}checked{% endif %} />
@@ -131,6 +131,18 @@
               <span class="font-semibold">Enable printer polling</span>
               <div class="text-xs text-zinc-400 mt-1">
                 Check printer status every 30 seconds. Automatically mark prints as DONE when 100% complete and idle.
+              </div>
+            </span>
+          </label>
+
+          <label class="flex items-center gap-3">
+            <input type="checkbox" name="enable_auto_print_match" class="scale-125"
+                   {% if s.enable_auto_print_match %}checked{% endif %} />
+            <span class="flex-1">
+              <span class="font-semibold">Auto-match prints to requests</span>
+              <div class="text-xs text-zinc-400 mt-1">
+                When a printer starts printing a file, automatically match it to a QUEUED request with a matching filename.
+                Only auto-matches when there's exactly one match. Multiple matches show a suggestion banner instead.
               </div>
             </span>
           </label>
