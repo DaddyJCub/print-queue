@@ -282,7 +282,7 @@
       </div>
     {% endif %}
     
-    <!-- Edit Request (for NEW or NEEDS_INFO status) -->
+    <!-- Edit Request -->
     {% if req.status in ['NEW', 'NEEDS_INFO'] %}
       <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
         <h2 class="font-semibold mb-4">✏️ Edit Request</h2>
@@ -307,6 +307,32 @@
             Save Changes
           </button>
         </form>
+      </div>
+    {% elif req.status in ['APPROVED', 'PRINTING', 'DONE'] %}
+      <!-- Read-only details for in-progress requests -->
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-semibold">✏️ Request Details</h2>
+          <span class="text-xs text-zinc-500">Editing disabled while {{ req.status|lower }}</span>
+        </div>
+        <div class="space-y-3 text-sm">
+          <div>
+            <span class="text-zinc-500">Print Name</span>
+            <p class="mt-1">{{ req.print_name or '—' }}</p>
+          </div>
+          {% if req.link_url %}
+          <div>
+            <span class="text-zinc-500">Model Link</span>
+            <a href="{{ req.link_url }}" target="_blank" class="block mt-1 text-indigo-400 hover:underline truncate">{{ req.link_url }}</a>
+          </div>
+          {% endif %}
+          {% if req.notes %}
+          <div>
+            <span class="text-zinc-500">Notes</span>
+            <p class="mt-1 text-zinc-300">{{ req.notes }}</p>
+          </div>
+          {% endif %}
+        </div>
       </div>
     {% endif %}
     

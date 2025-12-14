@@ -94,6 +94,11 @@
            class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition">
           ✉️ Email Directly
         </a>
+        
+        <button type="button" onclick="showAddToStoreModal()"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/50 text-emerald-300 text-sm font-medium transition">
+          🏪 Add to Store
+        </button>
       </div>
     </div>
 
@@ -547,6 +552,114 @@
       // Close modal when clicking outside
       document.getElementById('print-start-modal').addEventListener('click', (e) => {
         if (e.target.id === 'print-start-modal') hidePrintStartModal();
+      });
+    </script>
+    
+    <!-- Add to Store Modal -->
+    <div id="add-to-store-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+      <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-6">
+          <h3 class="text-lg font-semibold">🏪 Add to Store</h3>
+          <button onclick="hideAddToStoreModal()" class="text-zinc-400 hover:text-zinc-200 text-2xl">&times;</button>
+        </div>
+        
+        <p class="text-sm text-zinc-400 mb-4">Create a store item from this request. Users will be able to request this print directly from the store.</p>
+        
+        <form method="POST" action="/admin/request/{{ req['id'] }}/add-to-store" class="space-y-4">
+          <div>
+            <label class="text-sm text-zinc-400">Item Name *</label>
+            <input type="text" name="name" value="{{ req['print_name'] or '' }}" required
+                   class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm focus:border-indigo-500 focus:outline-none" />
+          </div>
+          
+          <div>
+            <label class="text-sm text-zinc-400">Description</label>
+            <textarea name="description" rows="3" placeholder="Describe this print for store visitors..."
+                      class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm resize-none focus:border-indigo-500 focus:outline-none">{{ req['notes'] or '' }}</textarea>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="text-sm text-zinc-400">Category</label>
+              <input type="text" name="category" placeholder="e.g. Toys, Tools, Decor"
+                     class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm focus:border-indigo-500 focus:outline-none" />
+            </div>
+            <div>
+              <label class="text-sm text-zinc-400">Material</label>
+              <select name="material" class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm focus:border-indigo-500 focus:outline-none">
+                <option value="PLA" {% if req['material'] == 'PLA' %}selected{% endif %}>PLA</option>
+                <option value="PETG" {% if req['material'] == 'PETG' %}selected{% endif %}>PETG</option>
+                <option value="ABS" {% if req['material'] == 'ABS' %}selected{% endif %}>ABS</option>
+                <option value="TPU" {% if req['material'] == 'TPU' %}selected{% endif %}>TPU</option>
+                <option value="RESIN" {% if req['material'] == 'RESIN' %}selected{% endif %}>Resin</option>
+                <option value="ANY" {% if req['material'] == 'ANY' %}selected{% endif %}>Any</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="text-sm text-zinc-400">Colors</label>
+              <input type="text" name="colors" value="{{ req['colors'] or '' }}" placeholder="e.g. Black, White"
+                     class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm focus:border-indigo-500 focus:outline-none" />
+            </div>
+            <div>
+              <label class="text-sm text-zinc-400">Est. Print Time (min)</label>
+              <input type="number" name="estimated_time_minutes" value="{{ req['print_time_minutes'] or '' }}" min="0"
+                     class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm focus:border-indigo-500 focus:outline-none" />
+            </div>
+          </div>
+          
+          <div>
+            <label class="text-sm text-zinc-400">Model Link</label>
+            <input type="url" name="link_url" value="{{ req['link_url'] or '' }}" placeholder="https://..."
+                   class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm focus:border-indigo-500 focus:outline-none" />
+          </div>
+          
+          <div class="flex items-center gap-3 pt-2">
+            <input type="checkbox" name="copy_files" id="copy_files" value="1" checked
+                   class="rounded bg-zinc-950 border-zinc-700 text-indigo-600 focus:ring-indigo-500" />
+            <label for="copy_files" class="text-sm">Copy {{ files|length }} file(s) from this request</label>
+          </div>
+          
+          {% if req['completion_snapshot'] %}
+          <div class="flex items-center gap-3">
+            <input type="checkbox" name="use_snapshot" id="use_snapshot" value="1" checked
+                   class="rounded bg-zinc-950 border-zinc-700 text-indigo-600 focus:ring-indigo-500" />
+            <label for="use_snapshot" class="text-sm">Use completion snapshot as thumbnail</label>
+          </div>
+          {% endif %}
+          
+          <div class="flex gap-3 pt-4">
+            <button type="button" onclick="hideAddToStoreModal()" class="flex-1 rounded-xl bg-zinc-700 hover:bg-zinc-600 transition px-4 py-2 text-sm font-semibold">
+              Cancel
+            </button>
+            <button type="submit" class="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+              Add to Store
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <script>
+      function showAddToStoreModal() {
+        const modal = document.getElementById('add-to-store-modal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+      
+      function hideAddToStoreModal() {
+        const modal = document.getElementById('add-to-store-modal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+      
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+          hideAddToStoreModal();
+          hidePrintStartModal();
+        }
       });
     </script>
     

@@ -324,12 +324,12 @@ def ensure_migrations():
     if "access_token" not in cols:
         # Unique token for requester to access/edit their request
         cur.execute("ALTER TABLE requests ADD COLUMN access_token TEXT")
-        # Generate tokens for existing requests
-        import secrets
-        existing = cur.execute("SELECT id FROM requests WHERE access_token IS NULL").fetchall()
-        for row in existing:
-            token = secrets.token_urlsafe(32)
-            cur.execute("UPDATE requests SET access_token = ? WHERE id = ?", (token, row[0]))
+    
+    # Always generate tokens for any requests missing them
+    existing_without_token = cur.execute("SELECT id FROM requests WHERE access_token IS NULL").fetchall()
+    for row in existing_without_token:
+        token = secrets.token_urlsafe(32)
+        cur.execute("UPDATE requests SET access_token = ? WHERE id = ?", (token, row[0]))
 
     # Add is_read column to request_messages if missing
     cur.execute("PRAGMA table_info(request_messages)")
@@ -3307,6 +3307,69 @@ def admin_duplicate_request(request: Request, rid: str, _=Depends(require_admin)
     # Redirect to the new request
     return RedirectResponse(url=f"/admin/request/{new_id}", status_code=303)
 
+
+@app.post("/admin/request/{rid}/add-to-store")
+def admin_add_request_to_store(
+    request: Request,
+    rid: str,
+    name: str = Form(...),
+    description: str = Form(""),
+    category: str = Form(""),
+    material: str = Form("PLA"),
+    colors: str = Form(""),
+    estimated_time_minutes: int = Form(0),
+    link_url: str = Form(""),
+    copy_files: Optional[str] = Form(None),
+    use_snapshot: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """Create a store item from an existing request"""
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    # Create store item
+    item_id = str(uuid.uuid4())
+    created = now_iso()
+    
+    # Handle snapshot as thumbnail
+    image_data = None
+    if use_snapshot and req["completion_snapshot"]:
+        image_data = req["completion_snapshot"]
+    
+    conn.execute("""
+        INSERT INTO store_items (
+            id, name, description, category, material, colors,
+            estimated_time_minutes, image_data, link_url, notes,
+            is_active, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    """, (
+        item_id, name.strip(), description.strip() or None, category.strip() or None,
+        material, colors.strip() or None, estimated_time_minutes or None,
+        image_data, link_url.strip() or None, f"Created from request {rid[:8]}",
+        created, created
+    ))
+    
+    # Copy files if requested
+    if copy_files:
+        files = conn.execute(
+            "SELECT original_filename, stored_filename, size_bytes, sha256 FROM files WHERE request_id = ?",
+            (rid,)
+        ).fetchall()
+        
+        for f in files:
+            conn.execute(
+                "INSERT INTO store_item_files (id, store_item_id, created_at, original_filename, stored_filename, size_bytes, sha256) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), item_id, created, f["original_filename"], f["stored_filename"], f["size_bytes"], f["sha256"])
+            )
+    
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/admin/store/item/{item_id}?created=1", status_code=303)
 
 @app.post("/admin/request/{rid}/status")
 def admin_set_status(

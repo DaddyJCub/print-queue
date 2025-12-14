@@ -29,6 +29,12 @@
       </div>
     </div>
     
+    {% if request.query_params.get('created') %}
+      <div class="mb-6 p-4 rounded-xl bg-emerald-600/20 border border-emerald-500/50 text-emerald-200">
+        ✓ Store item created from request! You can edit details below.
+      </div>
+    {% endif %}
+    
     {% if request.query_params.get('saved') %}
       <div class="mb-6 p-4 rounded-xl bg-emerald-600/20 border border-emerald-500/50 text-emerald-200">
         ✓ Changes saved successfully
