@@ -62,6 +62,114 @@
       {% endif %}
     </div>
     
+    <!-- Live Printer View (when PRINTING) -->
+    {% if req.status == 'PRINTING' and printer_status %}
+      <div class="bg-gradient-to-br from-indigo-900/30 to-purple-900/20 border border-indigo-500/30 rounded-2xl p-5 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-semibold flex items-center gap-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            Live Print Progress
+          </h2>
+          <span class="text-xs text-zinc-400">{{ req.printer }}</span>
+        </div>
+        
+        <!-- Camera Preview -->
+        <div class="mb-4">
+          <button onclick="toggleCamera()" id="camera-toggle" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 mb-2">
+            📷 Show Live View
+          </button>
+          <div id="camera-preview" class="hidden">
+            <img id="camera-img" src="" alt="Camera preview" 
+                 class="w-full rounded-lg border border-zinc-700 bg-zinc-800" 
+                 onerror="this.src=''; this.alt='Camera unavailable'"/>
+            <div class="text-xs text-zinc-500 mt-1">Updates every 10 seconds</div>
+          </div>
+        </div>
+        
+        <!-- Progress Bar -->
+        {% if printer_status.progress is not none %}
+          <div class="mb-4">
+            <div class="flex justify-between text-sm mb-1">
+              <span class="text-zinc-400">Progress</span>
+              <span class="font-semibold text-indigo-300">{{ printer_status.progress }}%</span>
+            </div>
+            <div class="h-3 bg-zinc-800 rounded-full overflow-hidden">
+              <div class="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500" 
+                   style="width: {{ printer_status.progress }}%"></div>
+            </div>
+          </div>
+        {% endif %}
+        
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-2 gap-3 text-sm">
+          {% if printer_status.current_layer and printer_status.total_layers %}
+            <div class="bg-zinc-900/50 rounded-xl p-3">
+              <span class="text-zinc-500 text-xs">Layer</span>
+              <p class="font-semibold">{{ printer_status.current_layer }} / {{ printer_status.total_layers }}</p>
+            </div>
+          {% endif %}
+          {% if smart_eta_display %}
+            <div class="bg-zinc-900/50 rounded-xl p-3">
+              <span class="text-zinc-500 text-xs">Est. Completion</span>
+              <p class="font-semibold text-emerald-300">{{ smart_eta_display }}</p>
+            </div>
+          {% endif %}
+          {% if printer_status.temp %}
+            <div class="bg-zinc-900/50 rounded-xl p-3">
+              <span class="text-zinc-500 text-xs">Temperature</span>
+              <p class="font-semibold">{{ printer_status.temp }}°C</p>
+            </div>
+          {% endif %}
+          <div class="bg-zinc-900/50 rounded-xl p-3">
+            <span class="text-zinc-500 text-xs">Status</span>
+            <p class="font-semibold">{{ printer_status.status }}</p>
+          </div>
+        </div>
+      </div>
+      
+      <script>
+        let cameraInterval = null;
+        const printerCode = "{{ req.printer }}";
+        
+        function toggleCamera() {
+          const preview = document.getElementById('camera-preview');
+          const toggle = document.getElementById('camera-toggle');
+          
+          if (preview.classList.contains('hidden')) {
+            preview.classList.remove('hidden');
+            toggle.innerHTML = '📷 Hide Live View';
+            refreshCamera();
+            cameraInterval = setInterval(refreshCamera, 10000);
+          } else {
+            preview.classList.add('hidden');
+            toggle.innerHTML = '📷 Show Live View';
+            if (cameraInterval) {
+              clearInterval(cameraInterval);
+              cameraInterval = null;
+            }
+          }
+        }
+        
+        function refreshCamera() {
+          const img = document.getElementById('camera-img');
+          if (img) {
+            img.src = `/api/camera/${printerCode}/snapshot?t=${Date.now()}`;
+          }
+        }
+      </script>
+    {% endif %}
+    
+    <!-- Completion Snapshot (for DONE status) -->
+    {% if req.status == 'DONE' and req.completion_snapshot %}
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+        <h2 class="font-semibold mb-4">📸 Completion Snapshot</h2>
+        <img src="data:image/jpeg;base64,{{ req.completion_snapshot }}" 
+             alt="Print completion snapshot"
+             class="w-full rounded-xl border border-zinc-700 cursor-pointer hover:opacity-90 transition"
+             onclick="showSnapshot(this.src)" />
+      </div>
+    {% endif %}
+    
     <!-- Request Details -->
     <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
       <h2 class="font-semibold mb-4">Request Details</h2>
@@ -221,9 +329,100 @@
       </div>
     </div>
     
+    <!-- Actions Section -->
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mt-6">
+      <h2 class="font-semibold mb-4">⚡ Actions</h2>
+      <div class="flex flex-wrap gap-3">
+        <!-- Cancel (for active requests not yet printing) -->
+        {% if req.status in ['NEW', 'NEEDS_INFO', 'APPROVED'] %}
+          <button onclick="confirmCancel()" class="rounded-xl bg-red-600/20 border border-red-500/50 hover:bg-red-600/30 transition px-4 py-2 text-sm font-semibold text-red-300">
+            🚫 Cancel Request
+          </button>
+        {% endif %}
+        
+        <!-- Resubmit (for closed requests) -->
+        {% if req.status in ['CANCELLED', 'REJECTED', 'PICKED_UP'] %}
+          <form method="POST" action="/my/{{ req.id }}/resubmit?token={{ token }}" class="inline">
+            <button type="submit" class="rounded-xl bg-emerald-600/20 border border-emerald-500/50 hover:bg-emerald-600/30 transition px-4 py-2 text-sm font-semibold text-emerald-300">
+              🔄 Request Again
+            </button>
+          </form>
+        {% endif %}
+        
+        <!-- View in Queue -->
+        <a href="/queue?mine={{ req.id[:8] }}" class="rounded-xl bg-indigo-600/20 border border-indigo-500/50 hover:bg-indigo-600/30 transition px-4 py-2 text-sm font-semibold text-indigo-300">
+          📋 View in Queue
+        </a>
+        
+        <!-- Submit New Request -->
+        <a href="/" class="rounded-xl bg-zinc-700/50 border border-zinc-600/50 hover:bg-zinc-700 transition px-4 py-2 text-sm font-semibold text-zinc-300">
+          ➕ New Request
+        </a>
+      </div>
+    </div>
+    
     <div class="mt-6 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
       <a href="/changelog" class="hover:text-indigo-400 transition">3D Print Queue v{{ version }}</a>
     </div>
   </div>
+  
+  <!-- Cancel Confirmation Modal -->
+  <div id="cancel-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50">
+    <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-sm mx-4">
+      <h3 class="text-lg font-semibold mb-3">Cancel Request?</h3>
+      <p class="text-sm text-zinc-400 mb-6">Are you sure you want to cancel this print request? This action cannot be undone, but you can always submit a new request.</p>
+      <div class="flex gap-3">
+        <button onclick="hideCancelModal()" class="flex-1 rounded-xl bg-zinc-700 hover:bg-zinc-600 transition px-4 py-2 text-sm font-semibold">
+          Keep Request
+        </button>
+        <form method="POST" action="/my/{{ req.id }}/cancel?token={{ token }}" class="flex-1">
+          <button type="submit" class="w-full rounded-xl bg-red-600 hover:bg-red-500 transition px-4 py-2 text-sm font-semibold">
+            Yes, Cancel
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Snapshot Modal -->
+  <div id="snapshot-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4" onclick="hideSnapshot()">
+    <img id="snapshot-img" src="" class="max-w-full max-h-full rounded-xl border border-zinc-700" />
+  </div>
+  
+  <script>
+    function confirmCancel() {
+      const modal = document.getElementById('cancel-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+    
+    function hideCancelModal() {
+      const modal = document.getElementById('cancel-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+    
+    function showSnapshot(src) {
+      const modal = document.getElementById('snapshot-modal');
+      const img = document.getElementById('snapshot-img');
+      img.src = src;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+    
+    function hideSnapshot() {
+      const modal = document.getElementById('snapshot-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+    
+    // Close modals on Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        hideCancelModal();
+        hideSnapshot();
+      }
+    });
+  </script>
 </body>
 </html>

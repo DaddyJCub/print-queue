@@ -230,6 +230,41 @@ def init_db():
     );
     """)
 
+    # Store items - pre-made prints people can request
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS store_items (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      category TEXT,
+      material TEXT,
+      colors TEXT,
+      estimated_time_minutes INTEGER,
+      image_data TEXT,
+      link_url TEXT,
+      notes TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    """)
+    # image_data: base64 encoded thumbnail image
+    # is_active: 1 = visible in store, 0 = hidden
+
+    # Store item files - pre-loaded files for store items
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS store_item_files (
+      id TEXT PRIMARY KEY,
+      store_item_id TEXT NOT NULL,
+      original_filename TEXT NOT NULL,
+      stored_filename TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      sha256 TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(store_item_id) REFERENCES store_items(id)
+    );
+    """)
+
     conn.commit()
     conn.close()
 
@@ -301,6 +336,10 @@ def ensure_migrations():
     msg_cols = {row[1] for row in cur.fetchall()}
     if msg_cols and "is_read" not in msg_cols:
         cur.execute("ALTER TABLE request_messages ADD COLUMN is_read INTEGER DEFAULT 0")
+
+    # Add store_item_id column if missing (for store requests)
+    if "store_item_id" not in cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN store_item_id TEXT")
 
     conn.commit()
     conn.close()
@@ -1191,6 +1230,9 @@ def safe_ext(filename: str) -> str:
     return os.path.splitext(filename)[1].lower()
 
 
+ALLOWED_EXTENSIONS = {'.stl', '.obj', '.3mf', '.gcode', '.step', '.stp', '.fpp'}
+
+
 def first_name_only(name: str) -> str:
     parts = (name or "").strip().split()
     return parts[0] if parts else ""
@@ -1838,7 +1880,7 @@ def repeat_request(request: Request, short_id: str):
 # ─────────────────────────── REQUESTER PORTAL ───────────────────────────
 
 @app.get("/my/{rid}", response_class=HTMLResponse)
-def requester_portal(request: Request, rid: str, token: str):
+async def requester_portal(request: Request, rid: str, token: str):
     """Requester portal - view and interact with your request"""
     conn = db()
     req = conn.execute(
@@ -1871,6 +1913,43 @@ def requester_portal(request: Request, rid: str, token: str):
     
     conn.close()
     
+    # Fetch printer status if currently printing
+    printer_status = None
+    smart_eta_display = None
+    if req["status"] == "PRINTING" and req["printer"]:
+        printer_api = get_printer_api(req["printer"])
+        if printer_api:
+            try:
+                status = await printer_api.get_status()
+                progress = await printer_api.get_percent_complete()
+                extended = await printer_api.get_extended_status()
+                if status:
+                    machine_status = status.get("MachineStatus", "UNKNOWN")
+                    current_layer = extended.get("current_layer") if extended else None
+                    total_layers = extended.get("total_layers") if extended else None
+                    printer_status = {
+                        "status": machine_status.replace("_FROM_SD", ""),
+                        "temp": status.get("Temperature"),
+                        "progress": progress,
+                        "is_printing": machine_status in ["BUILDING", "BUILDING_FROM_SD"],
+                        "current_layer": current_layer,
+                        "total_layers": total_layers,
+                    }
+                    
+                    # Calculate smart ETA
+                    eta_dt = get_smart_eta(
+                        printer=req["printer"],
+                        material=req["material"],
+                        current_percent=progress,
+                        printing_started_at=req["printing_started_at"],
+                        current_layer=current_layer,
+                        total_layers=total_layers
+                    )
+                    if eta_dt:
+                        smart_eta_display = format_eta_display(eta_dt)
+            except Exception:
+                pass
+    
     return templates.TemplateResponse("my_request.html", {
         "request": request,
         "req": req,
@@ -1879,6 +1958,8 @@ def requester_portal(request: Request, rid: str, token: str):
         "messages": messages,
         "token": token,
         "version": APP_VERSION,
+        "printer_status": printer_status,
+        "smart_eta_display": smart_eta_display,
     })
 
 
@@ -2044,6 +2125,97 @@ def requester_edit(
     conn.close()
     
     return RedirectResponse(url=f"/my/{rid}?token={token}", status_code=303)
+
+
+@app.post("/my/{rid}/cancel")
+def requester_cancel(request: Request, rid: str, token: str):
+    """Requester cancels their own request"""
+    conn = db()
+    req = conn.execute("SELECT access_token, status, print_name FROM requests WHERE id = ?", (rid,)).fetchone()
+    
+    if not req or req["access_token"] != token:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Invalid access")
+    
+    # Can only cancel NEW, NEEDS_INFO, or APPROVED requests
+    if req["status"] not in ["NEW", "NEEDS_INFO", "APPROVED"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Cannot cancel request in current status")
+    
+    created = now_iso()
+    from_status = req["status"]
+    
+    conn.execute(
+        "UPDATE requests SET status = ?, updated_at = ? WHERE id = ?",
+        ("CANCELLED", created, rid)
+    )
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, created, from_status, "CANCELLED", "Cancelled by requester")
+    )
+    
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/my/{rid}?token={token}", status_code=303)
+
+
+@app.post("/my/{rid}/resubmit")
+def requester_resubmit(request: Request, rid: str, token: str):
+    """Requester resubmits a cancelled/rejected/picked-up request as a new request"""
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    
+    if not req or req["access_token"] != token:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Invalid access")
+    
+    # Can only resubmit closed requests
+    if req["status"] not in ["CANCELLED", "REJECTED", "PICKED_UP"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Can only resubmit closed requests")
+    
+    # Create a new request with same details
+    new_id = str(uuid.uuid4())
+    new_token = secrets.token_urlsafe(32)
+    created = now_iso()
+    
+    conn.execute("""
+        INSERT INTO requests (
+            id, created_at, updated_at, requester_name, requester_email,
+            printer, material, colors, link_url, notes, print_name,
+            status, access_token, priority
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        new_id, created, created,
+        req["requester_name"], req["requester_email"],
+        req["printer"], req["material"], req["colors"],
+        req["link_url"], req["notes"], req["print_name"],
+        "NEW", new_token, req["priority"] or 0
+    ))
+    
+    # Copy files
+    files = conn.execute(
+        "SELECT original_filename, stored_filename, size_bytes, sha256 FROM files WHERE request_id = ?",
+        (rid,)
+    ).fetchall()
+    
+    for f in files:
+        conn.execute(
+            "INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), new_id, created, f["original_filename"], f["stored_filename"], f["size_bytes"], f["sha256"])
+        )
+    
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), new_id, created, None, "NEW", f"Resubmitted from request {rid[:8]}")
+    )
+    
+    conn.commit()
+    conn.close()
+    
+    # Redirect to the new request
+    return RedirectResponse(url=f"/my/{new_id}?token={new_token}", status_code=303)
 
 
 # ─────────────────────────── MY REQUESTS LOOKUP ───────────────────────────
@@ -2631,6 +2803,377 @@ def admin_analytics(request: Request, _=Depends(require_admin)):
         "version": APP_VERSION,
     })
 
+
+# ─────────────────────────── STORE MANAGEMENT ───────────────────────────
+
+@app.get("/admin/store", response_class=HTMLResponse)
+def admin_store(request: Request, _=Depends(require_admin)):
+    """Admin store item management"""
+    conn = db()
+    items = conn.execute("""
+        SELECT si.*, 
+               (SELECT COUNT(*) FROM store_item_files WHERE store_item_id = si.id) as file_count
+        FROM store_items si 
+        ORDER BY si.is_active DESC, si.name ASC
+    """).fetchall()
+    conn.close()
+    
+    return templates.TemplateResponse("admin_store.html", {
+        "request": request,
+        "items": items,
+        "version": APP_VERSION,
+    })
+
+
+@app.post("/admin/store/add")
+def admin_store_add(
+    request: Request,
+    name: str = Form(...),
+    description: str = Form(""),
+    category: str = Form(""),
+    material: str = Form("PLA"),
+    colors: str = Form(""),
+    estimated_time_minutes: int = Form(0),
+    link_url: str = Form(""),
+    notes: str = Form(""),
+    image: Optional[UploadFile] = File(None),
+    _=Depends(require_admin)
+):
+    """Add a new store item"""
+    item_id = str(uuid.uuid4())
+    created = now_iso()
+    
+    # Handle image upload
+    image_data = None
+    if image and image.filename:
+        import base64
+        content = image.file.read()
+        if len(content) < 5 * 1024 * 1024:  # Max 5MB
+            image_data = base64.b64encode(content).decode('utf-8')
+    
+    conn = db()
+    conn.execute("""
+        INSERT INTO store_items (
+            id, name, description, category, material, colors,
+            estimated_time_minutes, image_data, link_url, notes,
+            is_active, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    """, (
+        item_id, name.strip(), description.strip() or None, category.strip() or None,
+        material, colors.strip() or None, estimated_time_minutes or None,
+        image_data, link_url.strip() or None, notes.strip() or None,
+        created, created
+    ))
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/admin/store/item/{item_id}", status_code=303)
+
+
+@app.get("/admin/store/item/{item_id}", response_class=HTMLResponse)
+def admin_store_item(request: Request, item_id: str, _=Depends(require_admin)):
+    """View/edit a store item"""
+    conn = db()
+    item = conn.execute("SELECT * FROM store_items WHERE id = ?", (item_id,)).fetchone()
+    if not item:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Store item not found")
+    
+    files = conn.execute(
+        "SELECT * FROM store_item_files WHERE store_item_id = ? ORDER BY created_at DESC",
+        (item_id,)
+    ).fetchall()
+    conn.close()
+    
+    return templates.TemplateResponse("admin_store_item.html", {
+        "request": request,
+        "item": item,
+        "files": files,
+        "version": APP_VERSION,
+    })
+
+
+@app.post("/admin/store/item/{item_id}/update")
+def admin_store_item_update(
+    request: Request,
+    item_id: str,
+    name: str = Form(...),
+    description: str = Form(""),
+    category: str = Form(""),
+    material: str = Form("PLA"),
+    colors: str = Form(""),
+    estimated_time_minutes: int = Form(0),
+    link_url: str = Form(""),
+    notes: str = Form(""),
+    is_active: Optional[str] = Form(None),
+    image: Optional[UploadFile] = File(None),
+    _=Depends(require_admin)
+):
+    """Update a store item"""
+    conn = db()
+    item = conn.execute("SELECT * FROM store_items WHERE id = ?", (item_id,)).fetchone()
+    if not item:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Store item not found")
+    
+    # Handle image upload
+    image_data = item["image_data"]  # Keep existing if no new upload
+    if image and image.filename:
+        import base64
+        content = image.file.read()
+        if len(content) < 5 * 1024 * 1024:
+            image_data = base64.b64encode(content).decode('utf-8')
+    
+    conn.execute("""
+        UPDATE store_items SET
+            name = ?, description = ?, category = ?, material = ?, colors = ?,
+            estimated_time_minutes = ?, image_data = ?, link_url = ?, notes = ?,
+            is_active = ?, updated_at = ?
+        WHERE id = ?
+    """, (
+        name.strip(), description.strip() or None, category.strip() or None,
+        material, colors.strip() or None, estimated_time_minutes or None,
+        image_data, link_url.strip() or None, notes.strip() or None,
+        1 if is_active else 0, now_iso(), item_id
+    ))
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/admin/store/item/{item_id}?saved=1", status_code=303)
+
+
+@app.post("/admin/store/item/{item_id}/delete")
+def admin_store_item_delete(request: Request, item_id: str, _=Depends(require_admin)):
+    """Delete a store item"""
+    conn = db()
+    # Delete associated files
+    conn.execute("DELETE FROM store_item_files WHERE store_item_id = ?", (item_id,))
+    conn.execute("DELETE FROM store_items WHERE id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url="/admin/store?deleted=1", status_code=303)
+
+
+@app.post("/admin/store/item/{item_id}/upload")
+async def admin_store_item_upload(
+    request: Request, 
+    item_id: str, 
+    files: List[UploadFile] = File(...),
+    _=Depends(require_admin)
+):
+    """Upload files for a store item"""
+    conn = db()
+    item = conn.execute("SELECT id FROM store_items WHERE id = ?", (item_id,)).fetchone()
+    if not item:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Store item not found")
+    
+    uploads_dir = UPLOAD_DIR
+    os.makedirs(uploads_dir, exist_ok=True)
+    
+    for upload in files:
+        if not upload.filename:
+            continue
+            
+        ext = safe_ext(upload.filename)
+        if ext.lower() not in ALLOWED_EXTENSIONS:
+            continue
+        
+        content = await upload.read()
+        sha256 = hashlib.sha256(content).hexdigest()
+        stored_name = f"store_{sha256}{ext}"
+        path = os.path.join(uploads_dir, stored_name)
+        
+        if not os.path.exists(path):
+            with open(path, "wb") as f:
+                f.write(content)
+        
+        file_id = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO store_item_files (id, store_item_id, created_at, original_filename, stored_filename, size_bytes, sha256) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (file_id, item_id, now_iso(), upload.filename, stored_name, len(content), sha256)
+        )
+    
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/admin/store/item/{item_id}?uploaded=1", status_code=303)
+
+
+@app.post("/admin/store/item/{item_id}/file/{file_id}/delete")
+def admin_store_file_delete(request: Request, item_id: str, file_id: str, _=Depends(require_admin)):
+    """Delete a file from a store item"""
+    conn = db()
+    conn.execute("DELETE FROM store_item_files WHERE id = ? AND store_item_id = ?", (file_id, item_id))
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/admin/store/item/{item_id}", status_code=303)
+
+
+# ─────────────────────────── PUBLIC STORE ───────────────────────────
+
+@app.get("/store", response_class=HTMLResponse)
+def public_store(request: Request, category: Optional[str] = None):
+    """Public store browsing page"""
+    conn = db()
+    
+    # Get unique categories
+    categories = conn.execute("""
+        SELECT DISTINCT category FROM store_items 
+        WHERE is_active = 1 AND category IS NOT NULL AND category != ''
+        ORDER BY category
+    """).fetchall()
+    
+    # Get items
+    if category:
+        items = conn.execute("""
+            SELECT * FROM store_items 
+            WHERE is_active = 1 AND category = ?
+            ORDER BY name ASC
+        """, (category,)).fetchall()
+    else:
+        items = conn.execute("""
+            SELECT * FROM store_items 
+            WHERE is_active = 1
+            ORDER BY name ASC
+        """).fetchall()
+    
+    conn.close()
+    
+    return templates.TemplateResponse("store.html", {
+        "request": request,
+        "items": items,
+        "categories": [c["category"] for c in categories],
+        "selected_category": category,
+        "version": APP_VERSION,
+    })
+
+
+@app.get("/store/item/{item_id}", response_class=HTMLResponse)
+def store_item_view(request: Request, item_id: str):
+    """View a store item and request it"""
+    conn = db()
+    item = conn.execute("SELECT * FROM store_items WHERE id = ? AND is_active = 1", (item_id,)).fetchone()
+    if not item:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Item not found")
+    
+    files = conn.execute(
+        "SELECT * FROM store_item_files WHERE store_item_id = ? ORDER BY created_at DESC",
+        (item_id,)
+    ).fetchall()
+    conn.close()
+    
+    return templates.TemplateResponse("store_item.html", {
+        "request": request,
+        "item": item,
+        "files": files,
+        "version": APP_VERSION,
+    })
+
+
+@app.post("/submit-store-request/{item_id}")
+def submit_store_request(
+    request: Request,
+    item_id: str,
+    requester_name: str = Form(...),
+    requester_email: str = Form(...),
+    colors: str = Form(""),
+    notes: str = Form(""),
+):
+    """Submit a print request from a store item"""
+    conn = db()
+    item = conn.execute("SELECT * FROM store_items WHERE id = ? AND is_active = 1", (item_id,)).fetchone()
+    if not item:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Store item not found")
+    
+    # Create request
+    rid = str(uuid.uuid4())
+    created = now_iso()
+    access_token = secrets.token_urlsafe(32)
+    
+    conn.execute("""
+        INSERT INTO requests (
+            id, created_at, updated_at, requester_name, requester_email,
+            printer, material, colors, link_url, notes, print_name,
+            status, access_token, priority, print_time_minutes, store_item_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        rid, created, created,
+        requester_name.strip(), requester_email.strip().lower(),
+        "ANY",  # Admin will assign printer
+        item["material"],
+        colors.strip() or item["colors"] or "",
+        item["link_url"],
+        notes.strip() or None,
+        item["name"],  # Use store item name as print name
+        "NEW",
+        access_token,
+        0,  # Default priority
+        item["estimated_time_minutes"],
+        item_id  # Link to store item
+    ))
+    
+    # Copy store item files to request
+    store_files = conn.execute(
+        "SELECT original_filename, stored_filename, size_bytes, sha256 FROM store_item_files WHERE store_item_id = ?",
+        (item_id,)
+    ).fetchall()
+    
+    for f in store_files:
+        conn.execute(
+            "INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), rid, created, f["original_filename"], f["stored_filename"], f["size_bytes"], f["sha256"])
+        )
+    
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, created, None, "NEW", f"Store item request: {item['name']}")
+    )
+    
+    conn.commit()
+    conn.close()
+    
+    # Send confirmation email
+    if get_bool_setting("requester_email_on_submit", True):
+        try:
+            subject = f"[{APP_TITLE}] Request Received - {item['name']}"
+            text = f"Your print request has been received!\n\nPrint: {item['name']}\nRequest ID: {rid[:8]}\n\nTrack: {BASE_URL}/my/{rid}?token={access_token}"
+            
+            email_rows = [
+                ("Print Name", item["name"]),
+                ("Request ID", rid[:8]),
+                ("Material", item["material"]),
+                ("Status", "NEW - Awaiting Review"),
+            ]
+            
+            html = build_email_html(
+                title="🖨 Request Received",
+                subtitle=f"Your request for '{item['name']}' has been submitted",
+                rows=email_rows,
+                footer_note="You'll receive updates as your request is processed.",
+                cta_label="Track Your Request",
+                cta_url=f"{BASE_URL}/my/{rid}?token={access_token}",
+            )
+            
+            send_email([requester_email.strip().lower()], subject, text, html)
+        except Exception as e:
+            print(f"[EMAIL] Failed to send confirmation: {e}")
+    
+    # Notify admin
+    admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))
+    if admin_emails and get_bool_setting("admin_email_on_submit", True):
+        try:
+            subject = f"[{APP_TITLE}] New Store Request - {item['name']}"
+            text = f"New store item request:\n\nItem: {item['name']}\nRequester: {requester_name}\nEmail: {requester_email}\n\nReview: {BASE_URL}/admin/request/{rid}"
+            send_email(admin_emails, subject, text)
+        except Exception:
+            pass
+    
+    return RedirectResponse(url=f"/thanks?id={rid[:8]}", status_code=303)
 
 
 @app.get("/admin/printer-settings", response_class=HTMLResponse)
