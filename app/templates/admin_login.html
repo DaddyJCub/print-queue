@@ -3,36 +3,40 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Admin Login</title>
+  <title>Admin Login | 3D Print Queue</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-zinc-950 text-zinc-100">
-  <div class="max-w-md mx-auto p-6">
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
-      <h1 class="text-3xl font-bold">Admin Login</h1>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen flex items-center justify-center">
+  <div class="w-full max-w-md p-6">
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-8">
+      <div class="text-center mb-6">
+        <div class="text-4xl mb-2">🔐</div>
+        <h1 class="text-2xl font-bold">Admin Login</h1>
+        <p class="text-zinc-400 text-sm mt-1">3D Print Queue</p>
+      </div>
 
       {% if request.query_params.get("bad") %}
-        <div class="mt-4 bg-red-900/20 border border-red-800 text-red-200 rounded-lg p-3 text-sm">
+        <div class="mb-4 bg-red-900/20 border border-red-800 text-red-200 rounded-lg p-3 text-sm text-center">
           Wrong password. Try again.
         </div>
       {% endif %}
 
-      <form class="mt-6 space-y-4"
-            action="/admin/login" method="POST">
+      <form action="/admin/login" method="POST" class="space-y-4">
         {% set next_url = next or request.query_params.get("next") %}
         {% if next_url %}
         <input type="hidden" name="next" value="{{ next_url }}" />
         {% endif %}
         <div>
           <label class="text-sm text-zinc-300">Password</label>
-          <input name="password" type="password" required autofocus class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+          <input name="password" type="password" required autofocus 
+                 class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition" />
         </div>
-        <button class="w-full rounded-2xl bg-indigo-600 hover:bg-indigo-500 transition p-3 font-semibold">
+        <button class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 transition p-3 font-semibold">
           Login
         </button>
       </form>
 
-      <div class="mt-6 text-sm text-zinc-500">
+      <div class="mt-6 pt-4 border-t border-zinc-800 text-center text-sm text-zinc-500">
         <a class="text-indigo-400 hover:underline" href="/">← Back to request form</a>
       </div>
     </div>

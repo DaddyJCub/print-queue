@@ -877,6 +877,7 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any]):
         "materials": MATERIALS,
         "error": error,
         "form": form,
+        "version": APP_VERSION,
     }, status_code=400 if error else 200)
 
 
@@ -1085,12 +1086,18 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             if printer_api:
                 status = await printer_api.get_status()
                 progress = await printer_api.get_percent_complete()
+                extended = await printer_api.get_extended_status()
                 if status:
+                    machine_status = status.get("MachineStatus", "UNKNOWN")
                     printer_status[printer_code] = {
-                        "status": status.get("MachineStatus", "UNKNOWN").replace("_FROM_SD", ""),
+                        "status": machine_status.replace("_FROM_SD", ""),
                         "temp": status.get("Temperature"),
                         "progress": progress,
-                        "healthy": status.get("MachineStatus") in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD"]
+                        "healthy": machine_status in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD"],
+                        "is_printing": machine_status in ["BUILDING", "BUILDING_FROM_SD"],
+                        "current_file": extended.get("current_file") if extended else None,
+                        "current_layer": extended.get("current_layer") if extended else None,
+                        "total_layers": extended.get("total_layers") if extended else None,
                     }
         except Exception:
             pass
@@ -1176,6 +1183,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             "ADVENTURER_4": printer_status.get("ADVENTURER_4", {}),
             "AD5X": printer_status.get("AD5X", {}),
         },
+        "version": APP_VERSION,
     })
 
 
@@ -1242,7 +1250,7 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
     ).fetchall()
     conn.close()
 
-    # Fetch printer status
+    # Fetch printer status with extended info
     printer_status = {}
     for printer_code in ["ADVENTURER_4", "AD5X"]:
         try:
@@ -1250,12 +1258,25 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
             if printer_api:
                 status = await printer_api.get_status()
                 progress = await printer_api.get_progress()
+                extended = await printer_api.get_extended_status()
+                temp_data = await printer_api.get_temperature()
+                
                 if status:
+                    machine_status = status.get("MachineStatus", "UNKNOWN")
+                    is_printing = machine_status in ["BUILDING", "BUILDING_FROM_SD"]
+                    
                     printer_status[printer_code] = {
-                        "status": status.get("MachineStatus", "UNKNOWN").replace("_FROM_SD", ""),
-                        "temp": status.get("Temperature"),
-                        "healthy": status.get("MachineStatus") in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD"],
+                        "status": machine_status.replace("_FROM_SD", ""),
+                        "raw_status": machine_status,
+                        "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
+                        "target_temp": temp_data.get("TargetTemperature") if temp_data else None,
+                        "healthy": machine_status in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD"],
+                        "is_printing": is_printing,
                         "progress": progress.get("PercentageCompleted") if progress else None,
+                        "current_file": extended.get("current_file") if extended else None,
+                        "current_layer": extended.get("current_layer") if extended else None,
+                        "total_layers": extended.get("total_layers") if extended else None,
+                        "camera_url": get_camera_url(printer_code),
                     }
         except Exception as e:
             print(f"[ADMIN] Error fetching printer {printer_code} status: {e}")
@@ -1285,7 +1306,7 @@ def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[s
         "requester_email_on_status": get_bool_setting("requester_email_on_status", True),
         "saved": bool(saved == "1"),
     }
-    return templates.TemplateResponse("admin_settings.html", {"request": request, "s": model})
+    return templates.TemplateResponse("admin_settings.html", {"request": request, "s": model, "version": APP_VERSION})
 
 
 @app.post("/admin/settings")
@@ -1415,6 +1436,7 @@ def admin_analytics(request: Request, _=Depends(require_admin)):
     return templates.TemplateResponse("admin_analytics.html", {
         "request": request,
         "stats": stats,
+        "version": APP_VERSION,
     })
 
 
@@ -1431,7 +1453,7 @@ def admin_printer_settings(request: Request, _=Depends(require_admin), saved: Op
         "enable_camera_snapshot": get_bool_setting("enable_camera_snapshot", False),
         "saved": bool(saved == "1"),
     }
-    return templates.TemplateResponse("printer_settings.html", {"request": request, "s": model})
+    return templates.TemplateResponse("printer_settings.html", {"request": request, "s": model, "version": APP_VERSION})
 
 
 @app.post("/admin/printer-settings")
@@ -2064,6 +2086,46 @@ async def printer_job(printer_code: str, _=Depends(require_admin)):
         result["layer_progress"] = f"{extended.get('current_layer', '?')}/{extended.get('total_layers', '?')}"
     
     return result
+
+
+@app.get("/api/printers/status")
+async def get_all_printers_status(_=Depends(require_admin)):
+    """Get status of all printers - for AJAX refresh"""
+    printer_status = {}
+    for printer_code in ["ADVENTURER_4", "AD5X"]:
+        try:
+            printer_api = get_printer_api(printer_code)
+            if printer_api:
+                status = await printer_api.get_status()
+                progress = await printer_api.get_progress()
+                extended = await printer_api.get_extended_status()
+                temp_data = await printer_api.get_temperature()
+                
+                if status:
+                    machine_status = status.get("MachineStatus", "UNKNOWN")
+                    is_printing = machine_status in ["BUILDING", "BUILDING_FROM_SD"]
+                    
+                    printer_status[printer_code] = {
+                        "status": machine_status.replace("_FROM_SD", ""),
+                        "raw_status": machine_status,
+                        "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
+                        "target_temp": temp_data.get("TargetTemperature") if temp_data else None,
+                        "healthy": machine_status in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD"],
+                        "is_printing": is_printing,
+                        "progress": progress.get("PercentageCompleted") if progress else None,
+                        "current_file": extended.get("current_file") if extended else None,
+                        "current_layer": extended.get("current_layer") if extended else None,
+                        "total_layers": extended.get("total_layers") if extended else None,
+                        "camera_url": get_camera_url(printer_code),
+                    }
+                else:
+                    printer_status[printer_code] = {"status": "OFFLINE", "healthy": False}
+            else:
+                printer_status[printer_code] = {"status": "NOT_CONFIGURED", "healthy": False}
+        except Exception as e:
+            printer_status[printer_code] = {"status": "ERROR", "error": str(e), "healthy": False}
+    
+    return printer_status
 
 
 @app.get("/api/printer/{printer_code}/raw/{command}")

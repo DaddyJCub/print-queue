@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Request {{ req["id"][:8] }}</title>
+  <title>Request {{ req["id"][:8] }} | 3D Print Queue</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .status-badge-new { @apply bg-slate-500/20 text-slate-300 border-slate-500/50; }
@@ -18,16 +18,14 @@
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-7xl mx-auto p-6">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
       <div>
-        <a class="text-indigo-400 hover:underline text-sm inline-flex items-center" href="/admin">
-          ← Back
-        </a>
+        <a class="text-indigo-400 hover:underline text-sm inline-flex items-center gap-1" href="/admin">← Dashboard</a>
         <h1 class="text-3xl font-bold mt-2">Request <code class="text-indigo-400">{{ req["id"][:8] }}</code></h1>
+        <p class="text-zinc-400 mt-1 text-sm">Created {{ req["created_at"] }}</p>
       </div>
-      <div class="text-right">
-        <div class="text-xs text-zinc-400 mb-2">Created {{ req["created_at"] }}</div>
-        <span class="inline-block px-4 py-2 rounded-lg border status-badge-{{ req['status'].lower() }}">
+      <div class="flex items-center gap-3">
+        <span class="inline-block px-4 py-2 rounded-lg border text-sm font-medium status-badge-{{ req['status'].lower() }}">
           {{ req["status"] }}
         </span>
       </div>
@@ -378,6 +376,11 @@
 
       </div>
 
+    </div>
+    
+    <!-- Footer with version -->
+    <div class="mt-8 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
+      3D Print Queue v{{ version }}
     </div>
   </div>
 </body>

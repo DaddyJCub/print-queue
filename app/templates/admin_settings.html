@@ -3,17 +3,23 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Admin Settings</title>
+  <title>Settings | 3D Print Queue</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-4xl mx-auto p-6">
-    <div class="flex items-end justify-between gap-4">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
       <div>
-        <h1 class="text-3xl font-bold">Admin Settings</h1>
-        <p class="text-zinc-400 mt-1">Control notification behavior without editing env vars.</p>
+        <a class="text-indigo-400 hover:underline text-sm inline-flex items-center gap-1" href="/admin">← Dashboard</a>
+        <h1 class="text-3xl font-bold mt-2">⚙️ Settings</h1>
+        <p class="text-zinc-400 mt-1">Email notifications and preferences.</p>
       </div>
-      <a class="text-indigo-400 hover:underline" href="/admin">Back to dashboard</a>
+      <nav class="flex items-center gap-2 text-sm">
+        <a class="text-zinc-400 hover:text-zinc-200" href="/admin/printer-settings">🖨 Printers</a>
+        <span class="text-zinc-700">|</span>
+        <a class="text-zinc-400 hover:text-zinc-200" href="/admin/analytics">📊 Analytics</a>
+      </nav>
     </div>
 
     {% if s.saved %}
@@ -80,6 +86,11 @@
         Note: SMTP credentials still come from env vars for security (host/user/pass/from).
       </section>
     </form>
+    
+    <!-- Footer with version -->
+    <div class="mt-8 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
+      3D Print Queue v{{ version }}
+    </div>
   </div>
 </body>
 </html>

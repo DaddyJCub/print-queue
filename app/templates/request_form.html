@@ -3,20 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>3D Print Request</title>
+  <title>Submit Request | 3D Print Queue</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-2xl mx-auto p-6">
-    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
       <div>
         <h1 class="text-3xl font-bold">3D Print Request</h1>
-        <p class="text-zinc-400 mt-2">Upload an STL/3MF or paste a link. Pick printer, material, colors, and notes.</p>
+        <p class="text-zinc-400 mt-2">Submit your print job — we'll take it from here.</p>
       </div>
       <a href="/queue"
-         class="rounded-2xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold text-center">
-        → View Queue
+         class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold text-center whitespace-nowrap">
+        📋 View Queue
       </a>
     </div>
 
@@ -114,8 +115,9 @@
       </button>
     </form>
 
-    <div class="mt-6 text-sm text-zinc-500">
+    <div class="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
       <a class="text-indigo-400 hover:underline" href="/admin/login">Admin Login</a>
+      <span>3D Print Queue v{{ version }}</span>
     </div>
   </div>
 </body>

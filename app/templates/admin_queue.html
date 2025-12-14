@@ -3,18 +3,23 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Admin Dashboard</title>
+  <title>Admin Dashboard | 3D Print Queue</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-7xl mx-auto p-6">
-    <div class="flex items-end justify-between gap-4">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
       <div>
         <h1 class="text-3xl font-bold">Admin Dashboard</h1>
-        <p class="text-zinc-400 mt-1">Manage your real print queue quickly.</p>
+        <p class="text-zinc-400 mt-1">Manage your print queue efficiently.</p>
       </div>
 
-      <div class="flex items-center gap-3">
+      <nav class="flex flex-wrap items-center gap-2">
+        <a class="rounded-xl bg-indigo-600/20 border border-indigo-500/50 text-indigo-200 px-4 py-2 text-sm font-medium"
+           href="/admin">
+          📋 Queue
+        </a>
         <a class="rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 transition px-4 py-2 text-sm"
            href="/admin/printer-settings">
           🖨 Printers
@@ -25,14 +30,17 @@
         </a>
         <a class="rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 transition px-4 py-2 text-sm"
            href="/admin/settings">
-          ⚙ Settings
+          ⚙️ Settings
         </a>
-        <a class="text-indigo-400 hover:underline" href="/">Public request form</a>
-        <a class="rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 transition px-4 py-2 text-sm"
+        <span class="text-zinc-700 mx-1">|</span>
+        <a class="text-indigo-400 hover:underline text-sm" href="/">Public Form</a>
+        <a class="text-indigo-400 hover:underline text-sm" href="/queue">Queue</a>
+        <span class="text-zinc-700 mx-1">|</span>
+        <a class="rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-red-900/50 hover:border-red-800 transition px-3 py-2 text-sm"
            href="/admin/logout">
           Logout
         </a>
-      </div>
+      </nav>
     </div>
 
     <!-- Batch Edit Form (initially hidden) -->
@@ -141,75 +149,245 @@
     {%- endmacro %}
 
     <!-- Printer Status Cards -->
-    <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
-        <div class="flex items-center justify-between mb-2">
+    <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4" id="printer-status-cards">
+      <!-- Adventurer 4 -->
+      <div id="card-adv4" class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
+        <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold flex items-center gap-2">
             <span>🖨</span>
             <span>FlashForge Adventurer 4</span>
           </h3>
           {% if printer_status.ADVENTURER_4.status %}
-            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium
-              {% if printer_status.ADVENTURER_4.status in ['READY', 'PRINTING', 'BUILDING'] %}
+            <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium
+              {% if printer_status.ADVENTURER_4.is_printing %}
+                bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
+              {% elif printer_status.ADVENTURER_4.status == 'READY' %}
                 bg-green-500/20 text-green-300 border border-green-500/50
               {% else %}
                 bg-amber-500/20 text-amber-300 border border-amber-500/50
               {% endif %}">
-              <span class="inline-block w-2 h-2 rounded-full 
-                {% if printer_status.ADVENTURER_4.status in ['READY', 'PRINTING', 'BUILDING'] %}bg-green-400{% else %}bg-amber-400{% endif %}"></span>
+              <span class="status-dot inline-block w-2 h-2 rounded-full animate-pulse
+                {% if printer_status.ADVENTURER_4.is_printing %}bg-emerald-400
+                {% elif printer_status.ADVENTURER_4.status == 'READY' %}bg-green-400
+                {% else %}bg-amber-400{% endif %}"></span>
               {{ printer_status.ADVENTURER_4.status }}
             </span>
           {% else %}
-            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-zinc-600/20 text-zinc-300 border border-zinc-600/50">
-              <span class="inline-block w-2 h-2 rounded-full bg-zinc-400"></span>
+            <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-zinc-600/20 text-zinc-300 border border-zinc-600/50">
+              <span class="status-dot inline-block w-2 h-2 rounded-full bg-zinc-400"></span>
               Offline
             </span>
           {% endif %}
         </div>
+        
+        <!-- Currently printing info -->
+        <div class="print-info bg-zinc-950/60 rounded-lg p-3 mb-3 {% if not printer_status.ADVENTURER_4.is_printing %}hidden{% endif %}">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm font-medium text-zinc-200">📄 <span class="file-name">{{ printer_status.ADVENTURER_4.current_file or 'Unknown' }}</span></div>
+              <div class="flex items-center gap-4 mt-1 text-xs text-zinc-400">
+                <span>Progress: <span class="progress-text text-emerald-300 font-semibold">{{ printer_status.ADVENTURER_4.progress or '?' }}%</span></span>
+                {% if printer_status.ADVENTURER_4.current_layer is not none %}
+                  <span>Layer: <span class="layer-text text-blue-300">{{ printer_status.ADVENTURER_4.current_layer }}/{{ printer_status.ADVENTURER_4.total_layers }}</span></span>
+                {% else %}
+                  <span>Layer: <span class="layer-text text-blue-300">?/?</span></span>
+                {% endif %}
+              </div>
+            </div>
+            {% if printer_status.ADVENTURER_4.camera_url %}
+              <a href="/admin/printer-settings" class="text-xs text-indigo-400 hover:underline">📷 View</a>
+            {% endif %}
+          </div>
+          <div class="mt-2 h-2 bg-zinc-800 rounded-full overflow-hidden">
+            <div class="progress-bar h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500" 
+                 style="width: {{ printer_status.ADVENTURER_4.progress or 0 }}%"></div>
+          </div>
+        </div>
+        
         <div class="flex items-center gap-4 text-xs text-zinc-400">
-          {% if printer_status.ADVENTURER_4.temp %}
-            <div>Nozzle: <span class="text-zinc-200">{{ printer_status.ADVENTURER_4.temp }}°C</span></div>
-          {% endif %}
-          {% if printer_status.ADVENTURER_4.progress %}
-            <div>Progress: <span class="text-emerald-300 font-semibold">{{ printer_status.ADVENTURER_4.progress }}%</span></div>
-          {% endif %}
+          <span class="temp-text">
+            {% if printer_status.ADVENTURER_4.temp %}
+              🌡 Nozzle: <span class="text-zinc-200">{{ printer_status.ADVENTURER_4.temp }}°C</span>
+              {% if printer_status.ADVENTURER_4.target_temp %}
+                <span class="text-zinc-500">/ {{ printer_status.ADVENTURER_4.target_temp }}°C</span>
+              {% endif %}
+            {% endif %}
+          </span>
         </div>
       </div>
       
-      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
-        <div class="flex items-center justify-between mb-2">
+      <!-- AD5X -->
+      <div id="card-ad5x" class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
+        <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold flex items-center gap-2">
             <span>🖨</span>
             <span>FlashForge AD5X</span>
           </h3>
           {% if printer_status.AD5X.status %}
-            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium
-              {% if printer_status.AD5X.status in ['READY', 'PRINTING', 'BUILDING'] %}
+            <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium
+              {% if printer_status.AD5X.is_printing %}
+                bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
+              {% elif printer_status.AD5X.status == 'READY' %}
                 bg-green-500/20 text-green-300 border border-green-500/50
               {% else %}
                 bg-amber-500/20 text-amber-300 border border-amber-500/50
               {% endif %}">
-              <span class="inline-block w-2 h-2 rounded-full 
-                {% if printer_status.AD5X.status in ['READY', 'PRINTING', 'BUILDING'] %}bg-green-400{% else %}bg-amber-400{% endif %}"></span>
+              <span class="status-dot inline-block w-2 h-2 rounded-full animate-pulse
+                {% if printer_status.AD5X.is_printing %}bg-emerald-400
+                {% elif printer_status.AD5X.status == 'READY' %}bg-green-400
+                {% else %}bg-amber-400{% endif %}"></span>
               {{ printer_status.AD5X.status }}
             </span>
           {% else %}
-            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-zinc-600/20 text-zinc-300 border border-zinc-600/50">
-              <span class="inline-block w-2 h-2 rounded-full bg-zinc-400"></span>
+            <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-zinc-600/20 text-zinc-300 border border-zinc-600/50">
+              <span class="status-dot inline-block w-2 h-2 rounded-full bg-zinc-400"></span>
               Offline
             </span>
           {% endif %}
         </div>
+        
+        <!-- Currently printing info -->
+        <div class="print-info bg-zinc-950/60 rounded-lg p-3 mb-3 {% if not printer_status.AD5X.is_printing %}hidden{% endif %}">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm font-medium text-zinc-200">📄 <span class="file-name">{{ printer_status.AD5X.current_file or 'Unknown' }}</span></div>
+              <div class="flex items-center gap-4 mt-1 text-xs text-zinc-400">
+                <span>Progress: <span class="progress-text text-emerald-300 font-semibold">{{ printer_status.AD5X.progress or '?' }}%</span></span>
+                {% if printer_status.AD5X.current_layer is not none %}
+                  <span>Layer: <span class="layer-text text-blue-300">{{ printer_status.AD5X.current_layer }}/{{ printer_status.AD5X.total_layers }}</span></span>
+                {% else %}
+                  <span>Layer: <span class="layer-text text-blue-300">?/?</span></span>
+                {% endif %}
+              </div>
+            </div>
+            {% if printer_status.AD5X.camera_url %}
+              <a href="/admin/printer-settings" class="text-xs text-indigo-400 hover:underline">📷 View</a>
+            {% endif %}
+          </div>
+          <div class="mt-2 h-2 bg-zinc-800 rounded-full overflow-hidden">
+            <div class="progress-bar h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500" 
+                 style="width: {{ printer_status.AD5X.progress or 0 }}%"></div>
+          </div>
+        </div>
+        
         <div class="flex items-center gap-4 text-xs text-zinc-400">
-          {% if printer_status.AD5X.temp %}
-            <div>Nozzle: <span class="text-zinc-200">{{ printer_status.AD5X.temp }}°C</span></div>
-          {% endif %}
-          {% if printer_status.AD5X.progress %}
-            <div>Progress: <span class="text-emerald-300 font-semibold">{{ printer_status.AD5X.progress }}%</span></div>
-          {% endif %}
+          <span class="temp-text">
+            {% if printer_status.AD5X.temp %}
+              🌡 Nozzle: <span class="text-zinc-200">{{ printer_status.AD5X.temp }}°C</span>
+              {% if printer_status.AD5X.target_temp %}
+                <span class="text-zinc-500">/ {{ printer_status.AD5X.target_temp }}°C</span>
+              {% endif %}
+            {% endif %}
+          </span>
         </div>
       </div>
     </div>
+
+    <!-- Auto-refresh controls -->
+    <div class="mt-2 flex justify-end">
+      <label class="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer">
+        <input type="checkbox" id="auto-refresh" checked class="rounded" />
+        Auto-refresh printer status every 15s
+      </label>
+      <button onclick="refreshPrinterStatus()" class="ml-4 text-xs text-indigo-400 hover:underline">↻ Refresh now</button>
+    </div>
+
+    <script>
+      // AJAX-based printer status refresh
+      let refreshInterval = null;
+      const autoRefreshCheckbox = document.getElementById('auto-refresh');
+      
+      async function refreshPrinterStatus() {
+        try {
+          const resp = await fetch('/api/printers/status');
+          if (!resp.ok) return;
+          const data = await resp.json();
+          
+          // Update each printer card
+          for (const [code, status] of Object.entries(data)) {
+            updatePrinterCard(code, status);
+          }
+        } catch (e) {
+          console.error('Failed to refresh printer status:', e);
+        }
+      }
+      
+      function updatePrinterCard(code, status) {
+        const cardId = code === 'ADVENTURER_4' ? 'card-adv4' : 'card-ad5x';
+        const card = document.getElementById(cardId);
+        if (!card) return;
+        
+        // Update status badge
+        const badge = card.querySelector('.status-badge');
+        if (badge) {
+          badge.textContent = status.status || 'OFFLINE';
+          badge.className = 'status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium';
+          if (status.is_printing) {
+            badge.classList.add('bg-emerald-500/20', 'text-emerald-300', 'border', 'border-emerald-500/50');
+          } else if (status.status === 'READY') {
+            badge.classList.add('bg-green-500/20', 'text-green-300', 'border', 'border-green-500/50');
+          } else if (status.status === 'OFFLINE' || status.status === 'ERROR') {
+            badge.classList.add('bg-zinc-600/20', 'text-zinc-300', 'border', 'border-zinc-600/50');
+          } else {
+            badge.classList.add('bg-amber-500/20', 'text-amber-300', 'border', 'border-amber-500/50');
+          }
+        }
+        
+        // Update print info section
+        const printInfo = card.querySelector('.print-info');
+        if (printInfo) {
+          if (status.is_printing) {
+            printInfo.classList.remove('hidden');
+            const fileName = printInfo.querySelector('.file-name');
+            const progress = printInfo.querySelector('.progress-text');
+            const layer = printInfo.querySelector('.layer-text');
+            const progressBar = printInfo.querySelector('.progress-bar');
+            
+            if (fileName) fileName.textContent = status.current_file || 'Unknown file';
+            if (progress) progress.textContent = (status.progress ?? '?') + '%';
+            if (layer && status.current_layer !== null) {
+              layer.textContent = `${status.current_layer}/${status.total_layers}`;
+            }
+            if (progressBar && status.progress !== null) {
+              progressBar.style.width = status.progress + '%';
+            }
+          } else {
+            printInfo.classList.add('hidden');
+          }
+        }
+        
+        // Update temperature
+        const temp = card.querySelector('.temp-text');
+        if (temp && status.temp) {
+          let tempText = `🌡 Nozzle: ${status.temp}°C`;
+          if (status.target_temp) tempText += ` / ${status.target_temp}°C`;
+          temp.innerHTML = tempText;
+        }
+      }
+      
+      function startAutoRefresh() {
+        if (refreshInterval) clearInterval(refreshInterval);
+        refreshInterval = setInterval(refreshPrinterStatus, 15000);
+      }
+      
+      function stopAutoRefresh() {
+        if (refreshInterval) {
+          clearInterval(refreshInterval);
+          refreshInterval = null;
+        }
+      }
+      
+      autoRefreshCheckbox.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          startAutoRefresh();
+        } else {
+          stopAutoRefresh();
+        }
+      });
+      
+      // Start auto-refresh on page load
+      startAutoRefresh();
+    </script>
 
     <div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
 

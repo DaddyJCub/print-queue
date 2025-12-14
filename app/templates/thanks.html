@@ -11,16 +11,20 @@
     <div class="bg-gradient-to-br from-emerald-600/20 to-emerald-900/10 border border-emerald-500/40 rounded-2xl p-6">
       <div class="text-emerald-300 text-lg font-semibold">✓ Request submitted</div>
       <p class="text-zinc-400 mt-3 text-sm">Your request ID (save this!):</p>
-      <code class="block mt-2 p-3 bg-zinc-950 border border-zinc-800 rounded-xl font-mono text-indigo-200 font-semibold">{{ rid }}</code>
+      <code class="block mt-2 p-3 bg-zinc-950 border border-zinc-800 rounded-xl font-mono text-indigo-200 font-semibold text-lg">{{ rid }}</code>
       <p class="text-zinc-400 mt-3 text-sm">You'll be redirected to the queue shortly. Bookmark the link!</p>
       <div class="mt-6 flex gap-3">
-        <a href="/queue" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold text-center flex-1">
+        <a href="/queue?mine={{ rid[:8] }}" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold text-center flex-1">
           View Queue
         </a>
         <a href="/" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-center">
           Submit Another
         </a>
       </div>
+    </div>
+    
+    <div class="mt-6 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
+      3D Print Queue v{{ version }}
     </div>
   </div>
 </body>
