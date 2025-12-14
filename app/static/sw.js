@@ -1,13 +1,13 @@
 // Service Worker for 3D Print Queue PWA
 const CACHE_NAME = 'print-queue-v1';
-const OFFLINE_URL = '/offline.html';
+const OFFLINE_URL = '/static/offline.html';
 
 // Assets to cache immediately
 const PRECACHE_ASSETS = [
   '/',
   '/queue',
   '/static/manifest.json',
-  '/offline.html',
+  '/static/offline.html',
 ];
 
 // Install event - precache essential assets

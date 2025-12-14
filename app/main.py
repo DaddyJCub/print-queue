@@ -1564,6 +1564,8 @@ async def poll_printer_status_worker():
                                 cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
                                 cta_label="View in Queue",
                                 header_color="#f59e0b",  # Orange for printing
+                                secondary_cta_url=f"{BASE_URL}/my-requests",
+                                secondary_cta_label="All My Requests",
                             )
                             send_email([req["requester_email"]], subject, text, html)
                         
@@ -1905,7 +1907,7 @@ def _human_material(code: str) -> str:
     return code
 
 
-def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta_url: Optional[str] = None, cta_label: str = "Open", header_color: str = "#4f46e5", image_base64: Optional[str] = None, footer_note: Optional[str] = None) -> str:
+def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta_url: Optional[str] = None, cta_label: str = "Open", header_color: str = "#4f46e5", image_base64: Optional[str] = None, footer_note: Optional[str] = None, secondary_cta_url: Optional[str] = None, secondary_cta_label: str = "My Requests") -> str:
     """Build HTML email with optional header color customization and embedded image"""
     def esc(s: str) -> str:
         return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -1930,6 +1932,15 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
 
     cta = ""
     if cta_url:
+        secondary_btn = ""
+        if secondary_cta_url:
+            secondary_btn = f"""
+              <a href="{esc(secondary_cta_url)}"
+                 style="display:inline-block;background:#6b7280;color:#ffffff;text-decoration:none;
+                        padding:12px 16px;border-radius:8px;font-weight:600;font-size:14px;border:0;margin-left:8px;">
+                {esc(secondary_cta_label)}
+              </a>
+            """
         cta = f"""
           <div style="margin-top:20px;">
             <a href="{esc(cta_url)}"
@@ -1937,6 +1948,7 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
                       padding:12px 16px;border-radius:8px;font-weight:600;font-size:14px;border:0;">
               {esc(cta_label)}
             </a>
+            {secondary_btn}
           </div>
         """
 
@@ -2431,6 +2443,8 @@ async def submit(
             ],
             cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
             cta_label="View queue",
+            secondary_cta_url=f"{BASE_URL}/my-requests",
+            secondary_cta_label="All My Requests",
         )
         send_email([requester_email.strip()], subject, text, html)
 
@@ -4798,6 +4812,8 @@ def admin_set_status(
             cta_label=cta_label,
             header_color=header_color,
             footer_note=footer_note,
+            secondary_cta_url=f"{BASE_URL}/my-requests",
+            secondary_cta_label="All My Requests",
         )
         send_email([req["requester_email"]], subject, text, html)
 
