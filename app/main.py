@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.7.4"
+APP_VERSION = "1.7.5"
 # Changelog:
 # 1.7.3 - Timelapse API: list and download timelapse videos from printers
 # 1.7.2 - Request templates: save and reuse common form configurations
@@ -55,11 +55,43 @@ app.trust_proxy_headers = True
 
 templates = Jinja2Templates(directory="app/templates")
 
+# Timezone for display (default to US Eastern)
+DISPLAY_TIMEZONE = os.getenv("DISPLAY_TIMEZONE", "America/New_York")
+
+def format_datetime_local(value, fmt="%b %d, %Y at %I:%M %p"):
+    """Convert ISO datetime string to local timezone for display"""
+    if not value:
+        return ""
+    try:
+        from datetime import timezone
+        # Parse the ISO string
+        if isinstance(value, str):
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        else:
+            dt = value
+        
+        # Convert to target timezone
+        try:
+            import zoneinfo
+            tz = zoneinfo.ZoneInfo(DISPLAY_TIMEZONE)
+            local_dt = dt.astimezone(tz)
+        except Exception:
+            # Fallback: just use UTC offset for US Eastern (-5 or -4 DST)
+            from datetime import timedelta
+            local_dt = dt - timedelta(hours=5)  # EST approximation
+        
+        return local_dt.strftime(fmt)
+    except Exception:
+        return str(value)
+
+# Register filter with Jinja
+templates.env.filters["localtime"] = format_datetime_local
+
 # NOTE: app/static must exist in your repo (can be empty with a .gitkeep)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Status flow for admin actions
-STATUS_FLOW = ["NEW", "APPROVED", "PRINTING", "DONE", "PICKED_UP", "REJECTED", "CANCELLED"]
+STATUS_FLOW = ["NEW", "NEEDS_INFO", "APPROVED", "PRINTING", "DONE", "PICKED_UP", "REJECTED", "CANCELLED"]
 
 # Dropdown options (Any is the default)
 PRINTERS = [
@@ -342,43 +374,65 @@ def parse_email_list(raw: str) -> List[str]:
 
 
 def get_smart_eta(printer: str = None, material: str = None, 
-                  current_percent: int = None, printing_started_at: str = None) -> Optional[datetime]:
+                  current_percent: int = None, printing_started_at: str = None,
+                  current_layer: int = None, total_layers: int = None) -> Optional[datetime]:
     """
     Calculate a smart ETA based on:
-    1. Current progress + elapsed time (most accurate when printing)
-    2. Historical average for this printer/material combo
+    1. Layer progress + elapsed time (most accurate - layers are more linear than bytes)
+    2. Percent progress + elapsed time (good fallback)
+    3. Historical average for this printer/material combo
     
     Returns a datetime of estimated completion, or None if can't estimate.
     """
-    # Method 1: If we have current progress, calculate from elapsed time
-    if current_percent and current_percent > 0 and printing_started_at:
+    now = datetime.utcnow()
+    
+    # Parse start time if available
+    started_dt = None
+    elapsed = 0
+    if printing_started_at:
         try:
-            # Parse and normalize datetime to naive UTC
             started_dt = datetime.fromisoformat(printing_started_at.replace("Z", "+00:00"))
             if started_dt.tzinfo:
                 started_dt = started_dt.replace(tzinfo=None)
-            
-            now = datetime.utcnow()
             elapsed = (now - started_dt).total_seconds()
-            
+        except Exception:
+            pass
+    
+    # Method 1: Layer-based calculation (most accurate for FDM printing)
+    # Layers are more linear than byte progress since each layer takes similar time
+    if current_layer and total_layers and total_layers > 0 and elapsed >= 120:
+        try:
+            layer_percent = (current_layer / total_layers) * 100
+            if layer_percent > 0 and layer_percent < 100:
+                # Calculate based on layer progress
+                total_expected = elapsed / (layer_percent / 100)
+                remaining_seconds = total_expected - elapsed
+                
+                # Add small buffer (3% - layers are more accurate so less buffer needed)
+                remaining_seconds *= 1.03
+                
+                if 0 < remaining_seconds < 172800:  # < 48 hours
+                    eta = now + __import__('datetime').timedelta(seconds=remaining_seconds)
+                    return eta
+        except Exception as e:
+            print(f"[ETA] Error calculating from layers: {e}")
+    
+    # Method 2: Percent-based calculation (fallback if no layer info)
+    if current_percent and current_percent > 0 and elapsed >= 120:
+        try:
             if current_percent >= 100:
                 return now
             
-            # Skip if elapsed time is too short (< 2 minutes) - data not reliable yet
-            # This happens when printing_started_at was just set retroactively
-            if elapsed >= 120:  # At least 2 minutes of data
-                # Calculate total expected time based on current progress
-                # If 30% done in 60 minutes, total time = 60 / 0.30 = 200 minutes
-                total_expected = elapsed / (current_percent / 100)
-                remaining_seconds = total_expected - elapsed
-                
-                # Add a small buffer (5%) for accuracy
-                remaining_seconds *= 1.05
-                
-                # Sanity check: remaining should be positive and reasonable (< 48 hours)
-                if 0 < remaining_seconds < 172800:
-                    eta = now + __import__('datetime').timedelta(seconds=remaining_seconds)
-                    return eta
+            # Calculate total expected time based on current progress
+            total_expected = elapsed / (current_percent / 100)
+            remaining_seconds = total_expected - elapsed
+            
+            # Add a buffer (5% - byte progress less reliable than layers)
+            remaining_seconds *= 1.05
+            
+            if 0 < remaining_seconds < 172800:
+                eta = now + __import__('datetime').timedelta(seconds=remaining_seconds)
+                return eta
         except Exception as e:
             print(f"[ETA] Error calculating from progress: {e}")
     
@@ -1493,6 +1547,8 @@ async def public_queue(request: Request, mine: Optional[str] = None):
         printer_progress = None
         smart_eta = None
         smart_eta_display = None
+        current_layer = None
+        total_layers = None
         printing_started_at = r["printing_started_at"] if "printing_started_at" in r.keys() else None
         
         if r["status"] == "PRINTING":
@@ -1506,18 +1562,27 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                 conn_fix.close()
             
             printer_api = get_printer_api(r["printer"])
+            current_layer = None
+            total_layers = None
             if printer_api:
                 try:
                     printer_progress = await printer_api.get_percent_complete()
+                    # Get layer info for more accurate ETA
+                    extended = await printer_api.get_extended_status()
+                    if extended:
+                        current_layer = extended.get("current_layer")
+                        total_layers = extended.get("total_layers")
                 except Exception:
                     pass  # Fall back to time-based estimate if API fails
             
-            # Calculate smart ETA based on progress and history
+            # Calculate smart ETA based on layers (preferred) or progress
             eta_dt = get_smart_eta(
                 printer=r["printer"],
                 material=r["material"],
                 current_percent=printer_progress,
-                printing_started_at=printing_started_at
+                printing_started_at=printing_started_at,
+                current_layer=current_layer,
+                total_layers=total_layers
             )
             if eta_dt:
                 smart_eta = eta_dt.isoformat()
@@ -1545,6 +1610,8 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             "smart_eta": smart_eta,  # ISO datetime of estimated completion
             "smart_eta_display": smart_eta_display,  # Human-readable "Today at 3:45 PM"
             "printing_started_at": printing_started_at,
+            "current_layer": current_layer,  # Current layer number
+            "total_layers": total_layers,  # Total layers in print
         })
     
     # Separate items by status for display
@@ -1563,26 +1630,45 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     
     # Helper to estimate remaining time for a printing item
     def estimate_remaining_minutes(item):
-        """Estimate remaining time for a printing item based on progress"""
-        if item.get("printer_progress") and item["printer_progress"] > 0:
-            # Calculate based on elapsed time and progress
-            if item.get("printing_started_at"):
-                try:
-                    from datetime import datetime
-                    # Normalize to naive UTC
-                    started = datetime.fromisoformat(item["printing_started_at"].replace("Z", "+00:00"))
-                    if started.tzinfo:
-                        started = started.replace(tzinfo=None)
-                    now = datetime.utcnow()
-                    elapsed_minutes = (now - started).total_seconds() / 60
-                    
-                    # Need at least 2 minutes elapsed for reliable estimate
-                    if elapsed_minutes >= 2 and item["printer_progress"] > 5:
-                        total_estimated = elapsed_minutes / (item["printer_progress"] / 100)
-                        remaining = total_estimated - elapsed_minutes
-                        return max(0, int(remaining))
-                except Exception:
-                    pass
+        """Estimate remaining time for a printing item based on layer progress or percent progress"""
+        if not item.get("printing_started_at"):
+            # Fall back to manual estimate
+            if item.get("print_time_minutes"):
+                progress = item.get("printer_progress") or 0
+                remaining = item["print_time_minutes"] * (1 - progress / 100)
+                return max(0, int(remaining))
+            return None
+        
+        try:
+            from datetime import datetime
+            # Normalize to naive UTC
+            started = datetime.fromisoformat(item["printing_started_at"].replace("Z", "+00:00"))
+            if started.tzinfo:
+                started = started.replace(tzinfo=None)
+            now = datetime.utcnow()
+            elapsed_minutes = (now - started).total_seconds() / 60
+            
+            # Need at least 2 minutes elapsed for reliable estimate
+            if elapsed_minutes < 2:
+                if item.get("print_time_minutes"):
+                    return max(0, int(item["print_time_minutes"]))
+                return None
+            
+            # Method 1: Layer-based (more accurate for FDM)
+            if item.get("current_layer") and item.get("total_layers") and item["total_layers"] > 0:
+                layer_progress = (item["current_layer"] / item["total_layers"]) * 100
+                if layer_progress > 0:
+                    total_estimated = elapsed_minutes / (layer_progress / 100)
+                    remaining = total_estimated - elapsed_minutes
+                    return max(0, int(remaining))
+            
+            # Method 2: Percent-based (fallback)
+            if item.get("printer_progress") and item["printer_progress"] > 5:
+                total_estimated = elapsed_minutes / (item["printer_progress"] / 100)
+                remaining = total_estimated - elapsed_minutes
+                return max(0, int(remaining))
+        except Exception:
+            pass
         
         # Fall back to manual estimate minus progress-based portion
         if item.get("print_time_minutes"):
@@ -1768,10 +1854,17 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
     for r in printing_raw:
         # Get current progress from printer for smart ETA calculation
         printer_progress = None
+        current_layer = None
+        total_layers = None
         printer_api = get_printer_api(r["printer"])
         if printer_api:
             try:
                 printer_progress = await printer_api.get_percent_complete()
+                # Get layer info for more accurate ETA
+                extended = await printer_api.get_extended_status()
+                if extended:
+                    current_layer = extended.get("current_layer")
+                    total_layers = extended.get("total_layers")
             except Exception:
                 pass
         
@@ -1785,12 +1878,14 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
             conn_fix.commit()
             conn_fix.close()
         
-        # Calculate smart ETA
+        # Calculate smart ETA based on layers (preferred) or progress
         eta_dt = get_smart_eta(
             printer=r["printer"],
             material=r["material"],
             current_percent=printer_progress,
-            printing_started_at=printing_started_at
+            printing_started_at=printing_started_at,
+            current_layer=current_layer,
+            total_layers=total_layers
         )
         
         # Convert to dict and add ETA fields
@@ -2211,6 +2306,7 @@ def admin_set_status(
 
     # Status-specific styling
     status_colors = {
+        "NEEDS_INFO": "#f97316",  # Orange
         "APPROVED": "#10b981",  # Green
         "PRINTING": "#f59e0b",  # Amber
         "DONE": "#06b6d4",      # Cyan
@@ -2219,6 +2315,7 @@ def admin_set_status(
         "CANCELLED": "#64748b", # Slate
     }
     status_titles = {
+        "NEEDS_INFO": "⚠️ Info Needed",
         "APPROVED": "✓ Request Approved",
         "PRINTING": "🖨 Now Printing",
         "DONE": "✓ Ready for Pickup",
@@ -2283,10 +2380,16 @@ def admin_set_status(
             email_rows.append(("Estimated Wait", estimated_wait_str))
         email_rows.append(("Comment", (comment or "—")))
         
-        # Add disclaimer for APPROVED
+        # Status-specific subtitles and notes
         subtitle = f"Request {rid[:8]} has been {to_status.lower().replace('_', ' ')}"
         footer_note = None
-        if to_status == "APPROVED" and queue_position:
+        cta_label = "View in Queue"
+        
+        if to_status == "NEEDS_INFO":
+            subtitle = f"We need more information about your request"
+            footer_note = "Please reply to this email or submit a new request with the requested information. Your request is on hold until we hear back from you."
+            cta_label = "View Request Status"
+        elif to_status == "APPROVED" and queue_position:
             footer_note = "Wait times are estimates and may vary. Check the live queue for the most accurate status."
         
         html = build_email_html(
@@ -2294,7 +2397,7 @@ def admin_set_status(
             subtitle=subtitle,
             rows=email_rows,
             cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
-            cta_label="View in Queue",
+            cta_label=cta_label,
             header_color=header_color,
             footer_note=footer_note,
         )

@@ -7,6 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .status-badge-new { @apply bg-slate-500/20 text-slate-300 border-slate-500/50; }
+    .status-badge-needs-info { @apply bg-orange-500/20 text-orange-300 border-orange-500/50; }
     .status-badge-approved { @apply bg-green-500/20 text-green-300 border-green-500/50; }
     .status-badge-printing { @apply bg-amber-500/20 text-amber-300 border-amber-500/50; }
     .status-badge-done { @apply bg-cyan-500/20 text-cyan-300 border-cyan-500/50; }
@@ -22,7 +23,7 @@
       <div>
         <a class="text-indigo-400 hover:underline text-sm inline-flex items-center gap-1" href="/admin">← Dashboard</a>
         <h1 class="text-3xl font-bold mt-2">Request <code class="text-indigo-400">{{ req["id"][:8] }}</code></h1>
-        <p class="text-zinc-400 mt-1 text-sm">Created {{ req["created_at"] }}</p>
+        <p class="text-zinc-400 mt-1 text-sm">Created {{ req["created_at"]|localtime }}</p>
       </div>
       <div class="flex items-center gap-3">
         <!-- Quick Actions -->
@@ -371,7 +372,7 @@
           <div class="space-y-2 max-h-96 overflow-y-auto">
             {% for e in events %}
               <div class="bg-zinc-950/60 border border-zinc-700 rounded-lg p-3 text-xs">
-                <div class="text-zinc-400">{{ e["created_at"] }}</div>
+                <div class="text-zinc-400">{{ e["created_at"]|localtime }}</div>
                 <div class="mt-1 font-medium">
                   {% if e["from_status"] %}
                     {{ e["from_status"] }} → <span class="text-indigo-300">{{ e["to_status"] }}</span>

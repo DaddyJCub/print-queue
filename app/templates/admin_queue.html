@@ -133,7 +133,12 @@
 
     <!-- Helper macro-ish (simple patterns) -->
     {% macro badge(text) -%}
-      <span class="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-xs">{{ text }}</span>
+      <span class="px-2 py-1 rounded-lg text-xs border
+        {% if text == 'NEEDS_INFO' %}bg-orange-900/20 border-orange-800 text-orange-200
+        {% elif text == 'APPROVED' %}bg-green-900/20 border-green-800 text-green-200
+        {% elif text == 'PRINTING' %}bg-emerald-900/20 border-emerald-800 text-emerald-200
+        {% elif text == 'DONE' %}bg-cyan-900/20 border-cyan-800 text-cyan-200
+        {% else %}bg-zinc-950 border-zinc-800 text-zinc-300{% endif %}">{{ text }}</span>
     {%- endmacro %}
 
     {% macro prio_badge(p) -%}
@@ -480,6 +485,14 @@
                 </div>
 
                 <div class="mt-3 flex gap-2">
+                  <form method="POST" action="/admin/request/{{ r['id'] }}/status" class="flex gap-1">
+                    <input type="hidden" name="to_status" value="NEEDS_INFO" />
+                    <input name="comment" placeholder="What info needed?" 
+                           class="w-40 rounded-xl bg-zinc-950 border border-orange-800/50 p-2 text-xs" />
+                    <button class="text-xs px-3 py-2 rounded-xl bg-orange-900/20 border border-orange-800 hover:bg-orange-900/40 text-orange-200">
+                      Need Info
+                    </button>
+                  </form>
                   <form method="POST" action="/admin/request/{{ r['id'] }}/status">
                     <input type="hidden" name="to_status" value="REJECTED" />
                     <input type="hidden" name="comment" value="Rejected" />
