@@ -271,6 +271,10 @@
                 <div class="text-xs text-zinc-300">
                   Est. wait <span class="font-semibold text-indigo-300">{{ (r.estimated_wait_minutes // 60) }}h {{ (r.estimated_wait_minutes % 60) }}m</span>
                 </div>
+              {% elif r.status == "DONE" %}
+                <a href="/repeat/{{ r.short_id }}" class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-indigo-600/20 border border-indigo-500/50 text-indigo-300 hover:bg-indigo-600/30 transition">
+                  🔄 Repeat
+                </a>
               {% else %}
                 <div class="text-xs text-zinc-500">—</div>
               {% endif %}
@@ -317,16 +321,47 @@
         updateTimer();
         setInterval(updateTimer, 1000);
       });
+      
+      // Auto-refresh the page every 30 seconds
+      let autoRefreshEnabled = true;
+      const autoRefreshInterval = 30000; // 30 seconds
+      
+      function autoRefresh() {
+        if (autoRefreshEnabled) {
+          location.reload();
+        }
+      }
+      
+      // Start auto-refresh timer
+      let refreshTimer = setInterval(autoRefresh, autoRefreshInterval);
+      
+      // Toggle auto-refresh
+      function toggleAutoRefresh() {
+        autoRefreshEnabled = !autoRefreshEnabled;
+        const btn = document.getElementById('auto-refresh-toggle');
+        const indicator = document.getElementById('auto-refresh-indicator');
+        if (autoRefreshEnabled) {
+          btn.textContent = '⏸ Pause auto-refresh';
+          indicator.classList.remove('hidden');
+        } else {
+          btn.textContent = '▶ Resume auto-refresh';
+          indicator.classList.add('hidden');
+        }
+      }
     </script>
 
     <!-- Footer CTA -->
     <div class="mt-8 flex flex-col md:flex-row gap-4 items-center justify-between bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5">
-      <div class="text-sm text-zinc-300">
-        Want to join the queue?
+      <div class="flex items-center gap-3">
+        <span class="text-sm text-zinc-300">Want to join the queue?</span>
+        <span id="auto-refresh-indicator" class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-900/30 border border-emerald-800/50 text-emerald-300 text-xs">
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          Auto-refreshing
+        </span>
       </div>
       <div class="flex gap-3">
-        <button onclick="location.reload()" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm font-medium">
-          ↻ Refresh queue
+        <button id="auto-refresh-toggle" onclick="toggleAutoRefresh()" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm font-medium">
+          ⏸ Pause auto-refresh
         </button>
         <a href="/" class="rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
           + Submit request
@@ -336,7 +371,7 @@
 
     <!-- Footer with version -->
     <div class="mt-6 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
-      3D Print Queue v{{ version }}
+      <a href="/changelog" class="hover:text-indigo-400 transition">3D Print Queue v{{ version }}</a>
     </div>
   </div>
 </body>

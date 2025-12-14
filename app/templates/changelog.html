@@ -1,0 +1,350 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Changelog | 3D Print Queue</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-4xl mx-auto p-6">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
+      <div>
+        <a class="text-indigo-400 hover:underline text-sm inline-flex items-center gap-1" href="/">← Back</a>
+        <h1 class="text-3xl font-bold mt-2">📋 Changelog</h1>
+        <p class="text-zinc-400 mt-1">Version history and release notes for 3D Print Queue.</p>
+      </div>
+      <div class="text-right">
+        <div class="text-sm text-zinc-400">Current Version</div>
+        <div class="text-2xl font-bold text-indigo-400">v{{ version }}</div>
+      </div>
+    </div>
+
+    <!-- Changelog Entries -->
+    <div class="space-y-6">
+      
+      <!-- v1.7.3 -->
+      <div class="bg-zinc-900/50 border border-indigo-500/50 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg">v1.7.3</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50">Latest</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Timelapse API</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>List timelapses</strong> - API to list available timelapse videos from printers</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Download videos</strong> - Stream/download timelapse videos via HTTP</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Probe endpoint</strong> - Discover printer web interfaces and file access methods</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>File listing</strong> - List all files on printer SD card via M-codes</span>
+          </li>
+        </ul>
+      </div>
+      
+      <!-- v1.7.2 -->
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.7.2</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Request Templates</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Save templates</strong> - Save your current form settings as a reusable template</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Quick load</strong> - One-click loading of saved templates to pre-fill the form</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Manage templates</strong> - Delete templates you no longer need</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>API endpoints</strong> - /api/templates for CRUD operations</span>
+          </li>
+        </ul>
+      </div>
+      
+      <!-- v1.7.1 -->
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.7.1</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Dynamic Rush Pricing</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Queue-based pricing</strong> - Rush fee adjusts based on how busy the queue is (+$0-10)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Real-time price updates</strong> - Price updates dynamically as you fill out the form</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400">✓</span>
+            <span><strong>Brandon Tax™</strong> - Special x5 price multiplier for... certain individuals 😈</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>API endpoint</strong> - /api/rush-pricing for real-time pricing calculations</span>
+          </li>
+        </ul>
+      </div>
+      
+      <!-- v1.7.0 -->
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.7.0</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Enhanced Features & UX</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Auto-refresh public queue</strong> - Queue updates automatically every 30 seconds</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Printer suggestions</strong> - Smart recommendations based on queue length and availability</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Repeat request</strong> - Easily re-submit previous print requests</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Request templates</strong> - Save and reuse common print configurations</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Priority Rush option</strong> - Request expedited printing with priority bump</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Changelog page</strong> - View version history (you're looking at it!)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500">○</span>
+            <span class="text-zinc-400"><strong>AD5X Timelapse</strong> - Pull timelapse videos from printer (coming soon)</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.6.0 -->
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.6.0</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Smart ETA System</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Learning ETAs</strong> - System learns from completed prints to estimate future completion times</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Print history tracking</strong> - Records actual print durations for better predictions</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Estimated completion dates</strong> - Shows "Est. by Today at 3:45 PM" instead of abstract times</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>ETA disclaimers</strong> - Clear messaging that estimates may vary</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.5.0 -->
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.5.0</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Extended Printer Status</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Current filename display</strong> - Shows what file is currently printing (M119 command)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Layer progress</strong> - Shows current layer / total layers (M27 command)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Enhanced printer cards</strong> - Rich status display with progress bars</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>AJAX auto-refresh</strong> - Admin dashboard updates every 15 seconds</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Version display</strong> - Footer shows app version on all pages</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Consistent navigation</strong> - Unified admin nav with active states</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.4.0 -->
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.4.0</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Camera & Auto-Complete</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Camera streaming</strong> - Live view from printer cameras</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Completion snapshots</strong> - Auto-capture photo when print finishes</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Auto-complete</strong> - Automatically marks prints as DONE when printer reports complete</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Login redirect fix</strong> - Preserves destination URL after login</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.3.0 -->
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.3.0</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">FlashForge Integration</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>FlashForge API</strong> - Direct integration with Adventurer 4 and AD5X printers</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Real-time status</strong> - Live printer status, temperature, and progress</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>ETA calculations</strong> - Time-based print completion estimates</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Analytics dashboard</strong> - Print statistics and usage data</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.2.0 -->
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.2.0</span>
+          <span class="text-zinc-400 text-sm">November 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Admin Dashboard</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Admin dashboard</strong> - Central management interface for all requests</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Priority system</strong> - P1/P2/P3 priority levels for queue ordering</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Email notifications</strong> - Automated emails for status changes</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Batch operations</strong> - Select and edit multiple requests at once</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.1.0 -->
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.1.0</span>
+          <span class="text-zinc-400 text-sm">November 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">File Uploads & Queue</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>File uploads</strong> - Upload STL, 3MF, and GCode files with requests</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Status tracking</strong> - Track requests through NEW → APPROVED → PRINTING → DONE</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Public queue</strong> - View queue position and status without login</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.0.0 -->
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.0.0</span>
+          <span class="text-zinc-400 text-sm">November 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Initial Release</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Request form</strong> - Submit 3D print requests with details</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Basic queue</strong> - View submitted requests</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Admin login</strong> - Password-protected admin access</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Cloudflare Turnstile</strong> - Bot protection on form submissions</span>
+          </li>
+        </ul>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="mt-8 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
+      <a href="/changelog" class="hover:text-indigo-400 transition">3D Print Queue v{{ version }}</a>
+    </div>
+
+  </div>
+</body>
+</html>

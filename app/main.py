@@ -12,8 +12,12 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.7.3"
 # Changelog:
+# 1.7.3 - Timelapse API: list and download timelapse videos from printers
+# 1.7.2 - Request templates: save and reuse common form configurations
+# 1.7.1 - Dynamic rush pricing based on queue size + Brandon Tax™ x5 multiplier
+# 1.7.0 - Auto-refresh queue, printer suggestions, repeat requests, rush priority, changelog page
 # 1.6.0 - Smart ETA: learns from print history, shows estimated completion dates
 # 1.5.0 - Extended status API: current filename, layer progress from M119/M27
 # 1.4.0 - Camera streaming, auto-complete with snapshots, login redirect fix
@@ -152,6 +156,22 @@ def init_db():
     );
     """)
 
+    # Request templates for quick resubmission
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS request_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      requester_name TEXT,
+      requester_email TEXT,
+      printer TEXT,
+      material TEXT,
+      colors TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    """)
+
     conn.commit()
     conn.close()
 
@@ -266,6 +286,11 @@ DEFAULT_SETTINGS: Dict[str, str] = {
     "printer_adventurer_4_ip": "192.168.0.198",
     "printer_ad5x_ip": "192.168.0.157",
     "enable_printer_polling": "1",
+    
+    # Rush payment settings
+    "rush_fee_amount": "5",
+    "venmo_handle": "@YourVenmoHandle",
+    "enable_rush_option": "1",
 }
 
 
@@ -334,16 +359,21 @@ def get_smart_eta(printer: str = None, material: str = None,
             if current_percent >= 100:
                 return datetime.now()
             
-            # Calculate total expected time based on current progress
-            # If 30% done in 60 minutes, total time = 60 / 0.30 = 200 minutes
-            total_expected = elapsed / (current_percent / 100)
-            remaining_seconds = total_expected - elapsed
-            
-            # Add a small buffer (5%) for accuracy
-            remaining_seconds *= 1.05
-            
-            eta = datetime.now() + __import__('datetime').timedelta(seconds=remaining_seconds)
-            return eta
+            # Skip if elapsed time is too short (< 2 minutes) - data not reliable yet
+            # This happens when printing_started_at was just set retroactively
+            if elapsed >= 120:  # At least 2 minutes of data
+                # Calculate total expected time based on current progress
+                # If 30% done in 60 minutes, total time = 60 / 0.30 = 200 minutes
+                total_expected = elapsed / (current_percent / 100)
+                remaining_seconds = total_expected - elapsed
+                
+                # Add a small buffer (5%) for accuracy
+                remaining_seconds *= 1.05
+                
+                # Sanity check: remaining should be positive and reasonable (< 48 hours)
+                if 0 < remaining_seconds < 172800:
+                    eta = datetime.now() + __import__('datetime').timedelta(seconds=remaining_seconds)
+                    return eta
         except Exception as e:
             print(f"[ETA] Error calculating from progress: {e}")
     
@@ -1021,7 +1051,127 @@ def first_name_only(name: str) -> str:
     return parts[0] if parts else ""
 
 
+def get_printer_suggestions() -> Dict[str, Any]:
+    """Get printer suggestion data based on current queue"""
+    conn = db()
+    
+    # Count active jobs per printer
+    printer_queue = {}
+    for printer_code in ["ADVENTURER_4", "AD5X"]:
+        count = conn.execute(
+            "SELECT COUNT(*) as c FROM requests WHERE printer = ? AND status IN (?, ?, ?)",
+            (printer_code, "APPROVED", "PRINTING", "NEW")
+        ).fetchone()["c"]
+        printer_queue[printer_code] = count
+    
+    # Count ANY printer requests (these could go to either)
+    any_count = conn.execute(
+        "SELECT COUNT(*) as c FROM requests WHERE printer = ? AND status IN (?, ?, ?)",
+        ("ANY", "APPROVED", "PRINTING", "NEW")
+    ).fetchone()["c"]
+    
+    conn.close()
+    
+    # Determine suggestion
+    adv4_total = printer_queue["ADVENTURER_4"] + any_count
+    ad5x_total = printer_queue["AD5X"] + any_count
+    
+    suggested = None
+    suggestion_reason = None
+    
+    if adv4_total == 0 and ad5x_total == 0:
+        suggestion_reason = "Both printers available!"
+    elif adv4_total < ad5x_total:
+        suggested = "ADVENTURER_4"
+        suggestion_reason = f"Adventurer 4 has shorter queue ({adv4_total} vs {ad5x_total})"
+    elif ad5x_total < adv4_total:
+        suggested = "AD5X"
+        suggestion_reason = f"AD5X has shorter queue ({ad5x_total} vs {adv4_total})"
+    else:
+        suggestion_reason = f"Both printers have similar queue ({adv4_total} jobs)"
+    
+    return {
+        "suggested": suggested,
+        "reason": suggestion_reason,
+        "adventurer_4_queue": adv4_total,
+        "ad5x_queue": ad5x_total,
+        "total_queue": adv4_total + ad5x_total,
+    }
+
+
+def calculate_rush_price(queue_size: int, requester_name: str = "") -> Dict[str, Any]:
+    """Calculate dynamic rush price based on queue and... special customers"""
+    base_fee = int(get_setting("rush_fee_amount", "5"))
+    
+    # Dynamic pricing based on queue size
+    # 0-2 jobs: base price
+    # 3-5 jobs: base + $2
+    # 6-10 jobs: base + $5
+    # 10+ jobs: base + $10
+    if queue_size <= 2:
+        queue_multiplier = 0
+        queue_reason = "Short queue"
+    elif queue_size <= 5:
+        queue_multiplier = 2
+        queue_reason = "Moderate queue"
+    elif queue_size <= 10:
+        queue_multiplier = 5
+        queue_reason = "Busy queue"
+    else:
+        queue_multiplier = 10
+        queue_reason = "Very busy queue"
+    
+    calculated_price = base_fee + queue_multiplier
+    
+    # Special pricing for... certain individuals
+    name_lower = (requester_name or "").lower().strip()
+    brandon_multiplier = 1
+    if "brandon" in name_lower:
+        brandon_multiplier = 5
+        calculated_price = calculated_price * brandon_multiplier
+    
+    return {
+        "base_fee": base_fee,
+        "queue_addon": queue_multiplier,
+        "queue_reason": queue_reason,
+        "multiplier": brandon_multiplier,
+        "final_price": calculated_price,
+        "is_special": brandon_multiplier > 1,
+    }
+
+
+def get_request_templates() -> List[Dict[str, Any]]:
+    """Get all saved request templates"""
+    conn = db()
+    rows = conn.execute(
+        "SELECT * FROM request_templates ORDER BY updated_at DESC"
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
 def render_form(request: Request, error: Optional[str], form: Dict[str, Any]):
+    # Get printer suggestions
+    printer_suggestions = get_printer_suggestions()
+    
+    # Calculate dynamic rush pricing
+    queue_size = printer_suggestions.get("total_queue", 0)
+    requester_name = form.get("requester_name", "")
+    rush_pricing = calculate_rush_price(queue_size, requester_name)
+    
+    # Rush payment settings
+    rush_settings = {
+        "enabled": get_bool_setting("enable_rush_option", True),
+        "fee": rush_pricing["final_price"],  # Dynamic price!
+        "base_fee": rush_pricing["base_fee"],
+        "queue_addon": rush_pricing["queue_addon"],
+        "queue_reason": rush_pricing["queue_reason"],
+        "venmo_handle": get_setting("venmo_handle", "@YourVenmoHandle"),
+    }
+    
+    # Get saved templates
+    saved_templates = get_request_templates()
+    
     return templates.TemplateResponse("request_form.html", {
         "request": request,
         "turnstile_site_key": TURNSTILE_SITE_KEY,
@@ -1030,6 +1180,9 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any]):
         "error": error,
         "form": form,
         "version": APP_VERSION,
+        "printer_suggestions": printer_suggestions,
+        "rush_settings": rush_settings,
+        "saved_templates": saved_templates,
     }, status_code=400 if error else 200)
 
 
@@ -1049,6 +1202,8 @@ async def submit(
     colors: str = Form(...),
     link_url: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
+    rush_request: Optional[str] = Form(None),
+    rush_payment_confirmed: Optional[str] = Form(None),
     turnstile_token: Optional[str] = Form(None, alias="cf-turnstile-response"),
     upload: Optional[UploadFile] = File(None),
 ):
@@ -1061,6 +1216,8 @@ async def submit(
         "colors": colors,
         "link_url": link_url or "",
         "notes": notes or "",
+        "rush_request": rush_request,
+        "rush_payment_confirmed": rush_payment_confirmed,
     }
 
     ok = await verify_turnstile(turnstile_token or "", request.client.host if request.client else None)
@@ -1088,6 +1245,31 @@ async def submit(
 
     rid = str(uuid.uuid4())
     created = now_iso()
+    
+    # Calculate dynamic rush pricing at submission time
+    printer_suggestions = get_printer_suggestions()
+    queue_size = printer_suggestions.get("total_queue", 0)
+    rush_pricing = calculate_rush_price(queue_size, requester_name)
+    final_rush_price = rush_pricing["final_price"]
+    is_brandon = rush_pricing["is_special"]
+    
+    # Priority: P1 if rush requested AND payment confirmed, P3 default
+    is_rush = rush_request and rush_payment_confirmed
+    priority = 1 if is_rush else 3
+    
+    # Build rush note with actual calculated price
+    if is_rush:
+        if is_brandon:
+            special_notes = f"🚀 RUSH REQUEST (${final_rush_price} paid - Brandon Tax™ x5) - Priority processing"
+        else:
+            special_notes = f"🚀 RUSH REQUEST (${final_rush_price} paid) - Priority processing"
+    else:
+        special_notes = None
+    
+    # If rush requested but no payment, add note for admin
+    if rush_request and not rush_payment_confirmed:
+        special_notes = f"⚠️ Rush requested (${final_rush_price}) but payment NOT confirmed - verify before prioritizing"
+        priority = 2  # Medium priority, admin can bump to P1 after verifying payment
 
     conn = db()
     conn.execute(
@@ -1107,8 +1289,8 @@ async def submit(
             link_url.strip() if link_url else None,
             notes,
             "NEW",
-            None,
-            3,
+            special_notes,
+            priority,
             None,
         )
     )
@@ -1365,6 +1547,41 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     })
 
 
+@app.get("/repeat/{short_id}", response_class=HTMLResponse)
+def repeat_request(request: Request, short_id: str):
+    """Pre-fill form with data from a previous request"""
+    conn = db()
+    # Find request by short ID (first 8 chars)
+    row = conn.execute(
+        "SELECT requester_name, requester_email, print_name, printer, material, colors, link_url, notes "
+        "FROM requests WHERE id LIKE ?",
+        (f"{short_id}%",)
+    ).fetchone()
+    conn.close()
+    
+    if not row:
+        return render_form(request, f"Request {short_id} not found.", {})
+    
+    form_data = {
+        "requester_name": row["requester_name"],
+        "requester_email": row["requester_email"],
+        "print_name": row["print_name"],
+        "printer": row["printer"],
+        "material": row["material"],
+        "colors": row["colors"],
+        "link_url": row["link_url"] or "",
+        "notes": row["notes"] or "",
+    }
+    
+    return render_form(request, None, form_data)
+
+
+@app.get("/changelog", response_class=HTMLResponse)
+def changelog(request: Request):
+    """Version history and release notes"""
+    return templates.TemplateResponse("changelog.html", {"request": request, "version": APP_VERSION})
+
+
 @app.get("/admin/login", response_class=HTMLResponse)
 def admin_login(request: Request, next: Optional[str] = None):
     return templates.TemplateResponse("admin_login.html", {"request": request, "next": next})
@@ -1528,6 +1745,9 @@ def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[s
         "admin_email_on_status": get_bool_setting("admin_email_on_status", True),
         "requester_email_on_submit": get_bool_setting("requester_email_on_submit", False),
         "requester_email_on_status": get_bool_setting("requester_email_on_status", True),
+        "enable_rush_option": get_bool_setting("enable_rush_option", True),
+        "rush_fee_amount": get_setting("rush_fee_amount", "5"),
+        "venmo_handle": get_setting("venmo_handle", "@YourVenmoHandle"),
         "saved": bool(saved == "1"),
     }
     return templates.TemplateResponse("admin_settings.html", {"request": request, "s": model, "version": APP_VERSION})
@@ -1541,6 +1761,9 @@ def admin_settings_post(
     admin_email_on_status: Optional[str] = Form(None),
     requester_email_on_submit: Optional[str] = Form(None),
     requester_email_on_status: Optional[str] = Form(None),
+    enable_rush_option: Optional[str] = Form(None),
+    rush_fee_amount: str = Form("5"),
+    venmo_handle: str = Form("@YourVenmoHandle"),
     _=Depends(require_admin),
 ):
     # checkboxes: present => "on", missing => None
@@ -1549,6 +1772,9 @@ def admin_settings_post(
     set_setting("admin_email_on_status", "1" if admin_email_on_status else "0")
     set_setting("requester_email_on_submit", "1" if requester_email_on_submit else "0")
     set_setting("requester_email_on_status", "1" if requester_email_on_status else "0")
+    set_setting("enable_rush_option", "1" if enable_rush_option else "0")
+    set_setting("rush_fee_amount", (rush_fee_amount or "5").strip())
+    set_setting("venmo_handle", (venmo_handle or "").strip())
 
     return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
 
@@ -2287,6 +2513,83 @@ def get_version():
     return {"version": APP_VERSION, "title": APP_TITLE}
 
 
+@app.get("/api/rush-pricing")
+def get_rush_pricing(name: str = ""):
+    """Get dynamic rush pricing based on queue and requester name"""
+    printer_suggestions = get_printer_suggestions()
+    queue_size = printer_suggestions.get("total_queue", 0)
+    pricing = calculate_rush_price(queue_size, name)
+    return {
+        "price": pricing["final_price"],
+        "base_fee": pricing["base_fee"],
+        "queue_addon": pricing["queue_addon"],
+        "queue_reason": pricing["queue_reason"],
+        "is_special": pricing["is_special"],
+        "queue_size": queue_size,
+    }
+
+
+# ─────────────────────────── REQUEST TEMPLATES ───────────────────────────
+
+@app.get("/api/templates")
+def list_templates():
+    """Get all saved request templates"""
+    return {"templates": get_request_templates()}
+
+
+@app.post("/api/templates")
+def create_template(
+    name: str = Form(...),
+    requester_name: str = Form(""),
+    requester_email: str = Form(""),
+    printer: str = Form("ANY"),
+    material: str = Form("ANY"),
+    colors: str = Form(""),
+    notes: str = Form(""),
+):
+    """Save a new request template"""
+    tid = str(uuid.uuid4())
+    now = now_iso()
+    
+    conn = db()
+    conn.execute(
+        """INSERT INTO request_templates 
+           (id, name, requester_name, requester_email, printer, material, colors, notes, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (tid, name.strip(), requester_name.strip(), requester_email.strip(), 
+         printer, material, colors.strip(), notes.strip(), now, now)
+    )
+    conn.commit()
+    conn.close()
+    
+    return {"success": True, "id": tid, "message": f"Template '{name}' saved!"}
+
+
+@app.delete("/api/templates/{template_id}")
+def delete_template(template_id: str):
+    """Delete a request template"""
+    conn = db()
+    conn.execute("DELETE FROM request_templates WHERE id = ?", (template_id,))
+    conn.commit()
+    conn.close()
+    return {"success": True, "message": "Template deleted"}
+
+
+@app.get("/api/templates/{template_id}")
+def get_template(template_id: str):
+    """Get a single template by ID"""
+    conn = db()
+    row = conn.execute(
+        "SELECT * FROM request_templates WHERE id = ?", (template_id,)
+    ).fetchone()
+    conn.close()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    return dict(row)
+
+
 @app.get("/api/printer/{printer_code}/debug")
 async def printer_debug(printer_code: str, _=Depends(require_admin)):
     """Debug endpoint to test all available printer API endpoints"""
@@ -2557,3 +2860,218 @@ async def get_print_history(_=Depends(require_admin)):
         "by_printer": [dict(p) for p in by_printer],
         "overall": dict(overall) if overall else {},
     }
+
+
+# ─────────────────────────── TIMELAPSE API ───────────────────────────
+
+async def list_printer_files_via_mcode(printer_code: str, folder: str = "") -> List[Dict[str, Any]]:
+    """List files on printer SD card via M-code commands"""
+    import socket
+    
+    if printer_code == "ADVENTURER_4":
+        ip = get_setting("printer_adventurer_4_ip", "192.168.0.198")
+    elif printer_code == "AD5X":
+        ip = get_setting("printer_ad5x_ip", "192.168.0.157")
+    else:
+        return []
+    
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        sock.connect((ip, 8899))
+        
+        # Control request
+        sock.send(b"~M601 S1\r\n")
+        sock.recv(1024)
+        
+        # M661 lists files (FlashForge specific)
+        # M20 is standard G-code for SD card listing
+        commands = ["M661", "M20"]
+        all_files = []
+        
+        for cmd in commands:
+            sock.send(f"~{cmd}\r\n".encode())
+            response = b""
+            try:
+                while True:
+                    chunk = sock.recv(4096)
+                    if not chunk:
+                        break
+                    response += chunk
+                    if b"ok\r\n" in response or b"ok\n" in response or len(response) > 50000:
+                        break
+            except socket.timeout:
+                pass
+            
+            resp_text = response.decode('utf-8', errors='ignore')
+            
+            # Parse file listings - look for common patterns
+            for line in resp_text.split('\n'):
+                line = line.strip()
+                # Skip empty lines and command echoes
+                if not line or line.startswith('CMD') or line == 'ok' or line.startswith('~'):
+                    continue
+                # Look for file extensions
+                lower = line.lower()
+                if any(ext in lower for ext in ['.mp4', '.avi', '.mov', '.gcode', '.3mf', '.gx']):
+                    # Could be "filename.mp4" or "filename.mp4 SIZE" format
+                    parts = line.split()
+                    filename = parts[0] if parts else line
+                    size = parts[1] if len(parts) > 1 else None
+                    all_files.append({
+                        "name": filename,
+                        "size": size,
+                        "is_timelapse": any(ext in lower for ext in ['.mp4', '.avi', '.mov']),
+                    })
+        
+        sock.close()
+        return all_files
+        
+    except Exception as e:
+        print(f"[TIMELAPSE] Error listing files from {printer_code}: {e}")
+        return []
+
+
+async def get_timelapse_via_http(printer_code: str, filename: str) -> Optional[bytes]:
+    """Try to fetch timelapse video via HTTP from printer's web interface"""
+    if printer_code == "ADVENTURER_4":
+        ip = get_setting("printer_adventurer_4_ip", "192.168.0.198")
+    elif printer_code == "AD5X":
+        ip = get_setting("printer_ad5x_ip", "192.168.0.157")
+    else:
+        return None
+    
+    # Common FlashForge timelapse paths to try
+    paths_to_try = [
+        f"/timelapse/{filename}",
+        f"/video/{filename}",
+        f"/sdcard/timelapse/{filename}",
+        f"/sd/timelapse/{filename}",
+        f"/{filename}",
+    ]
+    
+    # Common ports
+    ports_to_try = [80, 8080, 8899, 8888]
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for port in ports_to_try:
+            for path in paths_to_try:
+                try:
+                    url = f"http://{ip}:{port}{path}"
+                    print(f"[TIMELAPSE] Trying {url}")
+                    response = await client.get(url)
+                    if response.status_code == 200:
+                        content_type = response.headers.get("content-type", "")
+                        if "video" in content_type or filename.lower().endswith(('.mp4', '.avi', '.mov')):
+                            print(f"[TIMELAPSE] Found video at {url}")
+                            return response.content
+                except Exception as e:
+                    continue
+    
+    return None
+
+
+@app.get("/api/printer/{printer_code}/files")
+async def list_printer_files(printer_code: str, _=Depends(require_admin)):
+    """List files on printer SD card"""
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    files = await list_printer_files_via_mcode(printer_code)
+    return {
+        "printer": printer_code,
+        "files": files,
+        "timelapse_count": sum(1 for f in files if f.get("is_timelapse")),
+    }
+
+
+@app.get("/api/printer/{printer_code}/timelapses")
+async def list_printer_timelapses(printer_code: str, _=Depends(require_admin)):
+    """List available timelapse videos from printer"""
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    all_files = await list_printer_files_via_mcode(printer_code)
+    timelapses = [f for f in all_files if f.get("is_timelapse")]
+    
+    return {
+        "printer": printer_code,
+        "timelapses": timelapses,
+        "count": len(timelapses),
+    }
+
+
+@app.get("/api/printer/{printer_code}/timelapse/{filename}")
+async def get_printer_timelapse(printer_code: str, filename: str, _=Depends(require_admin)):
+    """Download/stream a timelapse video from printer"""
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    # Validate filename to prevent path traversal
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    video_data = await get_timelapse_via_http(printer_code, filename)
+    
+    if not video_data:
+        raise HTTPException(status_code=404, detail="Timelapse not found or not accessible")
+    
+    # Determine content type
+    ext = filename.lower().split('.')[-1] if '.' in filename else 'mp4'
+    content_types = {
+        'mp4': 'video/mp4',
+        'avi': 'video/x-msvideo',
+        'mov': 'video/quicktime',
+    }
+    content_type = content_types.get(ext, 'video/mp4')
+    
+    return Response(content=video_data, media_type=content_type)
+
+
+@app.get("/api/printer/{printer_code}/timelapse-probe")
+async def probe_printer_timelapse_access(printer_code: str, _=Depends(require_admin)):
+    """Probe printer to discover timelapse access methods"""
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    if printer_code == "ADVENTURER_4":
+        ip = get_setting("printer_adventurer_4_ip", "192.168.0.198")
+    else:
+        ip = get_setting("printer_ad5x_ip", "192.168.0.157")
+    
+    results = {
+        "printer": printer_code,
+        "ip": ip,
+        "web_interfaces": [],
+        "file_listing": None,
+    }
+    
+    # Check for web interfaces
+    ports_to_check = [80, 8080, 8888, 8899, 443]
+    paths_to_check = ["/", "/index.html", "/timelapse", "/video", "/sd", "/sdcard"]
+    
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        for port in ports_to_check:
+            for path in paths_to_check:
+                try:
+                    url = f"http://{ip}:{port}{path}"
+                    response = await client.get(url)
+                    if response.status_code < 400:
+                        results["web_interfaces"].append({
+                            "url": url,
+                            "status": response.status_code,
+                            "content_type": response.headers.get("content-type", "unknown"),
+                            "size": len(response.content),
+                            "preview": response.text[:500] if "text" in response.headers.get("content-type", "") else None,
+                        })
+                except Exception:
+                    continue
+    
+    # Try file listing via M-code
+    files = await list_printer_files_via_mcode(printer_code)
+    results["file_listing"] = {
+        "files": files,
+        "count": len(files),
+    }
+    
+    return results
