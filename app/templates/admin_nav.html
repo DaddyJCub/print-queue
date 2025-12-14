@@ -1,0 +1,58 @@
+{# Admin Navigation Component #}
+{# Usage: {% include 'admin_nav.html' %} with active_page variable set #}
+
+<nav class="bg-zinc-900/50 border-b border-zinc-800 mb-6 -mx-6 -mt-6 px-6 py-3">
+  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <!-- Logo/Title -->
+    <div class="flex items-center gap-3">
+      <span class="text-xl">🖨</span>
+      <span class="font-bold text-lg">3D Print Queue</span>
+      <span class="text-xs px-2 py-0.5 bg-indigo-600/30 text-indigo-300 rounded">Admin</span>
+    </div>
+    
+    <!-- Main Nav -->
+    <div class="flex flex-wrap items-center gap-1">
+      <!-- Admin Pages -->
+      <a href="/admin" 
+         class="px-4 py-2 rounded-lg text-sm font-medium transition
+                {% if active_page == 'queue' %}bg-indigo-600 text-white{% else %}text-zinc-300 hover:bg-zinc-800{% endif %}">
+        📋 Queue
+      </a>
+      <a href="/admin/printer-settings" 
+         class="px-4 py-2 rounded-lg text-sm font-medium transition
+                {% if active_page == 'printers' %}bg-indigo-600 text-white{% else %}text-zinc-300 hover:bg-zinc-800{% endif %}">
+        🖨 Printers
+      </a>
+      <a href="/admin/analytics" 
+         class="px-4 py-2 rounded-lg text-sm font-medium transition
+                {% if active_page == 'analytics' %}bg-indigo-600 text-white{% else %}text-zinc-300 hover:bg-zinc-800{% endif %}">
+        📊 Analytics
+      </a>
+      <a href="/admin/settings" 
+         class="px-4 py-2 rounded-lg text-sm font-medium transition
+                {% if active_page == 'settings' %}bg-indigo-600 text-white{% else %}text-zinc-300 hover:bg-zinc-800{% endif %}">
+        ⚙️ Settings
+      </a>
+      
+      <!-- Divider -->
+      <span class="text-zinc-700 mx-2 hidden md:inline">|</span>
+      
+      <!-- Public Links -->
+      <a href="/" class="px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition">
+        Submit Form
+      </a>
+      <a href="/queue" class="px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition">
+        Public Queue
+      </a>
+      
+      <!-- Divider -->
+      <span class="text-zinc-700 mx-2 hidden md:inline">|</span>
+      
+      <!-- Logout -->
+      <a href="/admin/logout" 
+         class="px-3 py-2 rounded-lg text-sm text-red-400 hover:text-red-300 hover:bg-red-900/30 transition">
+        Logout
+      </a>
+    </div>
+  </div>
+</nav>

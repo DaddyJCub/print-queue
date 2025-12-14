@@ -8,18 +8,14 @@
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-4xl mx-auto p-6">
-    <!-- Header -->
-    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
-      <div>
-        <a class="text-indigo-400 hover:underline text-sm inline-flex items-center gap-1" href="/admin">← Dashboard</a>
-        <h1 class="text-3xl font-bold mt-2">🖨 Printer Settings</h1>
-        <p class="text-zinc-400 mt-1">FlashForge API, cameras, and monitoring.</p>
-      </div>
-      <nav class="flex items-center gap-2 text-sm">
-        <a class="text-zinc-400 hover:text-zinc-200" href="/admin/settings">⚙️ Settings</a>
-        <span class="text-zinc-700">|</span>
-        <a class="text-zinc-400 hover:text-zinc-200" href="/admin/analytics">📊 Analytics</a>
-      </nav>
+    <!-- Navigation -->
+    {% set active_page = 'printers' %}
+    {% include 'admin_nav.html' %}
+    
+    <!-- Page Header -->
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold">🖨 Printer Settings</h1>
+      <p class="text-zinc-400 mt-1">FlashForge API, cameras, and monitoring.</p>
     </div>
 
     {% if s.saved %}

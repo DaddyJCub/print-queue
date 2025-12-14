@@ -10,14 +10,22 @@
   <div class="max-w-xl mx-auto p-6">
     <div class="bg-gradient-to-br from-emerald-600/20 to-emerald-900/10 border border-emerald-500/40 rounded-2xl p-6">
       <div class="text-emerald-300 text-lg font-semibold">✓ Request submitted</div>
-      <p class="text-zinc-400 mt-3 text-sm">Your request ID (save this!):</p>
-      <code class="block mt-2 p-3 bg-zinc-950 border border-zinc-800 rounded-xl font-mono text-indigo-200 font-semibold text-lg">{{ rid }}</code>
-      <p class="text-zinc-400 mt-3 text-sm">You'll be redirected to the queue shortly. Bookmark the link!</p>
-      <div class="mt-6 flex gap-3">
-        <a href="/queue?mine={{ rid[:8] }}" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold text-center flex-1">
+      <p class="text-zinc-200 mt-2 font-medium">{{ print_name or 'Your print request' }}</p>
+      <p class="text-zinc-400 mt-3 text-sm">Your request ID:</p>
+      <code class="block mt-2 p-3 bg-zinc-950 border border-zinc-800 rounded-xl font-mono text-indigo-200 font-semibold text-lg">{{ rid[:8] }}</code>
+      
+      <div class="mt-6 space-y-3">
+        <a href="/my/{{ rid }}?token={{ access_token }}" class="block rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-3 font-semibold text-center">
+          📬 View My Request
+        </a>
+        <p class="text-xs text-zinc-500 text-center">Save this link! Use it to track status, respond to questions, or upload files.</p>
+      </div>
+      
+      <div class="mt-4 pt-4 border-t border-zinc-800 flex gap-3">
+        <a href="/queue?mine={{ rid[:8] }}" class="flex-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm text-center">
           View Queue
         </a>
-        <a href="/" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-center">
+        <a href="/" class="flex-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm text-center">
           Submit Another
         </a>
       </div>

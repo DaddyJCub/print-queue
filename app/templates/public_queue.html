@@ -16,9 +16,14 @@
           Track your print request in real-time. 🖨️
         </p>
       </div>
-      <a href="/" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold text-center whitespace-nowrap">
-        + Submit Request
-      </a>
+      <div class="flex gap-3">
+        <a href="/my-requests" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 font-medium text-center whitespace-nowrap">
+          📋 My Requests
+        </a>
+        <a href="/" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold text-center whitespace-nowrap">
+          + Submit Request
+        </a>
+      </div>
     </div>
 
     <!-- Quick stats -->
@@ -391,6 +396,60 @@
           </tbody>
         </table>
       </div>
+    </div>
+    {% endif %}
+
+    <!-- Pending Items (NEW/NEEDS_INFO - awaiting review) -->
+    {% if pending_items %}
+    <div class="mt-6">
+      <h2 class="text-lg font-semibold mb-3 text-zinc-400">⏳ Awaiting Review</h2>
+      <div class="overflow-x-auto bg-zinc-900/60 rounded-2xl border border-zinc-700/50">
+        <table class="w-full text-sm">
+          <thead class="text-zinc-400 bg-zinc-950/40">
+            <tr class="border-b border-zinc-800">
+              <th class="text-left p-3">Print Name</th>
+              <th class="text-left p-3">Requester</th>
+              <th class="text-left p-3">Printer</th>
+              <th class="text-left p-3">Material</th>
+              <th class="text-left p-3">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in pending_items %}
+            <tr class="border-b border-zinc-800 {% if r.is_mine %}bg-indigo-900/20{% else %}hover:bg-zinc-950/40{% endif %} transition">
+              <td class="p-3 align-top">
+                {% if r.print_name %}
+                  <span class="font-semibold text-zinc-200">{{ r.print_name }}</span>
+                  <div class="text-xs text-zinc-500 font-mono mt-1">{{ r.short_id }}</div>
+                {% else %}
+                  <span class="font-mono text-zinc-300 text-xs">{{ r.short_id }}</span>
+                {% endif %}
+                {% if r.is_mine %}
+                  <span class="ml-2 text-xs px-2 py-0.5 rounded bg-indigo-600/40 text-indigo-200 border border-indigo-500/50">You</span>
+                {% endif %}
+              </td>
+              <td class="p-3 align-top">{{ r.requester_first }}</td>
+              <td class="p-3 align-top text-sm text-zinc-300">{{ r.printer }}</td>
+              <td class="p-3 align-top text-sm text-zinc-300">{{ r.material }}</td>
+              <td class="p-3 align-top">
+                {% if r.status == 'NEEDS_INFO' %}
+                  <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-orange-500/20 text-orange-300 border border-orange-500/40">
+                    <span class="inline-block w-2 h-2 rounded-full bg-orange-400 animate-pulse"></span>
+                    Info Needed
+                  </span>
+                {% else %}
+                  <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-zinc-700/40 text-zinc-300 border border-zinc-600/40">
+                    <span class="inline-block w-2 h-2 rounded-full bg-zinc-500"></span>
+                    Under Review
+                  </span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-2 text-xs text-zinc-500">These requests are being reviewed. Once approved, they'll join the active queue.</p>
     </div>
     {% endif %}
 

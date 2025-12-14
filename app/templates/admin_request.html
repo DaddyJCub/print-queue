@@ -18,30 +18,82 @@
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-7xl mx-auto p-6">
-    <!-- Header -->
+    <!-- Navigation -->
+    {% set active_page = 'request' %}
+    {% include 'admin_nav.html' %}
+    
+    <!-- Page Header with Request Info -->
     <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
       <div>
-        <a class="text-indigo-400 hover:underline text-sm inline-flex items-center gap-1" href="/admin">← Dashboard</a>
-        <h1 class="text-3xl font-bold mt-2">Request <code class="text-indigo-400">{{ req["id"][:8] }}</code></h1>
-        <p class="text-zinc-400 mt-1 text-sm">Created {{ req["created_at"]|localtime }}</p>
+        <h1 class="text-3xl font-bold">{{ req["print_name"] or ("Request " + req["id"][:8]) }}</h1>
+        <p class="text-zinc-400 mt-1 text-sm">
+          <code class="text-indigo-400">{{ req["id"][:8] }}</code> • 
+          Created {{ req["created_at"]|localtime }} • 
+          {{ req["requester_name"] }}
+        </p>
       </div>
       <div class="flex items-center gap-3">
-        <!-- Quick Actions -->
+        <span class="inline-block px-4 py-2 rounded-lg border text-sm font-medium status-badge-{{ req['status'].lower().replace('_', '-') }}">
+          {{ req["status"].replace('_', ' ') }}
+        </span>
+      </div>
+    </div>
+    
+    {% if request.query_params.get('reminder_sent') %}
+      <div class="mb-6 bg-emerald-900/30 border border-emerald-700 rounded-xl p-4 text-emerald-200">
+        ✓ Reminder email sent to {{ req["requester_email"] }}
+      </div>
+    {% endif %}
+    
+    <!-- Quick Actions Bar -->
+    <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 mb-6">
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="text-sm text-zinc-400">Quick Actions:</span>
+        
+        {% if req["status"] in ["NEW", "APPROVED", "NEEDS_INFO"] %}
+          <button type="button" 
+                  onclick="showPrintStartModal()"
+                  class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition">
+            🖨 Start Print
+          </button>
+        {% endif %}
+        
+        {% if req["status"] == "PRINTING" %}
+          <form action="/admin/request/{{ req['id'] }}/status" method="POST" class="inline">
+            <input type="hidden" name="to_status" value="DONE" />
+            <input type="hidden" name="comment" value="Print completed" />
+            <button type="submit" 
+                    class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold transition">
+              ✓ Mark Done
+            </button>
+          </form>
+        {% endif %}
+        
         <a href="/repeat/{{ req['short_id'] }}" 
-           class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/50 text-emerald-300 text-sm font-medium transition"
-           title="Submit another request with same details">
+           class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/50 text-emerald-300 text-sm font-medium transition">
           🔄 Submit Another
         </a>
+        
         <form action="/admin/request/{{ req['id'] }}/duplicate" method="POST" class="inline">
           <button type="submit" 
-                  class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 text-sm font-medium transition"
-                  title="Duplicate this request directly into queue">
-            📋 Duplicate to Queue
+                  class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 text-sm font-medium transition">
+            📋 Duplicate
           </button>
         </form>
-        <span class="inline-block px-4 py-2 rounded-lg border text-sm font-medium status-badge-{{ req['status'].lower() }}">
-          {{ req["status"] }}
-        </span>
+        
+        {% if req["status"] == "NEEDS_INFO" %}
+          <form action="/admin/request/{{ req['id'] }}/send-reminder" method="POST" class="inline">
+            <button type="submit" 
+                    class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-orange-600/20 hover:bg-orange-600/30 border border-orange-500/50 text-orange-300 text-sm font-medium transition">
+              📧 Send Reminder
+            </button>
+          </form>
+        {% endif %}
+        
+        <a href="mailto:{{ req['requester_email'] }}" 
+           class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition">
+          ✉️ Email Directly
+        </a>
       </div>
     </div>
 
@@ -366,6 +418,45 @@
           {% endif %}
         </div>
 
+        <!-- Messages Card -->
+        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+          <h2 class="text-lg font-semibold mb-4">💬 Messages</h2>
+          
+          {% if messages|length > 0 %}
+            <div class="space-y-2 max-h-64 overflow-y-auto mb-4">
+              {% for msg in messages %}
+                {% if msg.sender_type == 'admin' %}
+                  <div class="flex justify-end">
+                    <div class="bg-indigo-600/20 border border-indigo-500/30 rounded-xl rounded-br-md px-3 py-2 max-w-[90%]">
+                      <p class="text-sm">{{ msg.message }}</p>
+                      <span class="text-xs text-zinc-500 mt-1 block">You • {{ msg.created_at|localtime }}</span>
+                    </div>
+                  </div>
+                {% else %}
+                  <div class="flex justify-start">
+                    <div class="bg-emerald-600/20 border border-emerald-500/30 rounded-xl rounded-bl-md px-3 py-2 max-w-[90%]">
+                      <p class="text-sm">{{ msg.message }}</p>
+                      <span class="text-xs text-zinc-500 mt-1 block">{{ req.requester_name }} • {{ msg.created_at|localtime }}</span>
+                    </div>
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-sm text-zinc-500 mb-4">No messages yet.</p>
+          {% endif %}
+          
+          <form method="POST" action="/admin/request/{{ req['id'] }}/message" class="space-y-2">
+            <textarea name="message" rows="2" 
+                      placeholder="Send a message to requester..."
+                      class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-2 text-sm resize-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      required></textarea>
+            <button type="submit" class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-2 text-sm font-semibold">
+              Send Message
+            </button>
+          </form>
+        </div>
+
         <!-- History Card -->
         <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
           <h2 class="text-lg font-semibold mb-4">⏰ History</h2>
@@ -391,6 +482,73 @@
       </div>
 
     </div>
+    
+    <!-- Print Start Modal (Printer/Material Selection) -->
+    <div id="print-start-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-sm w-full">
+        <h2 class="text-xl font-bold mb-2">🖨 Start Print</h2>
+        <p class="text-sm text-zinc-400 mb-4">Select printer and material for this print</p>
+        
+        <form id="print-start-form" method="POST" action="/admin/request/{{ req['id'] }}/status" class="space-y-4">
+          <input type="hidden" name="to_status" value="PRINTING" />
+          <input type="hidden" name="comment" value="Started print" />
+          
+          <div>
+            <label class="text-sm text-zinc-300">Printer <span class="text-red-400">*</span></label>
+            <select name="printer" id="print-modal-printer" required class="w-full mt-2 rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+              <option value="">— Select printer —</option>
+              {% for code, label in printers %}
+                {% if code != 'ANY' %}
+                  <option value="{{ code }}" {% if code == req['printer'] %}selected{% endif %}>{{ label }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <label class="text-sm text-zinc-300">Material <span class="text-red-400">*</span></label>
+            <select name="material" id="print-modal-material" required class="w-full mt-2 rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+              <option value="">— Select material —</option>
+              {% for code, label in materials %}
+                {% if code != 'ANY' %}
+                  <option value="{{ code }}" {% if code == req['material'] %}selected{% endif %}>{{ label }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+          
+          <div>
+            <label class="text-sm text-zinc-300">Colors</label>
+            <input type="text" name="colors" value="{{ req['colors'] or '' }}" placeholder="e.g. Black, White" 
+                   class="w-full mt-2 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm" />
+          </div>
+
+          <div class="flex gap-3 pt-4">
+            <button type="button" onclick="hidePrintStartModal()" class="flex-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
+              Cancel
+            </button>
+            <button type="submit" class="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+              🖨 Start Print
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      function showPrintStartModal() {
+        document.getElementById('print-start-modal').classList.remove('hidden');
+      }
+      
+      function hidePrintStartModal() {
+        document.getElementById('print-start-modal').classList.add('hidden');
+      }
+      
+      // Close modal when clicking outside
+      document.getElementById('print-start-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'print-start-modal') hidePrintStartModal();
+      });
+    </script>
     
     <!-- Footer with version -->
     <div class="mt-8 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">

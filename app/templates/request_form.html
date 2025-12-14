@@ -15,10 +15,16 @@
         <h1 class="text-3xl font-bold">3D Print Request</h1>
         <p class="text-zinc-400 mt-2">Submit your print job — we'll take it from here.</p>
       </div>
-      <a href="/queue"
-         class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold text-center whitespace-nowrap">
-        📋 View Queue
-      </a>
+      <div class="flex gap-3">
+        <a href="/my-requests"
+           class="rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 font-medium text-center whitespace-nowrap">
+          📋 My Requests
+        </a>
+        <a href="/queue"
+           class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold text-center whitespace-nowrap">
+          View Queue
+        </a>
+      </div>
     </div>
 
     {% if error %}

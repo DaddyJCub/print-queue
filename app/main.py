@@ -1,4 +1,4 @@
-import os, uuid, sqlite3, hashlib, smtplib, ssl, urllib.parse, json, base64
+import os, uuid, sqlite3, hashlib, smtplib, ssl, urllib.parse, json, base64, secrets
 from email.message import EmailMessage
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.7.5"
+APP_VERSION = "1.8.0"
 # Changelog:
 # 1.7.3 - Timelapse API: list and download timelapse videos from printers
 # 1.7.2 - Request templates: save and reuse common form configurations
@@ -37,7 +37,7 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY", "")
 TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY", "")
 
-ALLOWED_EXTS = set([e.strip().lower() for e in os.getenv("ALLOWED_EXTS", ".stl,.3mf").split(",") if e.strip()])
+ALLOWED_EXTS = set([e.strip().lower() for e in os.getenv("ALLOWED_EXTS", ".stl,.3mf,.obj,.gcode,.step,.stp,.fpp").split(",") if e.strip()])
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "200"))
 
 SMTP_HOST = os.getenv("SMTP_HOST", "")
@@ -204,6 +204,32 @@ def init_db():
     );
     """)
 
+    # Messages for two-way communication on requests
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS request_messages (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      sender_type TEXT NOT NULL,
+      message TEXT NOT NULL,
+      is_read INTEGER DEFAULT 0,
+      FOREIGN KEY(request_id) REFERENCES requests(id)
+    );
+    """)
+    # sender_type: 'admin' or 'requester'
+    # is_read: 0 = unread, 1 = read (for notification badges)
+
+    # Email lookup tokens for "My Requests" magic link authentication
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS email_lookup_tokens (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    );
+    """)
+
     conn.commit()
     conn.close()
 
@@ -259,6 +285,22 @@ def ensure_migrations():
     if "final_temperature" not in cols:
         # Temperature reading at completion (for records)
         cur.execute("ALTER TABLE requests ADD COLUMN final_temperature TEXT")
+
+    if "access_token" not in cols:
+        # Unique token for requester to access/edit their request
+        cur.execute("ALTER TABLE requests ADD COLUMN access_token TEXT")
+        # Generate tokens for existing requests
+        import secrets
+        existing = cur.execute("SELECT id FROM requests WHERE access_token IS NULL").fetchall()
+        for row in existing:
+            token = secrets.token_urlsafe(32)
+            cur.execute("UPDATE requests SET access_token = ? WHERE id = ?", (token, row[0]))
+
+    # Add is_read column to request_messages if missing
+    cur.execute("PRAGMA table_info(request_messages)")
+    msg_cols = {row[1] for row in cur.fetchall()}
+    if msg_cols and "is_read" not in msg_cols:
+        cur.execute("ALTER TABLE request_messages ADD COLUMN is_read INTEGER DEFAULT 0")
 
     conn.commit()
     conn.close()
@@ -1347,6 +1389,7 @@ async def submit(
         return render_form(request, "Please provide either a link OR upload a file (one is required).", form_state)
 
     rid = str(uuid.uuid4())
+    access_token = secrets.token_urlsafe(32)  # Secure token for requester access
     created = now_iso()
     
     # Calculate dynamic rush pricing at submission time
@@ -1377,8 +1420,8 @@ async def submit(
     conn = db()
     conn.execute(
         """INSERT INTO requests
-           (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, special_notes, priority, admin_notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, special_notes, priority, admin_notes, access_token)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             rid,
             created,
@@ -1395,6 +1438,7 @@ async def submit(
             special_notes,
             priority,
             None,
+            access_token,
         )
     )
     conn.execute(
@@ -1497,7 +1541,14 @@ async def submit(
         )
         send_email(admin_emails, subject, text, html)
 
-    return RedirectResponse(url=f"/queue?mine={rid[:8]}", status_code=303)
+    # Show thanks page with portal link
+    return templates.TemplateResponse("thanks.html", {
+        "request": request,
+        "rid": rid,
+        "print_name": print_name.strip() if print_name else None,
+        "access_token": access_token,
+        "version": APP_VERSION,
+    })
 
 
 @app.get("/queue", response_class=HTMLResponse)
@@ -1618,6 +1669,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     printing_items = [it for it in items if it["status"] == "PRINTING"]
     approved_items = [it for it in items if it["status"] == "APPROVED"]
     done_items = [it for it in items if it["status"] == "DONE"]
+    pending_items = [it for it in items if it["status"] in ["NEW", "NEEDS_INFO"]]
     
     # Group printing items by printer (for printer card display)
     printing_by_printer = {
@@ -1731,7 +1783,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                 my_pos = it["queue_pos"]
                 break
 
-    counts = {"NEW": 0, "APPROVED": 0, "PRINTING": 0, "DONE": 0}
+    counts = {"NEW": 0, "NEEDS_INFO": 0, "APPROVED": 0, "PRINTING": 0, "DONE": 0}
     for it in items:
         if it["status"] in counts:
             counts[it["status"]] += 1
@@ -1740,6 +1792,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
         "request": request,
         "items": items,  # All items for backwards compat
         "active_queue": active_queue,  # PRINTING + APPROVED items with continuous numbering
+        "pending_items": pending_items,  # NEW + NEEDS_INFO items awaiting review
         "done_items": done_items,  # DONE items for pickup section
         "printing_by_printer": printing_by_printer,  # PRINTING items grouped by printer
         "mine": mine,
@@ -1782,6 +1835,344 @@ def repeat_request(request: Request, short_id: str):
     return render_form(request, None, form_data)
 
 
+# ─────────────────────────── REQUESTER PORTAL ───────────────────────────
+
+@app.get("/my/{rid}", response_class=HTMLResponse)
+def requester_portal(request: Request, rid: str, token: str):
+    """Requester portal - view and interact with your request"""
+    conn = db()
+    req = conn.execute(
+        "SELECT * FROM requests WHERE id = ?", (rid,)
+    ).fetchone()
+    
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    # Verify access token
+    if req["access_token"] != token:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Invalid access token")
+    
+    # Get files
+    files = conn.execute(
+        "SELECT * FROM files WHERE request_id = ? ORDER BY created_at DESC", (rid,)
+    ).fetchall()
+    
+    # Get status history
+    history = conn.execute(
+        "SELECT * FROM status_events WHERE request_id = ? ORDER BY created_at DESC", (rid,)
+    ).fetchall()
+    
+    # Get messages
+    messages = conn.execute(
+        "SELECT * FROM request_messages WHERE request_id = ? ORDER BY created_at ASC", (rid,)
+    ).fetchall()
+    
+    conn.close()
+    
+    return templates.TemplateResponse("my_request.html", {
+        "request": request,
+        "req": req,
+        "files": files,
+        "history": history,
+        "messages": messages,
+        "token": token,
+        "version": APP_VERSION,
+    })
+
+
+@app.post("/my/{rid}/reply")
+def requester_reply(request: Request, rid: str, token: str, message: str = Form(...)):
+    """Requester sends a message"""
+    conn = db()
+    req = conn.execute("SELECT access_token, status, requester_name, requester_email, print_name FROM requests WHERE id = ?", (rid,)).fetchone()
+    
+    if not req or req["access_token"] != token:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Invalid access")
+    
+    # Save message
+    msg_id = str(uuid.uuid4())
+    created = now_iso()
+    conn.execute(
+        "INSERT INTO request_messages (id, request_id, created_at, sender_type, message) VALUES (?, ?, ?, ?, ?)",
+        (msg_id, rid, created, "requester", message)
+    )
+    
+    # If status was NEEDS_INFO, switch back to NEW so admin sees it
+    if req["status"] == "NEEDS_INFO":
+        conn.execute("UPDATE requests SET status = ?, updated_at = ? WHERE id = ?", ("NEW", created, rid))
+        conn.execute(
+            "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), rid, created, "NEEDS_INFO", "NEW", "Requester responded")
+        )
+    
+    conn.commit()
+    conn.close()
+    
+    # Notify admin
+    admin_emails = [e.strip() for e in get_setting("admin_notify_emails", "").split(",") if e.strip()]
+    if admin_emails:
+        subject = f"[{APP_TITLE}] Reply from {req['requester_name']} - {req['print_name'] or rid[:8]}"
+        text = f"New message on request {rid[:8]}:\n\n{message}\n\nView: {BASE_URL}/admin/request/{rid}"
+        html = build_email_html(
+            title="💬 New Reply",
+            subtitle=f"{req['requester_name']} responded to their request",
+            rows=[
+                ("Request", req['print_name'] or rid[:8]),
+                ("Message", message),
+            ],
+            cta_url=f"{BASE_URL}/admin/request/{rid}",
+            cta_label="View Request",
+            header_color="#6366f1",
+        )
+        send_email(admin_emails, subject, text, html)
+    
+    return RedirectResponse(url=f"/my/{rid}?token={token}", status_code=303)
+
+
+@app.post("/my/{rid}/upload")
+async def requester_upload(request: Request, rid: str, token: str, files: List[UploadFile] = File(...)):
+    """Requester uploads additional files"""
+    conn = db()
+    req = conn.execute("SELECT access_token, status FROM requests WHERE id = ?", (rid,)).fetchone()
+    
+    if not req or req["access_token"] != token:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Invalid access")
+    
+    if req["status"] not in ["NEW", "NEEDS_INFO"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Cannot upload files in current status")
+    
+    created = now_iso()
+    uploaded_names = []
+    
+    for upload in files:
+        if not upload.filename:
+            continue
+            
+        ext = os.path.splitext(upload.filename)[1].lower()
+        if ext not in ALLOWED_EXTS:
+            continue
+        
+        content = await upload.read()
+        sha256 = hashlib.sha256(content).hexdigest()
+        stored_name = f"{sha256}{ext}"
+        
+        # Save file
+        uploads_dir = os.path.join(os.path.dirname(__file__), "static", "uploads")
+        os.makedirs(uploads_dir, exist_ok=True)
+        path = os.path.join(uploads_dir, stored_name)
+        with open(path, "wb") as f:
+            f.write(content)
+        
+        # Record in database
+        file_id = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (file_id, rid, created, upload.filename, stored_name, len(content), sha256)
+        )
+        uploaded_names.append(upload.filename)
+    
+    if uploaded_names:
+        # Add a message about the upload
+        msg_id = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO request_messages (id, request_id, created_at, sender_type, message) VALUES (?, ?, ?, ?, ?)",
+            (msg_id, rid, created, "requester", f"Uploaded files: {', '.join(uploaded_names)}")
+        )
+        
+        # If status was NEEDS_INFO, switch back to NEW
+        if req["status"] == "NEEDS_INFO":
+            conn.execute("UPDATE requests SET status = ?, updated_at = ? WHERE id = ?", ("NEW", created, rid))
+            conn.execute(
+                "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), rid, created, "NEEDS_INFO", "NEW", f"Requester uploaded: {', '.join(uploaded_names)}")
+            )
+    
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/my/{rid}?token={token}", status_code=303)
+
+
+@app.post("/my/{rid}/edit")
+def requester_edit(
+    request: Request, 
+    rid: str, 
+    token: str, 
+    print_name: str = Form(""),
+    link_url: str = Form(""),
+    notes: str = Form("")
+):
+    """Requester edits their request details"""
+    conn = db()
+    req = conn.execute("SELECT access_token, status FROM requests WHERE id = ?", (rid,)).fetchone()
+    
+    if not req or req["access_token"] != token:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Invalid access")
+    
+    if req["status"] not in ["NEW", "NEEDS_INFO"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Cannot edit request in current status")
+    
+    created = now_iso()
+    conn.execute(
+        "UPDATE requests SET print_name = ?, link_url = ?, notes = ?, updated_at = ? WHERE id = ?",
+        (print_name.strip() or None, link_url.strip() or None, notes.strip() or None, created, rid)
+    )
+    
+    # Add a message about the edit
+    msg_id = str(uuid.uuid4())
+    conn.execute(
+        "INSERT INTO request_messages (id, request_id, created_at, sender_type, message) VALUES (?, ?, ?, ?, ?)",
+        (msg_id, rid, created, "requester", "Updated request details")
+    )
+    
+    # If status was NEEDS_INFO, switch back to NEW
+    if req["status"] == "NEEDS_INFO":
+        conn.execute("UPDATE requests SET status = ?, updated_at = ? WHERE id = ?", ("NEW", created, rid))
+        conn.execute(
+            "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), rid, created, "NEEDS_INFO", "NEW", "Requester updated request")
+        )
+    
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/my/{rid}?token={token}", status_code=303)
+
+
+# ─────────────────────────── MY REQUESTS LOOKUP ───────────────────────────
+
+@app.get("/my-requests", response_class=HTMLResponse)
+def my_requests_lookup(request: Request, sent: Optional[str] = None, error: Optional[str] = None):
+    """Email lookup form for viewing all requests"""
+    return templates.TemplateResponse("my_requests_lookup.html", {
+        "request": request,
+        "sent": sent,
+        "error": error,
+        "version": APP_VERSION,
+    })
+
+
+@app.post("/my-requests")
+def my_requests_send_link(request: Request, email: str = Form(...)):
+    """Send magic link to email for viewing all requests"""
+    email = email.strip().lower()
+    
+    if not email or "@" not in email:
+        return RedirectResponse(url="/my-requests?error=invalid", status_code=303)
+    
+    conn = db()
+    
+    # Check if this email has any requests
+    requests_count = conn.execute(
+        "SELECT COUNT(*) FROM requests WHERE LOWER(requester_email) = ?", (email,)
+    ).fetchone()[0]
+    
+    if requests_count == 0:
+        conn.close()
+        # Don't reveal whether email exists - just say "sent"
+        return RedirectResponse(url="/my-requests?sent=1", status_code=303)
+    
+    # Generate magic link token (expires in 24 hours)
+    token_id = str(uuid.uuid4())
+    token = secrets.token_urlsafe(32)
+    created = now_iso()
+    
+    # Calculate expiry (24 hours from now)
+    from datetime import timedelta
+    expiry = (datetime.utcnow() + timedelta(hours=24)).isoformat(timespec="seconds") + "Z"
+    
+    # Clean up old tokens for this email
+    conn.execute("DELETE FROM email_lookup_tokens WHERE email = ?", (email,))
+    
+    # Insert new token
+    conn.execute(
+        "INSERT INTO email_lookup_tokens (id, email, token, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+        (token_id, email, token, created, expiry)
+    )
+    conn.commit()
+    conn.close()
+    
+    # Send email with magic link
+    magic_link = f"{BASE_URL}/my-requests/view?token={token}"
+    subject = f"[{APP_TITLE}] Your Print Requests"
+    text = f"Click here to view all your print requests:\n\n{magic_link}\n\nThis link expires in 24 hours.\n\nIf you didn't request this, you can ignore this email."
+    html = build_email_html(
+        title="View Your Requests",
+        subtitle="Click below to see all your print requests",
+        rows=[
+            ("Email", email),
+            ("Requests", f"{requests_count} request(s) on file"),
+        ],
+        cta_url=magic_link,
+        cta_label="View My Requests",
+        header_color="#6366f1",
+        footer_text="This link expires in 24 hours. If you didn't request this, you can safely ignore this email.",
+    )
+    send_email([email], subject, text, html)
+    
+    return RedirectResponse(url="/my-requests?sent=1", status_code=303)
+
+
+@app.get("/my-requests/view", response_class=HTMLResponse)
+def my_requests_view(request: Request, token: str):
+    """View all requests for an email using magic link"""
+    conn = db()
+    
+    # Find token
+    token_row = conn.execute(
+        "SELECT email, expires_at FROM email_lookup_tokens WHERE token = ?", (token,)
+    ).fetchone()
+    
+    if not token_row:
+        conn.close()
+        return templates.TemplateResponse("my_requests_lookup.html", {
+            "request": request,
+            "error": "expired",
+            "version": APP_VERSION,
+        })
+    
+    # Check expiry
+    expiry = datetime.fromisoformat(token_row["expires_at"].replace("Z", "+00:00"))
+    if datetime.utcnow().replace(tzinfo=expiry.tzinfo) > expiry:
+        # Token expired - clean up
+        conn.execute("DELETE FROM email_lookup_tokens WHERE token = ?", (token,))
+        conn.commit()
+        conn.close()
+        return templates.TemplateResponse("my_requests_lookup.html", {
+            "request": request,
+            "error": "expired",
+            "version": APP_VERSION,
+        })
+    
+    email = token_row["email"]
+    
+    # Fetch all requests for this email
+    requests_list = conn.execute(
+        """SELECT id, print_name, status, created_at, updated_at, printer, material, colors, access_token
+           FROM requests 
+           WHERE LOWER(requester_email) = ?
+           ORDER BY created_at DESC""",
+        (email,)
+    ).fetchall()
+    
+    conn.close()
+    
+    return templates.TemplateResponse("my_requests_list.html", {
+        "request": request,
+        "email": email,
+        "requests_list": requests_list,
+        "token": token,  # Keep token for refresh
+        "version": APP_VERSION,
+    })
+
+
 @app.get("/changelog", response_class=HTMLResponse)
 def changelog(request: Request):
     """Version history and release notes"""
@@ -1820,23 +2211,36 @@ def admin_logout():
     return resp
 
 
-def _fetch_requests_by_status(status: str, include_eta_fields: bool = False):
+def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
+    """Fetch requests by status. statuses can be a string or list of statuses."""
+    if isinstance(statuses, str):
+        statuses = [statuses]
+    
+    placeholders = ",".join("?" * len(statuses))
     conn = db()
     if include_eta_fields:
         rows = conn.execute(
-            "SELECT id, created_at, requester_name, printer, material, colors, link_url, status, priority, special_notes, printing_started_at "
-            "FROM requests "
-            "WHERE status = ? "
-            "ORDER BY priority ASC, created_at ASC",
-            (status,)
+            f"""SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors, 
+                      r.link_url, r.status, r.priority, r.special_notes, r.printing_started_at,
+                      r.print_name,
+                      (SELECT COUNT(*) FROM files f WHERE f.request_id = r.id) as file_count,
+                      (SELECT COUNT(*) FROM request_messages m WHERE m.request_id = r.id AND m.sender_type = 'requester' AND m.is_read = 0) as unread_replies
+               FROM requests r
+               WHERE r.status IN ({placeholders}) 
+               ORDER BY r.priority ASC, r.created_at ASC""",
+            statuses
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT id, created_at, requester_name, printer, material, colors, link_url, status, priority, special_notes "
-            "FROM requests "
-            "WHERE status = ? "
-            "ORDER BY priority ASC, created_at ASC",
-            (status,)
+            f"""SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors, 
+                      r.link_url, r.status, r.priority, r.special_notes,
+                      r.print_name,
+                      (SELECT COUNT(*) FROM files f WHERE f.request_id = r.id) as file_count,
+                      (SELECT COUNT(*) FROM request_messages m WHERE m.request_id = r.id AND m.sender_type = 'requester' AND m.is_read = 0) as unread_replies
+               FROM requests r
+               WHERE r.status IN ({placeholders}) 
+               ORDER BY r.priority ASC, r.created_at ASC""",
+            statuses
         ).fetchall()
     conn.close()
     return rows
@@ -1844,7 +2248,8 @@ def _fetch_requests_by_status(status: str, include_eta_fields: bool = False):
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, _=Depends(require_admin)):
-    new_reqs = _fetch_requests_by_status("NEW")
+    # Fetch NEW and NEEDS_INFO together for "needs attention" section
+    new_reqs = _fetch_requests_by_status(["NEW", "NEEDS_INFO"])
     queued = _fetch_requests_by_status("APPROVED")
     printing_raw = _fetch_requests_by_status("PRINTING", include_eta_fields=True)
     done = _fetch_requests_by_status("DONE")
@@ -1897,11 +2302,12 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
 
     conn = db()
     closed = conn.execute(
-        "SELECT id, created_at, requester_name, printer, material, colors, link_url, status, priority, special_notes "
-        "FROM requests "
-        "WHERE status IN (?, ?, ?) "
-        "ORDER BY updated_at DESC "
-        "LIMIT 30",
+        """SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors, 
+                  r.link_url, r.status, r.priority, r.special_notes, r.print_name
+           FROM requests r
+           WHERE r.status IN (?, ?, ?) 
+           ORDER BY r.updated_at DESC 
+           LIMIT 30""",
         ("PICKED_UP", "REJECTED", "CANCELLED")
     ).fetchall()
     conn.close()
@@ -1948,6 +2354,8 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
             "ADVENTURER_4": printer_status.get("ADVENTURER_4", {}),
             "AD5X": printer_status.get("AD5X", {}),
         },
+        "printers": PRINTERS,
+        "materials": MATERIALS,
         "version": APP_VERSION,
     })
 
@@ -2183,6 +2591,11 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
         raise HTTPException(status_code=404, detail="Not found")
     files = conn.execute("SELECT * FROM files WHERE request_id = ? ORDER BY created_at DESC", (rid,)).fetchall()
     events = conn.execute("SELECT * FROM status_events WHERE request_id = ? ORDER BY created_at DESC", (rid,)).fetchall()
+    messages = conn.execute("SELECT * FROM request_messages WHERE request_id = ? ORDER BY created_at ASC", (rid,)).fetchall()
+    
+    # Mark all requester messages as read when admin views the request
+    conn.execute("UPDATE request_messages SET is_read = 1 WHERE request_id = ? AND sender_type = 'requester' AND is_read = 0", (rid,))
+    conn.commit()
     conn.close()
     
     # Get camera URL for the printer if configured
@@ -2193,6 +2606,7 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
         "req": req,
         "files": files,
         "events": events,
+        "messages": messages,
         "status_flow": STATUS_FLOW,
         "printers": PRINTERS,
         "materials": MATERIALS,
@@ -2268,6 +2682,9 @@ def admin_set_status(
     rid: str,
     to_status: str = Form(...),
     comment: Optional[str] = Form(None),
+    printer: Optional[str] = Form(None),
+    material: Optional[str] = Form(None),
+    colors: Optional[str] = Form(None),
     _=Depends(require_admin)
 ):
     if to_status not in STATUS_FLOW:
@@ -2284,9 +2701,21 @@ def admin_set_status(
     # Track printing start time when transitioning to PRINTING
     update_cols = ["status", "updated_at"]
     update_vals = [to_status, now_iso()]
+    
     if to_status == "PRINTING" and from_status != "PRINTING":
         update_cols.append("printing_started_at")
         update_vals.append(now_iso())
+    
+    # Update printer/material/colors if provided
+    if printer and printer.strip():
+        update_cols.append("printer")
+        update_vals.append(printer.strip())
+    if material and material.strip():
+        update_cols.append("material")
+        update_vals.append(material.strip())
+    if colors is not None:
+        update_cols.append("colors")
+        update_vals.append(colors.strip() if colors else None)
     
     update_sql = "UPDATE requests SET " + ", ".join([f"{col} = ?" for col in update_cols]) + " WHERE id = ?"
     update_vals.append(rid)
@@ -2355,24 +2784,31 @@ def admin_set_status(
         conn2.close()
 
     if requester_email_on_status:
-        subject = f"[{APP_TITLE}] {status_title} ({rid[:8]})"
+        print_label = req["print_name"] or f"Request {rid[:8]}"
+        subject = f"[{APP_TITLE}] {status_title} - {print_label}"
         
         # Build text version
         text_lines = [
-            f"Your request status changed:\n",
-            f"{from_status} → {to_status}\n",
+            f"Print: {print_label}\n",
+            f"Status: {from_status} → {to_status}\n",
         ]
         if to_status == "APPROVED" and queue_position:
             text_lines.append(f"\nQueue Position: #{queue_position}")
             text_lines.append(f"Estimated Wait: {estimated_wait_str}")
             text_lines.append(f"\n⚠ Note: Wait times are estimates and may vary. Check the live queue for the most accurate status.\n")
         text_lines.append(f"\nComment: {comment or '(none)'}\n")
-        text_lines.append(f"\nView queue: {BASE_URL}/queue?mine={rid[:8]}\n")
+        if to_status == "NEEDS_INFO":
+            text_lines.append(f"\nRespond here: {BASE_URL}/my/{rid}?token={req['access_token']}\n")
+        else:
+            text_lines.append(f"\nView queue: {BASE_URL}/queue?mine={rid[:8]}\n")
         text = "\n".join(text_lines)
         
         # Build HTML rows
         email_rows = [
+            ("Print Name", req["print_name"] or "—"),
             ("Request ID", rid[:8]),
+            ("Printer", req["printer"] or "ANY"),
+            ("Material", req["material"]),
             ("Status", to_status),
         ]
         if to_status == "APPROVED" and queue_position:
@@ -2381,14 +2817,17 @@ def admin_set_status(
         email_rows.append(("Comment", (comment or "—")))
         
         # Status-specific subtitles and notes
-        subtitle = f"Request {rid[:8]} has been {to_status.lower().replace('_', ' ')}"
+        print_label = req["print_name"] or f"Request {rid[:8]}"
+        subtitle = f"'{print_label}' has been {to_status.lower().replace('_', ' ')}"
         footer_note = None
         cta_label = "View in Queue"
+        cta_url = f"{BASE_URL}/queue?mine={rid[:8]}"
         
         if to_status == "NEEDS_INFO":
-            subtitle = f"We need more information about your request"
-            footer_note = "Please reply to this email or submit a new request with the requested information. Your request is on hold until we hear back from you."
-            cta_label = "View Request Status"
+            subtitle = f"We need more information about '{print_label}'"
+            footer_note = "Click the button below to respond, upload files, or edit your request. Your request is on hold until we hear back from you."
+            cta_label = "Respond to Request"
+            cta_url = f"{BASE_URL}/my/{rid}?token={req['access_token']}"
         elif to_status == "APPROVED" and queue_position:
             footer_note = "Wait times are estimates and may vary. Check the live queue for the most accurate status."
         
@@ -2396,7 +2835,7 @@ def admin_set_status(
             title=status_title,
             subtitle=subtitle,
             rows=email_rows,
-            cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
+            cta_url=cta_url,
             cta_label=cta_label,
             header_color=header_color,
             footer_note=footer_note,
@@ -2430,6 +2869,101 @@ def admin_set_status(
         )
         send_email(admin_emails, subject, text, html)
 
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@app.post("/admin/request/{rid}/send-reminder")
+def admin_send_reminder(
+    request: Request,
+    rid: str,
+    _=Depends(require_admin)
+):
+    """Send a reminder email to requester that info is needed"""
+    conn = db()
+    req = conn.execute(
+        "SELECT requester_email, requester_name, print_name, status, access_token FROM requests WHERE id = ?",
+        (rid,)
+    ).fetchone()
+    
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    if req["status"] != "NEEDS_INFO":
+        conn.close()
+        raise HTTPException(status_code=400, detail="Request is not in NEEDS_INFO status")
+    
+    conn.close()
+    
+    # Send reminder email
+    print_label = req["print_name"] or f"Request {rid[:8]}"
+    subject = f"[{APP_TITLE}] Reminder: We need more info for '{print_label}'"
+    portal_url = f"{BASE_URL}/my/{rid}?token={req['access_token']}"
+    text = (
+        f"Hi {req['requester_name']},\n\n"
+        f"This is a friendly reminder that we're still waiting for more information about your print request '{print_label}'.\n\n"
+        f"Please respond so we can continue processing your request:\n{portal_url}\n\n"
+        f"Thanks!"
+    )
+    html = build_email_html(
+        title="⏰ Reminder: Info Needed",
+        subtitle=f"We're waiting on your response for '{print_label}'",
+        rows=[
+            ("Request", print_label),
+            ("Status", "Waiting for your response"),
+        ],
+        cta_url=portal_url,
+        cta_label="Respond Now",
+        header_color="#f97316",  # Orange
+        footer_note="Please respond so we can continue processing your print request.",
+    )
+    send_email([req["requester_email"]], subject, text, html)
+    
+    return RedirectResponse(url=f"/admin/request/{rid}?reminder_sent=1", status_code=303)
+
+
+@app.post("/admin/request/{rid}/message")
+def admin_send_message(
+    request: Request,
+    rid: str,
+    message: str = Form(...),
+    _=Depends(require_admin)
+):
+    """Admin sends a message to the requester"""
+    conn = db()
+    req = conn.execute("SELECT requester_email, requester_name, print_name, access_token FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    # Save message
+    msg_id = str(uuid.uuid4())
+    created = now_iso()
+    conn.execute(
+        "INSERT INTO request_messages (id, request_id, created_at, sender_type, message) VALUES (?, ?, ?, ?, ?)",
+        (msg_id, rid, created, "admin", message)
+    )
+    conn.commit()
+    conn.close()
+    
+    # Notify requester via email
+    requester_email_on_status = get_bool_setting("requester_email_on_status", True)
+    if requester_email_on_status and req["requester_email"]:
+        print_label = req["print_name"] or f"Request {rid[:8]}"
+        subject = f"[{APP_TITLE}] New message about '{print_label}'"
+        text = f"New message from admin:\n\n{message}\n\nRespond here: {BASE_URL}/my/{rid}?token={req['access_token']}"
+        html = build_email_html(
+            title="💬 New Message",
+            subtitle=f"About your request '{print_label}'",
+            rows=[
+                ("Message", message),
+            ],
+            cta_url=f"{BASE_URL}/my/{rid}?token={req['access_token']}",
+            cta_label="View & Reply",
+            header_color="#6366f1",
+        )
+        send_email([req["requester_email"]], subject, text, html)
+    
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
 

@@ -8,39 +8,14 @@
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-7xl mx-auto p-6">
-    <!-- Header -->
-    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
-      <div>
-        <h1 class="text-3xl font-bold">Admin Dashboard</h1>
-        <p class="text-zinc-400 mt-1">Manage your print queue efficiently.</p>
-      </div>
-
-      <nav class="flex flex-wrap items-center gap-2">
-        <a class="rounded-xl bg-indigo-600/20 border border-indigo-500/50 text-indigo-200 px-4 py-2 text-sm font-medium"
-           href="/admin">
-          📋 Queue
-        </a>
-        <a class="rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 transition px-4 py-2 text-sm"
-           href="/admin/printer-settings">
-          🖨 Printers
-        </a>
-        <a class="rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 transition px-4 py-2 text-sm"
-           href="/admin/analytics">
-          📊 Analytics
-        </a>
-        <a class="rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 transition px-4 py-2 text-sm"
-           href="/admin/settings">
-          ⚙️ Settings
-        </a>
-        <span class="text-zinc-700 mx-1">|</span>
-        <a class="text-indigo-400 hover:underline text-sm" href="/">Public Form</a>
-        <a class="text-indigo-400 hover:underline text-sm" href="/queue">Queue</a>
-        <span class="text-zinc-700 mx-1">|</span>
-        <a class="rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-red-900/50 hover:border-red-800 transition px-3 py-2 text-sm"
-           href="/admin/logout">
-          Logout
-        </a>
-      </nav>
+    <!-- Navigation -->
+    {% set active_page = 'queue' %}
+    {% include 'admin_nav.html' %}
+    
+    <!-- Page Header -->
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold">📋 Queue Dashboard</h1>
+      <p class="text-zinc-400 mt-1">Manage your print queue efficiently.</p>
     </div>
 
     <!-- Batch Edit Form (initially hidden) -->
@@ -81,6 +56,127 @@
         </form>
       </div>
     </div>
+
+    <!-- Print Start Modal (Printer/Material Selection) -->
+    <div id="print-start-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-sm w-full">
+        <h2 class="text-xl font-bold mb-2" id="print-modal-title">Start Print</h2>
+        <p class="text-sm text-zinc-400 mb-4" id="print-modal-subtitle">Select printer and material for this print</p>
+        
+        <form id="print-start-form" method="POST" action="" class="space-y-4">
+          <input type="hidden" name="to_status" id="print-modal-status" value="PRINTING" />
+          <input type="hidden" name="comment" id="print-modal-comment" value="Started print" />
+          
+          <div>
+            <label class="text-sm text-zinc-300">Printer <span class="text-red-400">*</span></label>
+            <select name="printer" id="print-modal-printer" required class="w-full mt-2 rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+              <option value="">— Select printer —</option>
+              {% for code, label in printers %}
+                {% if code != 'ANY' %}
+                  <option value="{{ code }}">{{ label }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <label class="text-sm text-zinc-300">Material <span class="text-red-400">*</span></label>
+            <select name="material" id="print-modal-material" required class="w-full mt-2 rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+              <option value="">— Select material —</option>
+              {% for code, label in materials %}
+                {% if code != 'ANY' %}
+                  <option value="{{ code }}">{{ label }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+          
+          <div>
+            <label class="text-sm text-zinc-300">Colors</label>
+            <input type="text" name="colors" id="print-modal-colors" placeholder="e.g. Black, White" 
+                   class="w-full mt-2 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm" />
+          </div>
+
+          <div class="flex gap-3 pt-4">
+            <button type="button" onclick="hidePrintStartModal()" class="flex-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
+              Cancel
+            </button>
+            <button type="submit" id="print-modal-submit" class="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+              🖨 Start Print
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      // Print Start Modal Functions
+      function showPrintStartModal(requestId, currentPrinter, currentMaterial, currentColors, targetStatus) {
+        targetStatus = targetStatus || 'PRINTING';
+        
+        const modal = document.getElementById('print-start-modal');
+        const form = document.getElementById('print-start-form');
+        const printerSelect = document.getElementById('print-modal-printer');
+        const materialSelect = document.getElementById('print-modal-material');
+        const colorsInput = document.getElementById('print-modal-colors');
+        const statusInput = document.getElementById('print-modal-status');
+        const commentInput = document.getElementById('print-modal-comment');
+        const titleEl = document.getElementById('print-modal-title');
+        const subtitleEl = document.getElementById('print-modal-subtitle');
+        const submitBtn = document.getElementById('print-modal-submit');
+        
+        // Set form action
+        form.action = `/admin/request/${requestId}/status`;
+        
+        // Pre-fill current values if not ANY
+        if (currentPrinter && currentPrinter !== 'ANY') {
+          printerSelect.value = currentPrinter;
+        } else {
+          printerSelect.value = '';
+        }
+        
+        if (currentMaterial && currentMaterial !== 'ANY') {
+          materialSelect.value = currentMaterial;
+        } else {
+          materialSelect.value = '';
+        }
+        
+        colorsInput.value = currentColors || '';
+        statusInput.value = targetStatus;
+        
+        // Customize modal based on target status
+        if (targetStatus === 'PRINTING') {
+          titleEl.textContent = '🖨 Start Print';
+          subtitleEl.textContent = 'Select the printer and material for this print job';
+          commentInput.value = 'Started print';
+          submitBtn.textContent = '🖨 Start Print';
+          submitBtn.className = 'flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold';
+        } else if (targetStatus === 'APPROVED') {
+          titleEl.textContent = '✓ Approve Request';
+          subtitleEl.textContent = 'Optionally update printer/material before approving';
+          commentInput.value = '';
+          submitBtn.textContent = '✓ Approve';
+          submitBtn.className = 'flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold';
+          // Make fields not required for approval
+          printerSelect.required = false;
+          materialSelect.required = false;
+        }
+        
+        modal.classList.remove('hidden');
+      }
+      
+      function hidePrintStartModal() {
+        document.getElementById('print-start-modal').classList.add('hidden');
+        // Reset required fields
+        document.getElementById('print-modal-printer').required = true;
+        document.getElementById('print-modal-material').required = true;
+      }
+      
+      // Close modal when clicking outside
+      document.getElementById('print-start-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'print-start-modal') hidePrintStartModal();
+      });
+    </script>
 
     <script>
       let selectedIds = new Set();
@@ -432,15 +528,21 @@
         {% else %}
           <div class="mt-4 space-y-3">
             {% for r in new_reqs %}
-              <div class="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-4">
+              <div class="bg-zinc-950/60 border {% if r['status'] == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-2xl p-4">
                 <div class="flex items-start justify-between gap-3">
                   <div class="flex items-start gap-3 flex-1">
                     <input type="checkbox" class="mt-1" data-request-id value="{{ r['id'] }}" 
                            onchange="toggleRequestId(this.value); updateBatchUI('new-section')" />
                     <a class="hover:underline" href="/admin/request/{{ r['id'] }}">
-                      <div class="font-semibold">Request {{ r["id"][:8] }}</div>
+                      <div class="font-semibold flex items-center gap-2">
+                        {{ r["print_name"] or 'Untitled Print' }}
+                        {% if r["unread_replies"] and r["unread_replies"] > 0 %}
+                          <span class="px-2 py-0.5 bg-red-600 text-white text-xs rounded-full animate-pulse">{{ r["unread_replies"] }} new</span>
+                        {% endif %}
+                      </div>
+                      <div class="text-xs text-zinc-500">{{ r["id"][:8] }} • {{ r["requester_name"] }}</div>
                       <div class="text-xs text-zinc-400 mt-1">
-                        {{ r["requester_name"] }} • {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
+                        {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
                       </div>
                     </a>
                   </div>
@@ -451,12 +553,16 @@
                 </div>
 
                 <div class="mt-3 flex flex-wrap gap-2 items-center">
+                  {% if r["file_count"] and r["file_count"] > 0 %}
+                    <span class="text-xs text-emerald-300 bg-emerald-900/20 border border-emerald-800 px-2 py-1 rounded-lg">📁 {{ r["file_count"] }} file{% if r["file_count"] > 1 %}s{% endif %}</span>
+                  {% endif %}
                   {% if r["link_url"] %}
-                    <a class="text-xs text-indigo-300 hover:underline" href="{{ r['link_url'] }}" target="_blank">Open link</a>
+                    <a class="text-xs text-indigo-300 bg-indigo-900/20 border border-indigo-800 px-2 py-1 rounded-lg hover:bg-indigo-900/40" href="{{ r['link_url'] }}" target="_blank">🔗 Link</a>
                   {% endif %}
                   {% if r["special_notes"] %}
-                    <span class="text-xs text-amber-200 bg-amber-900/20 border border-amber-800 px-2 py-1 rounded-lg">Has special note</span>
+                    <span class="text-xs text-amber-200 bg-amber-900/20 border border-amber-800 px-2 py-1 rounded-lg">📝 Notes</span>
                   {% endif %}
+                </div>
                 </div>
 
                 <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-2">
@@ -554,7 +660,8 @@
                     <input type="checkbox" class="mt-1" data-request-id value="{{ r['id'] }}" 
                            onchange="toggleRequestId(this.value); updateBatchUI('printing-section')" />
                     <a class="hover:underline" href="/admin/request/{{ r['id'] }}">
-                      <div class="font-semibold">Request {{ r["id"][:8] }}</div>
+                      <div class="font-semibold">{{ r["print_name"] or 'Untitled Print' }}</div>
+                      <div class="text-xs text-zinc-500">{{ r["id"][:8] }} • {{ r["requester_name"] }}</div>
                       <div class="text-xs text-zinc-400 mt-1">
                         {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
                       </div>
@@ -633,7 +740,8 @@
                     <input type="checkbox" class="mt-1" data-request-id value="{{ r['id'] }}" 
                            onchange="toggleRequestId(this.value); updateBatchUI('approved-section')" />
                     <a class="hover:underline" href="/admin/request/{{ r['id'] }}">
-                      <div class="font-semibold">Request {{ r["id"][:8] }}</div>
+                      <div class="font-semibold">{{ r["print_name"] or 'Untitled Print' }}</div>
+                      <div class="text-xs text-zinc-500">{{ r["id"][:8] }} • {{ r["requester_name"] }}</div>
                       <div class="text-xs text-zinc-400 mt-1">
                         {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
                       </div>
@@ -656,13 +764,11 @@
 
                 <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-2">
                   <!-- Start print -->
-                  <form method="POST" action="/admin/request/{{ r['id'] }}/status" class="md:col-span-2">
-                    <input type="hidden" name="to_status" value="PRINTING" />
-                    <input type="hidden" name="comment" value="Started print" />
-                    <button class="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-3 py-2 text-sm font-semibold">
-                      Start Print
-                    </button>
-                  </form>
+                  <button type="button" 
+                          onclick="showPrintStartModal('{{ r['id'] }}', '{{ r['printer'] }}', '{{ r['material'] }}', '{{ r['colors'] }}', 'PRINTING')"
+                          class="md:col-span-2 w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-3 py-2 text-sm font-semibold">
+                    🖨 Start Print
+                  </button>
 
                   <!-- Priority -->
                   <form method="POST" action="/admin/request/{{ r['id'] }}/priority" class="flex gap-2">
@@ -722,7 +828,8 @@
                     <input type="checkbox" class="mt-1" data-request-id value="{{ r['id'] }}" 
                            onchange="toggleRequestId(this.value); updateBatchUI('done-section')" />
                     <a class="hover:underline" href="/admin/request/{{ r['id'] }}">
-                      <div class="font-semibold">Request {{ r["id"][:8] }}</div>
+                      <div class="font-semibold">{{ r["print_name"] or 'Untitled Print' }}</div>
+                      <div class="text-xs text-zinc-500">{{ r["id"][:8] }} • {{ r["requester_name"] }}</div>
                       <div class="text-xs text-zinc-400 mt-1">
                         {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
                       </div>

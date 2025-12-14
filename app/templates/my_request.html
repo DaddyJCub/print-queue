@@ -1,0 +1,218 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My Request - {{ req.print_name or req.id[:8] }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-2xl mx-auto p-6">
+    
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-bold">{{ req.print_name or 'My Request' }}</h1>
+        <p class="text-zinc-400 text-sm">Request #{{ req.id[:8] }}</p>
+      </div>
+      <div class="flex gap-2 text-sm">
+        <a href="/my-requests" class="text-zinc-400 hover:text-zinc-200">All My Requests</a>
+        <span class="text-zinc-600">|</span>
+        <a href="/queue" class="text-indigo-400 hover:underline">View Queue</a>
+      </div>
+    </div>
+    
+    <!-- Status Banner -->
+    {% set status_colors = {
+      'NEW': 'bg-blue-600/20 border-blue-500/50 text-blue-300',
+      'NEEDS_INFO': 'bg-orange-600/20 border-orange-500/50 text-orange-300',
+      'APPROVED': 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300',
+      'PRINTING': 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300',
+      'DONE': 'bg-green-600/20 border-green-500/50 text-green-300',
+      'PICKED_UP': 'bg-zinc-600/20 border-zinc-500/50 text-zinc-300',
+      'REJECTED': 'bg-red-600/20 border-red-500/50 text-red-300',
+      'CANCELLED': 'bg-zinc-600/20 border-zinc-500/50 text-zinc-300'
+    } %}
+    {% set status_messages = {
+      'NEW': '📋 Your request is awaiting review',
+      'NEEDS_INFO': '⚠️ We need more information from you - please respond below',
+      'APPROVED': '✓ Approved and in queue',
+      'PRINTING': '🖨️ Currently printing!',
+      'DONE': '✅ Print complete - ready for pickup',
+      'PICKED_UP': '📦 Picked up',
+      'REJECTED': '❌ Request was rejected',
+      'CANCELLED': '🚫 Request was cancelled'
+    } %}
+    
+    <div class="rounded-2xl border p-4 mb-6 {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">
+      <div class="font-semibold text-lg">{{ status_messages.get(req.status, req.status) }}</div>
+      {% if req.status == 'NEEDS_INFO' %}
+        <p class="text-sm mt-2 opacity-80">Please scroll down to send a reply or upload additional files.</p>
+      {% endif %}
+    </div>
+    
+    <!-- Request Details -->
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+      <h2 class="font-semibold mb-4">Request Details</h2>
+      <div class="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <span class="text-zinc-500">Printer</span>
+          <p class="font-medium">{{ req.printer or 'ANY' }}</p>
+        </div>
+        <div>
+          <span class="text-zinc-500">Material</span>
+          <p class="font-medium">{{ req.material }}</p>
+        </div>
+        <div>
+          <span class="text-zinc-500">Colors</span>
+          <p class="font-medium">{{ req.colors }}</p>
+        </div>
+        <div>
+          <span class="text-zinc-500">Submitted</span>
+          <p class="font-medium">{{ req.created_at|localtime }}</p>
+        </div>
+      </div>
+      
+      {% if req.link_url %}
+        <div class="mt-4 pt-4 border-t border-zinc-800">
+          <span class="text-zinc-500 text-sm">Model Link</span>
+          <a href="{{ req.link_url }}" target="_blank" class="block text-indigo-400 hover:underline truncate">{{ req.link_url }}</a>
+        </div>
+      {% endif %}
+      
+      {% if req.notes %}
+        <div class="mt-4 pt-4 border-t border-zinc-800">
+          <span class="text-zinc-500 text-sm">Your Notes</span>
+          <p class="mt-1 text-sm">{{ req.notes }}</p>
+        </div>
+      {% endif %}
+    </div>
+    
+    <!-- Files -->
+    {% if files %}
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+        <h2 class="font-semibold mb-4">Uploaded Files</h2>
+        <div class="space-y-2">
+          {% for f in files %}
+            <div class="flex items-center justify-between bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
+              <div class="flex items-center gap-3">
+                <span class="text-emerald-400">📁</span>
+                <span class="text-sm">{{ f.original_filename }}</span>
+              </div>
+              <span class="text-xs text-zinc-500">{{ (f.size_bytes / 1024)|round(1) }} KB</span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+    
+    <!-- Messages / Communication -->
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+      <h2 class="font-semibold mb-4">💬 Messages</h2>
+      
+      {% if messages %}
+        <div class="space-y-3 mb-6 max-h-80 overflow-y-auto">
+          {% for msg in messages %}
+            {% if msg.sender_type == 'admin' %}
+              <div class="flex justify-start">
+                <div class="bg-indigo-600/20 border border-indigo-500/30 rounded-2xl rounded-bl-md px-4 py-2 max-w-[85%]">
+                  <p class="text-sm">{{ msg.message }}</p>
+                  <span class="text-xs text-zinc-500 mt-1 block">Admin • {{ msg.created_at|localtime }}</span>
+                </div>
+              </div>
+            {% else %}
+              <div class="flex justify-end">
+                <div class="bg-emerald-600/20 border border-emerald-500/30 rounded-2xl rounded-br-md px-4 py-2 max-w-[85%]">
+                  <p class="text-sm">{{ msg.message }}</p>
+                  <span class="text-xs text-zinc-500 mt-1 block">You • {{ msg.created_at|localtime }}</span>
+                </div>
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm text-zinc-500 mb-4">No messages yet. If the admin has questions, they'll appear here.</p>
+      {% endif %}
+      
+      <!-- Reply Form (always show for active requests) -->
+      {% if req.status not in ['PICKED_UP', 'REJECTED', 'CANCELLED'] %}
+        <form method="POST" action="/my/{{ req.id }}/reply?token={{ token }}" class="space-y-3">
+          <textarea name="message" rows="3" 
+                    placeholder="Type your message here..."
+                    class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm resize-none focus:border-indigo-500 focus:outline-none"
+                    required></textarea>
+          <button type="submit" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
+            Send Reply
+          </button>
+        </form>
+      {% endif %}
+    </div>
+    
+    <!-- Add Files Section (for NEEDS_INFO or NEW status) -->
+    {% if req.status in ['NEW', 'NEEDS_INFO'] %}
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+        <h2 class="font-semibold mb-4">📎 Add More Files</h2>
+        <form method="POST" action="/my/{{ req.id }}/upload?token={{ token }}" enctype="multipart/form-data" class="space-y-3">
+          <input type="file" name="files" multiple accept=".stl,.obj,.3mf,.gcode,.step,.stp,.fpp"
+                 class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white file:font-semibold file:cursor-pointer" />
+          <p class="text-xs text-zinc-500">Accepted formats: STL, OBJ, 3MF, GCODE, STEP, FPP</p>
+          <button type="submit" class="rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+            Upload Files
+          </button>
+        </form>
+      </div>
+    {% endif %}
+    
+    <!-- Edit Request (for NEW or NEEDS_INFO status) -->
+    {% if req.status in ['NEW', 'NEEDS_INFO'] %}
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+        <h2 class="font-semibold mb-4">✏️ Edit Request</h2>
+        <form method="POST" action="/my/{{ req.id }}/edit?token={{ token }}" class="space-y-4">
+          <div>
+            <label class="text-sm text-zinc-400">Print Name</label>
+            <input type="text" name="print_name" value="{{ req.print_name or '' }}"
+                   class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm focus:border-indigo-500 focus:outline-none" />
+          </div>
+          <div>
+            <label class="text-sm text-zinc-400">Model Link (optional)</label>
+            <input type="url" name="link_url" value="{{ req.link_url or '' }}"
+                   placeholder="https://www.thingiverse.com/thing:..."
+                   class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm focus:border-indigo-500 focus:outline-none" />
+          </div>
+          <div>
+            <label class="text-sm text-zinc-400">Additional Notes</label>
+            <textarea name="notes" rows="3"
+                      class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm resize-none focus:border-indigo-500 focus:outline-none">{{ req.notes or '' }}</textarea>
+          </div>
+          <button type="submit" class="rounded-xl bg-amber-600 hover:bg-amber-500 transition px-4 py-2 text-sm font-semibold">
+            Save Changes
+          </button>
+        </form>
+      </div>
+    {% endif %}
+    
+    <!-- Status History -->
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="font-semibold mb-4">📜 Status History</h2>
+      <div class="space-y-2">
+        {% for evt in history %}
+          <div class="flex items-start gap-3 text-sm">
+            <div class="w-2 h-2 mt-2 rounded-full bg-indigo-500"></div>
+            <div class="flex-1">
+              <div class="font-medium">{{ evt.to_status }}</div>
+              {% if evt.comment %}
+                <p class="text-zinc-400 text-xs mt-1">{{ evt.comment }}</p>
+              {% endif %}
+              <span class="text-xs text-zinc-500">{{ evt.created_at|localtime }}</span>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    
+    <div class="mt-6 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
+      <a href="/changelog" class="hover:text-indigo-400 transition">3D Print Queue v{{ version }}</a>
+    </div>
+  </div>
+</body>
+</html>
