@@ -11,6 +11,15 @@ from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Resp
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
+# ─────────────────────────── VERSION ───────────────────────────
+APP_VERSION = "1.4.0"
+# Changelog:
+# 1.4.0 - Camera streaming, auto-complete with snapshots, login redirect fix
+# 1.3.0 - FlashForge printer integration, ETA calculations, analytics
+# 1.2.0 - Admin dashboard, priority system, email notifications
+# 1.1.0 - File uploads, status tracking, public queue
+# 1.0.0 - Initial release
+
 APP_TITLE = "3D Print Queue"
 
 DB_PATH = os.getenv("DB_PATH", "/data/app.db")
@@ -172,6 +181,14 @@ def ensure_migrations():
         # User-friendly name for the print (e.g., "Dragon Statue", "Phone Holder")
         cur.execute("ALTER TABLE requests ADD COLUMN print_name TEXT")
 
+    if "completion_snapshot" not in cols:
+        # Base64-encoded JPEG snapshot taken when print auto-completes
+        cur.execute("ALTER TABLE requests ADD COLUMN completion_snapshot TEXT")
+
+    if "final_temperature" not in cols:
+        # Temperature reading at completion (for records)
+        cur.execute("ALTER TABLE requests ADD COLUMN final_temperature TEXT")
+
     conn.commit()
     conn.close()
 
@@ -314,6 +331,42 @@ class FlashForgeAPI:
             print(f"[PRINTER] Error fetching status from {self.printer_ip}: {e}")
         return None
 
+    async def get_temperature(self) -> Optional[Dict[str, Any]]:
+        """Get current and target temperature"""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                url = f"{self.flask_api_url}/{self.printer_ip}/temp"
+                r = await client.get(url)
+                if r.status_code == 200:
+                    return r.json()
+        except Exception as e:
+            print(f"[PRINTER] Error fetching temperature from {self.printer_ip}: {e}")
+        return None
+
+    async def get_info(self) -> Optional[Dict[str, Any]]:
+        """Get printer info (name, firmware, serial, type)"""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                url = f"{self.flask_api_url}/{self.printer_ip}/info"
+                r = await client.get(url)
+                if r.status_code == 200:
+                    return r.json()
+        except Exception as e:
+            print(f"[PRINTER] Error fetching info from {self.printer_ip}: {e}")
+        return None
+
+    async def get_head_location(self) -> Optional[Dict[str, Any]]:
+        """Get print head X, Y, Z location"""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                url = f"{self.flask_api_url}/{self.printer_ip}/head-location"
+                r = await client.get(url)
+                if r.status_code == 200:
+                    return r.json()
+        except Exception as e:
+            print(f"[PRINTER] Error fetching head location from {self.printer_ip}: {e}")
+        return None
+
     async def is_printing(self) -> bool:
         """Check if printer is currently printing"""
         status = await self.get_status()
@@ -383,19 +436,42 @@ def get_camera_url(printer_code: str) -> Optional[str]:
 
 
 async def capture_camera_snapshot(printer_code: str) -> Optional[bytes]:
-    """Capture a snapshot from the printer's camera"""
+    """Capture a snapshot from the printer's camera by extracting a frame from MJPEG stream"""
     camera_url = get_camera_url(printer_code)
     if not camera_url:
         return None
     
-    # Convert stream URL to snapshot URL if needed
-    snapshot_url = camera_url.replace("?action=stream", "?action=snapshot")
-    
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(snapshot_url)
-            if response.status_code == 200 and response.headers.get("content-type", "").startswith("image/"):
-                return response.content
+        # Try snapshot URL first (quick attempt with short timeout)
+        snapshot_url = camera_url.replace("?action=stream", "?action=snapshot")
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            try:
+                response = await client.get(snapshot_url)
+                if response.status_code == 200 and response.headers.get("content-type", "").startswith("image/"):
+                    print(f"[CAMERA] Got snapshot from {printer_code} via snapshot endpoint")
+                    return response.content
+            except httpx.TimeoutException:
+                pass  # Snapshot endpoint not available, try stream method
+        
+        # Fallback: Extract a single frame from the MJPEG stream
+        print(f"[CAMERA] Trying to extract frame from MJPEG stream for {printer_code}")
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=5.0)) as client:
+            async with client.stream("GET", camera_url) as response:
+                buffer = b""
+                async for chunk in response.aiter_bytes(chunk_size=4096):
+                    buffer += chunk
+                    # Look for JPEG markers: starts with FFD8, ends with FFD9
+                    start = buffer.find(b"\xff\xd8")
+                    if start != -1:
+                        end = buffer.find(b"\xff\xd9", start)
+                        if end != -1:
+                            jpeg_data = buffer[start:end + 2]
+                            print(f"[CAMERA] Extracted JPEG frame ({len(jpeg_data)} bytes) from {printer_code}")
+                            return jpeg_data
+                    # Prevent buffer from growing too large
+                    if len(buffer) > 500000:  # 500KB max
+                        print(f"[CAMERA] Buffer too large, no JPEG found for {printer_code}")
+                        break
     except Exception as e:
         print(f"[CAMERA] Error capturing snapshot from {printer_code}: {e}")
     
@@ -450,12 +526,35 @@ async def poll_printer_status_worker():
                 if is_complete:
                     print(f"[PRINTER] {req['printer']} complete ({percent_complete}%), auto-updating {rid[:8]} to DONE")
 
-                    # Auto-update status
+                    # Capture completion data before updating status
+                    completion_snapshot = None
+                    final_temp = None
+                    
+                    # Try to capture a final snapshot
+                    if get_bool_setting("enable_camera_snapshot", False):
+                        try:
+                            snapshot_data = await capture_camera_snapshot(req["printer"])
+                            if snapshot_data:
+                                completion_snapshot = base64.b64encode(snapshot_data).decode("utf-8")
+                                print(f"[PRINTER] Captured completion snapshot for {rid[:8]} ({len(snapshot_data)} bytes)")
+                        except Exception as e:
+                            print(f"[PRINTER] Failed to capture completion snapshot: {e}")
+                    
+                    # Get final temperature
+                    try:
+                        temp_data = await printer_api.get_temperature()
+                        if temp_data:
+                            final_temp = f"{temp_data.get('Temperature', '?')}°C"
+                            print(f"[PRINTER] Final temperature for {rid[:8]}: {final_temp}")
+                    except Exception as e:
+                        print(f"[PRINTER] Failed to get final temperature: {e}")
+
+                    # Auto-update status with completion data
                     conn = db()
                     req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
                     conn.execute(
-                        "UPDATE requests SET status = ?, updated_at = ? WHERE id = ?",
-                        ("DONE", now_iso(), rid)
+                        "UPDATE requests SET status = ?, updated_at = ?, completion_snapshot = ?, final_temperature = ? WHERE id = ?",
+                        ("DONE", now_iso(), completion_snapshot, final_temp, rid)
                     )
                     conn.execute(
                         "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
@@ -469,27 +568,38 @@ async def poll_printer_status_worker():
                     admin_email_on_status = get_bool_setting("admin_email_on_status", True)
                     requester_email_on_status = get_bool_setting("requester_email_on_status", True)
 
+                    # Build email rows with completion data
+                    email_rows = [("Request ID", rid[:8]), ("Status", "DONE")]
+                    if final_temp:
+                        email_rows.append(("Final Temp", final_temp))
+
                     if requester_email_on_status and req_row:
                         subject = f"[{APP_TITLE}] Print Complete! ({rid[:8]})"
                         text = f"Your print is done and ready for pickup!\n\nRequest ID: {rid[:8]}\n\nView queue: {BASE_URL}/queue?mine={rid[:8]}\n"
                         html = build_email_html(
                             title="Print Complete!",
                             subtitle="Your request is ready for pickup.",
-                            rows=[("Request ID", rid[:8]), ("Status", "DONE")],
+                            rows=email_rows,
                             cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
                             cta_label="View queue",
+                            image_base64=completion_snapshot if get_bool_setting("enable_camera_snapshot", False) else None,
                         )
                         send_email([req_row["requester_email"]], subject, text, html)
 
                     if admin_email_on_status and admin_emails and req_row:
+                        admin_rows = [("Request ID", rid[:8]), ("Printer", req["printer"]), ("Status", "DONE")]
+                        if final_temp:
+                            admin_rows.append(("Final Temp", final_temp))
+                        
                         subject = f"[{APP_TITLE}] Auto-completed: {rid[:8]}"
                         text = f"Print automatically marked DONE.\n\nID: {rid}\nPrinter: {req['printer']}\nAdmin: {BASE_URL}/admin/request/{rid}\n"
                         html = build_email_html(
                             title="Print Auto-Completed",
                             subtitle="Printer finished and is idle.",
-                            rows=[("Request ID", rid[:8]), ("Printer", req["printer"]), ("Status", "DONE")],
+                            rows=admin_rows,
                             cta_url=f"{BASE_URL}/admin/request/{rid}",
                             cta_label="Open in admin",
+                            image_base64=completion_snapshot if get_bool_setting("enable_camera_snapshot", False) else None,
                         )
                         send_email(admin_emails, subject, text, html)
 
@@ -549,8 +659,8 @@ def _human_material(code: str) -> str:
     return code
 
 
-def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta_url: Optional[str] = None, cta_label: str = "Open", header_color: str = "#4f46e5") -> str:
-    """Build HTML email with optional header color customization"""
+def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta_url: Optional[str] = None, cta_label: str = "Open", header_color: str = "#4f46e5", image_base64: Optional[str] = None) -> str:
+    """Build HTML email with optional header color customization and embedded image"""
     def esc(s: str) -> str:
         return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -575,6 +685,17 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
           </div>
         """
 
+    # Embedded snapshot image
+    image_html = ""
+    if image_base64:
+        image_html = f"""
+          <div style="margin-top:20px;border-radius:8px;overflow:hidden;">
+            <div style="color:#6b7280;font-size:12px;margin-bottom:8px;font-weight:600;">📷 Completion Snapshot</div>
+            <img src="data:image/jpeg;base64,{image_base64}" alt="Print completion snapshot" 
+                 style="max-width:100%;height:auto;border-radius:8px;border:1px solid #e5e7eb;" />
+          </div>
+        """
+
     return f"""\
 <!doctype html>
 <html>
@@ -593,6 +714,7 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
             <table style="width:100%;border-collapse:collapse;">
               {row_html}
             </table>
+            {image_html}
             {cta}
           </div>
         </div>
@@ -1052,6 +1174,7 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
             "ADVENTURER_4": printer_status.get("ADVENTURER_4", {}),
             "AD5X": printer_status.get("AD5X", {}),
         },
+        "version": APP_VERSION,
     })
 
 
@@ -1263,6 +1386,7 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
         "max_upload_mb": MAX_UPLOAD_MB,
         "camera_url": camera_url,
         "now": datetime.now().timestamp(),  # For cache-busting
+        "version": APP_VERSION,
     })
 
 
@@ -1716,21 +1840,40 @@ async def camera_stream_proxy(request: Request, printer_code: str, _=Depends(req
     if not camera_url:
         raise HTTPException(status_code=503, detail="Camera not configured for this printer")
     
-    # Create a streaming response that proxies the MJPEG stream
-    async def stream_generator():
-        try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream("GET", camera_url) as response:
-                    async for chunk in response.aiter_bytes(chunk_size=4096):
-                        yield chunk
-        except Exception as e:
-            print(f"[CAMERA] Stream error for {printer_code}: {e}")
+    print(f"[CAMERA] Starting stream proxy for {printer_code} from {camera_url}")
     
-    return StreamingResponse(
-        stream_generator(),
-        media_type="multipart/x-mixed-replace; boundary=BoundaryString",
-        headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
-    )
+    # We need to get the content-type first, then stream
+    # Create a client that stays open for the generator
+    client = httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=None))
+    
+    try:
+        response = await client.send(
+            client.build_request("GET", camera_url),
+            stream=True
+        )
+        content_type = response.headers.get("content-type", "multipart/x-mixed-replace;boundary=boundarydonotcross")
+        print(f"[CAMERA] Connected to {printer_code}, content-type: {content_type}")
+        
+        async def stream_generator():
+            """Generator that proxies the MJPEG stream"""
+            try:
+                async for chunk in response.aiter_bytes(chunk_size=8192):
+                    yield chunk
+            except Exception as e:
+                print(f"[CAMERA] Stream error for {printer_code}: {e}")
+            finally:
+                await response.aclose()
+                await client.aclose()
+        
+        return StreamingResponse(
+            stream_generator(),
+            media_type=content_type,
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+        )
+    except Exception as e:
+        await client.aclose()
+        print(f"[CAMERA] Failed to connect to {printer_code}: {e}")
+        raise HTTPException(status_code=503, detail=f"Failed to connect to camera: {e}")
 
 
 @app.get("/api/camera/status")
@@ -1746,3 +1889,26 @@ async def camera_status(_=Depends(require_admin)):
             "url": get_camera_url("AD5X"),
         },
     }
+
+
+@app.get("/api/request/{rid}/completion-snapshot")
+def get_completion_snapshot(rid: str, _=Depends(require_admin)):
+    """Get the completion snapshot for a request"""
+    conn = db()
+    req = conn.execute("SELECT completion_snapshot FROM requests WHERE id = ?", (rid,)).fetchone()
+    conn.close()
+    
+    if not req or not req["completion_snapshot"]:
+        raise HTTPException(status_code=404, detail="No completion snapshot available")
+    
+    try:
+        image_data = base64.b64decode(req["completion_snapshot"])
+        return Response(content=image_data, media_type="image/jpeg")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to decode snapshot")
+
+
+@app.get("/api/version")
+def get_version():
+    """Get application version"""
+    return {"version": APP_VERSION, "title": APP_TITLE}

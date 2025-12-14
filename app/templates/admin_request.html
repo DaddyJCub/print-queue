@@ -177,6 +177,26 @@
         </div>
         {% endif %}
 
+        <!-- Completion Snapshot Card (shows when DONE/PICKED_UP and has snapshot) -->
+        {% if req["status"] in ["DONE", "PICKED_UP"] and req["completion_snapshot"] %}
+        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+          <h2 class="text-lg font-semibold mb-4">📸 Completion Snapshot</h2>
+          <div class="relative bg-zinc-950 rounded-lg overflow-hidden">
+            <img src="/api/request/{{ req['id'] }}/completion-snapshot" 
+                 alt="Completion snapshot"
+                 class="w-full h-auto object-contain rounded-lg" />
+          </div>
+          {% if req["final_temperature"] %}
+          <p class="text-xs text-zinc-500 mt-3">
+            Final temperature: {{ req["final_temperature"] }}
+          </p>
+          {% endif %}
+          <p class="text-xs text-zinc-500 mt-1">
+            Captured automatically when print completed
+          </p>
+        </div>
+        {% endif %}
+
         <!-- Status Management Card -->
         <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
           <h2 class="text-lg font-semibold mb-4">✓ Change Status</h2>
