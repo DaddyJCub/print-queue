@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.1"
+APP_VERSION = "1.8.2"
 # Changelog:
 # 1.8.1 - Printer retry logic (3 retries before offline), admin per-status email controls, duplicate request fix
 # 1.8.0 - Store feature, my-request enhancements (cancel/resubmit, live printer view)
@@ -39,7 +39,7 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY", "")
 TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY", "")
 
-ALLOWED_EXTS = set([e.strip().lower() for e in os.getenv("ALLOWED_EXTS", ".stl,.3mf,.obj,.gcode,.step,.stp,.fpp").split(",") if e.strip()])
+ALLOWED_EXTS = set([e.strip().lower() for e in os.getenv("ALLOWED_EXTS", ".stl,.3mf,.obj,.gcode,.step,.stp,.fpp,.zip").split(",") if e.strip()])
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "200"))
 
 SMTP_HOST = os.getenv("SMTP_HOST", "")
@@ -365,6 +365,10 @@ def ensure_migrations():
     # Add store_item_id column if missing (for store requests)
     if "store_item_id" not in cols:
         cur.execute("ALTER TABLE requests ADD COLUMN store_item_id TEXT")
+
+    # Add printing_email_sent column if missing (tracks if PRINTING email has been sent with live data)
+    if "printing_email_sent" not in cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN printing_email_sent INTEGER DEFAULT 0")
 
     conn.commit()
     conn.close()
@@ -911,7 +915,7 @@ async def poll_printer_status_worker():
 
             conn = db()
             printing_reqs = conn.execute(
-                "SELECT id, printer, printing_started_at FROM requests WHERE status = ?",
+                "SELECT id, printer, printing_started_at, printing_email_sent, requester_email, requester_name, print_name, material, access_token, print_time_minutes FROM requests WHERE status = ?",
                 ("PRINTING",)
             ).fetchall()
             conn.close()
@@ -945,6 +949,133 @@ async def poll_printer_status_worker():
                         )
                         conn.commit()
                         conn.close()
+
+                # Send PRINTING notification email with live printer data (if not already sent)
+                if not req.get("printing_email_sent") and is_printing:
+                    # Get extended info with layer count and file name
+                    extended_info = await printer_api.get_extended_status()
+                    current_layer = extended_info.get("current_layer") if extended_info else None
+                    total_layers = extended_info.get("total_layers") if extended_info else None
+                    current_file = extended_info.get("current_file") if extended_info else None
+                    
+                    # Only send email if we have layer info (indicates print is actually running)
+                    if current_layer is not None and total_layers is not None and total_layers > 0:
+                        print(f"[POLL] Sending PRINTING email for {rid[:8]} with layer {current_layer}/{total_layers}")
+                        
+                        # Calculate ETA based on layer progress
+                        layer_progress = (current_layer / total_layers * 100) if total_layers > 0 else 0
+                        eta_str = None
+                        eta_completion = None
+                        
+                        if req["printing_started_at"] and layer_progress > 0:
+                            eta_seconds = printer_api.calculate_eta(layer_progress, req["printing_started_at"])
+                            if eta_seconds is not None and eta_seconds > 0:
+                                hours = int(eta_seconds // 3600)
+                                mins = int((eta_seconds % 3600) // 60)
+                                if hours > 0:
+                                    eta_str = f"~{hours}h {mins}m remaining"
+                                else:
+                                    eta_str = f"~{mins}m remaining"
+                                from datetime import timedelta
+                                eta_completion = (datetime.now() + timedelta(seconds=eta_seconds)).strftime("%I:%M %p")
+                        
+                        # Check notification settings
+                        requester_email_on_status = get_bool_setting("requester_email_on_status", True)
+                        should_notify_requester = get_bool_setting("notify_requester_printing", True)
+                        
+                        if requester_email_on_status and should_notify_requester and req["requester_email"]:
+                            print_label = req["print_name"] or f"Request {rid[:8]}"
+                            subject = f"[{APP_TITLE}] Now Printing - {print_label}"
+                            
+                            # Build email rows with live printer data
+                            email_rows = [
+                                ("Print Name", print_label),
+                                ("Request ID", rid[:8]),
+                                ("Printer", _human_printer(req["printer"]) if req["printer"] else "—"),
+                                ("Material", _human_material(req["material"]) if req["material"] else "—"),
+                                ("Status", "PRINTING"),
+                            ]
+                            
+                            # Add file info if available
+                            if current_file:
+                                # Clean up filename (remove path if present)
+                                display_file = current_file.split("/")[-1].split("\\")[-1] if current_file else None
+                                if display_file:
+                                    email_rows.append(("File", display_file))
+                            
+                            # Add layer count
+                            email_rows.append(("Progress", f"Layer {current_layer} of {total_layers}"))
+                            
+                            # Add ETA info
+                            if eta_str:
+                                email_rows.append(("Est. Time Remaining", eta_str))
+                            if eta_completion:
+                                email_rows.append(("Est. Completion", eta_completion))
+                            
+                            text = (
+                                f"Your print has started!\n\n"
+                                f"Print: {print_label}\n"
+                                f"Request ID: {rid[:8]}\n"
+                                f"Printer: {req['printer']}\n"
+                                f"Progress: Layer {current_layer}/{total_layers}\n"
+                                f"{f'ETA: {eta_str}' if eta_str else ''}\n"
+                                f"\nView queue: {BASE_URL}/queue?mine={rid[:8]}\n"
+                            )
+                            
+                            html = build_email_html(
+                                title="Now Printing!",
+                                subtitle=f"'{print_label}' is now printing!",
+                                rows=email_rows,
+                                cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
+                                cta_label="View in Queue",
+                                header_color="#f59e0b",  # Orange for printing
+                            )
+                            send_email([req["requester_email"]], subject, text, html)
+                        
+                        # Also send admin notification if enabled
+                        admin_email_on_status = get_bool_setting("admin_email_on_status", True)
+                        should_notify_admin = get_bool_setting("notify_admin_printing", True)
+                        admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))
+                        
+                        if admin_email_on_status and should_notify_admin and admin_emails:
+                            admin_subject = f"[{APP_TITLE}] {rid[:8]}: Now Printing"
+                            admin_rows = [
+                                ("Request ID", rid[:8]),
+                                ("Requester", req["requester_name"] or "—"),
+                                ("Email", req["requester_email"] or "—"),
+                                ("Printer", _human_printer(req["printer"]) if req["printer"] else "—"),
+                                ("Status", "PRINTING"),
+                                ("Progress", f"Layer {current_layer} of {total_layers}"),
+                            ]
+                            if eta_str:
+                                admin_rows.append(("Est. Time Remaining", eta_str))
+                            
+                            admin_text = (
+                                f"Print has started.\n\n"
+                                f"ID: {rid}\n"
+                                f"Printer: {req['printer']}\n"
+                                f"Progress: Layer {current_layer}/{total_layers}\n"
+                                f"Admin: {BASE_URL}/admin/request/{rid}\n"
+                            )
+                            admin_html = build_email_html(
+                                title="Print Started",
+                                subtitle=f"Request {rid[:8]} is now printing",
+                                rows=admin_rows,
+                                cta_url=f"{BASE_URL}/admin/request/{rid}",
+                                cta_label="Open in Admin",
+                                header_color="#f59e0b",
+                            )
+                            send_email(admin_emails, admin_subject, admin_text, admin_html)
+                        
+                        # Mark email as sent
+                        conn = db()
+                        conn.execute(
+                            "UPDATE requests SET printing_email_sent = 1 WHERE id = ?",
+                            (rid,)
+                        )
+                        conn.commit()
+                        conn.close()
+                        print(f"[POLL] PRINTING email sent for {rid[:8]}")
 
                 # Auto-complete if printer reports complete OR (not printing AND at 100%)
                 should_complete = is_complete or ((not is_printing) and (percent_complete == 100))
@@ -1265,7 +1396,7 @@ def safe_ext(filename: str) -> str:
     return os.path.splitext(filename)[1].lower()
 
 
-ALLOWED_EXTENSIONS = {'.stl', '.obj', '.3mf', '.gcode', '.step', '.stp', '.fpp'}
+ALLOWED_EXTENSIONS = {'.stl', '.obj', '.3mf', '.gcode', '.step', '.stp', '.fpp', '.zip'}
 
 
 def first_name_only(name: str) -> str:
@@ -3464,6 +3595,10 @@ def admin_set_status(
     if to_status == "PRINTING" and from_status != "PRINTING":
         update_cols.append("printing_started_at")
         update_vals.append(now_iso())
+        # Reset email flag - the PRINTING email will be sent by background polling
+        # once the printer reports layer count and file info
+        update_cols.append("printing_email_sent")
+        update_vals.append(0)
     
     # Update printer/material/colors if provided
     if printer and printer.strip():
@@ -3553,6 +3688,11 @@ def admin_set_status(
         "CANCELLED": get_bool_setting("notify_requester_cancelled", True),
     }
     should_notify_requester = status_notify_settings.get(to_status, True)
+    
+    # PRINTING emails are sent by background polling once printer reports live data
+    # This allows us to include layer count, file name, and accurate ETA
+    if to_status == "PRINTING":
+        should_notify_requester = False  # Will be sent by poll_printer_status_worker
 
     if requester_email_on_status and should_notify_requester:
         print_label = req["print_name"] or f"Request {rid[:8]}"

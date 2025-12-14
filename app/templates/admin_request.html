@@ -415,7 +415,7 @@
               {% for f in files %}
                 <li class="bg-zinc-950/60 border border-zinc-700 rounded-lg p-3">
                   <div class="font-mono text-sm text-zinc-200 truncate">{{ f["original_filename"] }}</div>
-                  <div class="text-xs text-zinc-500">{{ (f["size_bytes"] / 1024) | round(1) }} KB</div>
+                  <div class="text-xs text-zinc-500">{{ (f["size_bytes"] / 1024) | round(1) }} KB • Uploaded {{ f["created_at"]|localtime('%b %d, %Y at %I:%M %p') }}</div>
                   <a class="text-indigo-400 hover:underline text-xs" href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}">Download</a>
                 </li>
               {% endfor %}

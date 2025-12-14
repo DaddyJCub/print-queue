@@ -210,15 +210,19 @@
     <!-- Files -->
     {% if files %}
       <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
-        <h2 class="font-semibold mb-4">Uploaded Files</h2>
+        <h2 class="font-semibold mb-4">📁 Files</h2>
+        <p class="text-xs text-zinc-500 mb-3">.3mf, .fpp, .gcode, .obj, .step, .stl, .stp, .zip • 200MB max</p>
         <div class="space-y-2">
           {% for f in files %}
-            <div class="flex items-center justify-between bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
-              <div class="flex items-center gap-3">
-                <span class="text-emerald-400">📁</span>
-                <span class="text-sm">{{ f.original_filename }}</span>
+            <div class="bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3 min-w-0 flex-1">
+                  <span class="text-emerald-400 flex-shrink-0">📄</span>
+                  <span class="text-sm truncate">{{ f.original_filename }}</span>
+                </div>
+                <span class="text-xs text-zinc-500 flex-shrink-0 ml-2">{{ (f.size_bytes / 1024)|round(1) }} KB</span>
               </div>
-              <span class="text-xs text-zinc-500">{{ (f.size_bytes / 1024)|round(1) }} KB</span>
+              <div class="text-xs text-zinc-500 mt-1 ml-7">Uploaded {{ f.created_at|localtime('%b %d, %Y at %I:%M %p') }}</div>
             </div>
           {% endfor %}
         </div>
@@ -272,9 +276,9 @@
       <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
         <h2 class="font-semibold mb-4">📎 Add More Files</h2>
         <form method="POST" action="/my/{{ req.id }}/upload?token={{ token }}" enctype="multipart/form-data" class="space-y-3">
-          <input type="file" name="files" multiple accept=".stl,.obj,.3mf,.gcode,.step,.stp,.fpp"
+          <input type="file" name="files" multiple accept=".stl,.obj,.3mf,.gcode,.step,.stp,.fpp,.zip"
                  class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white file:font-semibold file:cursor-pointer" />
-          <p class="text-xs text-zinc-500">Accepted formats: STL, OBJ, 3MF, GCODE, STEP, FPP</p>
+          <p class="text-xs text-zinc-500">Accepted formats: STL, OBJ, 3MF, GCODE, STEP, FPP, ZIP</p>
           <button type="submit" class="rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
             Upload Files
           </button>
