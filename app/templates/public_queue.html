@@ -82,7 +82,7 @@
 
     <!-- Printer Status Indicators -->
     <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
         <div class="flex items-center justify-between">
           <h3 class="font-semibold text-sm">🖨 Adventurer 4</h3>
           <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium
@@ -91,21 +91,21 @@
             {% elif printer_status.ADVENTURER_4 %}
               bg-red-500/20 text-red-300 border border-red-500/50
             {% else %}
-              bg-slate-600/20 text-slate-300 border border-slate-600/50
+              bg-zinc-600/20 text-zinc-300 border border-zinc-600/50
             {% endif %}">
             <span class="inline-block w-2 h-2 rounded-full 
-              {% if printer_status.ADVENTURER_4.healthy %}bg-green-400{% elif printer_status.ADVENTURER_4 %}bg-red-400{% else %}bg-slate-400{% endif %}"></span>
+              {% if printer_status.ADVENTURER_4.healthy %}bg-green-400{% elif printer_status.ADVENTURER_4 %}bg-red-400{% else %}bg-zinc-400{% endif %}"></span>
             {% if printer_status.ADVENTURER_4.healthy %}Ready{% elif printer_status.ADVENTURER_4 %}Error{% else %}Unknown{% endif %}
           </span>
         </div>
         {% if printer_status.ADVENTURER_4.temp %}
-          <div class="mt-2 text-xs text-slate-400">
-            Nozzle: <span class="text-slate-200">{{ printer_status.ADVENTURER_4.temp }}°C</span>
+          <div class="mt-2 text-xs text-zinc-400">
+            Nozzle: <span class="text-zinc-200">{{ printer_status.ADVENTURER_4.temp }}°C</span>
           </div>
         {% endif %}
       </div>
       
-      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
         <div class="flex items-center justify-between">
           <h3 class="font-semibold text-sm">🖨 AD5X</h3>
           <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium
@@ -114,16 +114,16 @@
             {% elif printer_status.AD5X %}
               bg-red-500/20 text-red-300 border border-red-500/50
             {% else %}
-              bg-slate-600/20 text-slate-300 border border-slate-600/50
+              bg-zinc-600/20 text-zinc-300 border border-zinc-600/50
             {% endif %}">
             <span class="inline-block w-2 h-2 rounded-full 
-              {% if printer_status.AD5X.healthy %}bg-green-400{% elif printer_status.AD5X %}bg-red-400{% else %}bg-slate-400{% endif %}"></span>
+              {% if printer_status.AD5X.healthy %}bg-green-400{% elif printer_status.AD5X %}bg-red-400{% else %}bg-zinc-400{% endif %}"></span>
             {% if printer_status.AD5X.healthy %}Ready{% elif printer_status.AD5X %}Error{% else %}Unknown{% endif %}
           </span>
         </div>
         {% if printer_status.AD5X.temp %}
-          <div class="mt-2 text-xs text-slate-400">
-            Nozzle: <span class="text-slate-200">{{ printer_status.AD5X.temp }}°C</span>
+          <div class="mt-2 text-xs text-zinc-400">
+            Nozzle: <span class="text-zinc-200">{{ printer_status.AD5X.temp }}°C</span>
           </div>
         {% endif %}
       </div>

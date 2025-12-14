@@ -142,7 +142,7 @@
 
     <!-- Printer Status Cards -->
     <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
         <div class="flex items-center justify-between mb-2">
           <h3 class="font-semibold flex items-center gap-2">
             <span>🖨</span>
@@ -159,23 +159,23 @@
               {{ printer_status.ADVENTURER_4.status }}
             </span>
           {% else %}
-            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-slate-600/20 text-slate-300 border border-slate-600/50">
-              <span class="inline-block w-2 h-2 rounded-full bg-slate-400"></span>
+            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-zinc-600/20 text-zinc-300 border border-zinc-600/50">
+              <span class="inline-block w-2 h-2 rounded-full bg-zinc-400"></span>
               Unknown
             </span>
           {% endif %}
         </div>
-        <div class="flex items-center gap-4 text-xs text-slate-400">
+        <div class="flex items-center gap-4 text-xs text-zinc-400">
           {% if printer_status.ADVENTURER_4.temp %}
-            <div>Nozzle: <span class="text-slate-200">{{ printer_status.ADVENTURER_4.temp }}°C</span></div>
+            <div>Nozzle: <span class="text-zinc-200">{{ printer_status.ADVENTURER_4.temp }}°C</span></div>
           {% endif %}
           {% if printer_status.ADVENTURER_4.progress %}
-            <div>Progress: <span class="text-slate-200">{{ printer_status.ADVENTURER_4.progress }}%</span></div>
+            <div>Progress: <span class="text-zinc-200">{{ printer_status.ADVENTURER_4.progress }}%</span></div>
           {% endif %}
         </div>
       </div>
       
-      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
         <div class="flex items-center justify-between mb-2">
           <h3 class="font-semibold flex items-center gap-2">
             <span>🖨</span>
@@ -192,18 +192,18 @@
               {{ printer_status.AD5X.status }}
             </span>
           {% else %}
-            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-slate-600/20 text-slate-300 border border-slate-600/50">
-              <span class="inline-block w-2 h-2 rounded-full bg-slate-400"></span>
+            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-zinc-600/20 text-zinc-300 border border-zinc-600/50">
+              <span class="inline-block w-2 h-2 rounded-full bg-zinc-400"></span>
               Unknown
             </span>
           {% endif %}
         </div>
-        <div class="flex items-center gap-4 text-xs text-slate-400">
+        <div class="flex items-center gap-4 text-xs text-zinc-400">
           {% if printer_status.AD5X.temp %}
-            <div>Nozzle: <span class="text-slate-200">{{ printer_status.AD5X.temp }}°C</span></div>
+            <div>Nozzle: <span class="text-zinc-200">{{ printer_status.AD5X.temp }}°C</span></div>
           {% endif %}
           {% if printer_status.AD5X.progress %}
-            <div>Progress: <span class="text-slate-200">{{ printer_status.AD5X.progress }}%</span></div>
+            <div>Progress: <span class="text-zinc-200">{{ printer_status.AD5X.progress }}%</span></div>
           {% endif %}
         </div>
       </div>
