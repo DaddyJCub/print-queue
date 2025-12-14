@@ -206,7 +206,8 @@
               <li class="text-sm bg-zinc-950/50 border border-zinc-800 rounded-xl p-3">
                 <div class="font-mono text-zinc-200">{{ f["original_filename"] }}</div>
                 <div class="text-zinc-400">{{ (f["size_bytes"] / 1024) | round(1) }} KB</div>
-                <a class="text-indigo-400 hover:underline" href="/uploads/{{ f['stored_filename'] }}" target="_blank">Download</a>
+                <!-- IMPORTANT: force download via /download -->
+                <a class="text-indigo-400 hover:underline" href="/download/{{ f['stored_filename'] }}">Download</a>
               </li>
             {% endfor %}
           </ul>

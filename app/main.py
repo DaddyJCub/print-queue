@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any
 
 import httpx
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
@@ -706,5 +706,33 @@ async def admin_add_file(
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
 
-# Expose uploads as static (admin pages link directly)
+@app.get("/download/{stored_filename}")
+def download_file(stored_filename: str, _=Depends(require_admin)):
+    """
+    Force a real download (Content-Disposition: attachment) so browsers don't try to render STL/3MF as text.
+    Uses original filename from DB when available.
+    """
+    path = os.path.join(UPLOAD_DIR, stored_filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    download_name = stored_filename
+    conn = db()
+    row = conn.execute(
+        "SELECT original_filename FROM files WHERE stored_filename = ?",
+        (stored_filename,)
+    ).fetchone()
+    conn.close()
+
+    if row and row["original_filename"]:
+        download_name = row["original_filename"]
+
+    return FileResponse(
+        path=path,
+        media_type="application/octet-stream",
+        filename=download_name,
+    )
+
+
+# Expose uploads as static (admin pages link directly if needed)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
