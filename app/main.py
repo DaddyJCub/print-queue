@@ -1262,7 +1262,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
         printer_progress = None
         smart_eta = None
         smart_eta_display = None
-        printing_started_at = r.get("printing_started_at")
+        printing_started_at = r["printing_started_at"] if "printing_started_at" in r.keys() else None
         
         if r["status"] == "PRINTING":
             # Fix missing printing_started_at for legacy requests
@@ -1439,7 +1439,7 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
                 pass
         
         # If printing_started_at is missing, set it now (for legacy requests)
-        printing_started_at = r.get("printing_started_at")
+        printing_started_at = r["printing_started_at"] if "printing_started_at" in r.keys() else None
         if not printing_started_at and r["status"] == "PRINTING":
             printing_started_at = now_iso()
             conn_fix = db()
