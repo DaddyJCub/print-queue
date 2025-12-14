@@ -97,6 +97,83 @@
           {% endif %}
         </div>
 
+        <!-- Camera Feed Card (shows when printing and camera is configured) -->
+        {% if req["status"] == "PRINTING" and req["printer"] in ["ADVENTURER_4", "AD5X"] and camera_url %}
+        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold">📷 Live Camera Feed</h2>
+            <div class="flex items-center gap-2">
+              <button onclick="refreshSnapshot()" class="text-xs px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition">
+                ↻ Refresh
+              </button>
+              <button onclick="toggleStream()" id="stream-toggle" class="text-xs px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 transition">
+                ▶ Live Stream
+              </button>
+            </div>
+          </div>
+          
+          <div class="relative bg-zinc-950 rounded-lg overflow-hidden" style="aspect-ratio: 16/9;">
+            <img id="camera-snapshot" 
+                 src="/api/camera/{{ req['printer'] }}/snapshot?t={{ now }}" 
+                 alt="Printer camera"
+                 class="w-full h-full object-contain"
+                 onerror="this.style.display='none'; document.getElementById('camera-error').style.display='flex';" />
+            <img id="camera-stream" 
+                 src="" 
+                 alt="Live stream"
+                 class="w-full h-full object-contain hidden" />
+            <div id="camera-error" class="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm" style="display: none;">
+              📷 Camera not available
+            </div>
+          </div>
+          
+          <p class="text-xs text-zinc-500 mt-3">
+            Camera: {{ camera_url[:50] }}{% if camera_url|length > 50 %}...{% endif %}
+          </p>
+          
+          <script>
+            let isStreaming = false;
+            
+            function refreshSnapshot() {
+              const img = document.getElementById('camera-snapshot');
+              img.src = '/api/camera/{{ req["printer"] }}/snapshot?t=' + Date.now();
+              img.style.display = 'block';
+              document.getElementById('camera-stream').style.display = 'none';
+              document.getElementById('camera-error').style.display = 'none';
+              isStreaming = false;
+              document.getElementById('stream-toggle').textContent = '▶ Live Stream';
+            }
+            
+            function toggleStream() {
+              const snapshot = document.getElementById('camera-snapshot');
+              const stream = document.getElementById('camera-stream');
+              const btn = document.getElementById('stream-toggle');
+              
+              if (isStreaming) {
+                stream.src = '';
+                stream.style.display = 'none';
+                snapshot.style.display = 'block';
+                btn.textContent = '▶ Live Stream';
+                isStreaming = false;
+              } else {
+                stream.src = '{{ camera_url }}';
+                stream.style.display = 'block';
+                snapshot.style.display = 'none';
+                btn.textContent = '⏹ Stop Stream';
+                isStreaming = true;
+              }
+            }
+            
+            // Auto-refresh snapshot every 30 seconds if not streaming
+            setInterval(() => {
+              if (!isStreaming) {
+                refreshSnapshot();
+              }
+            }, 30000);
+          </script>
+        </div>
+        {% endif %}
+
         <!-- Status Management Card -->
         <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
           <h2 class="text-lg font-semibold mb-4">✓ Change Status</h2>

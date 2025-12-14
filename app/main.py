@@ -7,7 +7,7 @@ import threading
 
 import httpx
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
@@ -359,6 +359,35 @@ def get_printer_api(printer_code: str) -> Optional[FlashForgeAPI]:
         return None
 
     return FlashForgeAPI(flask_url, ip)
+
+
+def get_camera_url(printer_code: str) -> Optional[str]:
+    """Get camera URL for a printer"""
+    if printer_code == "ADVENTURER_4":
+        return get_setting("camera_adventurer_4_url", "")
+    elif printer_code == "AD5X":
+        return get_setting("camera_ad5x_url", "")
+    return None
+
+
+async def capture_camera_snapshot(printer_code: str) -> Optional[bytes]:
+    """Capture a snapshot from the printer's camera"""
+    camera_url = get_camera_url(printer_code)
+    if not camera_url:
+        return None
+    
+    # Convert stream URL to snapshot URL if needed
+    snapshot_url = camera_url.replace("?action=stream", "?action=snapshot")
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(snapshot_url)
+            if response.status_code == 200 and response.headers.get("content-type", "").startswith("image/"):
+                return response.content
+    except Exception as e:
+        print(f"[CAMERA] Error capturing snapshot from {printer_code}: {e}")
+    
+    return None
 
 
 async def poll_printer_status_worker():
@@ -827,10 +856,10 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                 progress = await printer_api.get_percent_complete()
                 if status:
                     printer_status[printer_code] = {
-                        "status": status.get("MachineStatus", "UNKNOWN"),
+                        "status": status.get("MachineStatus", "UNKNOWN").replace("_FROM_SD", ""),
                         "temp": status.get("Temperature"),
                         "progress": progress,
-                        "healthy": status.get("MachineStatus") in ["READY", "PRINTING", "BUILDING"]
+                        "healthy": status.get("MachineStatus") in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD"]
                     }
         except Exception:
             pass
@@ -985,9 +1014,9 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
                 progress = await printer_api.get_progress()
                 if status:
                     printer_status[printer_code] = {
-                        "status": status.get("MachineStatus", "UNKNOWN"),
+                        "status": status.get("MachineStatus", "UNKNOWN").replace("_FROM_SD", ""),
                         "temp": status.get("Temperature"),
-                        "healthy": status.get("MachineStatus") in ["READY", "PRINTING", "BUILDING"],
+                        "healthy": status.get("MachineStatus") in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD"],
                         "progress": progress.get("PercentageCompleted") if progress else None,
                     }
         except Exception as e:
@@ -1157,7 +1186,10 @@ def admin_printer_settings(request: Request, _=Depends(require_admin), saved: Op
         "flashforge_api_url": get_setting("flashforge_api_url", "http://localhost:5000"),
         "printer_adventurer_4_ip": get_setting("printer_adventurer_4_ip", "192.168.0.198"),
         "printer_ad5x_ip": get_setting("printer_ad5x_ip", "192.168.0.157"),
+        "camera_adventurer_4_url": get_setting("camera_adventurer_4_url", ""),
+        "camera_ad5x_url": get_setting("camera_ad5x_url", ""),
         "enable_printer_polling": get_bool_setting("enable_printer_polling", True),
+        "enable_camera_snapshot": get_bool_setting("enable_camera_snapshot", False),
         "saved": bool(saved == "1"),
     }
     return templates.TemplateResponse("printer_settings.html", {"request": request, "s": model})
@@ -1169,13 +1201,19 @@ def admin_printer_settings_post(
     flashforge_api_url: str = Form(""),
     printer_adventurer_4_ip: str = Form(""),
     printer_ad5x_ip: str = Form(""),
+    camera_adventurer_4_url: str = Form(""),
+    camera_ad5x_url: str = Form(""),
     enable_printer_polling: Optional[str] = Form(None),
+    enable_camera_snapshot: Optional[str] = Form(None),
     _=Depends(require_admin),
 ):
     set_setting("flashforge_api_url", flashforge_api_url.strip())
     set_setting("printer_adventurer_4_ip", printer_adventurer_4_ip.strip())
     set_setting("printer_ad5x_ip", printer_ad5x_ip.strip())
+    set_setting("camera_adventurer_4_url", camera_adventurer_4_url.strip())
+    set_setting("camera_ad5x_url", camera_ad5x_url.strip())
     set_setting("enable_printer_polling", "1" if enable_printer_polling else "0")
+    set_setting("enable_camera_snapshot", "1" if enable_camera_snapshot else "0")
 
     return RedirectResponse(url="/admin/printer-settings?saved=1", status_code=303)
 
@@ -1190,6 +1228,10 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
     files = conn.execute("SELECT * FROM files WHERE request_id = ? ORDER BY created_at DESC", (rid,)).fetchall()
     events = conn.execute("SELECT * FROM status_events WHERE request_id = ? ORDER BY created_at DESC", (rid,)).fetchall()
     conn.close()
+    
+    # Get camera URL for the printer if configured
+    camera_url = get_camera_url(req["printer"]) if req["printer"] in ["ADVENTURER_4", "AD5X"] else None
+    
     return templates.TemplateResponse("admin_request.html", {
         "request": request,
         "req": req,
@@ -1200,6 +1242,8 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
         "materials": MATERIALS,
         "allowed_exts": ", ".join(sorted(ALLOWED_EXTS)),
         "max_upload_mb": MAX_UPLOAD_MB,
+        "camera_url": camera_url,
+        "now": datetime.now().timestamp(),  # For cache-busting
     })
 
 
@@ -1626,3 +1670,48 @@ def admin_batch_update(
     conn.close()
     
     return RedirectResponse(url="/admin", status_code=303)
+
+
+# ─────────────────────────── CAMERA ENDPOINTS ───────────────────────────
+
+@app.get("/api/camera/{printer_code}/snapshot")
+async def camera_snapshot(printer_code: str, _=Depends(require_admin)):
+    """Get a snapshot from printer camera"""
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    image_data = await capture_camera_snapshot(printer_code)
+    if not image_data:
+        raise HTTPException(status_code=503, detail="Camera not available or not configured")
+    
+    return Response(content=image_data, media_type="image/jpeg")
+
+
+@app.get("/api/camera/{printer_code}/stream")
+async def camera_stream_proxy(request: Request, printer_code: str, _=Depends(require_admin)):
+    """Proxy the MJPEG stream from the printer's camera"""
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    camera_url = get_camera_url(printer_code)
+    if not camera_url:
+        raise HTTPException(status_code=503, detail="Camera not configured for this printer")
+    
+    # Return the direct camera URL for the client to use
+    # (streaming proxy is complex, so we just tell the client where to look)
+    return {"stream_url": camera_url}
+
+
+@app.get("/api/camera/status")
+async def camera_status(_=Depends(require_admin)):
+    """Check which printers have cameras configured"""
+    return {
+        "ADVENTURER_4": {
+            "configured": bool(get_camera_url("ADVENTURER_4")),
+            "url": get_camera_url("ADVENTURER_4"),
+        },
+        "AD5X": {
+            "configured": bool(get_camera_url("AD5X")),
+            "url": get_camera_url("AD5X"),
+        },
+    }

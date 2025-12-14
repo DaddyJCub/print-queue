@@ -65,6 +65,57 @@
         </div>
       </section>
 
+      <!-- Camera URLs -->
+      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <h2 class="text-lg font-semibold">📷 Camera Streams</h2>
+        <p class="text-sm text-zinc-400 mt-2">HTTP camera stream URLs for each printer (optional)</p>
+
+        <div class="mt-4 space-y-4">
+          <div>
+            <label class="text-xs text-zinc-400">Adventurer 4 Camera URL</label>
+            <input name="camera_adventurer_4_url"
+                   value="{{ s.camera_adventurer_4_url }}"
+                   class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3"
+                   placeholder="http://192.168.0.198:8080/?action=stream" />
+            <p class="text-xs text-zinc-500 mt-1">Common formats: <code class="bg-zinc-900 px-1">http://IP:8080/?action=stream</code> or <code class="bg-zinc-900 px-1">http://IP:8080/?action=snapshot</code></p>
+          </div>
+
+          <div>
+            <label class="text-xs text-zinc-400">AD5X Camera URL</label>
+            <input name="camera_ad5x_url"
+                   value="{{ s.camera_ad5x_url }}"
+                   class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3"
+                   placeholder="http://192.168.0.157:8080/?action=stream" />
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <label class="flex items-center gap-3">
+            <input type="checkbox" name="enable_camera_snapshot" class="scale-125"
+                   {% if s.enable_camera_snapshot %}checked{% endif %} />
+            <span class="flex-1">
+              <span class="font-semibold">Attach camera snapshot to completion emails</span>
+              <div class="text-xs text-zinc-400 mt-1">
+                Capture a snapshot when print completes and include it in the notification email.
+              </div>
+            </span>
+          </label>
+        </div>
+
+        <div class="mt-4 p-4 bg-amber-900/20 border border-amber-800/40 rounded-xl">
+          <div class="text-sm text-amber-200 font-semibold">💡 Finding Your Camera URL:</div>
+          <div class="text-xs text-amber-100/80 mt-2 space-y-1">
+            <p>FlashForge cameras often use these patterns:</p>
+            <ul class="list-disc list-inside ml-2 space-y-1">
+              <li><code class="bg-zinc-900 px-1">http://PRINTER_IP:8080/?action=stream</code> (MJPEG stream)</li>
+              <li><code class="bg-zinc-900 px-1">http://PRINTER_IP:8080/?action=snapshot</code> (Single image)</li>
+              <li><code class="bg-zinc-900 px-1">http://PRINTER_IP:8899/camera</code> (Some models)</li>
+            </ul>
+            <p class="mt-2">Try opening these URLs in your browser while on the same network.</p>
+          </div>
+        </div>
+      </section>
+
       <!-- Polling Features -->
       <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <h2 class="text-lg font-semibold">Printer Monitoring</h2>
