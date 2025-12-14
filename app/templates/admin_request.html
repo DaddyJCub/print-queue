@@ -8,7 +8,7 @@
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-5xl mx-auto p-6">
-    <a class="text-indigo-400 hover:underline text-sm" href="/admin">← Back to queue</a>
+    <a class="text-indigo-400 hover:underline text-sm" href="/admin">← Back to dashboard</a>
 
     <div class="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div class="lg:col-span-2 bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
@@ -19,28 +19,49 @@
           <div>Printer: {{ req["printer"] }}</div>
           <div>Material: {{ req["material"] }}</div>
           <div>Colors: {{ req["colors"] }}</div>
-          <div>Link: {% if req["link_url"] %}<a class="text-indigo-400 hover:underline" href="{{ req['link_url'] }}" target="_blank">{{ req["link_url"] }}</a>{% else %}none{% endif %}</div>
+          <div>
+            Link:
+            {% if req["link_url"] %}
+              <a class="text-indigo-400 hover:underline" href="{{ req['link_url'] }}" target="_blank">{{ req["link_url"] }}</a>
+            {% else %}
+              none
+            {% endif %}
+          </div>
           <div>Notes: {% if req["notes"] %}{{ req["notes"] }}{% else %}none{% endif %}</div>
         </div>
 
-        <div class="mt-4">
+        <div class="mt-4 flex items-center gap-3">
           <span class="inline-flex px-3 py-1 rounded-xl bg-zinc-950 border border-zinc-800 text-sm">{{ req["status"] }}</span>
+          <span class="inline-flex px-3 py-1 rounded-xl bg-zinc-950 border border-zinc-800 text-sm">Priority P{{ req["priority"] or 3 }}</span>
         </div>
 
+        <!-- Priority -->
+        <form class="mt-5 flex gap-2" method="POST" action="/admin/request/{{ req['id'] }}/priority">
+          <select name="priority" class="rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm">
+            {% for p in [1,2,3,4,5] %}
+              <option value="{{ p }}" {% if (req["priority"] or 3) == p %}selected{% endif %}>Priority {{ p }} {% if p==1 %}(highest){% endif %}</option>
+            {% endfor %}
+          </select>
+          <button class="rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 text-sm">
+            Save priority
+          </button>
+        </form>
+
+        <!-- Status update -->
         <form class="mt-6 flex gap-3" method="POST" action="/admin/request/{{ req['id'] }}/status">
           <select name="to_status" class="rounded-xl bg-zinc-950 border border-zinc-800 p-3">
             {% for s in status_flow %}
               <option value="{{ s }}" {% if s == req["status"] %}selected{% endif %}>{{ s }}</option>
             {% endfor %}
           </select>
-          <input name="comment" placeholder="Comment (optional)"
+          <input name="comment" placeholder="Comment / question for requester (optional)"
                  class="flex-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
           <button class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 font-semibold">
             Update status + notify
           </button>
         </form>
 
-        <!-- Special notes (shown publicly only when set) -->
+        <!-- Special notes -->
         <div class="mt-8 border-t border-zinc-800 pt-6">
           <div class="flex items-center justify-between">
             <h2 class="text-lg font-semibold">Special notes</h2>

@@ -38,7 +38,8 @@ templates = Jinja2Templates(directory="app/templates")
 # NOTE: app/static must exist in your repo (can be empty with a .gitkeep)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-STATUS_FLOW = ["NEW", "APPROVED", "PRINTING", "DONE", "PICKED_UP"]
+# Status flow for admin actions
+STATUS_FLOW = ["NEW", "APPROVED", "PRINTING", "DONE", "PICKED_UP", "REJECTED", "CANCELLED"]
 
 # Dropdown options (Any is the default)
 PRINTERS = [
@@ -118,8 +119,15 @@ def ensure_migrations():
     cur = conn.cursor()
     cur.execute("PRAGMA table_info(requests)")
     cols = {row[1] for row in cur.fetchall()}  # row[1] = name
+
     if "special_notes" not in cols:
         cur.execute("ALTER TABLE requests ADD COLUMN special_notes TEXT")
+
+    if "priority" not in cols:
+        # Priority: 1 = highest, 5 = lowest (default 3)
+        cur.execute("ALTER TABLE requests ADD COLUMN priority INTEGER")
+        cur.execute("UPDATE requests SET priority = 3 WHERE priority IS NULL")
+
     conn.commit()
     conn.close()
 
@@ -221,7 +229,6 @@ async def submit(
     turnstile_token: Optional[str] = Form(None, alias="cf-turnstile-response"),
     upload: Optional[UploadFile] = File(None),
 ):
-    # Form values to preserve on error
     form_state = {
         "requester_name": requester_name,
         "requester_email": requester_email,
@@ -232,19 +239,16 @@ async def submit(
         "notes": notes or "",
     }
 
-    # Turnstile verification (if configured)
     ok = await verify_turnstile(turnstile_token or "", request.client.host if request.client else None)
     if not ok:
         return render_form(request, "Human verification failed. Please try again.", form_state)
 
-    # Validation: printer + material must be from dropdown lists
     if printer not in [p[0] for p in PRINTERS]:
         return render_form(request, "Invalid printer selection.", form_state)
 
     if material not in [m[0] for m in MATERIALS]:
         return render_form(request, "Invalid material selection.", form_state)
 
-    # Link validation (if present)
     if link_url:
         try:
             u = urllib.parse.urlparse(link_url.strip())
@@ -253,7 +257,6 @@ async def submit(
         except Exception:
             return render_form(request, "Invalid link URL. Must start with http:// or https://", form_state)
 
-    # Require either link or file
     has_link = bool(link_url and link_url.strip())
     has_file = bool(upload and upload.filename)
     if not has_link and not has_file:
@@ -265,8 +268,8 @@ async def submit(
     conn = db()
     conn.execute(
         """INSERT INTO requests
-           (id, created_at, updated_at, requester_name, requester_email, printer, material, colors, link_url, notes, status, special_notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (id, created_at, updated_at, requester_name, requester_email, printer, material, colors, link_url, notes, status, special_notes, priority)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             rid,
             created,
@@ -280,6 +283,7 @@ async def submit(
             notes,
             "NEW",
             None,
+            3,
         )
     )
     conn.execute(
@@ -289,7 +293,6 @@ async def submit(
     )
     conn.commit()
 
-    # Optional upload
     if has_file:
         ext = safe_ext(upload.filename)
         if ext not in ALLOWED_EXTS:
@@ -318,30 +321,27 @@ async def submit(
 
     conn.close()
 
-    # Email requester (optional if SMTP configured)
     send_email(
         requester_email.strip(),
         f"[3D Print Queue] Request received ({rid[:8]})",
         f"Your request has been received.\n\nRequest ID: {rid}\nStatus: NEW\n\nYou'll be notified when status changes."
     )
 
-    # After submit, take them directly to the public queue and highlight their row
     return RedirectResponse(url=f"/queue?mine={rid[:8]}", status_code=303)
 
 
 @app.get("/queue", response_class=HTMLResponse)
 def public_queue(request: Request, mine: Optional[str] = None):
     """
-    Public queue: shows active requests (not picked up) in oldest-first order,
-    plus a position number. Displays first-name only.
+    Public queue: shows active requests (not yet picked up/cancelled/rejected) oldest-first.
     """
     conn = db()
     rows = conn.execute(
         "SELECT id, requester_name, printer, material, colors, status, special_notes "
         "FROM requests "
-        "WHERE status != ? "
+        "WHERE status NOT IN (?, ?, ?) "
         "ORDER BY created_at ASC",
-        ("PICKED_UP",)
+        ("PICKED_UP", "REJECTED", "CANCELLED")
     ).fetchall()
     conn.close()
 
@@ -384,31 +384,49 @@ def admin_login_post(password: str = Form(...)):
     return resp
 
 
-@app.get("/admin", response_class=HTMLResponse)
-def admin_queue(request: Request, _=Depends(require_admin), status: Optional[str] = None, printer: Optional[str] = None):
+def _fetch_requests_by_status(status: str):
     conn = db()
-    q = "SELECT * FROM requests"
-    params = []
-    filters = []
-    if status:
-        filters.append("status = ?")
-        params.append(status)
-    if printer:
-        filters.append("printer = ?")
-        params.append(printer)
-    if filters:
-        q += " WHERE " + " AND ".join(filters)
-    q += " ORDER BY created_at DESC"
-
-    rows = conn.execute(q, params).fetchall()
+    rows = conn.execute(
+        "SELECT id, created_at, requester_name, printer, material, colors, link_url, status, priority, special_notes "
+        "FROM requests "
+        "WHERE status = ? "
+        "ORDER BY priority ASC, created_at ASC",
+        (status,)
+    ).fetchall()
     conn.close()
+    return rows
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_dashboard(request: Request, _=Depends(require_admin)):
+    """
+    Dynamic sectioned admin dashboard.
+    Minimal info on cards; details via click.
+    """
+    new_reqs = _fetch_requests_by_status("NEW")
+    queued = _fetch_requests_by_status("APPROVED")
+    printing = _fetch_requests_by_status("PRINTING")
+    done = _fetch_requests_by_status("DONE")
+
+    # Closed/recent section
+    conn = db()
+    closed = conn.execute(
+        "SELECT id, created_at, requester_name, printer, material, colors, link_url, status, priority, special_notes "
+        "FROM requests "
+        "WHERE status IN (?, ?, ?) "
+        "ORDER BY updated_at DESC "
+        "LIMIT 30",
+        ("PICKED_UP", "REJECTED", "CANCELLED")
+    ).fetchall()
+    conn.close()
+
     return templates.TemplateResponse("admin_queue.html", {
         "request": request,
-        "rows": rows,
-        "status_flow": STATUS_FLOW,
-        "printers": PRINTERS,
-        "filter_status": status,
-        "filter_printer": printer
+        "new_reqs": new_reqs,
+        "queued": queued,
+        "printing": printing,
+        "done": done,
+        "closed": closed,
     })
 
 
@@ -458,7 +476,6 @@ def admin_set_status(
     conn.commit()
     conn.close()
 
-    # Notify requester
     send_email(
         req["requester_email"],
         f"[3D Print Queue] Status update ({rid[:8]})",
@@ -466,6 +483,28 @@ def admin_set_status(
     )
 
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@app.post("/admin/request/{rid}/priority")
+def admin_set_priority(
+    request: Request,
+    rid: str,
+    priority: int = Form(...),
+    _=Depends(require_admin)
+):
+    if priority < 1 or priority > 5:
+        raise HTTPException(status_code=400, detail="Priority must be 1..5")
+
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Not found")
+
+    conn.execute("UPDATE requests SET priority = ?, updated_at = ? WHERE id = ?", (priority, now_iso(), rid))
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url="/admin", status_code=303)
 
 
 @app.post("/admin/request/{rid}/special-notes")
