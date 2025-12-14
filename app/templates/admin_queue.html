@@ -562,7 +562,10 @@
 
                 <div class="mt-3 flex flex-wrap gap-2 items-center">
                   {% if r["file_count"] and r["file_count"] > 0 %}
-                    <span class="text-xs text-emerald-300 bg-emerald-900/20 border border-emerald-800 px-2 py-1 rounded-lg">📁 {{ r["file_count"] }} file{% if r["file_count"] > 1 %}s{% endif %}</span>
+                    <button type="button" onclick="showFilesModal('{{ r['id'] }}', '{{ r['file_names']|default('')|e }}')"
+                            class="text-xs text-emerald-300 bg-emerald-900/20 border border-emerald-800 px-2 py-1 rounded-lg hover:bg-emerald-900/40 cursor-pointer">
+                      📁 {{ r["file_count"] }} file{% if r["file_count"] > 1 %}s{% endif %}
+                    </button>
                   {% endif %}
                   {% if r["link_url"] %}
                     <a class="text-xs text-indigo-300 bg-indigo-900/20 border border-indigo-800 px-2 py-1 rounded-lg hover:bg-indigo-900/40" href="{{ r['link_url'] }}" target="_blank">🔗 Link</a>
@@ -633,6 +636,11 @@
           </div>
         {% endif %}
       </section>
+
+    </div>
+
+    <!-- Status Sections Grid - 2x2 Card Layout -->
+    <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
 
       <!-- PRINTING NOW -->
       <section id="printing-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
@@ -897,5 +905,62 @@
     </div>
 
   </div>
+  
+  <!-- Files Preview Modal -->
+  <div id="files-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold">📁 Attached Files</h2>
+        <button onclick="hideFilesModal()" class="text-zinc-400 hover:text-white text-xl">&times;</button>
+      </div>
+      <div id="files-list" class="space-y-2">
+        <!-- Files will be populated here -->
+      </div>
+      <div class="mt-4 pt-4 border-t border-zinc-800">
+        <a id="files-request-link" href="#" class="block w-full text-center rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
+          Open Request Details
+        </a>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    function showFilesModal(requestId, fileNamesStr) {
+      const filesList = document.getElementById('files-list');
+      const requestLink = document.getElementById('files-request-link');
+      requestLink.href = '/admin/request/' + requestId;
+      
+      // Parse file names (comma-separated)
+      const fileNames = fileNamesStr ? fileNamesStr.split(',').map(f => f.trim()).filter(f => f) : [];
+      
+      if (fileNames.length === 0) {
+        filesList.innerHTML = '<p class="text-zinc-400 text-sm">No files attached</p>';
+      } else {
+        filesList.innerHTML = fileNames.map((name, i) => `
+          <div class="flex items-center gap-3 bg-zinc-950 border border-zinc-800 rounded-lg p-3">
+            <span class="text-emerald-400">📄</span>
+            <span class="text-sm truncate flex-1">${escapeHtml(name)}</span>
+          </div>
+        `).join('');
+      }
+      
+      document.getElementById('files-modal').classList.remove('hidden');
+    }
+    
+    function hideFilesModal() {
+      document.getElementById('files-modal').classList.add('hidden');
+    }
+    
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    // Close modal when clicking outside
+    document.getElementById('files-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'files-modal') hideFilesModal();
+    });
+  </script>
 </body>
 </html>

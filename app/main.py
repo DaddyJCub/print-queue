@@ -2121,7 +2121,7 @@ def my_requests_send_link(request: Request, email: str = Form(...)):
 
 
 @app.get("/my-requests/view", response_class=HTMLResponse)
-def my_requests_view(request: Request, token: str):
+async def my_requests_view(request: Request, token: str):
     """View all requests for an email using magic link"""
     conn = db()
     
@@ -2153,21 +2153,81 @@ def my_requests_view(request: Request, token: str):
     
     email = token_row["email"]
     
-    # Fetch all requests for this email
+    # Fetch all requests for this email, including completion_snapshot
     requests_list = conn.execute(
-        """SELECT id, print_name, status, created_at, updated_at, printer, material, colors, access_token
+        """SELECT id, print_name, status, created_at, updated_at, printer, material, colors, 
+                  access_token, completion_snapshot, printing_started_at, print_time_minutes
            FROM requests 
            WHERE LOWER(requester_email) = ?
-           ORDER BY created_at DESC""",
+           ORDER BY 
+             CASE WHEN status = 'DONE' THEN 0
+                  WHEN status = 'PRINTING' THEN 1
+                  WHEN status = 'NEEDS_INFO' THEN 2
+                  ELSE 3 END,
+             created_at DESC""",
         (email,)
     ).fetchall()
     
     conn.close()
     
+    # Enrich printing requests with real-time printer status
+    enriched_requests = []
+    printer_status_cache = {}
+    
+    for req in requests_list:
+        req_dict = dict(req)
+        
+        # If printing, fetch real-time printer status
+        if req["status"] == "PRINTING" and req["printer"]:
+            printer_code = req["printer"]
+            
+            # Cache printer status to avoid multiple calls
+            if printer_code not in printer_status_cache:
+                try:
+                    printer_api = get_printer_api(printer_code)
+                    if printer_api:
+                        status = await printer_api.get_status()
+                        progress = await printer_api.get_progress()
+                        extended = await printer_api.get_extended_status()
+                        temp_data = await printer_api.get_temperature()
+                        
+                        if status:
+                            machine_status = status.get("MachineStatus", "UNKNOWN")
+                            is_printing = machine_status in ["BUILDING", "BUILDING_FROM_SD"]
+                            
+                            printer_status_cache[printer_code] = {
+                                "status": machine_status.replace("_FROM_SD", ""),
+                                "is_printing": is_printing,
+                                "progress": progress.get("PercentageCompleted") if progress else None,
+                                "current_file": extended.get("current_file") if extended else None,
+                                "current_layer": extended.get("current_layer") if extended else None,
+                                "total_layers": extended.get("total_layers") if extended else None,
+                                "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
+                                "camera_url": get_camera_url(printer_code),
+                            }
+                except Exception as e:
+                    print(f"[MY-REQUESTS] Error fetching printer status: {e}")
+            
+            req_dict["printer_status"] = printer_status_cache.get(printer_code)
+            
+            # Calculate smart ETA
+            if req_dict.get("printer_status"):
+                eta_dt = get_smart_eta(
+                    printer=printer_code,
+                    material=req["material"],
+                    current_percent=req_dict["printer_status"].get("progress") or 0,
+                    printing_started_at=req["printing_started_at"] or now_iso(),
+                    current_layer=req_dict["printer_status"].get("current_layer") or 0,
+                    total_layers=req_dict["printer_status"].get("total_layers") or 0
+                )
+                req_dict["smart_eta_display"] = format_eta_display(eta_dt) if eta_dt else None
+        
+        enriched_requests.append(req_dict)
+    
     return templates.TemplateResponse("my_requests_list.html", {
         "request": request,
         "email": email,
-        "requests_list": requests_list,
+        "requests_list": enriched_requests,
         "token": token,  # Keep token for refresh
         "version": APP_VERSION,
     })
@@ -2224,6 +2284,7 @@ def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
                       r.link_url, r.status, r.priority, r.special_notes, r.printing_started_at,
                       r.print_name,
                       (SELECT COUNT(*) FROM files f WHERE f.request_id = r.id) as file_count,
+                      (SELECT GROUP_CONCAT(f.original_filename, ', ') FROM files f WHERE f.request_id = r.id) as file_names,
                       (SELECT COUNT(*) FROM request_messages m WHERE m.request_id = r.id AND m.sender_type = 'requester' AND m.is_read = 0) as unread_replies
                FROM requests r
                WHERE r.status IN ({placeholders}) 
@@ -2236,6 +2297,7 @@ def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
                       r.link_url, r.status, r.priority, r.special_notes,
                       r.print_name,
                       (SELECT COUNT(*) FROM files f WHERE f.request_id = r.id) as file_count,
+                      (SELECT GROUP_CONCAT(f.original_filename, ', ') FROM files f WHERE f.request_id = r.id) as file_names,
                       (SELECT COUNT(*) FROM request_messages m WHERE m.request_id = r.id AND m.sender_type = 'requester' AND m.is_read = 0) as unread_replies
                FROM requests r
                WHERE r.status IN ({placeholders}) 
@@ -2855,7 +2917,7 @@ def admin_set_status(
             email_rows.append(("Estimated Wait", estimated_wait_str))
         
         # Add ETA for PRINTING status
-        if to_status == "PRINTING" and req.get("print_time_minutes"):
+        if to_status == "PRINTING" and req["print_time_minutes"]:
             hours = req["print_time_minutes"] // 60
             mins = req["print_time_minutes"] % 60
             if hours > 0:

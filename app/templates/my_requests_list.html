@@ -23,67 +23,201 @@
     </div>
     
     {% if requests_list %}
-      <!-- Requests List -->
-      <div class="space-y-4">
-        {% for req in requests_list %}
-          {% set status_colors = {
-            'NEW': 'bg-blue-600/20 border-blue-500/50 text-blue-300',
-            'NEEDS_INFO': 'bg-orange-600/20 border-orange-500/50 text-orange-300',
-            'APPROVED': 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300',
-            'PRINTING': 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300',
-            'DONE': 'bg-green-600/20 border-green-500/50 text-green-300',
-            'PICKED_UP': 'bg-zinc-600/20 border-zinc-500/50 text-zinc-400',
-            'REJECTED': 'bg-red-600/20 border-red-500/50 text-red-300',
-            'CANCELLED': 'bg-zinc-600/20 border-zinc-500/50 text-zinc-400'
-          } %}
-          {% set status_icons = {
-            'NEW': '📋',
-            'NEEDS_INFO': '⚠️',
-            'APPROVED': '✓',
-            'PRINTING': '🖨️',
-            'DONE': '✅',
-            'PICKED_UP': '📦',
-            'REJECTED': '❌',
-            'CANCELLED': '🚫'
-          } %}
-          
-          <a href="/my/{{ req.id }}?token={{ req.access_token }}" 
-             class="block bg-zinc-900/60 border border-zinc-800 hover:border-zinc-600 rounded-2xl p-5 transition
-                    {% if req.status == 'NEEDS_INFO' %}border-orange-500/50 hover:border-orange-400{% endif %}">
-            <div class="flex items-start justify-between gap-4">
-              <div class="flex-1 min-w-0">
-                <h3 class="font-semibold text-lg truncate">{{ req.print_name or 'Untitled Request' }}</h3>
-                <p class="text-zinc-500 text-sm">Request #{{ req.id[:8] }}</p>
+      {% set status_colors = {
+        'NEW': 'bg-blue-600/20 border-blue-500/50 text-blue-300',
+        'NEEDS_INFO': 'bg-orange-600/20 border-orange-500/50 text-orange-300',
+        'APPROVED': 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300',
+        'PRINTING': 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300',
+        'DONE': 'bg-green-600/20 border-green-500/50 text-green-300',
+        'PICKED_UP': 'bg-zinc-600/20 border-zinc-500/50 text-zinc-400',
+        'REJECTED': 'bg-red-600/20 border-red-500/50 text-red-300',
+        'CANCELLED': 'bg-zinc-600/20 border-zinc-500/50 text-zinc-400'
+      } %}
+      {% set status_icons = {
+        'NEW': '📋',
+        'NEEDS_INFO': '⚠️',
+        'APPROVED': '✓',
+        'PRINTING': '🖨️',
+        'DONE': '✅',
+        'PICKED_UP': '📦',
+        'REJECTED': '❌',
+        'CANCELLED': '🚫'
+      } %}
+      
+      <!-- Done prints section (with snapshots) -->
+      {% set done_requests = requests_list | selectattr('status', 'equalto', 'DONE') | list %}
+      {% if done_requests %}
+        <div class="mb-6">
+          <h2 class="text-lg font-semibold text-green-400 mb-3">✅ Ready for Pickup</h2>
+          <div class="space-y-4">
+            {% for req in done_requests %}
+              <div class="bg-zinc-900/60 border border-green-500/50 rounded-2xl overflow-hidden">
+                {% if req.completion_snapshot %}
+                  <!-- Snapshot preview -->
+                  <div class="relative">
+                    <img src="data:image/jpeg;base64,{{ req.completion_snapshot }}" 
+                         alt="Completion snapshot" 
+                         class="w-full h-48 object-cover cursor-pointer"
+                         onclick="showSnapshotModal('{{ req.completion_snapshot }}')" />
+                    <div class="absolute bottom-2 right-2 bg-black/70 px-2 py-1 rounded text-xs">
+                      📷 Click to enlarge
+                    </div>
+                  </div>
+                {% endif %}
+                <a href="/my/{{ req.id }}?token={{ req.access_token }}" class="block p-5 hover:bg-zinc-900/80 transition">
+                  <div class="flex items-start justify-between gap-4">
+                    <div class="flex-1 min-w-0">
+                      <h3 class="font-semibold text-lg truncate">{{ req.print_name or 'Untitled Request' }}</h3>
+                      <p class="text-zinc-500 text-sm">Request #{{ req.id[:8] }}</p>
+                      <div class="flex flex-wrap gap-2 mt-3 text-xs">
+                        <span class="px-2 py-1 bg-zinc-800 rounded-lg">{{ req.printer or 'ANY' }}</span>
+                        <span class="px-2 py-1 bg-zinc-800 rounded-lg">{{ req.material }}</span>
+                        {% if req.colors %}
+                          <span class="px-2 py-1 bg-zinc-800 rounded-lg">{{ req.colors }}</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div class="text-right flex-shrink-0">
+                      <span class="inline-block px-3 py-1 rounded-lg text-sm font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">
+                        {{ status_icons.get(req.status, '') }} {{ req.status.replace('_', ' ') }}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="mt-3 pt-3 border-t border-green-500/30 text-green-300 text-sm">
+                    🎉 Your print is complete and ready for pickup!
+                  </div>
+                </a>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+      
+      <!-- Currently printing section (with live status) -->
+      {% set printing_requests = requests_list | selectattr('status', 'equalto', 'PRINTING') | list %}
+      {% if printing_requests %}
+        <div class="mb-6">
+          <h2 class="text-lg font-semibold text-indigo-400 mb-3">🖨️ Currently Printing</h2>
+          <div class="space-y-4">
+            {% for req in printing_requests %}
+              <div class="bg-zinc-900/60 border border-indigo-500/50 rounded-2xl overflow-hidden">
+                <!-- Printer status card (like public queue) -->
+                {% if req.printer_status %}
+                  <div class="bg-indigo-950/40 border-b border-indigo-500/30 p-4">
+                    <div class="flex items-center justify-between mb-3">
+                      <div class="flex items-center gap-2">
+                        <span class="text-lg">🖨</span>
+                        <span class="font-semibold">{{ req.printer }}</span>
+                      </div>
+                      <span class="px-2 py-1 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/50">
+                        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse mr-1"></span>
+                        {{ req.printer_status.status or 'PRINTING' }}
+                      </span>
+                    </div>
+                    
+                    {% if req.printer_status.progress is not none %}
+                      <div class="mb-2">
+                        <div class="flex items-center justify-between text-sm mb-1">
+                          <span class="text-zinc-400">Progress</span>
+                          <span class="text-emerald-300 font-semibold">{{ req.printer_status.progress }}%</span>
+                        </div>
+                        <div class="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                          <div class="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500" 
+                               style="width: {{ req.printer_status.progress }}%"></div>
+                        </div>
+                      </div>
+                    {% endif %}
+                    
+                    <div class="flex flex-wrap gap-3 text-xs text-zinc-400">
+                      {% if req.printer_status.current_layer is not none %}
+                        <span>Layer: <span class="text-blue-300">{{ req.printer_status.current_layer }}/{{ req.printer_status.total_layers }}</span></span>
+                      {% endif %}
+                      {% if req.printer_status.temp %}
+                        <span>🌡 {{ req.printer_status.temp }}°C</span>
+                      {% endif %}
+                      {% if req.smart_eta_display %}
+                        <span>Est: <span class="text-indigo-300 font-medium">{{ req.smart_eta_display }}</span></span>
+                      {% endif %}
+                    </div>
+                    
+                    {% if req.printer_status.current_file %}
+                      <div class="mt-2 text-xs text-zinc-500 truncate">
+                        📄 {{ req.printer_status.current_file }}
+                      </div>
+                    {% endif %}
+                  </div>
+                {% endif %}
                 
-                <div class="flex flex-wrap gap-2 mt-3 text-xs">
-                  <span class="px-2 py-1 bg-zinc-800 rounded-lg">{{ req.printer or 'ANY' }}</span>
-                  <span class="px-2 py-1 bg-zinc-800 rounded-lg">{{ req.material }}</span>
-                  {% if req.colors %}
-                    <span class="px-2 py-1 bg-zinc-800 rounded-lg">{{ req.colors }}</span>
-                  {% endif %}
+                <a href="/my/{{ req.id }}?token={{ req.access_token }}" class="block p-5 hover:bg-zinc-900/80 transition">
+                  <div class="flex items-start justify-between gap-4">
+                    <div class="flex-1 min-w-0">
+                      <h3 class="font-semibold text-lg truncate">{{ req.print_name or 'Untitled Request' }}</h3>
+                      <p class="text-zinc-500 text-sm">Request #{{ req.id[:8] }}</p>
+                      <div class="flex flex-wrap gap-2 mt-3 text-xs">
+                        <span class="px-2 py-1 bg-zinc-800 rounded-lg">{{ req.printer or 'ANY' }}</span>
+                        <span class="px-2 py-1 bg-zinc-800 rounded-lg">{{ req.material }}</span>
+                        {% if req.colors %}
+                          <span class="px-2 py-1 bg-zinc-800 rounded-lg">{{ req.colors }}</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div class="text-right flex-shrink-0">
+                      <span class="inline-block px-3 py-1 rounded-lg text-sm font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">
+                        {{ status_icons.get(req.status, '') }} {{ req.status.replace('_', ' ') }}
+                      </span>
+                    </div>
+                  </div>
+                </a>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+      
+      <!-- All other requests -->
+      {% set other_requests = requests_list | rejectattr('status', 'in', ['DONE', 'PRINTING']) | list %}
+      {% if other_requests %}
+        <div class="mb-6">
+          {% if done_requests or printing_requests %}
+            <h2 class="text-lg font-semibold text-zinc-400 mb-3">📋 Other Requests</h2>
+          {% endif %}
+          <div class="space-y-4">
+            {% for req in other_requests %}
+              <a href="/my/{{ req.id }}?token={{ req.access_token }}" 
+                 class="block bg-zinc-900/60 border border-zinc-800 hover:border-zinc-600 rounded-2xl p-5 transition
+                        {% if req.status == 'NEEDS_INFO' %}border-orange-500/50 hover:border-orange-400{% endif %}">
+                <div class="flex items-start justify-between gap-4">
+                  <div class="flex-1 min-w-0">
+                    <h3 class="font-semibold text-lg truncate">{{ req.print_name or 'Untitled Request' }}</h3>
+                    <p class="text-zinc-500 text-sm">Request #{{ req.id[:8] }}</p>
+                    
+                    <div class="flex flex-wrap gap-2 mt-3 text-xs">
+                      <span class="px-2 py-1 bg-zinc-800 rounded-lg">{{ req.printer or 'ANY' }}</span>
+                      <span class="px-2 py-1 bg-zinc-800 rounded-lg">{{ req.material }}</span>
+                      {% if req.colors %}
+                        <span class="px-2 py-1 bg-zinc-800 rounded-lg">{{ req.colors }}</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                  
+                  <div class="text-right flex-shrink-0">
+                    <span class="inline-block px-3 py-1 rounded-lg text-sm font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">
+                      {{ status_icons.get(req.status, '') }} {{ req.status.replace('_', ' ') }}
+                    </span>
+                    <p class="text-zinc-500 text-xs mt-2">{{ req.created_at[:10] }}</p>
+                  </div>
                 </div>
-              </div>
-              
-              <div class="text-right flex-shrink-0">
-                <span class="inline-block px-3 py-1 rounded-lg text-sm font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">
-                  {{ status_icons.get(req.status, '') }} {{ req.status.replace('_', ' ') }}
-                </span>
-                <p class="text-zinc-500 text-xs mt-2">{{ req.created_at|localtime('%b %d, %Y') }}</p>
-              </div>
-            </div>
-            
-            {% if req.status == 'NEEDS_INFO' %}
-              <div class="mt-3 pt-3 border-t border-orange-500/30 text-orange-300 text-sm">
-                ⚠️ We need more information - click to respond
-              </div>
-            {% elif req.status == 'DONE' %}
-              <div class="mt-3 pt-3 border-t border-green-500/30 text-green-300 text-sm">
-                ✅ Ready for pickup!
-              </div>
-            {% endif %}
-          </a>
-        {% endfor %}
-      </div>
+                
+                {% if req.status == 'NEEDS_INFO' %}
+                  <div class="mt-3 pt-3 border-t border-orange-500/30 text-orange-300 text-sm">
+                    ⚠️ We need more information - click to respond
+                  </div>
+                {% endif %}
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
       
       <!-- Summary -->
       <div class="mt-6 p-4 bg-zinc-900/40 rounded-xl text-center text-sm text-zinc-400">
@@ -108,5 +242,30 @@
       <a href="/changelog" class="hover:text-indigo-400 transition">3D Print Queue v{{ version }}</a>
     </div>
   </div>
+  
+  <!-- Snapshot Modal -->
+  <div id="snapshot-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onclick="hideSnapshotModal()">
+    <div class="max-w-4xl max-h-[90vh] relative">
+      <button onclick="hideSnapshotModal()" class="absolute -top-10 right-0 text-white text-2xl hover:text-zinc-300">&times;</button>
+      <img id="snapshot-image" src="" alt="Completion snapshot" class="max-w-full max-h-[85vh] rounded-lg" />
+    </div>
+  </div>
+  
+  <script>
+    function showSnapshotModal(base64) {
+      document.getElementById('snapshot-image').src = 'data:image/jpeg;base64,' + base64;
+      document.getElementById('snapshot-modal').classList.remove('hidden');
+    }
+    
+    function hideSnapshotModal() {
+      document.getElementById('snapshot-modal').classList.add('hidden');
+    }
+    
+    // Store token in sessionStorage for persistence
+    const token = '{{ token }}';
+    if (token) {
+      sessionStorage.setItem('my_requests_token', token);
+    }
+  </script>
 </body>
 </html>

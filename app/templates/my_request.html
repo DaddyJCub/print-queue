@@ -16,11 +16,22 @@
         <p class="text-zinc-400 text-sm">Request #{{ req.id[:8] }}</p>
       </div>
       <div class="flex gap-2 text-sm">
-        <a href="/my-requests" class="text-zinc-400 hover:text-zinc-200">All My Requests</a>
+        <a id="my-requests-link" href="/my-requests" class="text-zinc-400 hover:text-zinc-200">← My Requests</a>
         <span class="text-zinc-600">|</span>
         <a href="/queue" class="text-indigo-400 hover:underline">View Queue</a>
       </div>
     </div>
+    
+    <script>
+      // Check for saved token to link back to my requests
+      const savedToken = sessionStorage.getItem('my_requests_token');
+      if (savedToken) {
+        const link = document.getElementById('my-requests-link');
+        if (link) {
+          link.href = '/my-requests/view?token=' + savedToken;
+        }
+      }
+    </script>
     
     <!-- Status Banner -->
     {% set status_colors = {
