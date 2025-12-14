@@ -1,7 +1,7 @@
 import os, uuid, sqlite3, hashlib, smtplib, ssl, urllib.parse
 from email.message import EmailMessage
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 import httpx
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException, Depends
@@ -28,18 +28,6 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
 SMTP_FROM = os.getenv("SMTP_FROM", "")
-
-# Admin notification settings
-ADMIN_NOTIFY_EMAILS = [e.strip() for e in os.getenv("ADMIN_NOTIFY_EMAILS", "").split(",") if e.strip()]
-# Notify admins when a new request is submitted
-ADMIN_EMAIL_ON_SUBMIT = os.getenv("ADMIN_EMAIL_ON_SUBMIT", "1") == "1"
-# Notify admins on status changes (in addition to requester status updates)
-ADMIN_EMAIL_ON_STATUS = os.getenv("ADMIN_EMAIL_ON_STATUS", "1") == "1"
-
-# Requester email behavior (you said: do NOT email requester by default)
-REQUESTER_EMAIL_ON_SUBMIT = os.getenv("REQUESTER_EMAIL_ON_SUBMIT", "0") == "1"
-# Status changes DO email requester (your existing behavior)
-REQUESTER_EMAIL_ON_STATUS = os.getenv("REQUESTER_EMAIL_ON_STATUS", "1") == "1"
 
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -80,6 +68,7 @@ def db():
 def init_db():
     conn = db()
     cur = conn.cursor()
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS requests (
       id TEXT PRIMARY KEY,
@@ -95,6 +84,7 @@ def init_db():
       status TEXT NOT NULL
     );
     """)
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS files (
       id TEXT PRIMARY KEY,
@@ -107,6 +97,7 @@ def init_db():
       FOREIGN KEY(request_id) REFERENCES requests(id)
     );
     """)
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS status_events (
       id TEXT PRIMARY KEY,
@@ -118,6 +109,16 @@ def init_db():
       FOREIGN KEY(request_id) REFERENCES requests(id)
     );
     """)
+
+    # Settings table (key/value)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    """)
+
     conn.commit()
     conn.close()
 
@@ -129,6 +130,7 @@ def ensure_migrations():
     """
     conn = db()
     cur = conn.cursor()
+
     cur.execute("PRAGMA table_info(requests)")
     cols = {row[1] for row in cur.fetchall()}  # row[1] = name
 
@@ -148,14 +150,15 @@ def ensure_migrations():
     conn.close()
 
 
+def now_iso():
+    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
 @app.on_event("startup")
 def _startup():
     init_db()
     ensure_migrations()
-
-
-def now_iso():
-    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    seed_default_settings()
 
 
 def require_admin(request: Request):
@@ -166,6 +169,75 @@ def require_admin(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     return True
 
+
+# ------------------------
+# Settings helpers (DB)
+# ------------------------
+
+DEFAULT_SETTINGS: Dict[str, str] = {
+    # Recipients list for admin notifications
+    "admin_notify_emails": "",
+    # Booleans stored as "1"/"0"
+    "admin_email_on_submit": "1",
+    "admin_email_on_status": "1",
+
+    # You said: requester should NOT email by default on submit
+    "requester_email_on_submit": "0",
+    # Status change emails to requester: yes
+    "requester_email_on_status": "1",
+}
+
+
+def seed_default_settings():
+    """
+    Ensure all known settings exist in DB.
+    """
+    conn = db()
+    cur = conn.cursor()
+    for k, v in DEFAULT_SETTINGS.items():
+        cur.execute("SELECT value FROM settings WHERE key = ?", (k,))
+        row = cur.fetchone()
+        if not row:
+            cur.execute(
+                "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                (k, v, now_iso())
+            )
+    conn.commit()
+    conn.close()
+
+
+def get_setting(key: str, default: Optional[str] = None) -> str:
+    conn = db()
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    conn.close()
+    if row:
+        return row["value"]
+    return default if default is not None else DEFAULT_SETTINGS.get(key, "")
+
+
+def set_setting(key: str, value: str):
+    conn = db()
+    conn.execute(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        (key, value, now_iso())
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_bool_setting(key: str, default: bool = False) -> bool:
+    v = get_setting(key, "1" if default else "0")
+    return v.strip() == "1"
+
+
+def parse_email_list(raw: str) -> List[str]:
+    return [e.strip() for e in (raw or "").split(",") if e.strip()]
+
+
+# ------------------------
+# Turnstile
+# ------------------------
 
 async def verify_turnstile(token: str, remoteip: Optional[str] = None) -> bool:
     if not TURNSTILE_SECRET_KEY:
@@ -184,28 +256,9 @@ async def verify_turnstile(token: str, remoteip: Optional[str] = None) -> bool:
         return bool(payload.get("success"))
 
 
-def safe_ext(filename: str) -> str:
-    return os.path.splitext(filename)[1].lower()
-
-
-def first_name_only(name: str) -> str:
-    parts = (name or "").strip().split()
-    return parts[0] if parts else ""
-
-
-def render_form(request: Request, error: Optional[str], form: Dict[str, Any]):
-    """
-    Re-render request form while keeping previously typed values.
-    """
-    return templates.TemplateResponse("request_form.html", {
-        "request": request,
-        "turnstile_site_key": TURNSTILE_SITE_KEY,
-        "printers": PRINTERS,
-        "materials": MATERIALS,
-        "error": error,
-        "form": form,
-    }, status_code=400 if error else 200)
-
+# ------------------------
+# Email helpers
+# ------------------------
 
 def _human_printer(code: str) -> str:
     for c, label in PRINTERS:
@@ -221,12 +274,7 @@ def _human_material(code: str) -> str:
     return code
 
 
-def build_email_html(title: str, subtitle: str, rows: List[tuple], cta_url: Optional[str] = None, cta_label: str = "Open") -> str:
-    """
-    Simple, good-looking HTML email (works in Gmail/Outlook/mobile).
-    Keep styling inline.
-    rows: list of (label, value)
-    """
+def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta_url: Optional[str] = None, cta_label: str = "Open") -> str:
     def esc(s: str) -> str:
         return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -316,6 +364,26 @@ def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Opt
         return
 
 
+def safe_ext(filename: str) -> str:
+    return os.path.splitext(filename)[1].lower()
+
+
+def first_name_only(name: str) -> str:
+    parts = (name or "").strip().split()
+    return parts[0] if parts else ""
+
+
+def render_form(request: Request, error: Optional[str], form: Dict[str, Any]):
+    return templates.TemplateResponse("request_form.html", {
+        "request": request,
+        "turnstile_site_key": TURNSTILE_SITE_KEY,
+        "printers": PRINTERS,
+        "materials": MATERIALS,
+        "error": error,
+        "form": form,
+    }, status_code=400 if error else 200)
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return render_form(request, None, form={})
@@ -400,7 +468,6 @@ async def submit(
     conn.commit()
 
     uploaded_name = None
-    stored_filename = None
 
     if has_file:
         ext = safe_ext(upload.filename)
@@ -429,13 +496,19 @@ async def submit(
         conn.commit()
 
         uploaded_name = upload.filename
-        stored_filename = stored
 
     conn.close()
 
-    # --- EMAILS ---
+    # --- EMAIL SETTINGS FROM DB ---
+    admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))
+    admin_email_on_submit = get_bool_setting("admin_email_on_submit", True)
+    admin_email_on_status = get_bool_setting("admin_email_on_status", True)
+
+    requester_email_on_submit = get_bool_setting("requester_email_on_submit", False)
+    requester_email_on_status = get_bool_setting("requester_email_on_status", True)
+
     # Requester email on submit (OFF by default)
-    if REQUESTER_EMAIL_ON_SUBMIT:
+    if requester_email_on_submit:
         subject = f"[{APP_TITLE}] Request received ({rid[:8]})"
         text = (
             f"Your request has been received.\n\n"
@@ -458,8 +531,8 @@ async def submit(
         )
         send_email([requester_email.strip()], subject, text, html)
 
-    # Admin email on submit (ON by default if ADMIN_NOTIFY_EMAILS set)
-    if ADMIN_EMAIL_ON_SUBMIT and ADMIN_NOTIFY_EMAILS:
+    # Admin email on submit
+    if admin_email_on_submit and admin_emails:
         subject = f"[{APP_TITLE}] New request ({rid[:8]})"
         text = (
             f"New print request submitted.\n\n"
@@ -485,16 +558,13 @@ async def submit(
             cta_url=f"{BASE_URL}/admin/request/{rid}",
             cta_label="Open in admin",
         )
-        send_email(ADMIN_NOTIFY_EMAILS, subject, text, html)
+        send_email(admin_emails, subject, text, html)
 
     return RedirectResponse(url=f"/queue?mine={rid[:8]}", status_code=303)
 
 
 @app.get("/queue", response_class=HTMLResponse)
 def public_queue(request: Request, mine: Optional[str] = None):
-    """
-    Public queue: shows active requests (not yet picked up/cancelled/rejected) oldest-first.
-    """
     conn = db()
     rows = conn.execute(
         "SELECT id, requester_name, printer, material, colors, status, special_notes "
@@ -599,6 +669,39 @@ def admin_dashboard(request: Request, _=Depends(require_admin)):
     })
 
 
+@app.get("/admin/settings", response_class=HTMLResponse)
+def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[str] = None):
+    model = {
+        "admin_notify_emails": get_setting("admin_notify_emails", ""),
+        "admin_email_on_submit": get_bool_setting("admin_email_on_submit", True),
+        "admin_email_on_status": get_bool_setting("admin_email_on_status", True),
+        "requester_email_on_submit": get_bool_setting("requester_email_on_submit", False),
+        "requester_email_on_status": get_bool_setting("requester_email_on_status", True),
+        "saved": bool(saved == "1"),
+    }
+    return templates.TemplateResponse("admin_settings.html", {"request": request, "s": model})
+
+
+@app.post("/admin/settings")
+def admin_settings_post(
+    request: Request,
+    admin_notify_emails: str = Form(""),
+    admin_email_on_submit: Optional[str] = Form(None),
+    admin_email_on_status: Optional[str] = Form(None),
+    requester_email_on_submit: Optional[str] = Form(None),
+    requester_email_on_status: Optional[str] = Form(None),
+    _=Depends(require_admin),
+):
+    # checkboxes: present => "on", missing => None
+    set_setting("admin_notify_emails", (admin_notify_emails or "").strip())
+    set_setting("admin_email_on_submit", "1" if admin_email_on_submit else "0")
+    set_setting("admin_email_on_status", "1" if admin_email_on_status else "0")
+    set_setting("requester_email_on_submit", "1" if requester_email_on_submit else "0")
+    set_setting("requester_email_on_status", "1" if requester_email_on_status else "0")
+
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+
+
 @app.get("/admin/request/{rid}", response_class=HTMLResponse)
 def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
     conn = db()
@@ -648,8 +751,12 @@ def admin_set_status(
     conn.commit()
     conn.close()
 
-    # Requester status emails (ON by default)
-    if REQUESTER_EMAIL_ON_STATUS:
+    # Settings-driven emails
+    admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))
+    admin_email_on_status = get_bool_setting("admin_email_on_status", True)
+    requester_email_on_status = get_bool_setting("requester_email_on_status", True)
+
+    if requester_email_on_status:
         subject = f"[{APP_TITLE}] Status update ({rid[:8]})"
         text = (
             f"Your request status changed:\n\n"
@@ -671,8 +778,7 @@ def admin_set_status(
         )
         send_email([req["requester_email"]], subject, text, html)
 
-    # Admin status emails (optional)
-    if ADMIN_EMAIL_ON_STATUS and ADMIN_NOTIFY_EMAILS:
+    if admin_email_on_status and admin_emails:
         subject = f"[{APP_TITLE}] Admin: {rid[:8]} {from_status}→{to_status}"
         text = (
             f"Status changed.\n\n"
@@ -694,7 +800,7 @@ def admin_set_status(
             cta_url=f"{BASE_URL}/admin/request/{rid}",
             cta_label="Open in admin",
         )
-        send_email(ADMIN_NOTIFY_EMAILS, subject, text, html)
+        send_email(admin_emails, subject, text, html)
 
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
