@@ -372,9 +372,25 @@ class FlashForgeAPI:
         status = await self.get_status()
         if not status:
             return False
-        # FlashForge status format: check if MachineStatus != READY
+        # FlashForge status format: check if MachineStatus is actively printing
         machine_status = status.get("MachineStatus", "READY").strip()
-        return machine_status != "READY"
+        # BUILDING_COMPLETED means done, not actively printing
+        return machine_status not in ["READY", "BUILDING_COMPLETED", "BUILDING_FROM_SD_COMPLETED"]
+
+    async def is_complete(self) -> bool:
+        """Check if printer just finished a print (BUILDING_COMPLETED state or READY with 100%)"""
+        status = await self.get_status()
+        if not status:
+            return False
+        machine_status = status.get("MachineStatus", "").strip()
+        # Completed states
+        if machine_status in ["BUILDING_COMPLETED", "BUILDING_FROM_SD_COMPLETED"]:
+            return True
+        # Also check if READY and at 100%
+        if machine_status == "READY":
+            percent = await self.get_percent_complete()
+            return percent == 100
+        return False
 
     async def get_percent_complete(self) -> Optional[int]:
         """Get print progress percentage"""
@@ -503,6 +519,7 @@ async def poll_printer_status_worker():
 
                 # Check both status and progress
                 is_printing = await printer_api.is_printing()
+                is_complete = await printer_api.is_complete()
                 percent_complete = await printer_api.get_percent_complete()
 
                 rid = req["id"]
@@ -520,10 +537,10 @@ async def poll_printer_status_worker():
                         conn.commit()
                         conn.close()
 
-                # Auto-complete if not printing anymore AND at 100%
-                is_complete = (not is_printing) and (percent_complete == 100)
+                # Auto-complete if printer reports complete OR (not printing AND at 100%)
+                should_complete = is_complete or ((not is_printing) and (percent_complete == 100))
 
-                if is_complete:
+                if should_complete:
                     print(f"[PRINTER] {req['printer']} complete ({percent_complete}%), auto-updating {rid[:8]} to DONE")
 
                     # Capture completion data before updating status
@@ -1912,3 +1929,60 @@ def get_completion_snapshot(rid: str, _=Depends(require_admin)):
 def get_version():
     """Get application version"""
     return {"version": APP_VERSION, "title": APP_TITLE}
+
+
+@app.get("/api/printer/{printer_code}/debug")
+async def printer_debug(printer_code: str, _=Depends(require_admin)):
+    """Debug endpoint to test all available printer API endpoints"""
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    printer_api = get_printer_api(printer_code)
+    if not printer_api:
+        raise HTTPException(status_code=503, detail="Printer not configured")
+    
+    results = {}
+    
+    # Test standard endpoints
+    results["info"] = await printer_api.get_info()
+    results["status"] = await printer_api.get_status()
+    results["progress"] = await printer_api.get_progress()
+    results["temperature"] = await printer_api.get_temperature()
+    results["head_location"] = await printer_api.get_head_location()
+    
+    # Test additional potential endpoints
+    flask_url = get_setting("flashforge_api_url", "http://localhost:5000")
+    if printer_code == "ADVENTURER_4":
+        ip = get_setting("printer_adventurer_4_ip", "192.168.0.198")
+    else:
+        ip = get_setting("printer_ad5x_ip", "192.168.0.157")
+    
+    # Try some additional paths that might exist
+    test_paths = [
+        "print-time",      # M31 - print time
+        "job",             # Current job info
+        "file",            # Current file
+        "filename",        # Print filename
+        "sd-files",        # SD card file list (M20)
+        "current-file",    # Current printing file
+        "print-info",      # Print information
+        "eta",             # Estimated time
+        "time",            # Time remaining
+    ]
+    
+    async with httpx.AsyncClient(timeout=5) as client:
+        for path in test_paths:
+            try:
+                url = f"{flask_url}/{ip}/{path}"
+                r = await client.get(url)
+                if r.status_code == 200:
+                    try:
+                        results[f"test_{path}"] = r.json()
+                    except:
+                        results[f"test_{path}"] = r.text[:200]
+                else:
+                    results[f"test_{path}"] = f"HTTP {r.status_code}"
+            except Exception as e:
+                results[f"test_{path}"] = f"Error: {str(e)[:50]}"
+    
+    return results
