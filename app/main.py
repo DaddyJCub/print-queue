@@ -12,8 +12,9 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.5.0"
 # Changelog:
+# 1.5.0 - Extended status API: current filename, layer progress from M119/M27
 # 1.4.0 - Camera streaming, auto-complete with snapshots, login redirect fix
 # 1.3.0 - FlashForge printer integration, ETA calculations, analytics
 # 1.2.0 - Admin dashboard, priority system, email notifications
@@ -366,6 +367,85 @@ class FlashForgeAPI:
         except Exception as e:
             print(f"[PRINTER] Error fetching head location from {self.printer_ip}: {e}")
         return None
+
+    async def get_extended_status(self) -> Optional[Dict[str, Any]]:
+        """Get extended status including current filename and layer info via direct M-codes"""
+        import socket
+        result = {}
+        
+        try:
+            # M119 gives us CurrentFile and detailed status
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(3)
+            sock.connect((self.printer_ip, 8899))
+            
+            # Control request
+            sock.send(b"~M601 S1\r\n")
+            sock.recv(1024)
+            
+            # M119 for status + current file
+            sock.send(b"~M119\r\n")
+            response = b""
+            try:
+                while True:
+                    chunk = sock.recv(2048)
+                    if not chunk:
+                        break
+                    response += chunk
+                    if b"ok\r\n" in response or b"ok\n" in response:
+                        break
+            except socket.timeout:
+                pass
+            
+            m119_text = response.decode('utf-8', errors='ignore')
+            
+            # Parse M119 response
+            for line in m119_text.split('\n'):
+                line = line.strip()
+                if line.startswith('CurrentFile:'):
+                    result['current_file'] = line.replace('CurrentFile:', '').strip()
+                elif line.startswith('MachineStatus:'):
+                    result['machine_status'] = line.replace('MachineStatus:', '').strip()
+                elif line.startswith('LED:'):
+                    result['led'] = line.replace('LED:', '').strip()
+                elif line.startswith('Status:'):
+                    result['status_flags'] = line.replace('Status:', '').strip()
+            
+            # M27 for layer info
+            sock.send(b"~M27\r\n")
+            response = b""
+            try:
+                while True:
+                    chunk = sock.recv(2048)
+                    if not chunk:
+                        break
+                    response += chunk
+                    if b"ok\r\n" in response or b"ok\n" in response:
+                        break
+            except socket.timeout:
+                pass
+            
+            m27_text = response.decode('utf-8', errors='ignore')
+            
+            # Parse M27 response for layer info
+            for line in m27_text.split('\n'):
+                line = line.strip()
+                if line.startswith('Layer:'):
+                    layer_part = line.replace('Layer:', '').strip()
+                    if '/' in layer_part:
+                        parts = layer_part.split('/')
+                        result['current_layer'] = int(parts[0].strip())
+                        result['total_layers'] = int(parts[1].strip())
+                elif line.startswith('SD printing byte'):
+                    # "SD printing byte 32/100"
+                    pass  # Already have progress from other endpoint
+            
+            sock.close()
+            return result if result else None
+            
+        except Exception as e:
+            print(f"[PRINTER] Error fetching extended status from {self.printer_ip}: {e}")
+            return None
 
     async def is_printing(self) -> bool:
         """Check if printer is currently printing"""
@@ -1950,7 +2030,40 @@ async def printer_debug(printer_code: str, _=Depends(require_admin)):
     results["temperature"] = await printer_api.get_temperature()
     results["head_location"] = await printer_api.get_head_location()
     
+    # NEW: Extended status with filename and layer info
+    results["extended_status"] = await printer_api.get_extended_status()
+    
     return results
+
+
+@app.get("/api/printer/{printer_code}/job")
+async def printer_job(printer_code: str, _=Depends(require_admin)):
+    """Get current print job info - filename, layer progress, status"""
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    printer_api = get_printer_api(printer_code)
+    if not printer_api:
+        raise HTTPException(status_code=503, detail="Printer not configured")
+    
+    # Get all the data
+    status = await printer_api.get_status()
+    progress = await printer_api.get_progress()
+    extended = await printer_api.get_extended_status()
+    
+    result = {
+        "printer": printer_code,
+        "machine_status": status.get("MachineStatus") if status else None,
+        "percent_complete": progress.get("PercentageCompleted") if progress else None,
+    }
+    
+    if extended:
+        result["current_file"] = extended.get("current_file")
+        result["current_layer"] = extended.get("current_layer")
+        result["total_layers"] = extended.get("total_layers")
+        result["layer_progress"] = f"{extended.get('current_layer', '?')}/{extended.get('total_layers', '?')}"
+    
+    return result
 
 
 @app.get("/api/printer/{printer_code}/raw/{command}")
@@ -2033,9 +2146,9 @@ async def printer_test_commands(printer_code: str, _=Depends(require_admin)):
         ("M651", "FlashForge specific?"),
         ("M652", "FlashForge specific?"),
         ("M660", "FlashForge specific?"),
-        ("M661", "FlashForge specific?"),
+        ("M661", "FlashForge SD file list"),
         ("M662", "FlashForge specific?"),
-        ("M25", "Pause status query"),
+        # M25 REMOVED - it actually PAUSES the print!
         ("M994", "File list?"),
         ("M995", "Current file?"),
     ]
