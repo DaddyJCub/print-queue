@@ -353,11 +353,16 @@ def get_smart_eta(printer: str = None, material: str = None,
     # Method 1: If we have current progress, calculate from elapsed time
     if current_percent and current_percent > 0 and printing_started_at:
         try:
-            started_dt = datetime.fromisoformat(printing_started_at)
-            elapsed = (datetime.now() - started_dt).total_seconds()
+            # Parse and normalize datetime to naive UTC
+            started_dt = datetime.fromisoformat(printing_started_at.replace("Z", "+00:00"))
+            if started_dt.tzinfo:
+                started_dt = started_dt.replace(tzinfo=None)
+            
+            now = datetime.utcnow()
+            elapsed = (now - started_dt).total_seconds()
             
             if current_percent >= 100:
-                return datetime.now()
+                return now
             
             # Skip if elapsed time is too short (< 2 minutes) - data not reliable yet
             # This happens when printing_started_at was just set retroactively
@@ -372,7 +377,7 @@ def get_smart_eta(printer: str = None, material: str = None,
                 
                 # Sanity check: remaining should be positive and reasonable (< 48 hours)
                 if 0 < remaining_seconds < 172800:
-                    eta = datetime.now() + __import__('datetime').timedelta(seconds=remaining_seconds)
+                    eta = now + __import__('datetime').timedelta(seconds=remaining_seconds)
                     return eta
         except Exception as e:
             print(f"[ETA] Error calculating from progress: {e}")
@@ -812,12 +817,13 @@ async def poll_printer_status_worker():
                     req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
                     
                     # Record to print history for learning ETAs
-                    if req_row and req_row.get("printing_started_at"):
+                    if req_row and req_row["printing_started_at"]:
                         try:
                             started_at = req_row["printing_started_at"]
                             completed_at = now_iso()
-                            started_dt = datetime.fromisoformat(started_at)
-                            completed_dt = datetime.fromisoformat(completed_at)
+                            # Parse datetimes - strip timezone info for consistent comparison
+                            started_dt = datetime.fromisoformat(started_at.replace("Z", "+00:00")).replace(tzinfo=None)
+                            completed_dt = datetime.fromisoformat(completed_at.replace("Z", "+00:00")).replace(tzinfo=None)
                             duration_minutes = int((completed_dt - started_dt).total_seconds() / 60)
                             
                             conn.execute("""
@@ -828,9 +834,9 @@ async def poll_printer_status_worker():
                             """, (
                                 str(uuid.uuid4()),
                                 rid,
-                                req_row.get("printer", ""),
-                                req_row.get("material", ""),
-                                req_row.get("print_name", ""),
+                                req_row["printer"] or "",
+                                req_row["material"] or "",
+                                req_row["print_name"] or "",
                                 started_at,
                                 completed_at,
                                 duration_minutes,
@@ -838,7 +844,7 @@ async def poll_printer_status_worker():
                                 extended_info.get("current_file") if extended_info else None,
                                 completed_at
                             ))
-                            print(f"[PRINTER] Recorded print history: {duration_minutes} minutes for {req_row.get('printer', '')}")
+                            print(f"[PRINTER] Recorded print history: {duration_minutes} minutes for {req_row['printer']}")
                         except Exception as e:
                             print(f"[PRINTER] Failed to record print history: {e}")
                     
@@ -1541,8 +1547,11 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             if item.get("printing_started_at"):
                 try:
                     from datetime import datetime
+                    # Normalize to naive UTC
                     started = datetime.fromisoformat(item["printing_started_at"].replace("Z", "+00:00"))
-                    now = datetime.now(started.tzinfo) if started.tzinfo else datetime.utcnow()
+                    if started.tzinfo:
+                        started = started.replace(tzinfo=None)
+                    now = datetime.utcnow()
                     elapsed_minutes = (now - started).total_seconds() / 60
                     
                     # Need at least 2 minutes elapsed for reliable estimate
