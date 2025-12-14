@@ -1950,24 +1950,47 @@ async def printer_debug(printer_code: str, _=Depends(require_admin)):
     results["temperature"] = await printer_api.get_temperature()
     results["head_location"] = await printer_api.get_head_location()
     
-    # Test additional potential endpoints
+    # Get settings for debug
+    results["_settings"] = {
+        "enable_camera_snapshot": get_bool_setting("enable_camera_snapshot", False),
+        "camera_url": get_camera_url(printer_code),
+    }
+    
+    # Test additional potential endpoints on the Flask API
     flask_url = get_setting("flashforge_api_url", "http://localhost:5000")
     if printer_code == "ADVENTURER_4":
         ip = get_setting("printer_adventurer_4_ip", "192.168.0.198")
     else:
         ip = get_setting("printer_ad5x_ip", "192.168.0.157")
     
-    # Try some additional paths that might exist
+    # Try more potential API paths
     test_paths = [
-        "print-time",      # M31 - print time
-        "job",             # Current job info
-        "file",            # Current file
-        "filename",        # Print filename
-        "sd-files",        # SD card file list (M20)
-        "current-file",    # Current printing file
-        "print-info",      # Print information
-        "eta",             # Estimated time
-        "time",            # Time remaining
+        # Standard M-code equivalents
+        "print-time",       # M31 - print time elapsed
+        "sd-list",          # M20 - list SD files
+        "sd-status",        # M27 extended
+        "job-name",         # Current job/file name
+        "file-info",        # File information
+        "print-stats",      # Print statistics (M78)
+        "firmware",         # Firmware details
+        # Potential FlashForge-specific
+        "led",              # LED status
+        "light",            # Light control
+        "fan",              # Fan speed
+        "bed-temp",         # Bed temperature
+        "chamber-temp",     # Chamber temperature  
+        "filament",         # Filament info
+        "network",          # Network info
+        "wifi",             # WiFi info
+        "settings",         # Printer settings
+        "config",           # Configuration
+        "machine",          # Machine info
+        "model",            # Model info
+        "system",           # System info
+        "version",          # Version info
+        "all",              # All info combined
+        "full-status",      # Full status
+        "extended-status",  # Extended status
     ]
     
     async with httpx.AsyncClient(timeout=5) as client:
@@ -1979,10 +2002,41 @@ async def printer_debug(printer_code: str, _=Depends(require_admin)):
                     try:
                         results[f"test_{path}"] = r.json()
                     except:
-                        results[f"test_{path}"] = r.text[:200]
+                        results[f"test_{path}"] = {"raw": r.text[:500]}
                 else:
                     results[f"test_{path}"] = f"HTTP {r.status_code}"
             except Exception as e:
-                results[f"test_{path}"] = f"Error: {str(e)[:50]}"
+                results[f"test_{path}"] = f"Error: {str(e)[:100]}"
+    
+    # Also try to connect directly to printer on port 8899 and send raw commands
+    results["_direct_tests"] = {}
+    direct_commands = [
+        ("M20", "List SD card files"),
+        ("M31", "Print time"),
+        ("M78", "Print statistics"),
+        ("M503", "Report settings"),
+        ("M117", "Display message (read)"),
+        ("M118", "Serial echo"),
+    ]
+    
+    try:
+        import socket
+        for cmd, desc in direct_commands:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(3)
+                sock.connect((ip, 8899))
+                # Send control request first
+                sock.send(b"~M601 S1\r\n")
+                sock.recv(1024)
+                # Send the test command
+                sock.send(f"~{cmd}\r\n".encode())
+                response = sock.recv(4096).decode('utf-8', errors='ignore')
+                sock.close()
+                results["_direct_tests"][cmd] = {"desc": desc, "response": response[:500]}
+            except Exception as e:
+                results["_direct_tests"][cmd] = {"desc": desc, "error": str(e)[:100]}
+    except Exception as e:
+        results["_direct_tests"]["_error"] = str(e)
     
     return results
