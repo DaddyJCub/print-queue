@@ -1,0 +1,146 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Analytics</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100">
+  <div class="max-w-7xl mx-auto p-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <a class="text-indigo-400 hover:underline text-sm inline-flex items-center" href="/admin">← Dashboard</a>
+        <h1 class="text-3xl font-bold mt-2">📊 Print Analytics</h1>
+      </div>
+    </div>
+
+    <!-- Summary Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+        <div class="text-sm text-slate-400 uppercase tracking-wide mb-2">Total Requests</div>
+        <div class="text-3xl font-bold">{{ stats.total_requests }}</div>
+        <div class="text-xs text-slate-500 mt-2">All time</div>
+      </div>
+      
+      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+        <div class="text-sm text-slate-400 uppercase tracking-wide mb-2">Completed</div>
+        <div class="text-3xl font-bold text-green-400">{{ stats.completed }}</div>
+        <div class="text-xs text-slate-500 mt-2">{{ ((stats.completed / stats.total_requests * 100) | round(1)) }}% success rate</div>
+      </div>
+      
+      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+        <div class="text-sm text-slate-400 uppercase tracking-wide mb-2">Avg Print Time</div>
+        <div class="text-3xl font-bold">{{ stats.avg_print_time_hours }}h</div>
+        <div class="text-xs text-slate-500 mt-2">{{ stats.avg_print_time_mins }}m average</div>
+      </div>
+      
+      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+        <div class="text-sm text-slate-400 uppercase tracking-wide mb-2">Active This Month</div>
+        <div class="text-3xl font-bold text-indigo-400">{{ stats.month_requests }}</div>
+        <div class="text-xs text-slate-500 mt-2">Last 30 days</div>
+      </div>
+    </div>
+
+    <!-- Status Distribution -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+        <h2 class="text-lg font-semibold mb-4">📈 Status Distribution</h2>
+        <div class="space-y-3">
+          {% for status, count in stats.by_status.items() %}
+            {% set pct = (count / stats.total_requests * 100) | round(1) %}
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-sm">{{ status }}</span>
+                <span class="text-sm font-semibold">{{ count }} ({{ pct }}%)</span>
+              </div>
+              <div class="w-full bg-slate-800 rounded-full h-2">
+                <div class="bg-indigo-500 h-2 rounded-full" style="width: {{ pct }}%"></div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+        <h2 class="text-lg font-semibold mb-4">🖨 Printer Usage</h2>
+        <div class="space-y-3">
+          {% for printer, count in stats.by_printer.items() %}
+            {% set pct = (count / stats.total_requests * 100) | round(1) %}
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-sm">{{ printer or 'Any Printer' }}</span>
+                <span class="text-sm font-semibold">{{ count }} ({{ pct }}%)</span>
+              </div>
+              <div class="w-full bg-slate-800 rounded-full h-2">
+                <div class="bg-emerald-500 h-2 rounded-full" style="width: {{ pct }}%"></div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+        <h2 class="text-lg font-semibold mb-4">📦 Material Usage</h2>
+        <div class="space-y-3">
+          {% for material, count in stats.by_material.items() %}
+            {% set pct = (count / stats.total_requests * 100) | round(1) %}
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-sm">{{ material or 'Unspecified' }}</span>
+                <span class="text-sm font-semibold">{{ count }} ({{ pct }}%)</span>
+              </div>
+              <div class="w-full bg-slate-800 rounded-full h-2">
+                <div class="bg-amber-500 h-2 rounded-full" style="width: {{ pct }}%"></div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+        <h2 class="text-lg font-semibold mb-4">📅 Recent Activity</h2>
+        <div class="space-y-2 max-h-64 overflow-y-auto">
+          {% for event in stats.recent_events %}
+            <div class="text-xs bg-slate-950/60 border border-slate-700 rounded-lg p-2">
+              <div class="text-slate-400">{{ event.time }}</div>
+              <div class="text-slate-200 mt-1">{{ event.action }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Top Requesters -->
+    <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+      <h2 class="text-lg font-semibold mb-4">👥 Top Requesters</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-slate-400 bg-slate-950/40 border-b border-slate-800">
+            <tr>
+              <th class="text-left p-3">Name</th>
+              <th class="text-left p-3">Email</th>
+              <th class="text-center p-3">Requests</th>
+              <th class="text-center p-3">Completed</th>
+              <th class="text-center p-3">Success Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for requester in stats.top_requesters %}
+              <tr class="border-b border-slate-800 hover:bg-slate-950/40 transition">
+                <td class="p-3">{{ requester.name }}</td>
+                <td class="p-3 text-slate-400"><a href="mailto:{{ requester.email }}" class="text-indigo-400 hover:underline">{{ requester.email }}</a></td>
+                <td class="p-3 text-center font-semibold">{{ requester.total }}</td>
+                <td class="p-3 text-center text-green-400">{{ requester.completed }}</td>
+                <td class="p-3 text-center">{{ requester.success_rate }}%</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

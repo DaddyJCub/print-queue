@@ -158,6 +158,14 @@ def ensure_migrations():
     if "turnaround_minutes" not in cols:
         # Time between prints (admin-set default: 30 min)
         cur.execute("ALTER TABLE requests ADD COLUMN turnaround_minutes INTEGER")
+
+    if "printing_started_at" not in cols:
+        # ISO timestamp when PRINTING status was set
+        cur.execute("ALTER TABLE requests ADD COLUMN printing_started_at TEXT")
+
+    if "estimated_finish_time" not in cols:
+        # ISO timestamp for estimated completion (calculated from progress rate)
+        cur.execute("ALTER TABLE requests ADD COLUMN estimated_finish_time TEXT")
         cur.execute("UPDATE requests SET turnaround_minutes = 30 WHERE turnaround_minutes IS NULL")
 
     conn.commit()
@@ -306,6 +314,31 @@ class FlashForgeAPI:
             return None
         return progress.get("PercentageCompleted")
 
+    def calculate_eta(self, percent_complete: int, start_time_iso: str) -> Optional[int]:
+        """
+        Calculate estimated time remaining in seconds based on progress.
+        Returns None if cannot calculate (e.g., just started, at 0%).
+        """
+        if percent_complete <= 0:
+            return None
+        
+        try:
+            start_time = datetime.fromisoformat(start_time_iso)
+            elapsed = (datetime.now(start_time.tzinfo) - start_time).total_seconds()
+            
+            # Avoid division by zero
+            if elapsed < 1:
+                return None
+            
+            # Calculate rate: seconds per percent
+            rate = elapsed / percent_complete
+            remaining_percent = 100 - percent_complete
+            eta_seconds = int(rate * remaining_percent)
+            
+            return max(0, eta_seconds)
+        except Exception:
+            return None
+
 
 def get_printer_api(printer_code: str) -> Optional[FlashForgeAPI]:
     """Get FlashForge API instance for a printer (ADVENTURER_4 or AD5X)"""
@@ -351,11 +384,25 @@ async def poll_printer_status_worker():
                 is_printing = await printer_api.is_printing()
                 percent_complete = await printer_api.get_percent_complete()
 
+                rid = req["id"]
+
+                # Calculate and update ETA
+                if percent_complete and percent_complete > 0 and req["printing_started_at"]:
+                    eta_seconds = printer_api.calculate_eta(percent_complete, req["printing_started_at"])
+                    if eta_seconds is not None:
+                        eta_iso = (datetime.now() + __import__('datetime').timedelta(seconds=eta_seconds)).isoformat()
+                        conn = db()
+                        conn.execute(
+                            "UPDATE requests SET estimated_finish_time = ? WHERE id = ?",
+                            (eta_iso, rid)
+                        )
+                        conn.commit()
+                        conn.close()
+
                 # Auto-complete if not printing anymore AND at 100%
                 is_complete = (not is_printing) and (percent_complete == 100)
 
                 if is_complete:
-                    rid = req["id"]
                     print(f"[PRINTER] {req['printer']} complete ({percent_complete}%), auto-updating {rid[:8]} to DONE")
 
                     # Auto-update status
@@ -457,7 +504,8 @@ def _human_material(code: str) -> str:
     return code
 
 
-def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta_url: Optional[str] = None, cta_label: str = "Open") -> str:
+def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta_url: Optional[str] = None, cta_label: str = "Open", header_color: str = "#4f46e5") -> str:
+    """Build HTML email with optional header color customization"""
     def esc(s: str) -> str:
         return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -465,18 +513,18 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
     for k, v in rows:
         row_html += f"""
           <tr>
-            <td style="padding:10px 0;color:#a1a1aa;font-size:12px;vertical-align:top;width:140px;">{esc(k)}</td>
-            <td style="padding:10px 0;color:#111827;font-size:14px;vertical-align:top;">{esc(v)}</td>
+            <td style="padding:12px 0;color:#6b7280;font-size:13px;vertical-align:top;width:120px;font-weight:600;">{esc(k)}</td>
+            <td style="padding:12px 0;color:#1f2937;font-size:14px;vertical-align:top;">{esc(v)}</td>
           </tr>
         """
 
     cta = ""
     if cta_url:
         cta = f"""
-          <div style="margin-top:18px;">
+          <div style="margin-top:20px;">
             <a href="{esc(cta_url)}"
-               style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;
-                      padding:10px 14px;border-radius:10px;font-weight:600;font-size:14px;">
+               style="display:inline-block;background:{esc(header_color)};color:#ffffff;text-decoration:none;
+                      padding:12px 16px;border-radius:8px;font-weight:600;font-size:14px;border:0;">
               {esc(cta_label)}
             </a>
           </div>
@@ -485,27 +533,28 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
     return f"""\
 <!doctype html>
 <html>
-  <body style="margin:0;padding:0;background:#0b0b0f;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;">
+  <body style="margin:0;padding:0;background:#f5f5f5;font-family:'Segoe UI', 'Helvetica Neue', Arial, sans-serif;">
     <div style="padding:24px;">
-      <div style="max-width:640px;margin:0 auto;">
-        <div style="color:#e5e7eb;font-weight:800;font-size:18px;margin-bottom:10px;">{esc(APP_TITLE)}</div>
+      <div style="max-width:600px;margin:0 auto;">
+        <!-- Header -->
+        <div style="background:{esc(header_color)};color:#ffffff;padding:24px 20px;border-radius:12px 12px 0 0;text-align:center;">
+          <div style="font-size:24px;font-weight:800;margin-bottom:6px;">{esc(title)}</div>
+          <div style="font-size:14px;opacity:0.9;">{esc(subtitle)}</div>
+        </div>
 
-        <div style="background:#ffffff;border-radius:16px;overflow:hidden;">
-          <div style="padding:18px 18px 0 18px;">
-            <div style="font-size:18px;font-weight:800;color:#111827;">{esc(title)}</div>
-            <div style="margin-top:6px;color:#6b7280;font-size:13px;">{esc(subtitle)}</div>
-          </div>
-
-          <div style="padding:0 18px 18px 18px;">
-            <table style="width:100%;border-collapse:collapse;margin-top:10px;">
+        <!-- Main content -->
+        <div style="background:#ffffff;border-radius:0 0 12px 12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+          <div style="padding:24px;">
+            <table style="width:100%;border-collapse:collapse;">
               {row_html}
             </table>
             {cta}
           </div>
         </div>
 
-        <div style="color:#71717a;font-size:12px;margin-top:12px;">
-          Sent by {esc(APP_TITLE)} • {esc(datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"))}
+        <!-- Footer -->
+        <div style="color:#9ca3af;font-size:12px;margin-top:16px;text-align:center;">
+          {esc(APP_TITLE)} • {esc(datetime.utcnow().strftime("%B %d, %Y at %H:%M UTC"))}
         </div>
       </div>
     </div>
@@ -761,6 +810,22 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     items = []
     printing_idx = None
     
+    # Fetch current printer status for health indicators
+    printer_status = {}
+    for printer_code in ["ADVENTURER_4", "AD5X"]:
+        try:
+            printer_api = get_printer_api(printer_code)
+            if printer_api:
+                status = await printer_api.get_status()
+                if status:
+                    printer_status[printer_code] = {
+                        "status": status.get("MachineStatus", "UNKNOWN"),
+                        "temp": status.get("Temperature"),
+                        "healthy": status.get("MachineStatus") in ["READY", "PRINTING"]
+                    }
+        except Exception:
+            pass
+    
     # First pass: build items and find printing index, fetch real progress for PRINTING
     for idx, r in enumerate(rows):
         short_id = r["id"][:8]
@@ -774,6 +839,9 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                     printer_progress = await printer_api.get_percent_complete()
                 except Exception:
                     pass  # Fall back to time-based estimate if API fails
+        
+        # Get printer health status
+        printer_health = printer_status.get(r["printer"], {}).get("healthy", None)
         
         items.append({
             "pos": idx + 1,
@@ -789,6 +857,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             "turnaround_minutes": r["turnaround_minutes"],
             "estimated_wait_minutes": None,
             "printer_progress": printer_progress,  # Real progress % from API
+            "printer_health": printer_health,  # True if ready/printing, False if error, None if unknown
         })
         if r["status"] == "PRINTING":
             printing_idx = idx
@@ -833,6 +902,10 @@ async def public_queue(request: Request, mine: Optional[str] = None):
         "mine": mine,
         "my_pos": my_pos,
         "counts": counts,
+        "printer_status": {
+            "ADVENTURER_4": printer_status.get("ADVENTURER_4", {}),
+            "AD5X": printer_status.get("AD5X", {}),
+        },
     })
 
 
@@ -935,7 +1008,117 @@ def admin_settings_post(
     return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
 
 
-@app.get("/admin/printer-settings", response_class=HTMLResponse)
+@app.get("/admin/analytics", response_class=HTMLResponse)
+def admin_analytics(request: Request, _=Depends(require_admin)):
+    """Print analytics and history dashboard"""
+    conn = db()
+    
+    # Total stats
+    all_reqs = conn.execute("SELECT * FROM requests").fetchall()
+    
+    # By status
+    by_status = {}
+    for status in ["NEW", "APPROVED", "PRINTING", "DONE", "PICKED_UP", "REJECTED", "CANCELLED"]:
+        count = conn.execute("SELECT COUNT(*) as c FROM requests WHERE status = ?", (status,)).fetchone()["c"]
+        by_status[status] = count
+    
+    # By printer
+    by_printer = {}
+    for printer in ["ANY", "ADVENTURER_4", "AD5X"]:
+        count = conn.execute("SELECT COUNT(*) as c FROM requests WHERE printer = ?", (printer,)).fetchone()["c"]
+        by_printer[printer] = count
+    
+    # By material
+    by_material = {}
+    for material in ["ANY", "PLA", "PETG", "ABS", "TPU", "RESIN", "OTHER"]:
+        count = conn.execute("SELECT COUNT(*) as c FROM requests WHERE material = ?", (material,)).fetchone()["c"]
+        by_material[material] = count
+    
+    # Monthly activity (last 30 days)
+    month_ago = (datetime.now() - __import__('datetime').timedelta(days=30)).isoformat()
+    month_reqs = conn.execute(
+        "SELECT COUNT(*) as c FROM requests WHERE created_at > ?",
+        (month_ago,)
+    ).fetchone()["c"]
+    
+    # Average print time
+    avg_time = conn.execute(
+        "SELECT AVG(print_time_minutes) as avg FROM requests WHERE print_time_minutes IS NOT NULL AND print_time_minutes > 0"
+    ).fetchone()["avg"]
+    avg_mins = int(avg_time) if avg_time else 0
+    avg_hours = avg_mins // 60
+    avg_mins = avg_mins % 60
+    
+    # Completed (DONE + PICKED_UP)
+    completed = conn.execute(
+        "SELECT COUNT(*) as c FROM requests WHERE status IN (?, ?)",
+        ("DONE", "PICKED_UP")
+    ).fetchone()["c"]
+    
+    # Top requesters
+    top_requesters = conn.execute("""
+        SELECT requester_name as name, requester_email as email, 
+               COUNT(*) as total,
+               SUM(CASE WHEN status IN ('DONE', 'PICKED_UP') THEN 1 ELSE 0 END) as completed
+        FROM requests
+        GROUP BY requester_email
+        ORDER BY COUNT(*) DESC
+        LIMIT 10
+    """).fetchall()
+    
+    # Recent events
+    recent_events = conn.execute("""
+        SELECT se.created_at, se.from_status, se.to_status, r.id
+        FROM status_events se
+        JOIN requests r ON se.request_id = r.id
+        ORDER BY se.created_at DESC
+        LIMIT 20
+    """).fetchall()
+    
+    conn.close()
+    
+    # Format data
+    formatted_requesters = []
+    for req in top_requesters:
+        total = req["total"]
+        completed_cnt = req["completed"]
+        success = int(completed_cnt / total * 100) if total > 0 else 0
+        formatted_requesters.append({
+            "name": req["name"],
+            "email": req["email"],
+            "total": total,
+            "completed": completed_cnt,
+            "success_rate": success,
+        })
+    
+    formatted_events = []
+    for evt in recent_events:
+        from_to = f"{evt['from_status'] or 'NEW'} → {evt['to_status']}"
+        formatted_events.append({
+            "time": evt["created_at"][:16],  # YYYY-MM-DD HH:MM
+            "action": f"Request {evt['id'][:8]}: {from_to}",
+        })
+    
+    stats = {
+        "total_requests": len(all_reqs),
+        "completed": completed,
+        "avg_print_time_hours": avg_hours,
+        "avg_print_time_mins": avg_mins,
+        "month_requests": month_reqs,
+        "by_status": by_status,
+        "by_printer": {k: v for k, v in by_printer.items() if v > 0},
+        "by_material": {k: v for k, v in by_material.items() if v > 0},
+        "top_requesters": formatted_requesters,
+        "recent_events": formatted_events,
+    }
+    
+    return templates.TemplateResponse("admin_analytics.html", {
+        "request": request,
+        "stats": stats,
+    })
+
+
+
 def admin_printer_settings(request: Request, _=Depends(require_admin), saved: Optional[str] = None):
     model = {
         "flashforge_api_url": get_setting("flashforge_api_url", "http://localhost:5000"),
@@ -1005,7 +1188,18 @@ def admin_set_status(
         raise HTTPException(status_code=404, detail="Not found")
 
     from_status = req["status"]
-    conn.execute("UPDATE requests SET status = ?, updated_at = ? WHERE id = ?", (to_status, now_iso(), rid))
+    
+    # Track printing start time when transitioning to PRINTING
+    update_cols = ["status", "updated_at"]
+    update_vals = [to_status, now_iso()]
+    if to_status == "PRINTING" and from_status != "PRINTING":
+        update_cols.append("printing_started_at")
+        update_vals.append(now_iso())
+    
+    update_sql = "UPDATE requests SET " + ", ".join([f"{col} = ?" for col in update_cols]) + " WHERE id = ?"
+    update_vals.append(rid)
+    
+    conn.execute(update_sql, update_vals)
     conn.execute(
         "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
         (str(uuid.uuid4()), rid, now_iso(), from_status, to_status, comment)
@@ -1018,8 +1212,29 @@ def admin_set_status(
     admin_email_on_status = get_bool_setting("admin_email_on_status", True)
     requester_email_on_status = get_bool_setting("requester_email_on_status", True)
 
+    # Status-specific styling
+    status_colors = {
+        "APPROVED": "#10b981",  # Green
+        "PRINTING": "#f59e0b",  # Amber
+        "DONE": "#06b6d4",      # Cyan
+        "PICKED_UP": "#8b5cf6", # Purple
+        "REJECTED": "#ef4444",  # Red
+        "CANCELLED": "#64748b", # Slate
+    }
+    status_titles = {
+        "APPROVED": "✓ Request Approved",
+        "PRINTING": "🖨 Now Printing",
+        "DONE": "✓ Ready for Pickup",
+        "PICKED_UP": "✓ Completed",
+        "REJECTED": "Request Rejected",
+        "CANCELLED": "Request Cancelled",
+    }
+    
+    header_color = status_colors.get(to_status, "#4f46e5")
+    status_title = status_titles.get(to_status, "Status Update")
+
     if requester_email_on_status:
-        subject = f"[{APP_TITLE}] Status update ({rid[:8]})"
+        subject = f"[{APP_TITLE}] {status_title} ({rid[:8]})"
         text = (
             f"Your request status changed:\n\n"
             f"{from_status} → {to_status}\n\n"
@@ -1027,40 +1242,43 @@ def admin_set_status(
             f"View queue: {BASE_URL}/queue?mine={rid[:8]}\n"
         )
         html = build_email_html(
-            title="Status update",
-            subtitle=f"{from_status} → {to_status}",
+            title=status_title,
+            subtitle=f"Request {rid[:8]} has been {to_status.lower().replace('_', ' ')}",
             rows=[
                 ("Request ID", rid[:8]),
-                ("From", from_status),
-                ("To", to_status),
+                ("Status", to_status),
                 ("Comment", (comment or "—")),
             ],
             cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
-            cta_label="View queue",
+            cta_label="View in Queue",
+            header_color=header_color,
         )
         send_email([req["requester_email"]], subject, text, html)
 
     if admin_email_on_status and admin_emails:
-        subject = f"[{APP_TITLE}] Admin: {rid[:8]} {from_status}→{to_status}"
+        subject = f"[{APP_TITLE}] {rid[:8]}: {from_status} → {to_status}"
         text = (
-            f"Status changed.\n\n"
+            f"Request status changed.\n\n"
             f"ID: {rid}\n"
-            f"{from_status} → {to_status}\n"
+            f"Status: {from_status} → {to_status}\n"
             f"Comment: {comment or '(none)'}\n"
+            f"Requester: {req['requester_name']} ({req['requester_email']})\n"
             f"Admin: {BASE_URL}/admin/request/{rid}\n"
         )
         html = build_email_html(
-            title="Admin status change",
-            subtitle=f"{from_status} → {to_status}",
+            title=f"{from_status} → {to_status}",
+            subtitle=f"Request {rid[:8]} status changed",
             rows=[
                 ("Request ID", rid[:8]),
-                ("From", from_status),
-                ("To", to_status),
+                ("Requester", req["requester_name"] or "—"),
+                ("Email", req["requester_email"] or "—"),
+                ("Printer", req["printer"] or "ANY"),
+                ("Status", to_status),
                 ("Comment", (comment or "—")),
-                ("Requester", (req["requester_name"] or "—")),
             ],
             cta_url=f"{BASE_URL}/admin/request/{rid}",
-            cta_label="Open in admin",
+            cta_label="Open in Admin",
+            header_color=header_color,
         )
         send_email(admin_emails, subject, text, html)
 
