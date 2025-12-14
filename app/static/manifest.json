@@ -3,10 +3,15 @@
   "short_name": "Print Queue",
   "description": "Submit and track 3D print requests",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#09090b",
   "theme_color": "#6366f1",
   "orientation": "any",
+  "id": "/",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
   "icons": [
     {
       "src": "/static/icons/icon-192.png",
@@ -45,5 +50,7 @@
       "url": "/my-requests",
       "icons": [{"src": "/static/icons/icon-192.png", "sizes": "192x192"}]
     }
-  ]
+  ],
+  "handle_links": "preferred",
+  "prefer_related_applications": false
 }

@@ -250,7 +250,7 @@
     
     <!-- Footer -->
     <div class="mt-8 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
-      <p class="mb-2">This link expires in 24 hours. <a href="/my-requests" class="text-indigo-400 hover:underline">Request a new link</a></p>
+      <p class="mb-2">You'll stay logged in on this device. <a href="/my-requests?logout=1" class="text-zinc-400 hover:underline">Log out</a></p>
       <div class="flex items-center gap-3">
         <a href="/feedback?type=bug" class="hover:text-red-400 transition" title="Report a Bug">🐛</a>
         <a href="/feedback?type=suggestion" class="hover:text-yellow-400 transition" title="Submit a Suggestion">💡</a>
@@ -277,10 +277,12 @@
       document.getElementById('snapshot-modal').classList.add('hidden');
     }
     
-    // Store token in sessionStorage for persistence
+    // Store token in localStorage for persistent login
     const token = '{{ token }}';
+    const email = '{{ email }}';
     if (token) {
-      sessionStorage.setItem('my_requests_token', token);
+      localStorage.setItem('my_requests_token', token);
+      localStorage.setItem('my_requests_email', email);
     }
   </script>
 </body>

@@ -14,6 +14,23 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('/static/sw.js').catch(() => {}));
     }
+    
+    // Check for logout request
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('logout') === '1') {
+      localStorage.removeItem('my_requests_token');
+      localStorage.removeItem('my_requests_email');
+      // Clean up URL
+      window.history.replaceState({}, '', '/my-requests');
+    } else {
+      // Auto-redirect if user has saved token (unless they just got an error)
+      const savedToken = localStorage.getItem('my_requests_token');
+      const hasError = urlParams.get('error');
+      const hasSent = urlParams.get('sent');
+      if (savedToken && !hasError && !hasSent) {
+        window.location.href = '/my-requests/view?token=' + savedToken;
+      }
+    }
   </script>
 </head>
 <body class="bg-zinc-950 text-zinc-100">
@@ -37,7 +54,7 @@
           Click the link to view all your requests.
         </p>
         <p class="text-zinc-500 text-xs mt-3">
-          The link expires in 24 hours. Check your spam folder if you don't see it.
+          The link expires in 30 days. Check your spam folder if you don't see it.
         </p>
       </div>
     {% endif %}
@@ -48,8 +65,13 @@
       </div>
     {% elif error == 'expired' %}
       <div class="bg-orange-600/20 border border-orange-500/50 rounded-xl p-4 mb-6">
-        <span class="text-orange-300">That link has expired. Please request a new one.</span>
+        <span class="text-orange-300">Your session has expired. Please request a new link.</span>
       </div>
+      <script>
+        // Clear saved token since it's expired
+        localStorage.removeItem('my_requests_token');
+        localStorage.removeItem('my_requests_email');
+      </script>
     {% endif %}
     
     <!-- Lookup Form -->

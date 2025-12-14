@@ -441,6 +441,11 @@ def ensure_migrations():
     if files_cols and "file_metadata" not in files_cols:
         cur.execute("ALTER TABLE files ADD COLUMN file_metadata TEXT")
 
+    # Add notification_prefs column for per-request notification preferences
+    # JSON format: {"email": true, "push": true} - defaults to email only
+    if "notification_prefs" not in cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN notification_prefs TEXT DEFAULT '{\"email\": true, \"push\": false}'")
+
     conn.commit()
     conn.close()
 
@@ -1518,7 +1523,17 @@ async def poll_printer_status_worker():
                         requester_email_on_status = get_bool_setting("requester_email_on_status", True)
                         should_notify_requester = get_bool_setting("notify_requester_printing", True)
                         
-                        if requester_email_on_status and should_notify_requester and req["requester_email"]:
+                        # Parse user notification preferences
+                        user_prefs = {"email": True, "push": False}
+                        if req.get("notification_prefs"):
+                            try:
+                                user_prefs = json.loads(req["notification_prefs"])
+                            except:
+                                pass
+                        user_wants_email = user_prefs.get("email", True)
+                        user_wants_push = user_prefs.get("push", False)
+                        
+                        if requester_email_on_status and should_notify_requester and req["requester_email"] and user_wants_email:
                             print_label = req["print_name"] or f"Request {rid[:8]}"
                             subject = f"[{APP_TITLE}] Now Printing - {print_label}"
                             
@@ -1557,6 +1572,10 @@ async def poll_printer_status_worker():
                                 f"\nView queue: {BASE_URL}/queue?mine={rid[:8]}\n"
                             )
                             
+                            # Generate direct my-requests link
+                            my_requests_token = get_or_create_my_requests_token(req["requester_email"])
+                            my_requests_url = f"{BASE_URL}/my-requests/view?token={my_requests_token}"
+                            
                             html = build_email_html(
                                 title="Now Printing!",
                                 subtitle=f"'{print_label}' is now printing!",
@@ -1564,10 +1583,19 @@ async def poll_printer_status_worker():
                                 cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
                                 cta_label="View in Queue",
                                 header_color="#f59e0b",  # Orange for printing
-                                secondary_cta_url=f"{BASE_URL}/my-requests",
+                                secondary_cta_url=my_requests_url,
                                 secondary_cta_label="All My Requests",
                             )
                             send_email([req["requester_email"]], subject, text, html)
+                        
+                        # Send push notification if user wants push
+                        if user_wants_push:
+                            send_push_notification(
+                                request_id=rid,
+                                title="🖨️ Now Printing",
+                                body=f"'{print_label}' has started printing",
+                                url=f"/my/{rid}?token={req['access_token']}"
+                            )
                         
                         # Also send admin notification if enabled
                         admin_email_on_status = get_bool_setting("admin_email_on_status", True)
@@ -1990,12 +2018,57 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
         <!-- Footer -->
         <div style="color:#9ca3af;font-size:12px;margin-top:16px;text-align:center;">
           {esc(APP_TITLE)} • {esc(datetime.utcnow().strftime("%B %d, %Y at %H:%M UTC"))}
+          <br/><span style="color:#6b7280;font-size:11px;">💡 Install the app from your browser for instant push notifications</span>
         </div>
       </div>
     </div>
   </body>
 </html>
 """
+
+
+def get_or_create_my_requests_token(email: str) -> str:
+    """
+    Get existing valid token or create new one for 'My Requests' magic link.
+    Returns the token string that can be used in /my-requests/view?token=XXX
+    Token is valid for 30 days.
+    """
+    from datetime import timedelta
+    email = email.strip().lower()
+    conn = db()
+    
+    # Check for existing valid token
+    existing = conn.execute(
+        "SELECT token, expires_at FROM email_lookup_tokens WHERE email = ?",
+        (email,)
+    ).fetchone()
+    
+    if existing:
+        try:
+            expires = datetime.fromisoformat(existing["expires_at"].replace("Z", "+00:00"))
+            if expires > datetime.now(expires.tzinfo):
+                conn.close()
+                return existing["token"]
+        except:
+            pass
+    
+    # Generate new token (30 days expiry for email links)
+    token = secrets.token_urlsafe(32)
+    created = now_iso()
+    expiry = (datetime.utcnow() + timedelta(days=30)).isoformat(timespec="seconds") + "Z"
+    
+    # Clean up old tokens for this email
+    conn.execute("DELETE FROM email_lookup_tokens WHERE email = ?", (email,))
+    
+    # Insert new token
+    conn.execute(
+        "INSERT INTO email_lookup_tokens (id, email, token, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), email, token, created, expiry)
+    )
+    conn.commit()
+    conn.close()
+    
+    return token
 
 
 def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Optional[str] = None, image_base64: Optional[str] = None):
@@ -2443,7 +2516,7 @@ async def submit(
             ],
             cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
             cta_label="View queue",
-            secondary_cta_url=f"{BASE_URL}/my-requests",
+            secondary_cta_url=f"{BASE_URL}/my-requests/view?token={get_or_create_my_requests_token(requester_email)}",
             secondary_cta_label="All My Requests",
         )
         send_email([requester_email.strip()], subject, text, html)
@@ -4713,7 +4786,7 @@ def admin_set_status(
             estimated_wait_str = "You're next!"
         conn2.close()
 
-    # Check fine-grain notification settings
+    # Check fine-grain notification settings (admin settings)
     status_notify_settings = {
         "NEEDS_INFO": get_bool_setting("notify_requester_needs_info", True),
         "APPROVED": get_bool_setting("notify_requester_approved", True),
@@ -4730,7 +4803,17 @@ def admin_set_status(
     if to_status == "PRINTING":
         should_notify_requester = False  # Will be sent by poll_printer_status_worker
 
-    if requester_email_on_status and should_notify_requester:
+    # Parse user notification preferences
+    user_prefs = {"email": True, "push": False}
+    if req.get("notification_prefs"):
+        try:
+            user_prefs = json.loads(req["notification_prefs"])
+        except:
+            pass
+    user_wants_email = user_prefs.get("email", True)
+    user_wants_push = user_prefs.get("push", False)
+
+    if requester_email_on_status and should_notify_requester and user_wants_email:
         print_label = req["print_name"] or f"Request {rid[:8]}"
         subject = f"[{APP_TITLE}] {status_title} - {print_label}"
         
@@ -4804,6 +4887,10 @@ def admin_set_status(
         elif to_status == "CANCELLED":
             subtitle = f"'{print_label}' has been cancelled"
         
+        # Generate direct my-requests link
+        my_requests_token = get_or_create_my_requests_token(req["requester_email"])
+        my_requests_url = f"{BASE_URL}/my-requests/view?token={my_requests_token}"
+        
         html = build_email_html(
             title=status_title,
             subtitle=subtitle,
@@ -4812,14 +4899,14 @@ def admin_set_status(
             cta_label=cta_label,
             header_color=header_color,
             footer_note=footer_note,
-            secondary_cta_url=f"{BASE_URL}/my-requests",
+            secondary_cta_url=my_requests_url,
             secondary_cta_label="All My Requests",
         )
         send_email([req["requester_email"]], subject, text, html)
 
-    # Send push notification for important status changes
+    # Send push notification for important status changes (if user wants push notifications)
     push_statuses = ["NEEDS_INFO", "APPROVED", "PRINTING", "DONE"]
-    if to_status in push_statuses:
+    if to_status in push_statuses and user_wants_push:
         push_titles = {
             "NEEDS_INFO": "📝 Action Needed",
             "APPROVED": "✅ Request Approved",
@@ -5561,6 +5648,65 @@ async def unsubscribe_push(request: Request):
     conn.close()
     
     return {"status": "unsubscribed"}
+
+
+@app.get("/api/notification-prefs/{rid}")
+async def get_notification_prefs(rid: str, token: str = ""):
+    """Get notification preferences for a request"""
+    conn = db()
+    req = conn.execute(
+        "SELECT notification_prefs, access_token FROM requests WHERE id = ?", (rid,)
+    ).fetchone()
+    conn.close()
+    
+    if not req:
+        return {"email": True, "push": False}
+    
+    # Verify token
+    if req["access_token"] != token:
+        return {"email": True, "push": False}
+    
+    prefs = {"email": True, "push": False}
+    if req["notification_prefs"]:
+        try:
+            prefs = json.loads(req["notification_prefs"])
+        except:
+            pass
+    
+    return prefs
+
+
+@app.post("/api/notification-prefs/{rid}")
+async def update_notification_prefs(rid: str, request: Request):
+    """Update notification preferences for a request"""
+    data = await request.json()
+    token = data.get("token", "")
+    email_enabled = data.get("email", True)
+    push_enabled = data.get("push", False)
+    
+    conn = db()
+    req = conn.execute(
+        "SELECT access_token FROM requests WHERE id = ?", (rid,)
+    ).fetchone()
+    
+    if not req:
+        conn.close()
+        return {"error": "Request not found"}
+    
+    # Verify token
+    if req["access_token"] != token:
+        conn.close()
+        return {"error": "Invalid token"}
+    
+    prefs = json.dumps({"email": email_enabled, "push": push_enabled})
+    conn.execute(
+        "UPDATE requests SET notification_prefs = ? WHERE id = ?",
+        (prefs, rid)
+    )
+    conn.commit()
+    conn.close()
+    
+    return {"status": "updated", "prefs": {"email": email_enabled, "push": push_enabled}}
 
 
 @app.get("/api/rush-pricing")

@@ -33,8 +33,8 @@
     </div>
     
     <script>
-      // Check for saved token to link back to my requests
-      const savedToken = sessionStorage.getItem('my_requests_token');
+      // Check for saved token to link back to my requests (use localStorage for persistence)
+      const savedToken = localStorage.getItem('my_requests_token');
       if (savedToken) {
         const link = document.getElementById('my-requests-link');
         if (link) {
@@ -72,81 +72,251 @@
       {% endif %}
     </div>
     
-    <!-- Push Notification Toggle -->
-    <div id="notification-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 mb-6">
-      <div class="flex items-center justify-between">
-        <div>
-          <h3 class="font-medium flex items-center gap-2">
-            <span id="notif-icon">🔔</span>
-            <span id="notif-label">Get Notifications</span>
-          </h3>
-          <p class="text-xs text-zinc-500 mt-1" id="notif-desc">Get push notifications when your print status changes</p>
+    <!-- PWA Install Tip (shown if not installed) -->
+    <div id="pwa-install-tip" class="hidden bg-gradient-to-r from-indigo-900/40 to-purple-900/30 border border-indigo-500/30 rounded-2xl p-4 mb-6">
+      <div class="flex items-start gap-3">
+        <span class="text-2xl">📲</span>
+        <div class="flex-1">
+          <h3 class="font-medium text-indigo-200">Install this App</h3>
+          <p class="text-xs text-zinc-400 mt-1">Add to your home screen for quick access, push notifications, and to stay logged in automatically.</p>
+          <div id="pwa-install-instructions" class="text-xs text-zinc-500 mt-2"></div>
+          <div class="flex gap-2 mt-3">
+            <button id="pwa-install-btn" onclick="installPWA()" class="hidden px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-medium transition">
+              Install Now
+            </button>
+            <button onclick="dismissPWATip()" class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-xs text-zinc-300 transition">
+              Maybe Later
+            </button>
+          </div>
         </div>
-        <button id="notif-toggle" onclick="toggleNotifications()" 
-                class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none bg-zinc-700">
-          <span id="notif-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-zinc-400 transition-transform translate-x-1"></span>
+      </div>
+    </div>
+
+    <!-- Notification Settings -->
+    <div id="notification-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 mb-6">
+      <h3 class="font-medium mb-3 flex items-center gap-2">
+        🔔 Notification Settings
+      </h3>
+      
+      <!-- Email Notifications Toggle -->
+      <div class="flex items-center justify-between py-2">
+        <div>
+          <span class="text-sm">Email Notifications</span>
+          <p class="text-xs text-zinc-500">Receive status updates via email</p>
+        </div>
+        <button id="email-toggle" onclick="toggleEmailNotifications()" 
+                class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none bg-indigo-600">
+          <span id="email-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-6"></span>
         </button>
       </div>
+      
+      <!-- Push Notifications Toggle -->
+      <div class="flex items-center justify-between py-2 border-t border-zinc-800 mt-2 pt-3">
+        <div>
+          <span class="text-sm" id="push-label">Push Notifications</span>
+          <p class="text-xs text-zinc-500" id="push-desc">Get instant alerts on your device</p>
+        </div>
+        <button id="push-toggle" onclick="togglePushNotifications()" 
+                class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none bg-zinc-700">
+          <span id="push-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-zinc-400 transition-transform translate-x-1"></span>
+        </button>
+      </div>
+      
       <!-- iOS Install Instructions (shown when needed) -->
       <div id="ios-install-hint" class="hidden mt-3 p-3 bg-blue-900/30 border border-blue-500/30 rounded-xl">
         <p class="text-xs text-blue-300">
-          <strong>📱 iPhone/iPad:</strong> To get notifications, first install this app: 
+          <strong>📱 iPhone/iPad:</strong> To get push notifications, first install this app: 
           tap <span class="inline-block px-1 bg-zinc-700 rounded">Share</span> → 
           <span class="inline-block px-1 bg-zinc-700 rounded">Add to Home Screen</span>, 
-          then open from your home screen and enable notifications.
+          then open from your home screen.
         </p>
       </div>
+      
+      <p class="text-xs text-zinc-600 mt-3 pt-2 border-t border-zinc-800">
+        💡 Tip: Enable push and disable email for instant notifications without inbox clutter.
+      </p>
     </div>
     
     <script>
-      // Push Notification Subscription Management
+      // Notification Preferences Management
       const requestId = '{{ req.id }}';
       const requestEmail = '{{ req.requester_email }}';
-      let pushSubscription = null;
+      const token = new URLSearchParams(window.location.search).get('token');
       
+      // State
+      let emailEnabled = true;
+      let pushEnabled = false;
+      let deferredPrompt = null;
+      
+      // Check if running as installed PWA
+      function isInstalledPWA() {
+        return window.matchMedia('(display-mode: standalone)').matches || 
+               window.navigator.standalone === true;
+      }
+      
+      // Detect device type
+      function getDeviceType() {
+        const ua = navigator.userAgent;
+        if (/iPad|iPhone|iPod/.test(ua)) return 'ios';
+        if (/Android/.test(ua)) return 'android';
+        return 'desktop';
+      }
+      
+      // Initialize everything
       async function initNotifications() {
-        const section = document.getElementById('notification-section');
-        const iosHint = document.getElementById('ios-install-hint');
+        // Load saved preferences from server
+        await loadPreferences();
         
-        // Detect iOS
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        const isStandalone = window.navigator.standalone === true;
+        // Setup PWA install tip
+        setupPWAInstallTip();
         
-        // Check if push notifications are supported
-        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-          if (isIOS && !isStandalone) {
-            // Show iOS install instructions
-            document.getElementById('notif-desc').textContent = 'Install the app first to enable notifications';
-            document.getElementById('notif-toggle').style.display = 'none';
-            iosHint.classList.remove('hidden');
-          } else if (isIOS && isStandalone) {
-            // iOS PWA but no push support (iOS < 16.4)
-            document.getElementById('notif-desc').textContent = 'Notifications not supported on this iOS version';
-            document.getElementById('notif-toggle').style.display = 'none';
-          } else {
-            section.style.display = 'none';
+        // Setup push notifications section
+        setupPushSection();
+      }
+      
+      async function loadPreferences() {
+        try {
+          const resp = await fetch(`/api/notification-prefs/${requestId}?token=${token}`);
+          if (resp.ok) {
+            const prefs = await resp.json();
+            emailEnabled = prefs.email !== false;
+            pushEnabled = prefs.push === true;
+            updateEmailToggleUI();
+            updatePushToggleUI();
           }
-          return;
-        }
-        
-        // Check if already subscribed (from localStorage)
-        const savedSub = localStorage.getItem(`push_subscribed_${requestId}`);
-        if (savedSub) {
-          updateNotificationUI(true);
-        }
-        
-        // Check permission status
-        if (Notification.permission === 'denied') {
-          document.getElementById('notif-desc').textContent = 'Notifications are blocked. Enable in browser settings.';
-          document.getElementById('notif-toggle').disabled = true;
-          document.getElementById('notif-toggle').classList.add('opacity-50', 'cursor-not-allowed');
+        } catch (err) {
+          console.error('Failed to load notification prefs:', err);
         }
       }
       
-      async function toggleNotifications() {
-        const isSubscribed = localStorage.getItem(`push_subscribed_${requestId}`);
+      async function savePreferences() {
+        try {
+          await fetch(`/api/notification-prefs/${requestId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token, email: emailEnabled, push: pushEnabled })
+          });
+        } catch (err) {
+          console.error('Failed to save notification prefs:', err);
+        }
+      }
+      
+      // PWA Install Tip
+      function setupPWAInstallTip() {
+        const tip = document.getElementById('pwa-install-tip');
+        const installBtn = document.getElementById('pwa-install-btn');
+        const iosHint = document.getElementById('ios-install-hint');
         
-        if (isSubscribed) {
+        // Don't show if already installed or dismissed
+        if (isInstalledPWA() || localStorage.getItem('pwa_tip_dismissed')) {
+          tip.style.display = 'none';
+          return;
+        }
+        
+        // Show the tip
+        tip.classList.remove('hidden');
+        
+        const device = getDeviceType();
+        if (device === 'ios') {
+          // Show iOS instructions, hide install button
+          iosHint.classList.remove('hidden');
+          installBtn.style.display = 'none';
+        } else {
+          // Chrome/Edge: capture install prompt
+          window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.classList.remove('hidden');
+          });
+        }
+      }
+      
+      async function installPWA() {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        const result = await deferredPrompt.userChoice;
+        if (result.outcome === 'accepted') {
+          document.getElementById('pwa-install-tip').style.display = 'none';
+        }
+        deferredPrompt = null;
+      }
+      
+      function dismissPWATip() {
+        localStorage.setItem('pwa_tip_dismissed', 'true');
+        document.getElementById('pwa-install-tip').style.display = 'none';
+      }
+      
+      // Email Toggle
+      async function toggleEmailNotifications() {
+        emailEnabled = !emailEnabled;
+        updateEmailToggleUI();
+        await savePreferences();
+      }
+      
+      function updateEmailToggleUI() {
+        const toggle = document.getElementById('email-toggle');
+        const dot = document.getElementById('email-toggle-dot');
+        
+        if (emailEnabled) {
+          toggle.classList.remove('bg-zinc-700');
+          toggle.classList.add('bg-indigo-600');
+          dot.classList.remove('translate-x-1', 'bg-zinc-400');
+          dot.classList.add('translate-x-6', 'bg-white');
+        } else {
+          toggle.classList.add('bg-zinc-700');
+          toggle.classList.remove('bg-indigo-600');
+          dot.classList.add('translate-x-1', 'bg-zinc-400');
+          dot.classList.remove('translate-x-6', 'bg-white');
+        }
+      }
+      
+      // Push Notifications
+      function setupPushSection() {
+        const iosHint = document.getElementById('ios-install-hint');
+        const device = getDeviceType();
+        
+        // Check if push is supported
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+          if (device === 'ios' && !isInstalledPWA()) {
+            // iOS not installed - show iOS hint
+            iosHint.classList.remove('hidden');
+          }
+          // Disable the push toggle
+          const toggle = document.getElementById('push-toggle');
+          toggle.classList.add('opacity-50', 'cursor-not-allowed');
+          toggle.onclick = null;
+          return;
+        }
+        
+        // If permission denied, disable toggle
+        if (Notification.permission === 'denied') {
+          const toggle = document.getElementById('push-toggle');
+          toggle.classList.add('opacity-50', 'cursor-not-allowed');
+          toggle.title = 'Notifications blocked in browser settings';
+          toggle.onclick = null;
+        }
+        
+        // Check if we have an existing subscription
+        checkPushSubscription();
+      }
+      
+      async function checkPushSubscription() {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.getSubscription();
+          if (subscription) {
+            pushEnabled = true;
+            updatePushToggleUI();
+            // Also update server preference
+            await savePreferences();
+          }
+        } catch (err) {
+          console.log('Could not check push subscription:', err);
+        }
+      }
+      
+      async function togglePushNotifications() {
+        if (pushEnabled) {
           await unsubscribeFromPush();
         } else {
           await subscribeToPush();
@@ -154,51 +324,41 @@
       }
       
       async function subscribeToPush() {
-        const desc = document.getElementById('notif-desc');
-        const toggle = document.getElementById('notif-toggle');
+        const toggle = document.getElementById('push-toggle');
         
         try {
-          // Show loading state
-          desc.textContent = 'Enabling notifications...';
-          toggle.disabled = true;
+          toggle.classList.add('opacity-50');
           
           // Request permission
           const permission = await Notification.requestPermission();
           if (permission !== 'granted') {
-            desc.textContent = 'Notification permission denied';
-            toggle.disabled = false;
+            toggle.classList.remove('opacity-50');
             return;
           }
           
-          // Get VAPID public key
-          const response = await fetch('/api/push/vapid-public-key');
-          const data = await response.json();
+          // Get VAPID key
+          const resp = await fetch('/api/push/vapid-public-key');
+          const data = await resp.json();
           if (!data.publicKey) {
-            desc.textContent = 'Push notifications not configured on server';
-            toggle.disabled = false;
+            console.error('Push not configured on server');
+            toggle.classList.remove('opacity-50');
             return;
           }
           
-          console.log('[PUSH] Got VAPID key, waiting for service worker...');
-          
-          // Get service worker registration with timeout
+          // Get service worker
           const registration = await Promise.race([
             navigator.serviceWorker.ready,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Service worker timeout')), 5000))
+            new Promise((_, rej) => setTimeout(() => rej(new Error('SW timeout')), 5000))
           ]);
           
-          console.log('[PUSH] Service worker ready, subscribing...');
-          
-          // Subscribe to push
+          // Subscribe
           const subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(data.publicKey)
           });
           
-          console.log('[PUSH] Subscribed, sending to server...');
-          
-          // Send subscription to server
-          const subResponse = await fetch('/api/push/subscribe', {
+          // Send to server
+          await fetch('/api/push/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -208,18 +368,14 @@
             })
           });
           
-          if (subResponse.ok) {
-            localStorage.setItem(`push_subscribed_${requestId}`, 'true');
-            updateNotificationUI(true);
-            toggle.disabled = false;
-          } else {
-            desc.textContent = 'Failed to save subscription';
-            toggle.disabled = false;
-          }
+          pushEnabled = true;
+          updatePushToggleUI();
+          await savePreferences();
+          
+          toggle.classList.remove('opacity-50');
         } catch (err) {
           console.error('Push subscription error:', err);
-          desc.textContent = 'Error: ' + (err.message || 'Failed to enable notifications');
-          toggle.disabled = false;
+          toggle.classList.remove('opacity-50');
         }
       }
       
@@ -229,7 +385,7 @@
           const subscription = await registration.pushManager.getSubscription();
           
           if (subscription) {
-            // Unsubscribe from server
+            await subscription.unsubscribe();
             await fetch('/api/push/unsubscribe', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -240,36 +396,28 @@
             });
           }
           
-          localStorage.removeItem(`push_subscribed_${requestId}`);
-          updateNotificationUI(false);
+          pushEnabled = false;
+          updatePushToggleUI();
+          await savePreferences();
         } catch (err) {
           console.error('Push unsubscribe error:', err);
         }
       }
       
-      function updateNotificationUI(enabled) {
-        const toggle = document.getElementById('notif-toggle');
-        const dot = document.getElementById('notif-toggle-dot');
-        const icon = document.getElementById('notif-icon');
-        const label = document.getElementById('notif-label');
-        const desc = document.getElementById('notif-desc');
+      function updatePushToggleUI() {
+        const toggle = document.getElementById('push-toggle');
+        const dot = document.getElementById('push-toggle-dot');
         
-        if (enabled) {
+        if (pushEnabled) {
           toggle.classList.remove('bg-zinc-700');
           toggle.classList.add('bg-indigo-600');
           dot.classList.remove('translate-x-1', 'bg-zinc-400');
           dot.classList.add('translate-x-6', 'bg-white');
-          icon.textContent = '🔔';
-          label.textContent = 'Notifications On';
-          desc.textContent = "You'll be notified when your print status changes";
         } else {
           toggle.classList.add('bg-zinc-700');
           toggle.classList.remove('bg-indigo-600');
           dot.classList.add('translate-x-1', 'bg-zinc-400');
           dot.classList.remove('translate-x-6', 'bg-white');
-          icon.textContent = '🔕';
-          label.textContent = 'Get Notifications';
-          desc.textContent = 'Get push notifications when your print status changes';
         }
       }
       
