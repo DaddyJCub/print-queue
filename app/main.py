@@ -58,8 +58,21 @@ os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # FastAPI app with reverse proxy support (trust X-Forwarded-* headers for HTTPS detection)
+
 app = FastAPI(title=APP_TITLE)
 app.trust_proxy_headers = True
+
+# --- Serve /sw.js from site root for PWA ---
+from fastapi.responses import FileResponse
+@app.get('/sw.js')
+async def service_worker():
+    # Adjust path if your sw.js is not at project root
+    import os
+    sw_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'sw.js'))
+    if not os.path.exists(sw_path):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail='Service worker not found')
+    return FileResponse(sw_path, media_type='application/javascript')
 
 templates = Jinja2Templates(directory="app/templates")
 
