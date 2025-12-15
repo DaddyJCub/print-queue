@@ -293,7 +293,7 @@
                 const resp = await fetch(`/api/push/test`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ request_id: requestId, email: requestEmail })
+                  body: JSON.stringify({ email: requestEmail })
                 });
                 if (resp.ok) {
                   diag.textContent = 'Test notification sent! Check your device.';
@@ -405,20 +405,28 @@
       function setupPushSection() {
         const iosHint = document.getElementById('ios-install-hint');
         const device = getDeviceType();
-        
+        // iOS-specific: Only allow push if installed as PWA
+        if (device === 'ios') {
+          if (!isInstalledPWA()) {
+            iosHint.classList.remove('hidden');
+            const toggle = document.getElementById('push-toggle');
+            toggle.classList.add('opacity-50', 'cursor-not-allowed');
+            toggle.onclick = null;
+            const desc = document.getElementById('push-desc');
+            desc.textContent = 'On iPhone/iPad, push notifications only work after installing this app to your home screen.';
+            return;
+          } else {
+            iosHint.classList.add('hidden');
+          }
+        }
         // Check if push is supported
         if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-          if (device === 'ios' && !isInstalledPWA()) {
-            // iOS not installed - show iOS hint
-            iosHint.classList.remove('hidden');
-          }
           // Disable the push toggle
           const toggle = document.getElementById('push-toggle');
           toggle.classList.add('opacity-50', 'cursor-not-allowed');
           toggle.onclick = null;
           return;
         }
-        
         // If permission denied, disable toggle
         if (Notification.permission === 'denied') {
           const toggle = document.getElementById('push-toggle');
@@ -426,7 +434,6 @@
           toggle.title = 'Notifications blocked in browser settings';
           toggle.onclick = null;
         }
-        
         // Check if we have an existing subscription
         checkPushSubscription();
       }
@@ -456,14 +463,14 @@
       
       async function subscribeToPush() {
         const toggle = document.getElementById('push-toggle');
-        
+        const diag = document.getElementById('push-diagnostics');
         try {
           toggle.classList.add('opacity-50');
-          
+          diag.textContent = '';
           // Request permission
           const permission = await Notification.requestPermission();
           if (permission !== 'granted') {
-            alert('You must allow notifications to enable push. Please check your browser settings.');
+            diag.textContent = '❌ You must allow notifications to enable push. Please check your browser settings.';
             toggle.classList.remove('opacity-50');
             return;
           }
@@ -471,67 +478,86 @@
           const resp = await fetch('/api/push/vapid-public-key');
           const data = await resp.json();
           if (!data.publicKey) {
-            alert('Push notifications are not configured on the server. Please contact the administrator.');
+            diag.textContent = '❌ Push notifications are not configured on the server. Please contact the administrator.';
             toggle.classList.remove('opacity-50');
             return;
           }
-          
           // Get service worker
-          const registration = await Promise.race([
-            navigator.serviceWorker.ready,
-            new Promise((_, rej) => setTimeout(() => rej(new Error('SW timeout')), 5000))
-          ]);
-          
+          let registration;
+          try {
+            registration = await Promise.race([
+              navigator.serviceWorker.ready,
+              new Promise((_, rej) => setTimeout(() => rej(new Error('SW timeout')), 5000))
+            ]);
+          } catch (swErr) {
+            diag.textContent = '❌ Service worker not ready. Try refreshing the page.';
+            toggle.classList.remove('opacity-50');
+            return;
+          }
           // Subscribe
-          const subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(data.publicKey)
-          });
-          
+          let subscription;
+          try {
+            subscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(data.publicKey)
+            });
+          } catch (subErr) {
+            diag.textContent = '❌ Failed to subscribe for push. This browser/device may not support push notifications.';
+            toggle.classList.remove('opacity-50');
+            return;
+          }
           // Send to server
-          await fetch('/api/push/subscribe', {
+          const serverResp = await fetch('/api/push/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              request_id: requestId,
               email: requestEmail,
               subscription: subscription.toJSON()
             })
           });
-          
+          if (!serverResp.ok) {
+            diag.textContent = '❌ Server error subscribing for push. Please try again later.';
+            toggle.classList.remove('opacity-50');
+            return;
+          }
           pushEnabled = true;
           updatePushToggleUI();
           await savePreferences();
-          
+          diag.textContent = '✅ Push notifications enabled!';
           toggle.classList.remove('opacity-50');
         } catch (err) {
-          alert('Failed to subscribe to push notifications. Please try again or check your browser settings.');
+          diag.textContent = '❌ Failed to subscribe to push notifications. See console for details.';
           console.error('Push subscription error:', err);
           toggle.classList.remove('opacity-50');
         }
       }
       
       async function unsubscribeFromPush() {
+        const diag = document.getElementById('push-diagnostics');
         try {
           const registration = await navigator.serviceWorker.ready;
           const subscription = await registration.pushManager.getSubscription();
-          
           if (subscription) {
             await subscription.unsubscribe();
-            await fetch('/api/push/unsubscribe', {
+            const resp = await fetch('/api/push/unsubscribe', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                request_id: requestId,
+                email: requestEmail,
                 endpoint: subscription.endpoint
               })
             });
+            if (!resp.ok) {
+              diag.textContent = '❌ Server error unsubscribing from push.';
+            } else {
+              diag.textContent = 'Push notifications disabled.';
+            }
           }
-          
           pushEnabled = false;
           updatePushToggleUI();
           await savePreferences();
         } catch (err) {
+          diag.textContent = '❌ Error unsubscribing from push notifications.';
           console.error('Push unsubscribe error:', err);
         }
       }
@@ -601,8 +627,8 @@
               <span class="font-semibold text-indigo-300">{{ printer_status.progress }}%</span>
             </div>
             <div class="h-3 bg-zinc-800 rounded-full overflow-hidden">
-              <div class="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500" 
-                   style="width: {{ printer_status.progress }}%"></div>
+                  <div class="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
+                    style="width: {{ printer_status.progress|float|round(1) }}%;"></div>
             </div>
           </div>
         {% endif %}

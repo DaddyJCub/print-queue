@@ -340,16 +340,14 @@ def init_db():
 
     # Push notification subscriptions
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS push_subscriptions (
-      id TEXT PRIMARY KEY,
-      request_id TEXT,
-      email TEXT,
-      endpoint TEXT NOT NULL UNIQUE,
-      p256dh TEXT NOT NULL,
-      auth TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY(request_id) REFERENCES requests(id)
-    );
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            endpoint TEXT NOT NULL UNIQUE,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
     """)
 
     conn.commit()
@@ -1598,7 +1596,7 @@ async def poll_printer_status_worker():
                         # Send push notification if user wants push
                         if user_wants_push:
                             send_push_notification(
-                                request_id=rid,
+                                email=req["requester_email"],
                                 title="🖨️ Now Printing",
                                 body=f"'{print_label}' has started printing",
                                 url=f"/my/{rid}?token={req['access_token']}"
@@ -2132,40 +2130,34 @@ def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Opt
 
 
 # ─────────────────────────── PUSH NOTIFICATIONS ───────────────────────────
-def send_push_notification(request_id: str, title: str, body: str, url: str = None):
+def send_push_notification(email: str, title: str, body: str, url: str = None):
     """
-    Send push notification to all subscriptions for a request.
+    Send push notification to all subscriptions for a user (by email).
     Silently fails if VAPID keys not configured or no subscriptions exist.
     """
     if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
         print("[PUSH] ERROR: VAPID keys are not configured. Push notifications will not be sent.")
         return
-    
     try:
         from pywebpush import webpush, WebPushException
     except ImportError:
         print("[PUSH] pywebpush not installed")
         return
-    
     conn = db()
     subs = conn.execute(
-        "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE request_id = ?",
-        (request_id,)
+        "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE email = ?",
+        (email,)
     ).fetchall()
     conn.close()
-    
     if not subs:
         return
-    
     payload = json.dumps({
         "title": title,
         "body": body,
-        "url": url or f"/queue?mine={request_id[:8]}",
+        "url": url or "/my-requests/view",  # Default to my-requests page
         "icon": "/static/icons/icon-192.png",
     })
-    
     vapid_claims = {"sub": VAPID_CLAIMS_EMAIL}
-    
     for sub in subs:
         subscription_info = {
             "endpoint": sub["endpoint"],
@@ -2181,7 +2173,7 @@ def send_push_notification(request_id: str, title: str, body: str, url: str = No
                 vapid_private_key=VAPID_PRIVATE_KEY,
                 vapid_claims=vapid_claims,
             )
-            print(f"[PUSH] Sent notification for {request_id[:8]}")
+            print(f"[PUSH] Sent notification for {email}")
         except WebPushException as e:
             print(f"[PUSH] Failed: {e}")
             # Remove invalid subscriptions (410 Gone or 404)
@@ -5157,7 +5149,7 @@ def admin_set_status(
         }
         try:
             send_push_notification(
-                request_id=rid,
+                email=req["requester_email"],
                 title=push_titles.get(to_status, "Status Update"),
                 body=push_bodies.get(to_status, f"Status changed to {to_status}"),
                 url=f"/my/{rid}?token={req['access_token']}"
@@ -5822,16 +5814,15 @@ def get_vapid_public_key():
 
 @app.post("/api/push/subscribe")
 async def subscribe_push(request: Request):
-    """Subscribe to push notifications for a request (with diagnostics logging)"""
+    """Subscribe to push notifications for a user (with diagnostics logging)"""
     try:
         data = await request.json()
         print(f"[PUSH] Subscribe attempt: {data}")
-        request_id = data.get("request_id")
         email = data.get("email", "")
         subscription = data.get("subscription", {})
-        if not request_id or not subscription:
-            print(f"[PUSH] ERROR: Missing request_id or subscription: {data}")
-            return {"error": "Missing request_id or subscription"}
+        if not email or not subscription:
+            print(f"[PUSH] ERROR: Missing email or subscription: {data}")
+            return {"error": "Missing email or subscription"}
         endpoint = subscription.get("endpoint")
         keys = subscription.get("keys", {})
         p256dh = keys.get("p256dh")
@@ -5842,17 +5833,17 @@ async def subscribe_push(request: Request):
         conn = db()
         # Check if subscription already exists for this endpoint
         existing = conn.execute(
-            "SELECT id FROM push_subscriptions WHERE endpoint = ? AND request_id = ?",
-            (endpoint, request_id)
+            "SELECT id FROM push_subscriptions WHERE endpoint = ?",
+            (endpoint,)
         ).fetchone()
         if existing:
             conn.close()
             print(f"[PUSH] Already subscribed: {endpoint}")
             return {"status": "already_subscribed"}
         conn.execute(
-            """INSERT INTO push_subscriptions (id, request_id, email, endpoint, p256dh, auth, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (str(uuid.uuid4()), request_id, email, endpoint, p256dh, auth, now_iso())
+            """INSERT INTO push_subscriptions (id, email, endpoint, p256dh, auth, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (str(uuid.uuid4()), email, endpoint, p256dh, auth, now_iso())
         )
         conn.commit()
         conn.close()
@@ -5876,29 +5867,26 @@ def push_diagnostics(request_id: str):
 
 @app.post("/api/push/unsubscribe")
 async def unsubscribe_push(request: Request):
-    """Unsubscribe from push notifications"""
+    """Unsubscribe from push notifications (per user/email)"""
     data = await request.json()
-    request_id = data.get("request_id")
+    email = data.get("email")
     endpoint = data.get("endpoint")
-    
-    if not request_id:
-        return {"error": "Missing request_id"}
-    
+    if not email:
+        return {"error": "Missing email"}
     conn = db()
     if endpoint:
         conn.execute(
-            "DELETE FROM push_subscriptions WHERE request_id = ? AND endpoint = ?",
-            (request_id, endpoint)
+            "DELETE FROM push_subscriptions WHERE email = ? AND endpoint = ?",
+            (email, endpoint)
         )
     else:
-        # Remove all subscriptions for this request
+        # Remove all subscriptions for this user
         conn.execute(
-            "DELETE FROM push_subscriptions WHERE request_id = ?",
-            (request_id,)
+            "DELETE FROM push_subscriptions WHERE email = ?",
+            (email,)
         )
     conn.commit()
     conn.close()
-    
     return {"status": "unsubscribed"}
 
 
