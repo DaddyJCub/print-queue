@@ -120,6 +120,7 @@
       <button type="button" id="cam-btn-ADVENTURER_4" class="camera-toggle mt-2 text-xs text-indigo-400 hover:text-indigo-300 tap-highlight" data-printer="ADVENTURER_4">📷 Show camera</button>
       <div id="cam-ADVENTURER_4" class="hidden mt-2">
         <img id="cam-img-ADVENTURER_4" class="w-full rounded-lg bg-zinc-800" alt="Camera" />
+        <div class="text-xs text-zinc-500 mt-1">Updates every 10 seconds</div>
       </div>
     </div>
     {% endif %}
@@ -180,6 +181,7 @@
       <button type="button" id="cam-btn-AD5X" class="camera-toggle mt-2 text-xs text-indigo-400 hover:text-indigo-300 tap-highlight" data-printer="AD5X">📷 Show camera</button>
       <div id="cam-AD5X" class="hidden mt-2">
         <img id="cam-img-AD5X" class="w-full rounded-lg bg-zinc-800" alt="Camera" />
+        <div class="text-xs text-zinc-500 mt-1">Updates every 10 seconds</div>
       </div>
     </div>
     {% endif %}
@@ -342,16 +344,15 @@
   // Camera toggle
   const camIntervals = {};
   function toggleCamera(printer) {
-    console.log('toggleCamera called for:', printer);
     const div = document.getElementById(`cam-${printer}`);
     const btn = document.getElementById(`cam-btn-${printer}`);
     const img = document.getElementById(`cam-img-${printer}`);
-    
     if (!div || !btn || !img) {
-      console.error('Camera elements not found for:', printer);
+      btn.disabled = true;
+      btn.classList.add('opacity-50', 'cursor-not-allowed');
+      btn.title = 'Camera unavailable';
       return;
     }
-    
     if (div.classList.contains('hidden')) {
       div.classList.remove('hidden');
       btn.textContent = '📷 Hide camera';
