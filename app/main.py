@@ -2816,7 +2816,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
         "counts": counts,
         "printer_status": {
             "ADVENTURER_4": printer_status.get("ADVENTURER_4", {}),
-            "P1S": printer_status.get("P1S", printer_status.get("AD5X", {})),
+            "AD5X": printer_status.get("AD5X", {}),
         },
         "version": APP_VERSION,
     })

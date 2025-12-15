@@ -83,7 +83,6 @@
       {% endif %}
       </span>
     </div>
-    <div id="printer-progress-ADVENTURER_4" class="{% if not printer_status.ADVENTURER_4.is_printing %}hidden{% endif %}">
     {% if printer_status.ADVENTURER_4.is_printing %}
     <div class="text-xs text-zinc-400 space-y-2">
       {% if printer_status.ADVENTURER_4.current_file %}
@@ -97,61 +96,92 @@
         <span class="text-emerald-300 font-semibold">{{ printer_status.ADVENTURER_4.progress }}%</span>
       </div>
       {% endif %}
-      {% if printer_status.ADVENTURER_4.eta_display %}
-      <p>ETA: <span class="text-emerald-300">{{ printer_status.ADVENTURER_4.eta_display }}</span></p>
+      {% if printer_status.ADVENTURER_4.current_layer is not none %}
+      <p>Layer: <span class="text-blue-300">{{ printer_status.ADVENTURER_4.current_layer }}/{{ printer_status.ADVENTURER_4.total_layers }}</span></p>
       {% endif %}
+      <!-- Current print details -->
+      {% if printing_by_printer.ADVENTURER_4 %}
+      {% set pit = printing_by_printer.ADVENTURER_4 %}
+      <div class="mt-2 pt-2 border-t border-zinc-700/50">
+        <div class="flex items-center justify-between mb-1">
+          <span class="font-semibold text-zinc-200">{{ pit.print_name or pit.short_id }}</span>
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-600/25 border border-emerald-500/50 text-emerald-200">#{{ pit.queue_pos }}</span>
+        </div>
+        <div class="grid grid-cols-2 gap-1 text-[11px]">
+          <span><span class="text-zinc-500">By:</span> {{ pit.requester_first }}</span>
+          <span><span class="text-zinc-500">Material:</span> {{ pit.material }}</span>
+          {% if pit.smart_eta_display %}
+          <span class="col-span-2"><span class="text-zinc-500">ETA:</span> <span class="text-emerald-300">{{ pit.smart_eta_display }}</span></span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+      <!-- Live Camera Preview -->
+      <button onclick="toggleCamera('ADVENTURER_4')" id="cam-btn-ADVENTURER_4" class="mt-2 text-xs text-indigo-400 hover:text-indigo-300 tap-highlight">📷 Show camera</button>
+      <div id="cam-ADVENTURER_4" class="hidden mt-2">
+        <img id="cam-img-ADVENTURER_4" class="w-full rounded-lg bg-zinc-800" alt="Camera" />
+      </div>
     </div>
-    {% if printer_status.ADVENTURER_4.camera_enabled %}
-    <button onclick="toggleCamera('ADVENTURER_4')" id="cam-btn-ADVENTURER_4" class="mt-2 text-xs text-indigo-400 hover:text-indigo-300 tap-highlight">📷 Show camera</button>
-    <div id="cam-ADVENTURER_4" class="hidden mt-2">
-      <img id="cam-img-ADVENTURER_4" class="w-full rounded-lg bg-zinc-800" alt="Camera" />
-    </div>
-    {% endif %}
     {% endif %}
   </div>
 
-  <!-- P1S -->
+  <!-- AD5X -->
   <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
     <div class="flex items-center justify-between mb-2">
-      <span class="font-semibold text-sm">🖨 Bambu P1S</span>
-      <span id="printer-status-P1S">
-      {% if printer_status.P1S.status %}
+      <span class="font-semibold text-sm">🖨 AD5X</span>
+      <span id="printer-status-AD5X">
+      {% if printer_status.AD5X.status %}
         <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium
-          {% if printer_status.P1S.is_printing %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
-          {% elif printer_status.P1S.status == 'READY' %}bg-green-500/20 text-green-300 border border-green-500/50
+          {% if printer_status.AD5X.is_printing %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
+          {% elif printer_status.AD5X.status == 'READY' %}bg-green-500/20 text-green-300 border border-green-500/50
           {% else %}bg-amber-500/20 text-amber-300 border border-amber-500/50{% endif %}">
-          <span class="w-1.5 h-1.5 rounded-full animate-pulse {% if printer_status.P1S.is_printing %}bg-emerald-400{% elif printer_status.P1S.status == 'READY' %}bg-green-400{% else %}bg-amber-400{% endif %}"></span>
-          {{ printer_status.P1S.status }}
+          <span class="w-1.5 h-1.5 rounded-full animate-pulse {% if printer_status.AD5X.is_printing %}bg-emerald-400{% elif printer_status.AD5X.status == 'READY' %}bg-green-400{% else %}bg-amber-400{% endif %}"></span>
+          {{ printer_status.AD5X.status }}
         </span>
       {% else %}
         <span class="px-2 py-1 rounded-lg text-xs bg-zinc-800 text-zinc-500">Offline</span>
       {% endif %}
       </span>
     </div>
-    <div id="printer-progress-P1S" class="{% if not printer_status.P1S.is_printing %}hidden{% endif %}">
-    {% if printer_status.P1S.is_printing %}
+    {% if printer_status.AD5X.is_printing %}
     <div class="text-xs text-zinc-400 space-y-2">
-      {% if printer_status.P1S.current_file %}
-      <p class="truncate text-zinc-300">📄 {{ printer_status.P1S.current_file }}</p>
+      {% if printer_status.AD5X.current_file %}
+      <p class="truncate text-zinc-300">📄 {{ printer_status.AD5X.current_file }}</p>
       {% endif %}
-      {% if printer_status.P1S.progress is not none %}
+      {% if printer_status.AD5X.progress is not none %}
       <div class="flex items-center gap-2">
         <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-          <div class="h-full bg-emerald-500 transition-all" style="width: {{ printer_status.P1S.progress }}%"></div>
+          <div class="h-full bg-emerald-500 transition-all" style="width: {{ printer_status.AD5X.progress }}%"></div>
         </div>
-        <span class="text-emerald-300 font-semibold">{{ printer_status.P1S.progress }}%</span>
+        <span class="text-emerald-300 font-semibold">{{ printer_status.AD5X.progress }}%</span>
       </div>
       {% endif %}
-      {% if printer_status.P1S.eta_display %}
-      <p>ETA: <span class="text-emerald-300">{{ printer_status.P1S.eta_display }}</span></p>
+      {% if printer_status.AD5X.current_layer is not none %}
+      <p>Layer: <span class="text-blue-300">{{ printer_status.AD5X.current_layer }}/{{ printer_status.AD5X.total_layers }}</span></p>
       {% endif %}
+      <!-- Current print details -->
+      {% if printing_by_printer.AD5X %}
+      {% set pit = printing_by_printer.AD5X %}
+      <div class="mt-2 pt-2 border-t border-zinc-700/50">
+        <div class="flex items-center justify-between mb-1">
+          <span class="font-semibold text-zinc-200">{{ pit.print_name or pit.short_id }}</span>
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-600/25 border border-emerald-500/50 text-emerald-200">#{{ pit.queue_pos }}</span>
+        </div>
+        <div class="grid grid-cols-2 gap-1 text-[11px]">
+          <span><span class="text-zinc-500">By:</span> {{ pit.requester_first }}</span>
+          <span><span class="text-zinc-500">Material:</span> {{ pit.material }}</span>
+          {% if pit.smart_eta_display %}
+          <span class="col-span-2"><span class="text-zinc-500">ETA:</span> <span class="text-emerald-300">{{ pit.smart_eta_display }}</span></span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+      <!-- Live Camera Preview -->
+      <button onclick="toggleCamera('AD5X')" id="cam-btn-AD5X" class="mt-2 text-xs text-indigo-400 hover:text-indigo-300 tap-highlight">📷 Show camera</button>
+      <div id="cam-AD5X" class="hidden mt-2">
+        <img id="cam-img-AD5X" class="w-full rounded-lg bg-zinc-800" alt="Camera" />
+      </div>
     </div>
-    {% if printer_status.P1S.camera_enabled %}
-    <button onclick="toggleCamera('P1S')" id="cam-btn-P1S" class="mt-2 text-xs text-indigo-400 hover:text-indigo-300 tap-highlight">📷 Show camera</button>
-    <div id="cam-P1S" class="hidden mt-2">
-      <img id="cam-img-P1S" class="w-full rounded-lg bg-zinc-800" alt="Camera" />
-    </div>
-    {% endif %}
     {% endif %}
   </div>
 </div>
@@ -415,7 +445,7 @@
   function updatePrinterStatus(printerStatus) {
     // Update Adventurer 4 status
     updateSinglePrinter('ADVENTURER_4', printerStatus.ADVENTURER_4 || {});
-    updateSinglePrinter('P1S', printerStatus.P1S || {});
+    updateSinglePrinter('AD5X', printerStatus.AD5X || {});
   }
   
   function updateSinglePrinter(code, status) {
