@@ -1,0 +1,442 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}Submit Request | Printellect{% endblock %}
+
+{% block nav_home %}text-white bg-zinc-800{% endblock %}
+{% block bnav_home %}active{% endblock %}
+
+{% block header_title %}New Request{% endblock %}
+
+{% block head_extra %}
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="mb-6">
+  <h1 class="text-2xl font-bold">New Print Request</h1>
+  <p class="text-zinc-400 text-sm mt-1">Submit your print job — we'll take it from here.</p>
+</div>
+
+<!-- PWA Install Card (for non-PWA users) -->
+<div id="pwa-promo-card" class="hidden mb-6 bg-gradient-to-br from-indigo-600/20 to-purple-600/10 border border-indigo-500/30 rounded-2xl p-4 card-interactive">
+  <div class="flex items-center gap-4">
+    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+      <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+      </svg>
+    </div>
+    <div class="flex-1 min-w-0">
+      <h3 class="font-semibold">Install Printellect</h3>
+      <p class="text-xs text-zinc-400">Get push notifications when your print is ready</p>
+    </div>
+    <button onclick="installPWA()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold transition tap-highlight">
+      Install
+    </button>
+  </div>
+  <!-- iOS hint -->
+  <div id="ios-hint" class="hidden mt-3 pt-3 border-t border-indigo-500/20 text-xs text-zinc-400">
+    <strong class="text-indigo-300">iPhone/iPad:</strong> Tap Share → Add to Home Screen
+  </div>
+</div>
+
+<script>
+  // Show PWA promo for non-standalone users
+  (function() {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    const dismissed = localStorage.getItem('pwa_promo_dismissed');
+    const dismissedAt = parseInt(localStorage.getItem('pwa_promo_dismissed_at') || '0');
+    const daysSince = (Date.now() - dismissedAt) / (1000 * 60 * 60 * 24);
+    
+    if (!isStandalone && (!dismissed || daysSince > 7)) {
+      const card = document.getElementById('pwa-promo-card');
+      if (card) card.classList.remove('hidden');
+      
+      // iOS detection
+      if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+        document.getElementById('ios-hint')?.classList.remove('hidden');
+      }
+    }
+  })();
+</script>
+
+{% if error %}
+<div class="mb-4 bg-red-900/30 border border-red-800 text-red-200 p-4 rounded-xl text-sm flex items-center gap-3">
+  <span class="text-xl">⚠️</span>
+  <span>{{ error }}</span>
+</div>
+{% endif %}
+
+<!-- Saved Templates -->
+{% if saved_templates and saved_templates|length > 0 %}
+<div class="mb-4 bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+  <div class="flex items-center justify-between mb-3">
+    <span class="text-sm font-medium text-zinc-300 flex items-center gap-2">
+      <span>📁</span> Saved Templates
+    </span>
+    <button type="button" onclick="toggleTemplatesPanel()" class="text-xs text-zinc-500 hover:text-zinc-300">
+      <span id="templates-toggle-text">Hide</span>
+    </button>
+  </div>
+  <div id="templates-panel" class="flex flex-wrap gap-2">
+    {% for tpl in saved_templates %}
+    <button type="button" onclick="loadTemplate('{{ tpl.id }}')"
+            class="group flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl text-sm transition tap-highlight">
+      <span>{{ tpl.name }}</span>
+      <span onclick="event.stopPropagation(); deleteTemplate('{{ tpl.id }}', '{{ tpl.name }}')" 
+            class="text-zinc-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition">×</span>
+    </button>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Request Form -->
+<form id="request-form" action="/submit" method="POST" enctype="multipart/form-data" 
+      class="space-y-4 bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 sm:p-6">
+  
+  <!-- Contact Info -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div>
+      <label class="block text-sm font-medium text-zinc-300 mb-1.5">Name</label>
+      <input name="requester_name" id="requester-name" required
+             value="{{ (form.requester_name if form is defined else '') }}"
+             onchange="updateRushPricing()"
+             onkeyup="debounceUpdatePricing()"
+             class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-zinc-300 mb-1.5">Email</label>
+      <input name="requester_email" type="email" required
+             value="{{ (form.requester_email if form is defined else '') }}"
+             class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
+    </div>
+  </div>
+
+  <!-- Print Name -->
+  <div>
+    <label class="block text-sm font-medium text-zinc-300 mb-1.5">What are you printing?</label>
+    <input name="print_name" required placeholder="e.g., Dragon Statue, Phone Holder..."
+           value="{{ (form.print_name if form is defined else '') }}"
+           class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
+  </div>
+
+  <!-- Printer & Material -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div>
+      <label class="block text-sm font-medium text-zinc-300 mb-1.5">Printer</label>
+      <select name="printer" id="printer-select" required 
+              class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition">
+        {% set selected_printer = (form.printer if form is defined and form.printer else 'ANY') %}
+        {% for val, label in printers %}
+          <option value="{{val}}" {% if val == selected_printer %}selected{% endif %}>{{label}}</option>
+        {% endfor %}
+      </select>
+      {% if printer_suggestions and printer_suggestions.suggested %}
+      <div class="mt-2 text-xs inline-flex items-center gap-2 px-2 py-1 rounded-lg bg-emerald-900/30 border border-emerald-800/50 text-emerald-300">
+        💡 {{ printer_suggestions.reason }}
+        <button type="button" onclick="document.getElementById('printer-select').value='{{ printer_suggestions.suggested }}'" 
+                class="text-emerald-200 hover:text-white underline">Use it</button>
+      </div>
+      {% endif %}
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-zinc-300 mb-1.5">Material</label>
+      <select name="material" required 
+              class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition">
+        {% set selected_material = (form.material if form is defined and form.material else 'ANY') %}
+        {% for val, label in materials %}
+          <option value="{{val}}" {% if val == selected_material %}selected{% endif %}>{{label}}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <!-- Colors -->
+  <div>
+    <label class="block text-sm font-medium text-zinc-300 mb-1.5">Colors</label>
+    <input name="colors" placeholder="Black / White / Red (comma-separated)" required
+           value="{{ (form.colors if form is defined else '') }}"
+           class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
+  </div>
+
+  <!-- Link -->
+  <div>
+    <label class="block text-sm font-medium text-zinc-300 mb-1.5">Link <span class="text-zinc-500 font-normal">(optional)</span></label>
+    <input name="link_url" placeholder="https://printables.com/..."
+           value="{{ (form.link_url if form is defined else '') }}"
+           class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
+  </div>
+
+  <!-- File Upload -->
+  <div>
+    <label class="block text-sm font-medium text-zinc-300 mb-1.5">Upload file <span class="text-zinc-500 font-normal">(optional)</span></label>
+    <div id="file-drop-zone" 
+         class="w-full border-2 border-dashed border-zinc-700 hover:border-indigo-500 rounded-xl p-6 text-center cursor-pointer transition-all tap-highlight"
+         ondrop="handleDrop(event)" 
+         ondragover="handleDragOver(event)" 
+         ondragleave="handleDragLeave(event)"
+         onclick="document.getElementById('file-input').click()">
+      <div id="drop-zone-content">
+        <div class="w-12 h-12 mx-auto mb-3 rounded-xl bg-zinc-800 flex items-center justify-center">
+          <svg class="w-6 h-6 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+        </div>
+        <p class="text-zinc-400 text-sm">Drag & drop or <span class="text-indigo-400">browse</span></p>
+        <p class="text-xs text-zinc-500 mt-1">STL, 3MF, OBJ, GCODE • Max 200MB</p>
+      </div>
+      <div id="file-preview" class="hidden">
+        <div class="flex items-center justify-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-indigo-600/20 border border-indigo-500/50 flex items-center justify-center">
+            <span class="text-lg">📄</span>
+          </div>
+          <div class="text-left">
+            <p id="file-name" class="text-zinc-200 font-medium text-sm"></p>
+            <p id="file-size" class="text-xs text-zinc-500"></p>
+          </div>
+          <button type="button" onclick="clearFile(event)" class="ml-2 text-red-400 hover:text-red-300 text-sm tap-highlight">✕</button>
+        </div>
+      </div>
+    </div>
+    <input id="file-input" name="upload" type="file" accept=".stl,.3mf,.obj,.gcode,.step,.stp,.fpp,.zip" class="hidden" onchange="handleFileSelect(this)" />
+    <p class="text-xs text-zinc-500 mt-2">You must provide either a link or file upload.</p>
+  </div>
+
+  <!-- Notes -->
+  <div>
+    <label class="block text-sm font-medium text-zinc-300 mb-1.5">Notes <span class="text-zinc-500 font-normal">(optional)</span></label>
+    <textarea name="notes" rows="3"
+              placeholder="Color placement, scale, infill needs, supports, deadlines..."
+              class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition resize-none">{{ (form.notes if form is defined else '') }}</textarea>
+  </div>
+
+  <!-- Priority Rush -->
+  {% if rush_settings and rush_settings.enabled %}
+  <div class="bg-gradient-to-r from-amber-900/30 to-orange-900/20 border border-amber-700/50 rounded-xl p-4">
+    <label class="flex items-start gap-3 cursor-pointer tap-highlight">
+      <input type="checkbox" name="rush_request" id="rush-checkbox" value="1" 
+             {% if form is defined and form.rush_request %}checked{% endif %}
+             onchange="toggleRushPayment()"
+             class="mt-1 w-5 h-5 rounded border-amber-600 text-amber-500 focus:ring-amber-500" />
+      <div class="flex-1">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-semibold text-amber-200">🚀 Priority Rush</span>
+          <span id="rush-price-badge" class="px-2 py-0.5 bg-amber-600/30 border border-amber-500/50 text-amber-200 text-xs rounded-lg">${{ rush_settings.fee }}</span>
+        </div>
+        <p class="text-xs text-zinc-400 mt-1">
+          Skip the queue! 
+          <span id="rush-queue-reason" class="text-amber-400/70">({{ rush_settings.queue_reason }}{% if rush_settings.queue_addon > 0 %} +${{ rush_settings.queue_addon }}{% endif %})</span>
+        </p>
+      </div>
+    </label>
+    
+    <!-- Payment Section -->
+    <div id="rush-payment-section" class="mt-4 pt-4 border-t border-amber-800/50 hidden">
+      <div class="bg-zinc-950/60 rounded-xl p-4">
+        <p class="text-sm text-zinc-300 mb-3">
+          Send <span id="rush-price-amount" class="font-bold text-amber-300">${{ rush_settings.fee }}</span> via Venmo:
+        </p>
+        <div class="flex items-center gap-3 bg-zinc-900 rounded-lg px-4 py-3 mb-3">
+          <span class="text-2xl">📱</span>
+          <div>
+            <div class="font-mono text-lg text-amber-300">{{ rush_settings.venmo_handle }}</div>
+            <div class="text-xs text-zinc-500">Include your email in the note</div>
+          </div>
+        </div>
+        <label class="flex items-center gap-2 cursor-pointer tap-highlight">
+          <input type="checkbox" name="rush_payment_confirmed" id="rush-payment-confirm" value="1"
+                 {% if form is defined and form.rush_payment_confirmed %}checked{% endif %}
+                 class="w-4 h-4 rounded border-amber-600 text-amber-500 focus:ring-amber-500" />
+          <span class="text-sm text-amber-200">I have sent payment</span>
+        </label>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Turnstile -->
+  {% if turnstile_site_key %}
+  <div class="cf-turnstile" data-sitekey="{{turnstile_site_key}}" data-theme="dark"></div>
+  {% else %}
+  <div class="text-xs text-amber-300/70 bg-amber-900/20 border border-amber-800/30 rounded-lg px-3 py-2">
+    ⚠️ Turnstile not configured — submissions allowed for testing.
+  </div>
+  {% endif %}
+
+  <!-- Submit -->
+  <div class="flex gap-3 pt-2">
+    <button type="submit" class="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition py-3.5 font-semibold tap-highlight">
+      Submit Request
+    </button>
+    <button type="button" onclick="showSaveTemplateModal()" 
+            class="rounded-xl bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-900 transition px-4 py-3.5 font-semibold tap-highlight"
+            title="Save as template">
+      💾
+    </button>
+  </div>
+</form>
+
+<!-- Admin & Feedback Links -->
+<div class="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
+  <a class="text-zinc-400 hover:text-indigo-400 transition" href="/admin/login">Admin</a>
+  <div class="flex items-center gap-4">
+    <a href="/feedback?type=bug" class="hover:text-red-400 transition" title="Report Bug">🐛 Bug</a>
+    <a href="/feedback?type=suggestion" class="hover:text-yellow-400 transition" title="Suggestion">💡 Idea</a>
+    <a href="/changelog" class="hover:text-indigo-400 transition">v{{ version }}</a>
+  </div>
+</div>
+
+<!-- Save Template Modal -->
+<div id="save-template-modal" class="fixed inset-0 bg-black/80 flex items-end sm:items-center justify-center z-50 hidden" onclick="hideSaveTemplateModal()">
+  <div class="bg-zinc-900 border border-zinc-700 rounded-t-2xl sm:rounded-2xl p-6 w-full sm:max-w-md" onclick="event.stopPropagation()" style="padding-bottom: calc(var(--safe-area-bottom, 0px) + 1.5rem);">
+    <h3 class="text-lg font-bold mb-4">💾 Save as Template</h3>
+    <input type="text" id="template-name-input" placeholder="Template name..."
+           class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 mb-4" />
+    <div class="flex gap-3">
+      <button onclick="saveTemplate()" class="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 py-3 font-semibold tap-highlight">
+        Save
+      </button>
+      <button onclick="hideSaveTemplateModal()" class="rounded-xl bg-zinc-700 hover:bg-zinc-600 px-6 py-3 tap-highlight">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // File upload handlers
+  function handleDragOver(e) {
+    e.preventDefault();
+    document.getElementById('file-drop-zone').classList.add('border-indigo-500', 'bg-indigo-500/10');
+  }
+  function handleDragLeave(e) {
+    e.preventDefault();
+    document.getElementById('file-drop-zone').classList.remove('border-indigo-500', 'bg-indigo-500/10');
+  }
+  function handleDrop(e) {
+    e.preventDefault();
+    handleDragLeave(e);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      document.getElementById('file-input').files = files;
+      showFilePreview(files[0]);
+    }
+  }
+  function handleFileSelect(input) {
+    if (input.files.length > 0) showFilePreview(input.files[0]);
+  }
+  function showFilePreview(file) {
+    document.getElementById('drop-zone-content').classList.add('hidden');
+    document.getElementById('file-preview').classList.remove('hidden');
+    document.getElementById('file-name').textContent = file.name;
+    document.getElementById('file-size').textContent = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+  }
+  function clearFile(e) {
+    e.stopPropagation();
+    document.getElementById('file-input').value = '';
+    document.getElementById('drop-zone-content').classList.remove('hidden');
+    document.getElementById('file-preview').classList.add('hidden');
+  }
+
+  // Rush pricing
+  let pricingDebounceTimer = null;
+  function toggleRushPayment() {
+    const checkbox = document.getElementById('rush-checkbox');
+    const section = document.getElementById('rush-payment-section');
+    if (checkbox?.checked) section?.classList.remove('hidden');
+    else section?.classList.add('hidden');
+  }
+  function debounceUpdatePricing() {
+    clearTimeout(pricingDebounceTimer);
+    pricingDebounceTimer = setTimeout(updateRushPricing, 300);
+  }
+  async function updateRushPricing() {
+    const name = document.getElementById('requester-name')?.value || '';
+    try {
+      const response = await fetch(`/api/rush-pricing?name=${encodeURIComponent(name)}`);
+      const data = await response.json();
+      const badge = document.getElementById('rush-price-badge');
+      const amount = document.getElementById('rush-price-amount');
+      const reason = document.getElementById('rush-queue-reason');
+      if (badge) badge.textContent = `$${data.price}`;
+      if (amount) amount.textContent = `$${data.price}`;
+      if (reason) {
+        let txt = `(${data.queue_reason}`;
+        if (data.queue_addon > 0) txt += ` +$${data.queue_addon}`;
+        reason.textContent = txt + ')';
+      }
+    } catch (e) { console.error('Pricing fetch failed:', e); }
+  }
+
+  // Templates
+  function toggleTemplatesPanel() {
+    const panel = document.getElementById('templates-panel');
+    const text = document.getElementById('templates-toggle-text');
+    const hidden = panel.classList.toggle('hidden');
+    text.textContent = hidden ? 'Show' : 'Hide';
+  }
+  async function loadTemplate(id) {
+    try {
+      const tpl = await fetch(`/api/templates/${id}`).then(r => r.json());
+      const form = document.getElementById('request-form');
+      if (tpl.requester_name) form.querySelector('[name="requester_name"]').value = tpl.requester_name;
+      if (tpl.requester_email) form.querySelector('[name="requester_email"]').value = tpl.requester_email;
+      if (tpl.printer) form.querySelector('[name="printer"]').value = tpl.printer;
+      if (tpl.material) form.querySelector('[name="material"]').value = tpl.material;
+      if (tpl.colors) form.querySelector('[name="colors"]').value = tpl.colors;
+      if (tpl.notes) form.querySelector('[name="notes"]').value = tpl.notes;
+      updateRushPricing();
+      showToast(`Loaded: ${tpl.name}`);
+    } catch (e) { showToast('Failed to load', true); }
+  }
+  async function deleteTemplate(id, name) {
+    if (!confirm(`Delete "${name}"?`)) return;
+    try {
+      await fetch(`/api/templates/${id}`, { method: 'DELETE' });
+      location.reload();
+    } catch (e) { showToast('Delete failed', true); }
+  }
+  function showSaveTemplateModal() {
+    document.getElementById('save-template-modal').classList.remove('hidden');
+    document.getElementById('template-name-input').focus();
+  }
+  function hideSaveTemplateModal() {
+    document.getElementById('save-template-modal').classList.add('hidden');
+  }
+  async function saveTemplate() {
+    const name = document.getElementById('template-name-input').value.trim();
+    if (!name) { showToast('Enter a name', true); return; }
+    const form = document.getElementById('request-form');
+    const fd = new FormData();
+    fd.append('name', name);
+    ['requester_name', 'requester_email', 'printer', 'material', 'colors', 'notes'].forEach(f => {
+      fd.append(f, form.querySelector(`[name="${f}"]`)?.value || '');
+    });
+    try {
+      const r = await fetch('/api/templates', { method: 'POST', body: fd }).then(r => r.json());
+      if (r.success) { hideSaveTemplateModal(); showToast(`Saved: ${name}`); setTimeout(() => location.reload(), 1000); }
+    } catch (e) { showToast('Save failed', true); }
+  }
+
+  // Toast
+  function showToast(msg, err = false) {
+    const t = document.createElement('div');
+    t.className = `fixed bottom-20 sm:bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-auto px-4 py-3 rounded-xl text-sm font-medium z-50 text-center ${err ? 'bg-red-600' : 'bg-emerald-600'}`;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+  }
+
+  // Init
+  document.addEventListener('DOMContentLoaded', function() {
+    toggleRushPayment();
+    if (document.getElementById('requester-name')?.value) updateRushPricing();
+    document.getElementById('template-name-input')?.addEventListener('keypress', e => {
+      if (e.key === 'Enter') { e.preventDefault(); saveTemplate(); }
+    });
+  });
+</script>
+{% endblock %}

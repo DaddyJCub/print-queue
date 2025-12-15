@@ -1,0 +1,211 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{% block title %}Printellect{% endblock %}</title>
+  
+  <!-- PWA Support -->
+  <link rel="manifest" href="/static/manifest.json" />
+  <meta name="theme-color" content="#18181b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Printellect" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  {% block head_extra %}{% endblock %}
+  
+  <style>
+    /* PWA Safe Areas */
+    :root {
+      --safe-area-top: env(safe-area-inset-top, 0px);
+      --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+      --nav-height: 64px;
+    }
+    
+    /* Smooth page transitions */
+    .page-content {
+      animation: fadeIn 0.15s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* Bottom nav styling */
+    .bottom-nav {
+      padding-bottom: calc(var(--safe-area-bottom) + 8px);
+    }
+    
+    /* Main content padding when bottom nav visible */
+    .has-bottom-nav {
+      padding-bottom: calc(var(--nav-height) + var(--safe-area-bottom) + 16px);
+    }
+    
+    /* Active nav indicator */
+    .nav-item.active {
+      color: #818cf8;
+    }
+    .nav-item.active .nav-icon {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+      transform: scale(1.05);
+    }
+    
+    /* Tap highlight */
+    .tap-highlight {
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tap-highlight:active {
+      transform: scale(0.97);
+    }
+    
+    /* Pull to refresh indicator area */
+    body {
+      overscroll-behavior-y: contain;
+    }
+    
+    /* Card press effect */
+    .card-interactive {
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+    .card-interactive:active {
+      transform: scale(0.98);
+    }
+    
+    /* Hide scrollbar but keep functionality */
+    .hide-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .hide-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+  
+  <script>
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/sw.js').catch(err => console.log('SW registration failed:', err));
+      });
+    }
+    
+    // Check if running as PWA
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    document.documentElement.classList.toggle('pwa-mode', isStandalone);
+    
+    // PWA Install prompt handling
+    let deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      // Show install prompts
+      document.querySelectorAll('.pwa-install-trigger').forEach(el => el.classList.remove('hidden'));
+    });
+    
+    function installPWA() {
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        deferredInstallPrompt.userChoice.then((choice) => {
+          if (choice.outcome === 'accepted') {
+            document.querySelectorAll('.pwa-install-trigger').forEach(el => el.classList.add('hidden'));
+          }
+          deferredInstallPrompt = null;
+        });
+      }
+    }
+  </script>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+  <!-- Top Header Bar (fixed on PWA) -->
+  <header class="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-lg border-b border-zinc-800/50" style="padding-top: var(--safe-area-top);">
+    <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+      <!-- Left: Logo/Back -->
+      <div class="flex items-center gap-3">
+        {% block header_left %}
+        <a href="/" class="flex items-center gap-2 tap-highlight">
+          <img src="/static/icons/logo.png" alt="Printellect" class="h-8 w-8 rounded-lg">
+          <span class="font-bold text-lg hidden sm:block">Printellect</span>
+        </a>
+        {% endblock %}
+      </div>
+      
+      <!-- Center: Page Title (mobile) -->
+      <div class="flex-1 text-center sm:hidden">
+        <h1 class="font-semibold text-sm truncate px-2">{% block header_title %}{% endblock %}</h1>
+      </div>
+      
+      <!-- Right: Actions -->
+      <div class="flex items-center gap-2">
+        {% block header_right %}
+        <!-- Desktop nav links -->
+        <nav class="hidden sm:flex items-center gap-1">
+          <a href="/" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition {% block nav_home %}{% endblock %}">Submit</a>
+          <a href="/queue" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition {% block nav_queue %}{% endblock %}">Queue</a>
+          <a href="/store" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition {% block nav_store %}{% endblock %}">Store</a>
+          <a href="/my-requests" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition {% block nav_myrequests %}{% endblock %}">My Requests</a>
+        </nav>
+        {% endblock %}
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="page-content has-bottom-nav sm:pb-6">
+    <div class="max-w-6xl mx-auto px-4 py-4">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <!-- Bottom Navigation (Mobile PWA Style) -->
+  <nav class="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-lg border-t border-zinc-800 sm:hidden bottom-nav">
+    <div class="grid grid-cols-4 gap-1 px-2 pt-2">
+      <a href="/" class="nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_home %}{% endblock %}">
+        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+        </div>
+        <span class="text-xs mt-1">Submit</span>
+      </a>
+      <a href="/queue" class="nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_queue %}{% endblock %}">
+        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+          </svg>
+        </div>
+        <span class="text-xs mt-1">Queue</span>
+      </a>
+      <a href="/store" class="nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_store %}{% endblock %}">
+        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+          </svg>
+        </div>
+        <span class="text-xs mt-1">Store</span>
+      </a>
+      <a href="/my-requests" id="my-requests-nav" class="nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_myrequests %}{% endblock %}">
+        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        </div>
+        <span class="text-xs mt-1">My Prints</span>
+      </a>
+    </div>
+  </nav>
+  
+  <script>
+    // Update My Requests nav link if user has token
+    const savedToken = localStorage.getItem('my_requests_token');
+    if (savedToken) {
+      const navLink = document.getElementById('my-requests-nav');
+      if (navLink) navLink.href = '/my-requests/view?token=' + savedToken;
+    }
+  </script>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

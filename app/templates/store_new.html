@@ -1,0 +1,100 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}Store | Printellect{% endblock %}
+
+{% block nav_store %}text-white bg-zinc-800{% endblock %}
+{% block bnav_store %}active{% endblock %}
+
+{% block header_title %}Store{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="mb-4">
+  <h1 class="text-2xl font-bold">Print Store</h1>
+  <p class="text-zinc-400 text-sm mt-1">Pre-made prints ready to request</p>
+</div>
+
+<!-- Category Pills (horizontal scroll on mobile) -->
+{% if categories %}
+<div class="mb-4 -mx-4 px-4 overflow-x-auto hide-scrollbar">
+  <div class="flex gap-2 pb-2">
+    <a href="/store" 
+       class="flex-shrink-0 rounded-full px-4 py-2 text-sm font-medium transition tap-highlight
+              {% if not selected_category %}bg-indigo-600 text-white{% else %}bg-zinc-800 text-zinc-300 active:bg-zinc-700{% endif %}">
+      All
+    </a>
+    {% for cat in categories %}
+    <a href="/store?category={{ cat }}" 
+       class="flex-shrink-0 rounded-full px-4 py-2 text-sm font-medium transition tap-highlight
+              {% if selected_category == cat %}bg-indigo-600 text-white{% else %}bg-zinc-800 text-zinc-300 active:bg-zinc-700{% endif %}">
+      {{ cat }}
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Items Grid -->
+{% if items %}
+<div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+  {% for item in items %}
+  <a href="/store/item/{{ item.id }}" 
+     class="bg-zinc-900/60 border border-zinc-800 rounded-xl overflow-hidden hover:border-indigo-500/50 transition card-interactive group">
+    <!-- Image -->
+    <div class="aspect-square bg-zinc-800 flex items-center justify-center overflow-hidden">
+      {% if item.image_data %}
+      <img src="data:image/jpeg;base64,{{ item.image_data }}" 
+           alt="{{ item.name }}" 
+           class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+      {% else %}
+      <span class="text-4xl sm:text-5xl text-zinc-600">🖨️</span>
+      {% endif %}
+    </div>
+    
+    <!-- Info -->
+    <div class="p-3 sm:p-4">
+      <h3 class="font-semibold text-sm sm:text-base line-clamp-1 group-hover:text-indigo-300 transition">{{ item.name }}</h3>
+      
+      <div class="flex items-center gap-2 mt-2 text-xs text-zinc-500">
+        {% if item.category %}
+        <span class="px-1.5 py-0.5 rounded bg-zinc-800">{{ item.category }}</span>
+        {% endif %}
+        <span>{{ item.material }}</span>
+      </div>
+      
+      {% if item.estimated_time_minutes %}
+      <p class="text-xs text-zinc-500 mt-2">⏱ ~{{ (item.estimated_time_minutes / 60)|round(1) }}h</p>
+      {% endif %}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-16 bg-zinc-900/40 border border-zinc-800 rounded-2xl">
+  <div class="text-5xl mb-4">🏪</div>
+  {% if selected_category %}
+  <h3 class="font-semibold mb-2">No items in "{{ selected_category }}"</h3>
+  <p class="text-zinc-500 text-sm mb-4">Try browsing all items</p>
+  <a href="/store" class="inline-block rounded-xl bg-indigo-600 hover:bg-indigo-500 px-6 py-3 font-semibold tap-highlight">
+    View All
+  </a>
+  {% else %}
+  <h3 class="font-semibold mb-2">Store coming soon!</h3>
+  <p class="text-zinc-500 text-sm mb-4">Pre-made prints will appear here</p>
+  <a href="/" class="inline-block rounded-xl bg-indigo-600 hover:bg-indigo-500 px-6 py-3 font-semibold tap-highlight">
+    Custom Request
+  </a>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- Footer -->
+<div class="mt-8 pt-4 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
+  <span>{{ items|length if items else 0 }} items</span>
+  <div class="flex items-center gap-4">
+    <a href="/feedback?type=bug" class="hover:text-red-400 transition">🐛</a>
+    <a href="/feedback?type=suggestion" class="hover:text-yellow-400 transition">💡</a>
+    <a href="/changelog" class="hover:text-indigo-400 transition">v{{ version }}</a>
+  </div>
+</div>
+{% endblock %}

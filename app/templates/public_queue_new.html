@@ -1,0 +1,586 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}Print Queue | Printellect{% endblock %}
+
+{% block nav_queue %}text-white bg-zinc-800{% endblock %}
+{% block bnav_queue %}active{% endblock %}
+
+{% block header_title %}Queue{% endblock %}
+
+{% block content %}
+<!-- Quick Stats -->
+<div id="queue-stats" class="grid grid-cols-4 gap-2 mb-4">
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+    <div class="text-xl font-bold text-zinc-200">{{ counts["NEW"] }}</div>
+    <div class="text-xs text-zinc-500">New</div>
+  </div>
+  <div class="bg-indigo-900/30 border border-indigo-700/50 rounded-xl p-3 text-center">
+    <div class="text-xl font-bold text-indigo-300">{{ counts["APPROVED"] }}</div>
+    <div class="text-xs text-indigo-400">Queued</div>
+  </div>
+  <div class="bg-emerald-900/30 border border-emerald-700/50 rounded-xl p-3 text-center">
+    <div class="text-xl font-bold text-emerald-300">{{ counts["PRINTING"] }}</div>
+    <div class="text-xs text-emerald-400">Printing</div>
+  </div>
+  <div class="bg-amber-900/30 border border-amber-700/50 rounded-xl p-3 text-center">
+    <div class="text-xl font-bold text-amber-300">{{ counts["DONE"] }}</div>
+    <div class="text-xs text-amber-400">Done</div>
+  </div>
+</div>
+
+<!-- Your Position (if tracking a request) -->
+{% if mine and my_pos %}
+<div id="my-position" class="mb-4 bg-gradient-to-r from-indigo-600/20 to-purple-600/10 border border-indigo-500/40 rounded-2xl p-4">
+  <div class="flex items-center justify-between">
+    <div>
+      <p class="text-sm text-zinc-400">Your Request</p>
+      <p class="font-mono font-semibold text-indigo-200">{{ mine }}</p>
+    </div>
+    <div class="text-right">
+      <p class="text-sm text-zinc-400">Position</p>
+      <p class="text-3xl font-bold text-indigo-300 position-number">#{{ my_pos }}</p>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- PWA Install (collapsed, non-intrusive) -->
+<div id="pwa-promo" class="hidden mb-4">
+  <button onclick="installPWA()" class="w-full flex items-center justify-between bg-zinc-900/60 border border-zinc-700 rounded-xl px-4 py-3 tap-highlight">
+    <div class="flex items-center gap-3">
+      <span class="text-xl">📲</span>
+      <span class="text-sm">Install app for notifications</span>
+    </div>
+    <span class="text-xs text-indigo-400">Install →</span>
+  </button>
+</div>
+<script>
+  (function() {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    if (!isStandalone && !localStorage.getItem('pwa_promo_dismissed')) {
+      document.getElementById('pwa-promo')?.classList.remove('hidden');
+    }
+  })();
+</script>
+
+<!-- Printer Status Cards -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+  <!-- Adventurer 4 -->
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+    <div class="flex items-center justify-between mb-2">
+      <span class="font-semibold text-sm">🖨 Adventurer 4</span>
+      <span id="printer-status-ADVENTURER_4">
+      {% if printer_status.ADVENTURER_4.status %}
+        <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium
+          {% if printer_status.ADVENTURER_4.is_printing %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
+          {% elif printer_status.ADVENTURER_4.status == 'READY' %}bg-green-500/20 text-green-300 border border-green-500/50
+          {% else %}bg-amber-500/20 text-amber-300 border border-amber-500/50{% endif %}">
+          <span class="w-1.5 h-1.5 rounded-full animate-pulse {% if printer_status.ADVENTURER_4.is_printing %}bg-emerald-400{% elif printer_status.ADVENTURER_4.status == 'READY' %}bg-green-400{% else %}bg-amber-400{% endif %}"></span>
+          {{ printer_status.ADVENTURER_4.status }}
+        </span>
+      {% else %}
+        <span class="px-2 py-1 rounded-lg text-xs bg-zinc-800 text-zinc-500">Offline</span>
+      {% endif %}
+      </span>
+    </div>
+    <div id="printer-progress-ADVENTURER_4" class="{% if not printer_status.ADVENTURER_4.is_printing %}hidden{% endif %}">
+    {% if printer_status.ADVENTURER_4.is_printing %}
+    <div class="text-xs text-zinc-400 space-y-2">
+      {% if printer_status.ADVENTURER_4.current_file %}
+      <p class="truncate text-zinc-300">📄 {{ printer_status.ADVENTURER_4.current_file }}</p>
+      {% endif %}
+      {% if printer_status.ADVENTURER_4.progress is not none %}
+      <div class="flex items-center gap-2">
+        <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+          <div class="h-full bg-emerald-500 transition-all" style="width: {{ printer_status.ADVENTURER_4.progress }}%"></div>
+        </div>
+        <span class="text-emerald-300 font-semibold">{{ printer_status.ADVENTURER_4.progress }}%</span>
+      </div>
+      {% endif %}
+      {% if printer_status.ADVENTURER_4.eta_display %}
+      <p>ETA: <span class="text-emerald-300">{{ printer_status.ADVENTURER_4.eta_display }}</span></p>
+      {% endif %}
+    </div>
+    {% if printer_status.ADVENTURER_4.camera_enabled %}
+    <button onclick="toggleCamera('ADVENTURER_4')" id="cam-btn-ADVENTURER_4" class="mt-2 text-xs text-indigo-400 hover:text-indigo-300 tap-highlight">📷 Show camera</button>
+    <div id="cam-ADVENTURER_4" class="hidden mt-2">
+      <img id="cam-img-ADVENTURER_4" class="w-full rounded-lg bg-zinc-800" alt="Camera" />
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  <!-- P1S -->
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+    <div class="flex items-center justify-between mb-2">
+      <span class="font-semibold text-sm">🖨 Bambu P1S</span>
+      <span id="printer-status-P1S">
+      {% if printer_status.P1S.status %}
+        <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium
+          {% if printer_status.P1S.is_printing %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
+          {% elif printer_status.P1S.status == 'READY' %}bg-green-500/20 text-green-300 border border-green-500/50
+          {% else %}bg-amber-500/20 text-amber-300 border border-amber-500/50{% endif %}">
+          <span class="w-1.5 h-1.5 rounded-full animate-pulse {% if printer_status.P1S.is_printing %}bg-emerald-400{% elif printer_status.P1S.status == 'READY' %}bg-green-400{% else %}bg-amber-400{% endif %}"></span>
+          {{ printer_status.P1S.status }}
+        </span>
+      {% else %}
+        <span class="px-2 py-1 rounded-lg text-xs bg-zinc-800 text-zinc-500">Offline</span>
+      {% endif %}
+      </span>
+    </div>
+    <div id="printer-progress-P1S" class="{% if not printer_status.P1S.is_printing %}hidden{% endif %}">
+    {% if printer_status.P1S.is_printing %}
+    <div class="text-xs text-zinc-400 space-y-2">
+      {% if printer_status.P1S.current_file %}
+      <p class="truncate text-zinc-300">📄 {{ printer_status.P1S.current_file }}</p>
+      {% endif %}
+      {% if printer_status.P1S.progress is not none %}
+      <div class="flex items-center gap-2">
+        <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+          <div class="h-full bg-emerald-500 transition-all" style="width: {{ printer_status.P1S.progress }}%"></div>
+        </div>
+        <span class="text-emerald-300 font-semibold">{{ printer_status.P1S.progress }}%</span>
+      </div>
+      {% endif %}
+      {% if printer_status.P1S.eta_display %}
+      <p>ETA: <span class="text-emerald-300">{{ printer_status.P1S.eta_display }}</span></p>
+      {% endif %}
+    </div>
+    {% if printer_status.P1S.camera_enabled %}
+    <button onclick="toggleCamera('P1S')" id="cam-btn-P1S" class="mt-2 text-xs text-indigo-400 hover:text-indigo-300 tap-highlight">📷 Show camera</button>
+    <div id="cam-P1S" class="hidden mt-2">
+      <img id="cam-img-P1S" class="w-full rounded-lg bg-zinc-800" alt="Camera" />
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<!-- Active Queue -->
+<div class="mb-4">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="font-semibold">Active Queue</h2>
+    <div class="flex items-center gap-2 text-xs">
+      <span id="refresh-indicator" class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-900/30 border border-emerald-800/50 text-emerald-300">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        Live
+      </span>
+      <button onclick="toggleAutoRefresh()" id="refresh-toggle" class="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 tap-highlight">⏸</button>
+    </div>
+  </div>
+  
+  <!-- Mobile Cards View -->
+  <div id="queue-mobile" class="sm:hidden space-y-3">
+  {% if active_queue %}
+    {% for r in active_queue %}
+    <div class="bg-zinc-900/60 border {% if r.is_mine %}border-indigo-500/50 bg-indigo-900/20{% elif r.status == 'PRINTING' %}border-emerald-500/50 bg-emerald-900/10{% else %}border-zinc-800{% endif %} rounded-xl p-4 card-interactive">
+      <div class="flex items-start justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <span class="text-lg font-bold text-zinc-500">#{{ r.queue_pos }}</span>
+          <div>
+            <p class="font-semibold text-zinc-200">{{ r.print_name or r.short_id }}</p>
+            <p class="text-xs text-zinc-500">{{ r.requester_first }}</p>
+          </div>
+        </div>
+        <span class="px-2 py-1 rounded-lg text-xs font-medium
+          {% if r.status == 'PRINTING' %}bg-emerald-600/25 border border-emerald-500/50 text-emerald-300
+          {% elif r.status == 'APPROVED' %}bg-indigo-600/25 border border-indigo-500/50 text-indigo-300
+          {% elif r.status == 'NEEDS_INFO' %}bg-orange-600/25 border border-orange-500/50 text-orange-300
+          {% else %}bg-zinc-800 text-zinc-400{% endif %}">
+          {% if r.status == 'NEEDS_INFO' %}WAITING{% else %}{{ r.status }}{% endif %}
+        </span>
+      </div>
+      <div class="flex items-center gap-3 text-xs text-zinc-400">
+        <span>{{ r.printer }}</span>
+        <span>•</span>
+        <span>{{ r.material }}</span>
+        <span>•</span>
+        <span>{{ r.colors }}</span>
+      </div>
+      {% if r.status == 'PRINTING' and r.printer_progress is not none %}
+      <div class="mt-2 flex items-center gap-2">
+        <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+          <div class="h-full bg-emerald-500" style="width: {{ r.printer_progress }}%"></div>
+        </div>
+        <span class="text-xs text-emerald-300">{{ r.printer_progress }}%</span>
+      </div>
+      {% elif r.estimated_wait_minutes %}
+      <p class="mt-2 text-xs text-zinc-400">Est. wait: {{ r.estimated_wait_minutes // 60 }}h {{ r.estimated_wait_minutes % 60 }}m</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="text-center py-12 bg-zinc-900/30 rounded-2xl border border-zinc-800">
+      <div class="text-4xl mb-3">🎉</div>
+      <h3 class="text-lg font-semibold text-zinc-300">Queue is empty!</h3>
+      <p class="text-zinc-500 mt-1">No prints waiting.</p>
+    </div>
+  {% endif %}
+  </div>
+  
+  <!-- Desktop Table View -->
+  <div id="queue-desktop" class="hidden sm:block overflow-x-auto bg-zinc-900/60 rounded-2xl border border-zinc-800">
+    <table class="w-full text-sm">
+      <thead class="text-zinc-400 bg-zinc-950/40 text-xs">
+        <tr class="border-b border-zinc-800">
+          <th class="text-left p-3">#</th>
+          <th class="text-left p-3">Print</th>
+          <th class="text-left p-3">Requester</th>
+          <th class="text-left p-3">Printer</th>
+          <th class="text-left p-3">Material</th>
+          <th class="text-left p-3">Status</th>
+          <th class="text-left p-3">Progress</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% if active_queue %}
+        {% for r in active_queue %}
+        <tr class="border-b border-zinc-800 {% if r.is_mine %}bg-indigo-900/20{% elif r.status == 'PRINTING' %}bg-emerald-900/10{% else %}hover:bg-zinc-950/40{% endif %} transition">
+          <td class="p-3 text-zinc-500 font-semibold">{{ r.queue_pos }}</td>
+          <td class="p-3">
+            <span class="font-medium text-zinc-200">{{ r.print_name or r.short_id }}</span>
+            {% if r.print_name %}<span class="block text-xs text-zinc-500 font-mono">{{ r.short_id }}</span>{% endif %}
+          </td>
+          <td class="p-3 text-zinc-400">{{ r.requester_first }}</td>
+          <td class="p-3 text-zinc-400">{{ r.printer }}</td>
+          <td class="p-3 text-zinc-400">{{ r.material }}</td>
+          <td class="p-3">
+            <span class="px-2 py-1 rounded-lg text-xs font-medium
+              {% if r.status == 'PRINTING' %}bg-emerald-600/25 border border-emerald-500/50 text-emerald-300
+              {% elif r.status == 'APPROVED' %}bg-indigo-600/25 border border-indigo-500/50 text-indigo-300
+              {% elif r.status == 'NEEDS_INFO' %}bg-orange-600/25 border border-orange-500/50 text-orange-300
+              {% else %}bg-zinc-800 text-zinc-400{% endif %}">
+              {% if r.status == 'NEEDS_INFO' %}WAITING{% else %}{{ r.status }}{% endif %}
+            </span>
+          </td>
+          <td class="p-3">
+            {% if r.status == 'PRINTING' and r.printer_progress is not none %}
+            <div class="flex items-center gap-2">
+              <div class="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div class="h-full bg-emerald-500" style="width: {{ r.printer_progress }}%"></div>
+              </div>
+              <span class="text-xs text-emerald-300">{{ r.printer_progress }}%</span>
+            </div>
+            {% elif r.estimated_wait_minutes %}
+            <span class="text-xs text-zinc-400">~{{ r.estimated_wait_minutes // 60 }}h {{ r.estimated_wait_minutes % 60 }}m</span>
+            {% else %}
+            <span class="text-xs text-emerald-300">Up next!</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Done Items -->
+<div id="done-items" class="mb-4 {% if not done_items %}hidden{% endif %}">
+  <h2 class="font-semibold mb-3 text-amber-300">✅ Ready for Pickup</h2>
+  <div class="done-list space-y-2">
+  {% if done_items %}
+    {% for r in done_items %}
+    <div class="flex items-center justify-between bg-amber-900/20 border border-amber-700/30 rounded-xl px-4 py-3 {% if r.is_mine %}ring-1 ring-amber-500/50{% endif %}">
+      <div class="flex items-center gap-3">
+        <span class="text-lg">📦</span>
+        <div>
+          <p class="font-medium text-zinc-200">{{ r.print_name or r.short_id }}</p>
+          <p class="text-xs text-zinc-500">{{ r.requester_first }} • {{ r.printer }}</p>
+        </div>
+      </div>
+      <span class="text-xs text-amber-300">Ready!</span>
+    </div>
+    {% endfor %}
+  {% endif %}
+  </div>
+</div>
+
+<!-- Footer Links -->
+<div class="pt-4 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
+  <span id="last-update">Updated just now</span>
+  <div class="flex items-center gap-4">
+    <a href="/feedback?type=bug" class="hover:text-red-400 transition">🐛</a>
+    <a href="/feedback?type=suggestion" class="hover:text-yellow-400 transition">💡</a>
+    <a href="/changelog" class="hover:text-indigo-400 transition">v{{ version }}</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Camera toggle
+  const camIntervals = {};
+  function toggleCamera(printer) {
+    const div = document.getElementById(`cam-${printer}`);
+    const btn = document.getElementById(`cam-btn-${printer}`);
+    const img = document.getElementById(`cam-img-${printer}`);
+    if (div.classList.contains('hidden')) {
+      div.classList.remove('hidden');
+      btn.textContent = '📷 Hide camera';
+      img.src = `/api/camera/${printer}/snapshot?t=${Date.now()}`;
+      camIntervals[printer] = setInterval(() => {
+        img.src = `/api/camera/${printer}/snapshot?t=${Date.now()}`;
+      }, 10000);
+    } else {
+      div.classList.add('hidden');
+      btn.textContent = '📷 Show camera';
+      clearInterval(camIntervals[printer]);
+    }
+  }
+  
+  // AJAX-based auto-refresh (no full page reload)
+  let autoRefresh = true;
+  let refreshInterval = null;
+  const mine = '{{ mine or "" }}';
+  
+  function startAutoRefresh() {
+    refreshInterval = setInterval(refreshQueueData, 30000);
+  }
+  
+  function toggleAutoRefresh() {
+    autoRefresh = !autoRefresh;
+    const btn = document.getElementById('refresh-toggle');
+    const ind = document.getElementById('refresh-indicator');
+    btn.textContent = autoRefresh ? '⏸' : '▶';
+    ind.style.opacity = autoRefresh ? '1' : '0.5';
+    
+    if (autoRefresh) {
+      refreshQueueData(); // Immediate refresh when re-enabled
+      startAutoRefresh();
+    } else {
+      clearInterval(refreshInterval);
+    }
+  }
+  
+  async function refreshQueueData() {
+    if (!autoRefresh) return;
+    
+    try {
+      const url = mine ? `/api/queue?mine=${mine}` : '/api/queue';
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      // Update stats
+      updateStats(data.counts);
+      
+      // Update my position if tracking
+      updateMyPosition(data.my_pos);
+      
+      // Update printer status cards
+      updatePrinterStatus(data.printer_status);
+      
+      // Update queue list
+      updateQueueList(data.active_queue, data.done_items);
+      
+      // Update timestamp
+      document.getElementById('last-update').textContent = 'Updated just now';
+      
+    } catch (e) {
+      console.error('Refresh failed:', e);
+    }
+  }
+  
+  function updateStats(counts) {
+    const statsEl = document.getElementById('queue-stats');
+    if (statsEl) {
+      statsEl.innerHTML = `
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+          <div class="text-xl font-bold text-zinc-200">${counts.NEW || 0}</div>
+          <div class="text-xs text-zinc-500">New</div>
+        </div>
+        <div class="bg-indigo-900/30 border border-indigo-700/50 rounded-xl p-3 text-center">
+          <div class="text-xl font-bold text-indigo-300">${counts.APPROVED || 0}</div>
+          <div class="text-xs text-indigo-400">Queued</div>
+        </div>
+        <div class="bg-emerald-900/30 border border-emerald-700/50 rounded-xl p-3 text-center">
+          <div class="text-xl font-bold text-emerald-300">${counts.PRINTING || 0}</div>
+          <div class="text-xs text-emerald-400">Printing</div>
+        </div>
+        <div class="bg-amber-900/30 border border-amber-700/50 rounded-xl p-3 text-center">
+          <div class="text-xl font-bold text-amber-300">${counts.DONE || 0}</div>
+          <div class="text-xs text-amber-400">Done</div>
+        </div>
+      `;
+    }
+  }
+  
+  function updateMyPosition(pos) {
+    const el = document.getElementById('my-position');
+    if (el && pos) {
+      el.querySelector('.position-number').textContent = '#' + pos;
+    }
+  }
+  
+  function updatePrinterStatus(printerStatus) {
+    // Update Adventurer 4 status
+    updateSinglePrinter('ADVENTURER_4', printerStatus.ADVENTURER_4 || {});
+    updateSinglePrinter('P1S', printerStatus.P1S || {});
+  }
+  
+  function updateSinglePrinter(code, status) {
+    const statusEl = document.getElementById(`printer-status-${code}`);
+    if (!statusEl) return;
+    
+    if (status.status) {
+      let badgeClass = 'bg-amber-500/20 text-amber-300 border-amber-500/50';
+      let dotClass = 'bg-amber-400';
+      
+      if (status.is_printing) {
+        badgeClass = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50';
+        dotClass = 'bg-emerald-400';
+      } else if (status.status === 'READY') {
+        badgeClass = 'bg-green-500/20 text-green-300 border-green-500/50';
+        dotClass = 'bg-green-400';
+      }
+      
+      statusEl.innerHTML = `
+        <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium ${badgeClass} border">
+          <span class="w-1.5 h-1.5 rounded-full animate-pulse ${dotClass}"></span>
+          ${status.status}
+        </span>
+      `;
+      
+      // Update progress if printing
+      const progressEl = document.getElementById(`printer-progress-${code}`);
+      if (progressEl && status.is_printing && status.progress !== null) {
+        progressEl.innerHTML = `
+          <div class="flex items-center gap-2">
+            <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div class="h-full bg-emerald-500 transition-all" style="width: ${status.progress}%"></div>
+            </div>
+            <span class="text-emerald-300 font-semibold">${status.progress}%</span>
+          </div>
+        `;
+        progressEl.classList.remove('hidden');
+      } else if (progressEl) {
+        progressEl.classList.add('hidden');
+      }
+    } else {
+      statusEl.innerHTML = `<span class="px-2 py-1 rounded-lg text-xs bg-zinc-800 text-zinc-500">Offline</span>`;
+    }
+  }
+  
+  function updateQueueList(activeQueue, doneItems) {
+    const mobileEl = document.getElementById('queue-mobile');
+    const desktopEl = document.getElementById('queue-desktop');
+    
+    if (!mobileEl || !desktopEl) return;
+    
+    if (activeQueue.length === 0) {
+      mobileEl.innerHTML = `
+        <div class="text-center py-12 bg-zinc-900/30 rounded-2xl border border-zinc-800">
+          <div class="text-4xl mb-3">🎉</div>
+          <h3 class="text-lg font-semibold text-zinc-300">Queue is empty!</h3>
+          <p class="text-zinc-500 mt-1">No prints waiting.</p>
+        </div>
+      `;
+      desktopEl.innerHTML = mobileEl.innerHTML;
+      return;
+    }
+    
+    // Mobile cards
+    mobileEl.innerHTML = activeQueue.map(r => `
+      <div class="bg-zinc-900/60 border ${r.is_mine ? 'border-indigo-500/50 bg-indigo-900/20' : r.status === 'PRINTING' ? 'border-emerald-500/50 bg-emerald-900/10' : 'border-zinc-800'} rounded-xl p-4 card-interactive">
+        <div class="flex items-start justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <span class="text-lg font-bold text-zinc-500">#${r.queue_pos}</span>
+            <div>
+              <p class="font-semibold text-zinc-200">${r.print_name || r.short_id}</p>
+              <p class="text-xs text-zinc-500">${r.requester_first}</p>
+            </div>
+          </div>
+          <span class="px-2 py-1 rounded-lg text-xs font-medium ${getStatusClass(r.status)}">
+            ${r.status === 'NEEDS_INFO' ? 'WAITING' : r.status}
+          </span>
+        </div>
+        <div class="flex items-center gap-3 text-xs text-zinc-400">
+          <span>${r.printer}</span>
+          <span>•</span>
+          <span>${r.material}</span>
+          <span>•</span>
+          <span>${r.colors}</span>
+        </div>
+        ${r.status === 'PRINTING' && r.printer_progress !== null ? `
+        <div class="mt-2 flex items-center gap-2">
+          <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div class="h-full bg-emerald-500" style="width: ${r.printer_progress}%"></div>
+          </div>
+          <span class="text-xs text-emerald-300">${r.printer_progress}%</span>
+        </div>
+        ` : ''}
+      </div>
+    `).join('');
+    
+    // Desktop table
+    desktopEl.querySelector('tbody').innerHTML = activeQueue.map(r => `
+      <tr class="border-b border-zinc-800 ${r.is_mine ? 'bg-indigo-900/20' : r.status === 'PRINTING' ? 'bg-emerald-900/10' : 'hover:bg-zinc-950/40'} transition">
+        <td class="p-3 text-zinc-500 font-semibold">${r.queue_pos}</td>
+        <td class="p-3">
+          <span class="font-medium text-zinc-200">${r.print_name || r.short_id}</span>
+          ${r.print_name ? `<span class="block text-xs text-zinc-500 font-mono">${r.short_id}</span>` : ''}
+        </td>
+        <td class="p-3 text-zinc-400">${r.requester_first}</td>
+        <td class="p-3 text-zinc-400">${r.printer}</td>
+        <td class="p-3 text-zinc-400">${r.material}</td>
+        <td class="p-3">
+          <span class="px-2 py-1 rounded-lg text-xs font-medium ${getStatusClass(r.status)}">
+            ${r.status === 'NEEDS_INFO' ? 'WAITING' : r.status}
+          </span>
+        </td>
+        <td class="p-3">
+          ${r.status === 'PRINTING' && r.printer_progress !== null ? `
+          <div class="flex items-center gap-2">
+            <div class="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div class="h-full bg-emerald-500" style="width: ${r.printer_progress}%"></div>
+            </div>
+            <span class="text-xs text-emerald-300">${r.printer_progress}%</span>
+          </div>
+          ` : '<span class="text-xs text-emerald-300">Up next!</span>'}
+        </td>
+      </tr>
+    `).join('');
+    
+    // Update done items
+    const doneEl = document.getElementById('done-items');
+    if (doneEl) {
+      if (doneItems.length > 0) {
+        doneEl.classList.remove('hidden');
+        doneEl.querySelector('.done-list').innerHTML = doneItems.map(r => `
+          <div class="flex items-center justify-between bg-amber-900/20 border border-amber-700/30 rounded-xl px-4 py-3 ${r.is_mine ? 'ring-1 ring-amber-500/50' : ''}">
+            <div class="flex items-center gap-3">
+              <span class="text-lg">📦</span>
+              <div>
+                <p class="font-medium text-zinc-200">${r.print_name || r.short_id}</p>
+                <p class="text-xs text-zinc-500">${r.requester_first} • ${r.printer}</p>
+              </div>
+            </div>
+            <span class="text-xs text-amber-300">Ready!</span>
+          </div>
+        `).join('');
+      } else {
+        doneEl.classList.add('hidden');
+      }
+    }
+  }
+  
+  function getStatusClass(status) {
+    switch(status) {
+      case 'PRINTING': return 'bg-emerald-600/25 border border-emerald-500/50 text-emerald-300';
+      case 'APPROVED': return 'bg-indigo-600/25 border border-indigo-500/50 text-indigo-300';
+      case 'NEEDS_INFO': return 'bg-orange-600/25 border border-orange-500/50 text-orange-300';
+      default: return 'bg-zinc-800 text-zinc-400';
+    }
+  }
+  
+  // Start auto-refresh
+  startAutoRefresh();
+  
+  // Update saved token link
+  const savedToken = localStorage.getItem('my_requests_token');
+  if (savedToken) {
+    const link = document.getElementById('my-requests-nav');
+    if (link) link.href = '/my-requests/view?token=' + savedToken;
+  }
+</script>
+{% endblock %}

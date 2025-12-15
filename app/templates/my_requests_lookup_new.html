@@ -1,0 +1,277 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}My Requests | Printellect{% endblock %}
+
+{% block nav_myrequests %}text-white bg-zinc-800{% endblock %}
+{% block bnav_myrequests %}active{% endblock %}
+
+{% block header_title %}My Requests{% endblock %}
+
+{% block head_extra %}
+<script>
+  // Check URL params before page renders
+  const urlParams = new URLSearchParams(window.location.search);
+  
+  if (urlParams.get('logout') === '1') {
+    localStorage.removeItem('my_requests_token');
+    localStorage.removeItem('my_requests_email');
+    window.history.replaceState({}, '', '/my-requests');
+  } else if (urlParams.get('token')) {
+    window.location.href = '/my-requests/view?token=' + urlParams.get('token');
+  } else {
+    const savedToken = localStorage.getItem('my_requests_token');
+    const hasError = urlParams.get('error');
+    const hasSent = urlParams.get('sent');
+    if (savedToken && !hasError && !hasSent) {
+      window.location.href = '/my-requests/view?token=' + savedToken;
+    }
+  }
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto">
+  <!-- Header -->
+  <div class="text-center mb-6">
+    <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+      <svg class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      </svg>
+    </div>
+    <h1 class="text-2xl font-bold">My Print Requests</h1>
+  </div>
+
+  {% if sent %}
+  <!-- Success Message -->
+  <div class="bg-emerald-600/20 border border-emerald-500/50 rounded-2xl p-5 mb-6">
+    <div class="flex items-center gap-3 mb-2">
+      <span class="text-2xl">✉️</span>
+      <span class="font-semibold text-emerald-300">Check Your Email</span>
+    </div>
+    <p class="text-sm text-zinc-300">
+      We've sent a magic link to your email. Click it to view all your requests.
+    </p>
+    <p class="text-xs text-zinc-500 mt-3">
+      Link expires in 30 days. Check spam if you don't see it.
+    </p>
+  </div>
+  {% endif %}
+
+  {% if error == 'invalid' %}
+  <div class="bg-red-600/20 border border-red-500/50 rounded-xl p-4 mb-6 flex items-center gap-3">
+    <span class="text-xl">⚠️</span>
+    <span class="text-red-300 text-sm">Please enter a valid email address.</span>
+  </div>
+  {% elif error == 'expired' %}
+  <div class="bg-orange-600/20 border border-orange-500/50 rounded-xl p-4 mb-6 flex items-center gap-3">
+    <span class="text-xl">⏰</span>
+    <span class="text-orange-300 text-sm">Session expired. Please request a new link.</span>
+  </div>
+  <script>
+    localStorage.removeItem('my_requests_token');
+    localStorage.removeItem('my_requests_email');
+  </script>
+  {% elif error == 'invalid_code' %}
+  <div class="bg-red-600/20 border border-red-500/50 rounded-xl p-4 mb-6 flex items-center gap-3">
+    <span class="text-xl">❌</span>
+    <span class="text-red-300 text-sm">Invalid or expired code. Please try again.</span>
+  </div>
+  {% endif %}
+
+  <!-- Tab Switcher -->
+  <div class="flex mb-4 bg-zinc-900 rounded-xl p-1">
+    <button onclick="showTab('email')" id="tab-email" class="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition tab-active">
+      📧 Email
+    </button>
+    <button onclick="showTab('code')" id="tab-code" class="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition text-zinc-400">
+      🔢 Sync Code
+    </button>
+  </div>
+
+  <!-- Email Login Form -->
+  <div id="form-email" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+    <p class="text-sm text-zinc-400 mb-4">Enter your email to receive a magic link</p>
+    <form method="POST" action="/my-requests">
+      <div class="mb-4">
+        <input 
+          type="email" 
+          name="email" 
+          placeholder="your@email.com"
+          required
+          class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3.5 text-lg focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"
+        />
+      </div>
+      
+      <button 
+        type="submit"
+        class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition py-3.5 font-semibold tap-highlight"
+      >
+        Send Magic Link
+      </button>
+    </form>
+  </div>
+
+  <!-- Code Entry Form (for PWA sync) -->
+  <div id="form-code" class="hidden bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+    <p class="text-sm text-zinc-400 mb-4">Already logged in on another device? Enter the 6-digit sync code shown there.</p>
+    
+    <div class="flex gap-2 mb-4 justify-center">
+      <input type="text" maxlength="1" pattern="[0-9]" inputmode="numeric" class="code-input w-12 h-14 text-center text-2xl font-mono rounded-xl border border-zinc-700 bg-zinc-950 focus:border-indigo-500 focus:outline-none" />
+      <input type="text" maxlength="1" pattern="[0-9]" inputmode="numeric" class="code-input w-12 h-14 text-center text-2xl font-mono rounded-xl border border-zinc-700 bg-zinc-950 focus:border-indigo-500 focus:outline-none" />
+      <input type="text" maxlength="1" pattern="[0-9]" inputmode="numeric" class="code-input w-12 h-14 text-center text-2xl font-mono rounded-xl border border-zinc-700 bg-zinc-950 focus:border-indigo-500 focus:outline-none" />
+      <span class="text-zinc-600 text-2xl self-center">-</span>
+      <input type="text" maxlength="1" pattern="[0-9]" inputmode="numeric" class="code-input w-12 h-14 text-center text-2xl font-mono rounded-xl border border-zinc-700 bg-zinc-950 focus:border-indigo-500 focus:outline-none" />
+      <input type="text" maxlength="1" pattern="[0-9]" inputmode="numeric" class="code-input w-12 h-14 text-center text-2xl font-mono rounded-xl border border-zinc-700 bg-zinc-950 focus:border-indigo-500 focus:outline-none" />
+      <input type="text" maxlength="1" pattern="[0-9]" inputmode="numeric" class="code-input w-12 h-14 text-center text-2xl font-mono rounded-xl border border-zinc-700 bg-zinc-950 focus:border-indigo-500 focus:outline-none" />
+    </div>
+    
+    <button 
+      onclick="verifyCode()"
+      id="verify-btn"
+      disabled
+      class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 transition py-3.5 font-semibold tap-highlight"
+    >
+      Verify Code
+    </button>
+    
+    <p id="code-error" class="hidden text-red-400 text-sm text-center mt-3"></p>
+    <p id="code-success" class="hidden text-emerald-400 text-sm text-center mt-3">✓ Syncing...</p>
+  </div>
+
+  <!-- How to get a code -->
+  <div id="code-help" class="hidden mt-4 bg-zinc-900/40 border border-zinc-800 rounded-xl p-4">
+    <h3 class="font-medium text-sm mb-2">📱 How to get a sync code</h3>
+    <ol class="text-xs text-zinc-400 space-y-1.5 list-decimal list-inside">
+      <li>Open Printellect in your browser (not the app)</li>
+      <li>Go to <strong>My Requests</strong> and log in with email</li>
+      <li>Tap <strong>"Sync to App"</strong> to see your code</li>
+      <li>Enter the code here within 10 minutes</li>
+    </ol>
+  </div>
+</div>
+
+<style>
+  .tab-active {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white;
+  }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showTab(tab) {
+  const emailTab = document.getElementById('tab-email');
+  const codeTab = document.getElementById('tab-code');
+  const emailForm = document.getElementById('form-email');
+  const codeForm = document.getElementById('form-code');
+  const codeHelp = document.getElementById('code-help');
+  
+  if (tab === 'email') {
+    emailTab.classList.add('tab-active');
+    emailTab.classList.remove('text-zinc-400');
+    codeTab.classList.remove('tab-active');
+    codeTab.classList.add('text-zinc-400');
+    emailForm.classList.remove('hidden');
+    codeForm.classList.add('hidden');
+    codeHelp.classList.add('hidden');
+  } else {
+    codeTab.classList.add('tab-active');
+    codeTab.classList.remove('text-zinc-400');
+    emailTab.classList.remove('tab-active');
+    emailTab.classList.add('text-zinc-400');
+    codeForm.classList.remove('hidden');
+    emailForm.classList.add('hidden');
+    codeHelp.classList.remove('hidden');
+    // Focus first input
+    document.querySelector('.code-input')?.focus();
+  }
+}
+
+// Code input handling
+const codeInputs = document.querySelectorAll('.code-input');
+codeInputs.forEach((input, idx) => {
+  input.addEventListener('input', (e) => {
+    const val = e.target.value.replace(/[^0-9]/g, '');
+    e.target.value = val;
+    if (val && idx < codeInputs.length - 1) {
+      codeInputs[idx + 1].focus();
+    }
+    checkCodeComplete();
+  });
+  
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Backspace' && !e.target.value && idx > 0) {
+      codeInputs[idx - 1].focus();
+    }
+  });
+  
+  input.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const paste = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9]/g, '');
+    for (let i = 0; i < Math.min(paste.length, 6); i++) {
+      codeInputs[i].value = paste[i];
+    }
+    checkCodeComplete();
+    if (paste.length >= 6) codeInputs[5].focus();
+  });
+});
+
+function checkCodeComplete() {
+  const code = Array.from(codeInputs).map(i => i.value).join('');
+  document.getElementById('verify-btn').disabled = code.length !== 6;
+}
+
+async function verifyCode() {
+  const code = Array.from(codeInputs).map(i => i.value).join('');
+  const btn = document.getElementById('verify-btn');
+  const errorEl = document.getElementById('code-error');
+  const successEl = document.getElementById('code-success');
+  
+  btn.disabled = true;
+  btn.textContent = 'Verifying...';
+  errorEl.classList.add('hidden');
+  successEl.classList.add('hidden');
+  
+  try {
+    const formData = new FormData();
+    formData.append('code', code);
+    
+    const response = await fetch('/api/verify-code', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await response.json();
+    
+    if (data.success) {
+      // Save token and redirect
+      localStorage.setItem('my_requests_token', data.token);
+      localStorage.setItem('my_requests_email', data.email);
+      successEl.classList.remove('hidden');
+      setTimeout(() => {
+        window.location.href = '/my-requests/view?token=' + data.token;
+      }, 500);
+    } else {
+      errorEl.textContent = data.error || 'Invalid code';
+      errorEl.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = 'Verify Code';
+      // Clear inputs
+      codeInputs.forEach(i => i.value = '');
+      codeInputs[0].focus();
+    }
+  } catch (e) {
+    errorEl.textContent = 'Connection error. Please try again.';
+    errorEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Verify Code';
+  }
+}
+
+// Check if we're in the PWA and show code tab by default
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+if (isStandalone) {
+  showTab('code');
+}
+</script>
+{% endblock %}

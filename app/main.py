@@ -274,10 +274,17 @@ def init_db():
       id TEXT PRIMARY KEY,
       email TEXT NOT NULL,
       token TEXT NOT NULL UNIQUE,
+      short_code TEXT,
       created_at TEXT NOT NULL,
       expires_at TEXT NOT NULL
     );
     """)
+    
+    # Add short_code column if not exists (migration for existing DBs)
+    try:
+        cur.execute("ALTER TABLE email_lookup_tokens ADD COLUMN short_code TEXT")
+    except:
+        pass  # Column already exists
 
     # Store items - pre-made prints people can request
     cur.execute("""
@@ -2320,7 +2327,7 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any]):
     # Get saved templates
     saved_templates = get_request_templates()
     
-    return templates.TemplateResponse("request_form.html", {
+    return templates.TemplateResponse("request_form_new.html", {
         "request": request,
         "turnstile_site_key": TURNSTILE_SITE_KEY,
         "printers": PRINTERS,
@@ -2551,7 +2558,7 @@ async def submit(
         send_email(admin_emails, subject, text, html)
 
     # Show thanks page with portal link
-    return templates.TemplateResponse("thanks.html", {
+    return templates.TemplateResponse("thanks_new.html", {
         "request": request,
         "rid": rid,
         "print_name": print_name.strip() if print_name else None,
@@ -2797,7 +2804,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
         if it["status"] in counts:
             counts[it["status"]] += 1
 
-    return templates.TemplateResponse("public_queue.html", {
+    return templates.TemplateResponse("public_queue_new.html", {
         "request": request,
         "items": items,  # All items for backwards compat
         "active_queue": active_queue,  # PRINTING + APPROVED items with continuous numbering
@@ -3224,7 +3231,7 @@ def my_requests_lookup(request: Request, sent: Optional[str] = None, error: Opti
     if token:
         return RedirectResponse(url=f"/my-requests/view?token={token}", status_code=302)
     
-    return templates.TemplateResponse("my_requests_lookup.html", {
+    return templates.TemplateResponse("my_requests_lookup_new.html", {
         "request": request,
         "sent": sent,
         "error": error,
@@ -3252,22 +3259,24 @@ def my_requests_send_link(request: Request, email: str = Form(...)):
         # Don't reveal whether email exists - just say "sent"
         return RedirectResponse(url="/my-requests?sent=1", status_code=303)
     
-    # Generate magic link token (expires in 24 hours)
+    # Generate magic link token (expires in 30 days)
     token_id = str(uuid.uuid4())
     token = secrets.token_urlsafe(32)
+    # Generate a 6-digit short code for PWA sync (expires in 10 minutes)
+    short_code = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
     created = now_iso()
     
-    # Calculate expiry (24 hours from now)
+    # Calculate expiry (30 days from now for token)
     from datetime import timedelta
-    expiry = (datetime.utcnow() + timedelta(hours=24)).isoformat(timespec="seconds") + "Z"
+    expiry = (datetime.utcnow() + timedelta(days=30)).isoformat(timespec="seconds") + "Z"
     
     # Clean up old tokens for this email
     conn.execute("DELETE FROM email_lookup_tokens WHERE email = ?", (email,))
     
-    # Insert new token
+    # Insert new token with short code
     conn.execute(
-        "INSERT INTO email_lookup_tokens (id, email, token, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-        (token_id, email, token, created, expiry)
+        "INSERT INTO email_lookup_tokens (id, email, token, short_code, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (token_id, email, token, short_code, created, expiry)
     )
     conn.commit()
     conn.close()
@@ -3275,7 +3284,7 @@ def my_requests_send_link(request: Request, email: str = Form(...)):
     # Send email with magic link
     magic_link = f"{BASE_URL}/my-requests/view?token={token}"
     subject = f"[{APP_TITLE}] Your Print Requests"
-    text = f"Click here to view all your print requests:\n\n{magic_link}\n\nThis link expires in 24 hours.\n\nIf you didn't request this, you can ignore this email."
+    text = f"Click here to view all your print requests:\n\n{magic_link}\n\nThis link expires in 30 days.\n\nIf you didn't request this, you can ignore this email."
     html = build_email_html(
         title="View Your Requests",
         subtitle="Click below to see all your print requests",
@@ -3286,7 +3295,7 @@ def my_requests_send_link(request: Request, email: str = Form(...)):
         cta_url=magic_link,
         cta_label="View My Requests",
         header_color="#6366f1",
-        footer_note="This link expires in 24 hours. If you didn't request this, you can safely ignore this email.",
+        footer_note="This link expires in 30 days. If you didn't request this, you can safely ignore this email.",
     )
     send_email([email], subject, text, html)
     
@@ -3305,7 +3314,7 @@ async def my_requests_view(request: Request, token: str):
     
     if not token_row:
         conn.close()
-        return templates.TemplateResponse("my_requests_lookup.html", {
+        return templates.TemplateResponse("my_requests_lookup_new.html", {
             "request": request,
             "error": "expired",
             "version": APP_VERSION,
@@ -3318,7 +3327,7 @@ async def my_requests_view(request: Request, token: str):
         conn.execute("DELETE FROM email_lookup_tokens WHERE token = ?", (token,))
         conn.commit()
         conn.close()
-        return templates.TemplateResponse("my_requests_lookup.html", {
+        return templates.TemplateResponse("my_requests_lookup_new.html", {
             "request": request,
             "error": "expired",
             "version": APP_VERSION,
@@ -3397,13 +3406,209 @@ async def my_requests_view(request: Request, token: str):
         
         enriched_requests.append(req_dict)
     
-    return templates.TemplateResponse("my_requests_list.html", {
+    return templates.TemplateResponse("my_requests_list_new.html", {
         "request": request,
         "email": email,
         "requests_list": enriched_requests,
         "token": token,  # Keep token for refresh
         "version": APP_VERSION,
     })
+
+
+# API endpoint to verify short code (for PWA session sync)
+@app.post("/api/verify-code")
+def verify_short_code(code: str = Form(...)):
+    """Verify a 6-digit short code and return the token for PWA sync"""
+    code = code.strip()
+    
+    if not code or len(code) != 6 or not code.isdigit():
+        return {"success": False, "error": "Invalid code format"}
+    
+    conn = db()
+    
+    # Find token by short code (only valid for 10 minutes after creation)
+    from datetime import timedelta
+    ten_mins_ago = (datetime.utcnow() - timedelta(minutes=10)).isoformat(timespec="seconds") + "Z"
+    
+    token_row = conn.execute(
+        """SELECT token, email, expires_at FROM email_lookup_tokens 
+           WHERE short_code = ? AND created_at > ?""",
+        (code, ten_mins_ago)
+    ).fetchone()
+    
+    if not token_row:
+        conn.close()
+        return {"success": False, "error": "Invalid or expired code"}
+    
+    # Check token hasn't expired
+    expiry = datetime.fromisoformat(token_row["expires_at"].replace("Z", "+00:00"))
+    if datetime.utcnow().replace(tzinfo=expiry.tzinfo) > expiry:
+        conn.close()
+        return {"success": False, "error": "Session expired"}
+    
+    # Clear the short code after use (one-time use)
+    conn.execute("UPDATE email_lookup_tokens SET short_code = NULL WHERE short_code = ?", (code,))
+    conn.commit()
+    conn.close()
+    
+    return {
+        "success": True, 
+        "token": token_row["token"],
+        "email": token_row["email"]
+    }
+
+
+# API endpoint to generate a new short code for an existing session
+@app.post("/api/generate-sync-code")
+def generate_sync_code(token: str = Form(...)):
+    """Generate a new 6-digit code for an authenticated session"""
+    conn = db()
+    
+    token_row = conn.execute(
+        "SELECT id, expires_at FROM email_lookup_tokens WHERE token = ?", (token,)
+    ).fetchone()
+    
+    if not token_row:
+        conn.close()
+        return {"success": False, "error": "Invalid session"}
+    
+    # Check not expired
+    expiry = datetime.fromisoformat(token_row["expires_at"].replace("Z", "+00:00"))
+    if datetime.utcnow().replace(tzinfo=expiry.tzinfo) > expiry:
+        conn.close()
+        return {"success": False, "error": "Session expired"}
+    
+    # Generate new short code
+    short_code = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
+    
+    # Update the token with new short code and refresh created_at for 10-min window
+    conn.execute(
+        "UPDATE email_lookup_tokens SET short_code = ?, created_at = ? WHERE id = ?",
+        (short_code, now_iso(), token_row["id"])
+    )
+    conn.commit()
+    conn.close()
+    
+    return {"success": True, "code": short_code, "expires_in": 600}  # 10 minutes in seconds
+
+
+# ─────────────────────────── QUEUE API ───────────────────────────
+
+@app.get("/api/queue")
+async def queue_data_api(mine: Optional[str] = None):
+    """JSON API for queue data (used for AJAX refresh)"""
+    conn = db()
+    rows = conn.execute(
+        "SELECT id, requester_name, print_name, printer, material, colors, status, special_notes, print_time_minutes, turnaround_minutes, printing_started_at "
+        "FROM requests "
+        "WHERE status NOT IN (?, ?, ?) "
+        "ORDER BY created_at ASC",
+        ("PICKED_UP", "REJECTED", "CANCELLED")
+    ).fetchall()
+    conn.close()
+
+    items = []
+    
+    # Fetch current printer status
+    printer_status = {}
+    for printer_code in ["ADVENTURER_4", "AD5X", "P1S"]:
+        try:
+            printer_api = get_printer_api(printer_code)
+            if printer_api:
+                status = await printer_api.get_status()
+                progress = await printer_api.get_percent_complete()
+                extended = await printer_api.get_extended_status()
+                if status:
+                    machine_status = status.get("MachineStatus", "UNKNOWN")
+                    printer_status[printer_code] = {
+                        "status": machine_status.replace("_FROM_SD", ""),
+                        "progress": progress,
+                        "is_printing": machine_status in ["BUILDING", "BUILDING_FROM_SD", "RUNNING", "PRINTING"],
+                        "current_file": extended.get("current_file") if extended else None,
+                        "eta_display": None,  # Will be calculated below
+                    }
+        except Exception:
+            pass
+    
+    # Build items list
+    for idx, r in enumerate(rows):
+        short_id = r["id"][:8]
+        printer_progress = None
+        smart_eta_display = None
+        
+        if r["status"] == "PRINTING":
+            printer_api = get_printer_api(r["printer"])
+            current_layer = None
+            total_layers = None
+            if printer_api:
+                try:
+                    printer_progress = await printer_api.get_percent_complete()
+                    extended = await printer_api.get_extended_status()
+                    if extended:
+                        current_layer = extended.get("current_layer")
+                        total_layers = extended.get("total_layers")
+                except Exception:
+                    pass
+            
+            # Calculate smart ETA
+            printing_started_at = r["printing_started_at"] if "printing_started_at" in r.keys() else None
+            if printing_started_at:
+                eta_dt = get_smart_eta(
+                    printer=r["printer"],
+                    material=r["material"],
+                    current_percent=printer_progress or 0,
+                    printing_started_at=printing_started_at,
+                    current_layer=current_layer or 0,
+                    total_layers=total_layers or 0
+                )
+                if eta_dt:
+                    smart_eta_display = format_eta_display(eta_dt)
+        
+        items.append({
+            "short_id": short_id,
+            "requester_first": first_name_only(r["requester_name"]),
+            "print_name": r["print_name"],
+            "printer": r["printer"],
+            "material": r["material"],
+            "colors": r["colors"],
+            "status": r["status"],
+            "is_mine": bool(mine and mine == short_id),
+            "printer_progress": printer_progress,
+            "smart_eta_display": smart_eta_display,
+        })
+    
+    # Separate by status
+    printing_items = [it for it in items if it["status"] == "PRINTING"]
+    approved_items = [it for it in items if it["status"] == "APPROVED"]
+    done_items = [it for it in items if it["status"] == "DONE"]
+    
+    # Build active queue with continuous numbering
+    active_queue = printing_items + approved_items
+    for idx, item in enumerate(active_queue):
+        item["queue_pos"] = idx + 1
+    
+    # Find user's position
+    my_pos = None
+    if mine:
+        for it in active_queue:
+            if it["short_id"] == mine:
+                my_pos = it["queue_pos"]
+                break
+    
+    # Counts
+    counts = {"NEW": 0, "NEEDS_INFO": 0, "APPROVED": 0, "PRINTING": 0, "DONE": 0}
+    for it in items:
+        if it["status"] in counts:
+            counts[it["status"]] += 1
+    
+    return {
+        "active_queue": active_queue,
+        "done_items": done_items,
+        "counts": counts,
+        "my_pos": my_pos,
+        "printer_status": printer_status,
+        "timestamp": now_iso(),
+    }
 
 
 @app.get("/changelog", response_class=HTMLResponse)
@@ -4287,7 +4492,7 @@ def public_store(request: Request, category: Optional[str] = None):
     
     conn.close()
     
-    return templates.TemplateResponse("store.html", {
+    return templates.TemplateResponse("store_new.html", {
         "request": request,
         "items": items,
         "categories": [c["category"] for c in categories],
