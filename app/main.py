@@ -1,3 +1,24 @@
+# Test push notification endpoint
+from fastapi import HTTPException
+
+@app.post("/api/push/test")
+async def push_test(request: Request):
+    """Send a test push notification to all subscriptions for a request"""
+    data = await request.json()
+    request_id = data.get("request_id")
+    email = data.get("email", "")
+    if not request_id:
+        raise HTTPException(status_code=400, detail="Missing request_id")
+    # Use the existing send_push_notification function
+    try:
+        send_push_notification(
+            request_id,
+            title="Test Notification",
+            body="This is a test push notification from Printellect.",
+        )
+        return {"status": "sent"}
+    except Exception as e:
+        return {"error": str(e)}
 import os, uuid, sqlite3, hashlib, smtplib, ssl, urllib.parse, json, base64, secrets
 from email.message import EmailMessage
 from datetime import datetime
@@ -5822,43 +5843,56 @@ def get_vapid_public_key():
 
 @app.post("/api/push/subscribe")
 async def subscribe_push(request: Request):
-    """Subscribe to push notifications for a request"""
-    data = await request.json()
-    request_id = data.get("request_id")
-    email = data.get("email", "")
-    subscription = data.get("subscription", {})
-    
-    if not request_id or not subscription:
-        return {"error": "Missing request_id or subscription"}
-    
-    endpoint = subscription.get("endpoint")
-    keys = subscription.get("keys", {})
-    p256dh = keys.get("p256dh")
-    auth = keys.get("auth")
-    
-    if not endpoint or not p256dh or not auth:
-        return {"error": "Invalid subscription data"}
-    
-    conn = db()
-    # Check if subscription already exists for this endpoint
-    existing = conn.execute(
-        "SELECT id FROM push_subscriptions WHERE endpoint = ? AND request_id = ?",
-        (endpoint, request_id)
-    ).fetchone()
-    
-    if existing:
+    """Subscribe to push notifications for a request (with diagnostics logging)"""
+    try:
+        data = await request.json()
+        print(f"[PUSH] Subscribe attempt: {data}")
+        request_id = data.get("request_id")
+        email = data.get("email", "")
+        subscription = data.get("subscription", {})
+        if not request_id or not subscription:
+            print(f"[PUSH] ERROR: Missing request_id or subscription: {data}")
+            return {"error": "Missing request_id or subscription"}
+        endpoint = subscription.get("endpoint")
+        keys = subscription.get("keys", {})
+        p256dh = keys.get("p256dh")
+        auth = keys.get("auth")
+        if not endpoint or not p256dh or not auth:
+            print(f"[PUSH] ERROR: Invalid subscription data: {subscription}")
+            return {"error": "Invalid subscription data"}
+        conn = db()
+        # Check if subscription already exists for this endpoint
+        existing = conn.execute(
+            "SELECT id FROM push_subscriptions WHERE endpoint = ? AND request_id = ?",
+            (endpoint, request_id)
+        ).fetchone()
+        if existing:
+            conn.close()
+            print(f"[PUSH] Already subscribed: {endpoint}")
+            return {"status": "already_subscribed"}
+        conn.execute(
+            """INSERT INTO push_subscriptions (id, request_id, email, endpoint, p256dh, auth, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (str(uuid.uuid4()), request_id, email, endpoint, p256dh, auth, now_iso())
+        )
+        conn.commit()
         conn.close()
-        return {"status": "already_subscribed"}
-    
-    conn.execute(
-        """INSERT INTO push_subscriptions (id, request_id, email, endpoint, p256dh, auth, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (str(uuid.uuid4()), request_id, email, endpoint, p256dh, auth, now_iso())
-    )
-    conn.commit()
+        print(f"[PUSH] Subscribed: {endpoint}")
+        return {"status": "subscribed"}
+    except Exception as e:
+        print(f"[PUSH] ERROR: Exception in subscribe_push: {e}")
+        return {"error": str(e)}
+# Push diagnostics endpoint
+@app.get("/api/push/diagnostics/{request_id}")
+def push_diagnostics(request_id: str):
+    """Return all push subscriptions for a request (for diagnostics)"""
+    conn = db()
+    subs = conn.execute(
+        "SELECT id, email, endpoint, p256dh, auth, created_at FROM push_subscriptions WHERE request_id = ?",
+        (request_id,)
+    ).fetchall()
     conn.close()
-    
-    return {"status": "subscribed"}
+    return {"subscriptions": [dict(row) for row in subs]}
 
 
 @app.post("/api/push/unsubscribe")
