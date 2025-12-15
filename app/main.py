@@ -49,7 +49,8 @@ SMTP_PASS = os.getenv("SMTP_PASS", "")
 SMTP_FROM = os.getenv("SMTP_FROM", "")
 
 # VAPID keys for Web Push notifications
-# Generate with: python -c "from pywebpush import webpush; import json; from py_vapid import Vapid; v = Vapid(); v.generate_keys(); print(json.dumps({'private': v.private_pem(), 'public': v.public_key}))"
+# Generate new keys with this Python command:
+# python -c "from cryptography.hazmat.primitives.asymmetric import ec; from cryptography.hazmat.backends import default_backend; import base64; key = ec.generate_private_key(ec.SECP256R1(), default_backend()); pn = key.private_numbers(); pub = pn.public_numbers; print('VAPID_PRIVATE_KEY=' + base64.urlsafe_b64encode(pn.private_value.to_bytes(32, 'big')).decode().rstrip('=')); print('VAPID_PUBLIC_KEY=' + base64.urlsafe_b64encode(b'\\x04' + pub.x.to_bytes(32, 'big') + pub.y.to_bytes(32, 'big')).decode().rstrip('='))"
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_CLAIMS_EMAIL = os.getenv("VAPID_CLAIMS_EMAIL", "mailto:admin@example.com")
@@ -2195,24 +2196,49 @@ def send_push_notification(email: str, title: str, body: str, url: str = None) -
         "url": url or "/my-requests/view",
         "icon": "/static/icons/icon-192.png",
     })
-    vapid_claims = {"sub": VAPID_CLAIMS_EMAIL}
     
     for sub in subs:
+        endpoint = sub["endpoint"]
         subscription_info = {
-            "endpoint": sub["endpoint"],
+            "endpoint": endpoint,
             "keys": {
                 "p256dh": sub["p256dh"],
                 "auth": sub["auth"],
             }
         }
+        
+        # Build VAPID claims per-endpoint for maximum compatibility
+        # Apple requires: sub (mailto:), aud (endpoint origin), exp (< 24h)
+        from urllib.parse import urlparse
+        import time
+        
+        parsed = urlparse(endpoint)
+        aud = f"{parsed.scheme}://{parsed.netloc}"
+        
+        vapid_email = VAPID_CLAIMS_EMAIL
+        if not vapid_email.startswith("mailto:"):
+            vapid_email = f"mailto:{vapid_email}"
+        
+        # Use 12-hour exp to be safe with clock skew (Apple requires < 24h)
+        exp_12h = int(time.time()) + (12 * 3600)
+        
+        vapid_claims = {
+            "sub": vapid_email,
+            "aud": aud,  # Explicitly set aud for the endpoint
+            "exp": exp_12h,  # 12 hours to avoid clock skew issues
+        }
+        
         try:
-            print(f"[PUSH] Sending to endpoint: {sub['endpoint'][:60]}...")
+            is_apple = 'apple.com' in endpoint
+            print(f"[PUSH] Sending to {'Apple' if is_apple else 'other'} endpoint: {endpoint[:60]}...")
+            print(f"[PUSH]   aud={aud}, exp_hours={12}, sub={vapid_email}")
+            
             webpush(
                 subscription_info=subscription_info,
                 data=payload,
                 vapid_private_key=VAPID_PRIVATE_KEY,
                 vapid_claims=vapid_claims,
-                ttl=86400,  # 24 hours - Firefox requires TTL
+                ttl=43200,  # 12 hours - matches our exp
             )
             print(f"[PUSH] ✓ Sent notification for {email}")
             result["sent"] += 1
@@ -5956,16 +5982,78 @@ def push_diagnostics(email: str):
 def sw_debug_info():
     """Return server-side SW and push configuration info for debugging"""
     import os
+    import time
     sw_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'static', 'sw.js'))
+    
+    # Check VAPID key validity by trying to generate a test JWT
+    jwt_test = {"status": "not_tested"}
+    if VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY:
+        try:
+            from py_vapid import Vapid
+            import base64
+            key_bytes = base64.urlsafe_b64decode(VAPID_PRIVATE_KEY + '==')
+            v = Vapid.from_raw(key_bytes)
+            test_claims = {
+                'sub': VAPID_CLAIMS_EMAIL if VAPID_CLAIMS_EMAIL.startswith('mailto:') else f'mailto:{VAPID_CLAIMS_EMAIL}',
+                'aud': 'https://web.push.apple.com'
+            }
+            token = v.sign(test_claims)
+            # Decode the JWT payload to verify claims
+            auth_header = token.get('Authorization', '')
+            if auth_header.startswith('vapid t='):
+                jwt_token = auth_header.split('t=')[1].split(',')[0]
+                parts = jwt_token.split('.')
+                if len(parts) == 3:
+                    import json
+                    payload_b64 = parts[1]
+                    # Add padding
+                    padding = 4 - len(payload_b64) % 4
+                    if padding != 4:
+                        payload_b64 += '=' * padding
+                    payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+                    now = int(time.time())
+                    exp = payload.get('exp', 0)
+                    jwt_test = {
+                        "status": "ok",
+                        "aud": payload.get('aud'),
+                        "sub": payload.get('sub'),
+                        "exp": exp,
+                        "exp_human": time.ctime(exp),
+                        "exp_in_seconds": exp - now,
+                        "server_time": now,
+                        "server_time_human": time.ctime(now),
+                    }
+        except Exception as e:
+            jwt_test = {"status": "error", "error": str(e)}
+    
     return {
         "sw_file_exists": os.path.exists(sw_path),
         "sw_file_path": sw_path,
         "vapid_configured": bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY),
         "vapid_public_key_length": len(VAPID_PUBLIC_KEY) if VAPID_PUBLIC_KEY else 0,
+        "vapid_private_key_length": len(VAPID_PRIVATE_KEY) if VAPID_PRIVATE_KEY else 0,
         "vapid_claims_email": VAPID_CLAIMS_EMAIL,
+        "jwt_test": jwt_test,
         "base_url": BASE_URL,
         "app_version": APP_VERSION
     }
+
+
+@app.post("/api/push/test")
+async def api_test_push_notification(request: Request):
+    """Test push notification sending - returns detailed diagnostics"""
+    data = await request.json()
+    email = data.get("email")
+    if not email:
+        return {"error": "Missing email"}
+    
+    result = send_push_notification(
+        email=email,
+        title="Test Notification",
+        body="If you see this, push notifications are working!",
+        url="/my-requests/view"
+    )
+    return result
 
 
 @app.post("/api/push/unsubscribe")
@@ -5991,6 +6079,25 @@ async def unsubscribe_push(request: Request):
     conn.commit()
     conn.close()
     return {"status": "unsubscribed"}
+
+
+@app.post("/api/push/clear-all")
+async def clear_all_push_subscriptions(request: Request):
+    """Clear ALL push subscriptions for a user - use when VAPID keys change"""
+    data = await request.json()
+    email = data.get("email")
+    if not email:
+        return {"error": "Missing email"}
+    conn = db()
+    result = conn.execute(
+        "DELETE FROM push_subscriptions WHERE email = ?",
+        (email,)
+    )
+    deleted = result.rowcount
+    conn.commit()
+    conn.close()
+    print(f"[PUSH] Cleared {deleted} subscriptions for {email}")
+    return {"status": "cleared", "deleted": deleted}
 
 
 @app.get("/api/notification-prefs/{rid}")

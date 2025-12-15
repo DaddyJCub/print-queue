@@ -360,10 +360,13 @@
           <button onclick="document.getElementById('sw-debug-panel').classList.add('hidden')" class="text-zinc-500 hover:text-zinc-300">✕</button>
         </div>
         <div id="sw-debug-content" class="text-zinc-400 whitespace-pre-wrap"></div>
-        <div class="mt-2 flex gap-2">
+        <div class="mt-2 flex flex-wrap gap-2">
           <button onclick="refreshSWDebug()" class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-300">Refresh</button>
+          <button onclick="sendTestPush()" class="px-2 py-1 bg-green-900/50 hover:bg-green-800 rounded text-green-300">Send Test Push</button>
           <button onclick="unregisterAllSW()" class="px-2 py-1 bg-red-900/50 hover:bg-red-800 rounded text-red-300">Unregister SW</button>
+          <button onclick="clearAllServerSubscriptions()" class="px-2 py-1 bg-amber-900/50 hover:bg-amber-800 rounded text-amber-300">Clear Server Subs</button>
         </div>
+        <div id="test-push-result" class="mt-2 hidden"></div>
       </div>
 
       <!-- iOS Install Instructions (shown when needed) -->
@@ -871,8 +874,28 @@
           const data = await resp.json();
           lines.push(`sw_file_exists: ${data.sw_file_exists}`);
           lines.push(`vapid_configured: ${data.vapid_configured}`);
-          lines.push(`vapid_key_length: ${data.vapid_public_key_length}`);
+          lines.push(`vapid_public_key_length: ${data.vapid_public_key_length}`);
+          lines.push(`vapid_private_key_length: ${data.vapid_private_key_length}`);
+          lines.push(`vapid_claims_email: ${data.vapid_claims_email}`);
           lines.push(`base_url: ${data.base_url}`);
+          
+          // JWT Test info (new)
+          if (data.jwt_test) {
+            lines.push('\n── JWT Test (Apple) ──');
+            lines.push(`status: ${data.jwt_test.status}`);
+            if (data.jwt_test.status === 'ok') {
+              lines.push(`aud: ${data.jwt_test.aud}`);
+              lines.push(`sub: ${data.jwt_test.sub}`);
+              lines.push(`server_time: ${data.jwt_test.server_time} (${data.jwt_test.server_time_human})`);
+              lines.push(`exp: ${data.jwt_test.exp} (${data.jwt_test.exp_human})`);
+              lines.push(`exp_in_seconds: ${data.jwt_test.exp_in_seconds} (${(data.jwt_test.exp_in_seconds/3600).toFixed(1)} hours)`);
+              if (data.jwt_test.exp_in_seconds > 86400) {
+                lines.push(`⚠️ WARNING: exp > 24h, Apple may reject!`);
+              }
+            } else if (data.jwt_test.error) {
+              lines.push(`error: ${data.jwt_test.error}`);
+            }
+          }
         } catch (e) {
           lines.push(`Error: ${e.message}`);
         }
@@ -910,6 +933,60 @@
           }
           alert('Service workers unregistered. Reloading page...');
           location.reload();
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
+      }
+      
+      async function sendTestPush() {
+        const resultDiv = document.getElementById('test-push-result');
+        resultDiv.classList.remove('hidden');
+        resultDiv.innerHTML = '<span class="text-yellow-400">⏳ Sending test push...</span>';
+        try {
+          const resp = await fetch('/api/push/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: requestEmail })
+          });
+          const result = await resp.json();
+          console.log('[Test Push] Result:', result);
+          
+          if (result.sent > 0) {
+            resultDiv.innerHTML = `<span class="text-green-400">✅ Sent ${result.sent} notification(s)!</span>`;
+          } else if (result.errors && result.errors.length > 0) {
+            const errHtml = result.errors.map(e => `<div class="text-red-300 mt-1">• ${escapeHtml(e)}</div>`).join('');
+            resultDiv.innerHTML = `<span class="text-red-400">❌ Push failed (${result.failed} error(s)):</span>${errHtml}`;
+          } else {
+            resultDiv.innerHTML = `<span class="text-amber-400">⚠️ No subscriptions found for ${requestEmail}</span>`;
+          }
+        } catch (e) {
+          resultDiv.innerHTML = `<span class="text-red-400">❌ Error: ${escapeHtml(e.message)}</span>`;
+        }
+      }
+      
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+      
+      async function clearAllServerSubscriptions() {
+        if (!confirm('Clear ALL push subscriptions from server for ' + requestEmail + '?\n\nYou will need to re-enable push notifications after this.')) return;
+        try {
+          const resp = await fetch('/api/push/clear-all', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: requestEmail })
+          });
+          const result = await resp.json();
+          if (result.status === 'cleared') {
+            alert(`Cleared ${result.deleted} subscription(s). Now disable and re-enable push notifications.`);
+            pushEnabled = false;
+            updatePushToggleUI();
+            await refreshSWDebug();
+          } else {
+            alert('Error: ' + (result.error || 'Unknown'));
+          }
         } catch (e) {
           alert('Error: ' + e.message);
         }
