@@ -5812,6 +5812,21 @@ def get_vapid_public_key():
     return {"publicKey": VAPID_PUBLIC_KEY}
 
 
+# Test push notification endpoint
+@app.post("/api/push/test")
+async def test_push_notification(request: Request):
+    """Test push notification for a user (by email)"""
+    try:
+        data = await request.json()
+        email = data.get("email")
+        if not email:
+            return {"error": "Missing email"}
+        send_push_notification(email, "Test Notification", "This is a test push notification.")
+        return {"status": "sent"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.post("/api/push/subscribe")
 async def subscribe_push(request: Request):
     """Subscribe to push notifications for a user (with diagnostics logging)"""
@@ -5853,13 +5868,13 @@ async def subscribe_push(request: Request):
         print(f"[PUSH] ERROR: Exception in subscribe_push: {e}")
         return {"error": str(e)}
 # Push diagnostics endpoint
-@app.get("/api/push/diagnostics/{request_id}")
-def push_diagnostics(request_id: str):
-    """Return all push subscriptions for a request (for diagnostics)"""
+@app.get("/api/push/diagnostics/{email}")
+def push_diagnostics(email: str):
+    """Return all push subscriptions for a user (by email, for diagnostics)"""
     conn = db()
     subs = conn.execute(
-        "SELECT id, email, endpoint, p256dh, auth, created_at FROM push_subscriptions WHERE request_id = ?",
-        (request_id,)
+        "SELECT id, email, endpoint, p256dh, auth, created_at FROM push_subscriptions WHERE email = ?",
+        (email,)
     ).fetchall()
     conn.close()
     return {"subscriptions": [dict(row) for row in subs]}
