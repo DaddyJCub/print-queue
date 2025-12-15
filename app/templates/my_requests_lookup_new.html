@@ -80,10 +80,10 @@
 
   <!-- Tab Switcher -->
   <div class="flex mb-4 bg-zinc-900 rounded-xl p-1">
-    <button onclick="showTab('email')" id="tab-email" class="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition tab-active">
+    <button type="button" id="tab-email" class="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition tab-active">
       📧 Email
     </button>
-    <button onclick="showTab('code')" id="tab-code" class="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition text-zinc-400">
+    <button type="button" id="tab-code" class="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition text-zinc-400">
       🔢 Sync Code
     </button>
   </div>
@@ -161,6 +161,7 @@
 {% block scripts %}
 <script>
 function showTab(tab) {
+  console.log('showTab called with:', tab);
   const emailTab = document.getElementById('tab-email');
   const codeTab = document.getElementById('tab-code');
   const emailForm = document.getElementById('form-email');
@@ -183,10 +184,32 @@ function showTab(tab) {
     codeForm.classList.remove('hidden');
     emailForm.classList.add('hidden');
     codeHelp.classList.remove('hidden');
-    // Focus first input
-    document.querySelector('.code-input')?.focus();
+    // Focus first input after a short delay for iOS
+    setTimeout(() => document.querySelector('.code-input')?.focus(), 100);
   }
 }
+
+// Attach click handlers after DOM is ready (iOS compatible)
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('tab-email').addEventListener('click', function(e) {
+    e.preventDefault();
+    showTab('email');
+  });
+  document.getElementById('tab-code').addEventListener('click', function(e) {
+    e.preventDefault();
+    showTab('code');
+  });
+  
+  // Also handle touch events for iOS
+  document.getElementById('tab-email').addEventListener('touchend', function(e) {
+    e.preventDefault();
+    showTab('email');
+  });
+  document.getElementById('tab-code').addEventListener('touchend', function(e) {
+    e.preventDefault();
+    showTab('code');
+  });
+});
 
 // Code input handling
 const codeInputs = document.querySelectorAll('.code-input');
@@ -269,9 +292,14 @@ async function verifyCode() {
 }
 
 // Check if we're in the PWA and show code tab by default
-const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-if (isStandalone) {
-  showTab('code');
-}
+// This needs to run after DOMContentLoaded handlers are set up
+document.addEventListener('DOMContentLoaded', function() {
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  console.log('PWA standalone mode:', isStandalone);
+  if (isStandalone) {
+    // Small delay to ensure tab handlers are attached
+    setTimeout(() => showTab('code'), 50);
+  }
+});
 </script>
 {% endblock %}
