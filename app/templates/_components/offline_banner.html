@@ -1,0 +1,147 @@
+{# 
+  Offline Banner Component
+  Shows when the app loses network connectivity
+  Automatically shows/hides based on navigator.onLine
+  
+  Include once in pwa_base.html near the top of <body>
+#}
+
+<!-- Offline Banner - appears at top when offline -->
+<div id="offline-banner" 
+     class="fixed top-0 left-0 right-0 z-[9998] transform transition-transform duration-300 -translate-y-full"
+     role="alert" 
+     aria-live="assertive">
+  <div class="bg-amber-500/95 backdrop-blur-sm text-amber-950 px-4 py-2.5 text-center">
+    <div class="flex items-center justify-center gap-2">
+      <!-- Offline icon -->
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+              d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3m8.293 8.293l1.414 1.414"/>
+      </svg>
+      <span class="text-sm font-medium">You're offline — some features may be limited</span>
+    </div>
+  </div>
+</div>
+
+<!-- Back Online Banner (briefly shows when reconnecting) -->
+<div id="online-banner" 
+     class="fixed top-0 left-0 right-0 z-[9998] transform transition-transform duration-300 -translate-y-full"
+     role="status" 
+     aria-live="polite">
+  <div class="bg-emerald-500/95 backdrop-blur-sm text-emerald-950 px-4 py-2.5 text-center">
+    <div class="flex items-center justify-center gap-2">
+      <!-- Online icon -->
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+              d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
+      </svg>
+      <span class="text-sm font-medium">You're back online!</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const offlineBanner = document.getElementById('offline-banner');
+  const onlineBanner = document.getElementById('online-banner');
+  let onlineTimeout;
+  
+  function showBanner(banner) {
+    banner.classList.remove('-translate-y-full');
+    banner.classList.add('translate-y-0');
+  }
+  
+  function hideBanner(banner) {
+    banner.classList.remove('translate-y-0');
+    banner.classList.add('-translate-y-full');
+  }
+  
+  function updateOnlineStatus() {
+    if (!navigator.onLine) {
+      // We're offline
+      hideBanner(onlineBanner);
+      showBanner(offlineBanner);
+      
+      // Add offline class to body for CSS hooks
+      document.body.classList.add('is-offline');
+      
+      // Disable submit buttons (optional - defensive)
+      document.querySelectorAll('form button[type="submit"], form input[type="submit"]')
+        .forEach(btn => {
+          if (!btn.dataset.allowOffline) {
+            btn.dataset.wasDisabled = btn.disabled;
+            btn.disabled = true;
+          }
+        });
+        
+    } else {
+      // We're online
+      hideBanner(offlineBanner);
+      document.body.classList.remove('is-offline');
+      
+      // Re-enable buttons
+      document.querySelectorAll('form button[type="submit"], form input[type="submit"]')
+        .forEach(btn => {
+          if (btn.dataset.wasDisabled !== undefined) {
+            btn.disabled = btn.dataset.wasDisabled === 'true';
+            delete btn.dataset.wasDisabled;
+          }
+        });
+      
+      // Briefly show "back online" message
+      showBanner(onlineBanner);
+      clearTimeout(onlineTimeout);
+      onlineTimeout = setTimeout(() => {
+        hideBanner(onlineBanner);
+      }, 3000);
+    }
+  }
+  
+  // Listen for online/offline events
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+  
+  // Check initial state (only show offline banner if actually offline)
+  if (!navigator.onLine) {
+    updateOnlineStatus();
+  }
+  
+  // Also check periodically in case events don't fire
+  setInterval(() => {
+    const wasOffline = document.body.classList.contains('is-offline');
+    const isNowOffline = !navigator.onLine;
+    
+    if (wasOffline !== isNowOffline) {
+      updateOnlineStatus();
+    }
+  }, 5000);
+})();
+</script>
+
+<style>
+  /* Optional: Gray out certain elements when offline */
+  body.is-offline .requires-online {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  
+  /* Add visual indicator to forms */
+  body.is-offline form:not([data-allow-offline])::after {
+    content: 'Offline';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.8);
+    color: #fbbf24;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 10;
+  }
+  
+  body.is-offline form:not([data-allow-offline]) {
+    position: relative;
+  }
+</style>

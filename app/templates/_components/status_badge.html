@@ -1,0 +1,86 @@
+{# 
+  Shared Status Badge Component
+  Usage: {% from '_components/status_badge.html' import status_badge %}
+         {{ status_badge('PRINTING') }}
+#}
+
+{% macro status_badge(status, size='sm') %}
+{# Status badge with consistent styling across the app #}
+{% set status_lower = status|lower|replace('_', '-') %}
+{% set status_display = status|replace('_', ' ')|title %}
+
+{% set colors = {
+  'new': 'bg-blue-500/20 text-blue-300 border-blue-500/50',
+  'needs-info': 'bg-orange-500/20 text-orange-300 border-orange-500/50',
+  'approved': 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50',
+  'printing': 'bg-amber-500/20 text-amber-300 border-amber-500/50',
+  'done': 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50',
+  'picked-up': 'bg-purple-500/20 text-purple-300 border-purple-500/50',
+  'rejected': 'bg-red-500/20 text-red-300 border-red-500/50',
+  'cancelled': 'bg-zinc-500/20 text-zinc-400 border-zinc-500/50'
+} %}
+
+{% set icons = {
+  'new': '🆕',
+  'needs-info': '❓',
+  'approved': '✓',
+  'printing': '🖨️',
+  'done': '✅',
+  'picked-up': '📦',
+  'rejected': '❌',
+  'cancelled': '🚫'
+} %}
+
+{% set sizes = {
+  'xs': 'px-1.5 py-0.5 text-[10px]',
+  'sm': 'px-2 py-0.5 text-xs',
+  'md': 'px-2.5 py-1 text-sm',
+  'lg': 'px-3 py-1.5 text-base'
+} %}
+
+<span class="inline-flex items-center gap-1 rounded-lg border font-semibold {{ colors.get(status_lower, 'bg-zinc-500/20 text-zinc-400 border-zinc-500/50') }} {{ sizes.get(size, sizes.sm) }}">
+  <span>{{ icons.get(status_lower, '•') }}</span>
+  <span>{{ status_display }}</span>
+</span>
+{% endmacro %}
+
+
+{% macro status_badge_minimal(status) %}
+{# Compact badge without icon - for dense lists #}
+{% set status_lower = status|lower|replace('_', '-') %}
+{% set status_display = status|replace('_', ' ')|title %}
+
+{% set colors = {
+  'new': 'bg-blue-500/20 text-blue-300',
+  'needs-info': 'bg-orange-500/20 text-orange-300',
+  'approved': 'bg-emerald-500/20 text-emerald-300',
+  'printing': 'bg-amber-500/20 text-amber-300',
+  'done': 'bg-cyan-500/20 text-cyan-300',
+  'picked-up': 'bg-purple-500/20 text-purple-300',
+  'rejected': 'bg-red-500/20 text-red-300',
+  'cancelled': 'bg-zinc-500/20 text-zinc-400'
+} %}
+
+<span class="inline-block px-2 py-0.5 rounded text-[10px] font-semibold {{ colors.get(status_lower, 'bg-zinc-500/20 text-zinc-400') }}">
+  {{ status_display }}
+</span>
+{% endmacro %}
+
+
+{% macro status_dot(status) %}
+{# Just an animated dot for compact displays #}
+{% set status_lower = status|lower|replace('_', '-') %}
+
+{% set dot_colors = {
+  'new': 'bg-blue-400',
+  'needs-info': 'bg-orange-400',
+  'approved': 'bg-emerald-400',
+  'printing': 'bg-amber-400 animate-pulse',
+  'done': 'bg-cyan-400',
+  'picked-up': 'bg-purple-400',
+  'rejected': 'bg-red-400',
+  'cancelled': 'bg-zinc-400'
+} %}
+
+<span class="w-2 h-2 rounded-full {{ dot_colors.get(status_lower, 'bg-zinc-400') }}"></span>
+{% endmacro %}

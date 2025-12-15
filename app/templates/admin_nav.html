@@ -1,73 +1,224 @@
-{# Admin Navigation Component #}
+{# Admin Navigation Component - Redesigned with grouped dropdowns #}
 {# Usage: {% include 'admin_nav.html' %} with active_page variable set #}
 
-<nav class="bg-zinc-900/50 border-b border-zinc-800 mb-6 -mx-6 -mt-6 px-6 py-3">
-  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-    <!-- Logo/Title -->
-    <div class="flex items-center gap-3">
-      <img src="/static/icons/logo.png" alt="Printellect" class="h-8 w-8 rounded">
-      <span class="font-bold text-lg">Printellect</span>
-      <span class="text-xs px-2 py-0.5 bg-indigo-600/30 text-indigo-300 rounded">Admin</span>
+<nav class="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50 -mx-6 -mt-6 mb-6">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="flex items-center justify-between h-14">
+      <!-- Logo/Brand -->
+      <a href="/admin" class="flex items-center gap-2 text-white">
+        <img src="/static/icons/logo.png" alt="Printellect" class="h-8 w-8 rounded-lg">
+        <span class="font-bold text-lg hidden sm:block">Printellect</span>
+        <span class="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-medium">Admin</span>
+      </a>
+      
+      <!-- Desktop Navigation -->
+      <div class="hidden md:flex items-center gap-1">
+        <!-- Queue - Primary action -->
+        <a href="/admin" 
+           class="admin-nav-link {% if active_page == 'queue' %}active{% endif %}">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+          </svg>
+          <span>Queue</span>
+        </a>
+        
+        <!-- Operations Dropdown -->
+        <div class="relative admin-dropdown">
+          <button class="admin-nav-link flex items-center gap-1 {% if active_page in ['printers', 'store'] %}active{% endif %}"
+                  onclick="toggleDropdown(this)">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <span>Operations</span>
+            <svg class="w-3 h-3 transition-transform dropdown-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div class="dropdown-menu hidden absolute top-full left-0 mt-1 w-48 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-50">
+            <a href="/admin/printer-settings" class="admin-dropdown-item {% if active_page == 'printers' %}active{% endif %}">
+              <span>🖨</span> Printer Status
+            </a>
+            <a href="/admin/store" class="admin-dropdown-item {% if active_page == 'store' %}active{% endif %}">
+              <span>🏪</span> Store Management
+            </a>
+          </div>
+        </div>
+        
+        <!-- Insights Dropdown -->
+        <div class="relative admin-dropdown">
+          <button class="admin-nav-link flex items-center gap-1 {% if active_page in ['analytics', 'feedback'] %}active{% endif %}"
+                  onclick="toggleDropdown(this)">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+            <span>Insights</span>
+            <svg class="w-3 h-3 transition-transform dropdown-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div class="dropdown-menu hidden absolute top-full left-0 mt-1 w-48 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-50">
+            <a href="/admin/analytics" class="admin-dropdown-item {% if active_page == 'analytics' %}active{% endif %}">
+              <span>📊</span> Analytics
+            </a>
+            <a href="/admin/feedback" class="admin-dropdown-item {% if active_page == 'feedback' %}active{% endif %}">
+              <span>📬</span> User Feedback
+            </a>
+          </div>
+        </div>
+        
+        <!-- Settings -->
+        <a href="/admin/settings" class="admin-nav-link {% if active_page == 'settings' %}active{% endif %}">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+          </svg>
+          <span>Settings</span>
+        </a>
+        
+        <!-- Debug (smaller, less prominent) -->
+        <a href="/admin/debug" class="admin-nav-link text-zinc-500 {% if active_page == 'debug' %}active{% endif %}" title="Debug">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          </svg>
+        </a>
+        
+        <!-- Divider -->
+        <div class="w-px h-6 bg-zinc-700 mx-2"></div>
+        
+        <!-- View Site -->
+        <a href="/queue" class="admin-nav-link text-zinc-500" title="View public site" target="_blank">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+          </svg>
+        </a>
+        
+        <!-- Logout -->
+        <a href="/admin/logout" class="admin-nav-link text-red-400 hover:text-red-300 hover:bg-red-900/30" title="Logout">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+          </svg>
+        </a>
+      </div>
+      
+      <!-- Mobile Menu Button -->
+      <button id="mobile-menu-btn" class="md:hidden p-2 text-zinc-400 hover:text-white" onclick="toggleMobileMenu()">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
     </div>
-    
-    <!-- Main Nav -->
-    <div class="flex flex-wrap items-center gap-1">
-      <!-- Admin Pages -->
-      <a href="/admin" 
-         class="px-4 py-2 rounded-lg text-sm font-medium transition
-                {% if active_page == 'queue' %}bg-indigo-600 text-white{% else %}text-zinc-300 hover:bg-zinc-800{% endif %}">
+  </div>
+  
+  <!-- Mobile Menu -->
+  <div id="mobile-menu" class="hidden md:hidden border-t border-zinc-800 bg-zinc-900">
+    <div class="px-4 py-3 space-y-1">
+      <a href="/admin" class="mobile-nav-link {% if active_page == 'queue' %}active{% endif %}">
         📋 Queue
       </a>
-      <a href="/admin/printer-settings" 
-         class="px-4 py-2 rounded-lg text-sm font-medium transition
-                {% if active_page == 'printers' %}bg-indigo-600 text-white{% else %}text-zinc-300 hover:bg-zinc-800{% endif %}">
-        🖨 Printers
+      <div class="pt-2 pb-1 px-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Operations</div>
+      <a href="/admin/printer-settings" class="mobile-nav-link {% if active_page == 'printers' %}active{% endif %}">
+        🖨 Printer Status
       </a>
-      <a href="/admin/analytics" 
-         class="px-4 py-2 rounded-lg text-sm font-medium transition
-                {% if active_page == 'analytics' %}bg-indigo-600 text-white{% else %}text-zinc-300 hover:bg-zinc-800{% endif %}">
+      <a href="/admin/store" class="mobile-nav-link {% if active_page == 'store' %}active{% endif %}">
+        🏪 Store Management
+      </a>
+      <div class="pt-2 pb-1 px-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Insights</div>
+      <a href="/admin/analytics" class="mobile-nav-link {% if active_page == 'analytics' %}active{% endif %}">
         📊 Analytics
       </a>
-      <a href="/admin/settings" 
-         class="px-4 py-2 rounded-lg text-sm font-medium transition
-                {% if active_page == 'settings' %}bg-indigo-600 text-white{% else %}text-zinc-300 hover:bg-zinc-800{% endif %}">
+      <a href="/admin/feedback" class="mobile-nav-link {% if active_page == 'feedback' %}active{% endif %}">
+        📬 User Feedback
+      </a>
+      <div class="border-t border-zinc-800 my-2"></div>
+      <a href="/admin/settings" class="mobile-nav-link {% if active_page == 'settings' %}active{% endif %}">
         ⚙️ Settings
       </a>
-      <a href="/admin/store" 
-         class="px-4 py-2 rounded-lg text-sm font-medium transition
-                {% if active_page == 'store' %}bg-indigo-600 text-white{% else %}text-zinc-300 hover:bg-zinc-800{% endif %}">
-        🏪 Store
-      </a>
-      <a href="/admin/feedback" 
-         class="px-4 py-2 rounded-lg text-sm font-medium transition
-                {% if active_page == 'feedback' %}bg-indigo-600 text-white{% else %}text-zinc-300 hover:bg-zinc-800{% endif %}">
-        📬 Feedback
-      </a>
-      <a href="/admin/debug" 
-         class="px-4 py-2 rounded-lg text-sm font-medium transition
-                {% if active_page == 'debug' %}bg-indigo-600 text-white{% else %}text-zinc-300 hover:bg-zinc-800{% endif %}">
+      <a href="/admin/debug" class="mobile-nav-link text-zinc-500 {% if active_page == 'debug' %}active{% endif %}">
         🔧 Debug
       </a>
-      
-      <!-- Divider -->
-      <span class="text-zinc-700 mx-2 hidden md:inline">|</span>
-      
-      <!-- Public Links -->
-      <a href="/" class="px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition">
-        Submit Form
+      <div class="border-t border-zinc-800 my-2"></div>
+      <a href="/queue" target="_blank" class="mobile-nav-link text-zinc-500">
+        View Public Site →
       </a>
-      <a href="/queue" class="px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition">
-        Public Queue
-      </a>
-      
-      <!-- Divider -->
-      <span class="text-zinc-700 mx-2 hidden md:inline">|</span>
-      
-      <!-- Logout -->
-      <a href="/admin/logout" 
-         class="px-3 py-2 rounded-lg text-sm text-red-400 hover:text-red-300 hover:bg-red-900/30 transition">
+      <a href="/admin/logout" class="mobile-nav-link text-red-400">
         Logout
       </a>
     </div>
   </div>
 </nav>
+
+<style>
+  .admin-nav-link {
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #a1a1aa;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: color 0.15s, background-color 0.15s;
+  }
+  .admin-nav-link:hover { color: white; background-color: #27272a; }
+  .admin-nav-link.active { color: #818cf8; background-color: rgba(99, 102, 241, 0.1); }
+  
+  .admin-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    color: #d4d4d8;
+    transition: color 0.15s, background-color 0.15s;
+  }
+  .admin-dropdown-item:hover { background-color: #3f3f46; color: white; }
+  .admin-dropdown-item.active { color: #818cf8; background-color: rgba(99, 102, 241, 0.1); }
+  
+  .mobile-nav-link {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    color: #d4d4d8;
+    transition: color 0.15s, background-color 0.15s;
+  }
+  .mobile-nav-link:hover { background-color: #27272a; color: white; }
+  .mobile-nav-link.active { color: #818cf8; background-color: rgba(99, 102, 241, 0.1); }
+  
+  .admin-dropdown .dropdown-menu.show { display: block; }
+  .admin-dropdown .dropdown-arrow.rotate { transform: rotate(180deg); }
+</style>
+
+<script>
+function toggleDropdown(btn) {
+  const dropdown = btn.closest('.admin-dropdown');
+  const menu = dropdown.querySelector('.dropdown-menu');
+  const arrow = btn.querySelector('.dropdown-arrow');
+  const isOpen = menu.classList.contains('show');
+  
+  // Close all other dropdowns first
+  document.querySelectorAll('.admin-dropdown .dropdown-menu.show').forEach(m => {
+    m.classList.remove('show');
+    m.closest('.admin-dropdown').querySelector('.dropdown-arrow')?.classList.remove('rotate');
+  });
+  
+  if (!isOpen) {
+    menu.classList.add('show');
+    arrow?.classList.add('rotate');
+  }
+}
+
+function toggleMobileMenu() {
+  document.getElementById('mobile-menu').classList.toggle('hidden');
+}
+
+// Close dropdowns when clicking outside
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.admin-dropdown')) {
+    document.querySelectorAll('.admin-dropdown .dropdown-menu.show').forEach(m => {
+      m.classList.remove('show');
+      m.closest('.admin-dropdown').querySelector('.dropdown-arrow')?.classList.remove('rotate');
+    });
+  }
+});
+</script>

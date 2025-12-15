@@ -215,9 +215,9 @@
           </div>
         </div>
         <span class="px-2 py-1 rounded-lg text-xs font-medium
-          {% if r.status == 'PRINTING' %}bg-emerald-600/25 border border-emerald-500/50 text-emerald-300
-          {% elif r.status == 'APPROVED' %}bg-indigo-600/25 border border-indigo-500/50 text-indigo-300
-          {% elif r.status == 'NEEDS_INFO' %}bg-orange-600/25 border border-orange-500/50 text-orange-300
+          {% if r.status == 'PRINTING' %}bg-amber-500/20 border border-amber-500/50 text-amber-300
+          {% elif r.status == 'APPROVED' %}bg-emerald-500/20 border border-emerald-500/50 text-emerald-300
+          {% elif r.status == 'NEEDS_INFO' %}bg-orange-500/20 border border-orange-500/50 text-orange-300
           {% else %}bg-zinc-800 text-zinc-400{% endif %}">
           {% if r.status == 'NEEDS_INFO' %}WAITING{% else %}{{ r.status }}{% endif %}
         </span>
@@ -242,10 +242,21 @@
     </div>
     {% endfor %}
   {% else %}
+    <!-- Empty State for Mobile -->
     <div class="text-center py-12 bg-zinc-900/30 rounded-2xl border border-zinc-800">
-      <div class="text-4xl mb-3">🎉</div>
+      <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-zinc-800/50 flex items-center justify-center">
+        <svg class="w-8 h-8 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+        </svg>
+      </div>
       <h3 class="text-lg font-semibold text-zinc-300">Queue is empty!</h3>
-      <p class="text-zinc-500 mt-1">No prints waiting.</p>
+      <p class="text-sm text-zinc-500 mt-1 max-w-xs mx-auto">No prints waiting. Be the first to submit a request!</p>
+      <a href="/" class="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm rounded-lg transition tap-highlight">
+        Submit Request
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+        </svg>
+      </a>
     </div>
   {% endif %}
   </div>
@@ -278,9 +289,9 @@
           <td class="p-3 text-zinc-400">{{ r.material }}</td>
           <td class="p-3">
             <span class="px-2 py-1 rounded-lg text-xs font-medium
-              {% if r.status == 'PRINTING' %}bg-emerald-600/25 border border-emerald-500/50 text-emerald-300
-              {% elif r.status == 'APPROVED' %}bg-indigo-600/25 border border-indigo-500/50 text-indigo-300
-              {% elif r.status == 'NEEDS_INFO' %}bg-orange-600/25 border border-orange-500/50 text-orange-300
+              {% if r.status == 'PRINTING' %}bg-amber-500/20 border border-amber-500/50 text-amber-300
+              {% elif r.status == 'APPROVED' %}bg-emerald-500/20 border border-emerald-500/50 text-emerald-300
+              {% elif r.status == 'NEEDS_INFO' %}bg-orange-500/20 border border-orange-500/50 text-orange-300
               {% else %}bg-zinc-800 text-zinc-400{% endif %}">
               {% if r.status == 'NEEDS_INFO' %}WAITING{% else %}{{ r.status }}{% endif %}
             </span>
@@ -622,9 +633,11 @@
   
   function getStatusClass(status) {
     switch(status) {
-      case 'PRINTING': return 'bg-emerald-600/25 border border-emerald-500/50 text-emerald-300';
-      case 'APPROVED': return 'bg-indigo-600/25 border border-indigo-500/50 text-indigo-300';
-      case 'NEEDS_INFO': return 'bg-orange-600/25 border border-orange-500/50 text-orange-300';
+      case 'PRINTING': return 'bg-amber-500/20 border border-amber-500/50 text-amber-300';
+      case 'APPROVED': return 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-300';
+      case 'NEEDS_INFO': return 'bg-orange-500/20 border border-orange-500/50 text-orange-300';
+      case 'NEW': return 'bg-blue-500/20 border border-blue-500/50 text-blue-300';
+      case 'DONE': return 'bg-cyan-500/20 border border-cyan-500/50 text-cyan-300';
       default: return 'bg-zinc-800 text-zinc-400';
     }
   }

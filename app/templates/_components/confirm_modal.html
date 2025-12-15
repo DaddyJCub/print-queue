@@ -1,0 +1,156 @@
+{# 
+  Confirmation Modal Component
+  Reusable confirmation dialog for destructive actions
+  
+  Usage:
+    {% from '_components/confirm_modal.html' import confirm_modal %}
+    {{ confirm_modal('delete-request', 'Delete Request?', 'This action cannot be undone.', 'Delete', 'destructive') }}
+    
+  JavaScript:
+    openConfirmModal('delete-request', { requestId: 123 });
+#}
+
+{% macro confirm_modal(id, title, message, confirm_text='Confirm', variant='default') %}
+
+{% set variants = {
+  'default': {
+    'bg': 'bg-teal-500 hover:bg-teal-400',
+    'text': 'text-white'
+  },
+  'destructive': {
+    'bg': 'bg-red-500 hover:bg-red-400',
+    'text': 'text-white'
+  },
+  'warning': {
+    'bg': 'bg-amber-500 hover:bg-amber-400',
+    'text': 'text-white'
+  }
+} %}
+
+{% set v = variants.get(variant, variants.default) %}
+
+<!-- Modal Backdrop -->
+<div id="modal-{{ id }}" 
+     class="fixed inset-0 z-[9999] hidden"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="modal-title-{{ id }}">
+  <!-- Backdrop -->
+  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+       onclick="closeConfirmModal('{{ id }}')"></div>
+  
+  <!-- Modal Panel -->
+  <div class="fixed inset-0 flex items-center justify-center p-4">
+    <div class="relative bg-zinc-800 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-sm transform transition-all"
+         onclick="event.stopPropagation()">
+      <!-- Icon -->
+      {% if variant == 'destructive' %}
+      <div class="mx-auto mt-6 w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
+        <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+      </div>
+      {% elif variant == 'warning' %}
+      <div class="mx-auto mt-6 w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center">
+        <svg class="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+      {% else %}
+      <div class="mx-auto mt-6 w-12 h-12 rounded-full bg-teal-500/20 flex items-center justify-center">
+        <svg class="w-6 h-6 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+      {% endif %}
+      
+      <!-- Content -->
+      <div class="px-6 pt-4 pb-6 text-center">
+        <h3 id="modal-title-{{ id }}" class="text-lg font-semibold text-white mb-2">
+          {{ title }}
+        </h3>
+        <p class="text-sm text-zinc-400">
+          {{ message }}
+        </p>
+      </div>
+      
+      <!-- Actions -->
+      <div class="flex gap-3 px-6 pb-6">
+        <button type="button"
+                onclick="closeConfirmModal('{{ id }}')"
+                class="flex-1 px-4 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-sm font-medium rounded-lg transition-colors">
+          Cancel
+        </button>
+        <button type="button"
+                id="modal-confirm-{{ id }}"
+                class="flex-1 px-4 py-2.5 {{ v.bg }} {{ v.text }} text-sm font-medium rounded-lg transition-colors">
+          {{ confirm_text }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+
+{# Global script for modal management #}
+<script>
+const modalCallbacks = {};
+const modalData = {};
+
+function openConfirmModal(id, data = {}, onConfirm = null) {
+  const modal = document.getElementById(`modal-${id}`);
+  if (!modal) return;
+  
+  // Store callback and data
+  if (onConfirm) modalCallbacks[id] = onConfirm;
+  modalData[id] = data;
+  
+  // Show modal with animation
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  document.body.classList.add('overflow-hidden');
+  
+  // Focus the cancel button for accessibility
+  const cancelBtn = modal.querySelector('button');
+  if (cancelBtn) cancelBtn.focus();
+  
+  // Setup confirm button click
+  const confirmBtn = document.getElementById(`modal-confirm-${id}`);
+  if (confirmBtn) {
+    confirmBtn.onclick = () => {
+      if (modalCallbacks[id]) {
+        modalCallbacks[id](modalData[id]);
+      }
+      closeConfirmModal(id);
+    };
+  }
+}
+
+function closeConfirmModal(id) {
+  const modal = document.getElementById(`modal-${id}`);
+  if (!modal) return;
+  
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+  document.body.classList.remove('overflow-hidden');
+  
+  // Clean up
+  delete modalCallbacks[id];
+  delete modalData[id];
+}
+
+// Close on escape key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('[id^="modal-"]:not(.hidden)').forEach(modal => {
+      const id = modal.id.replace('modal-', '');
+      closeConfirmModal(id);
+    });
+  }
+});
+
+// Make globally available
+window.openConfirmModal = openConfirmModal;
+window.closeConfirmModal = closeConfirmModal;
+</script>

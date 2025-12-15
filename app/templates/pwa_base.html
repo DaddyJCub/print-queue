@@ -138,6 +138,37 @@
   </script>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen">
+  <!-- Offline Banner - auto shows/hides based on connectivity -->
+  <div id="offline-banner" 
+       class="fixed top-0 left-0 right-0 z-[9998] transform transition-transform duration-300 -translate-y-full"
+       role="alert" aria-live="assertive">
+    <div class="bg-amber-500/95 backdrop-blur-sm text-amber-950 px-4 py-2.5 text-center">
+      <div class="flex items-center justify-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3m8.293 8.293l1.414 1.414"/>
+        </svg>
+        <span class="text-sm font-medium">You're offline — some features may be limited</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Back Online Banner -->
+  <div id="online-banner" 
+       class="fixed top-0 left-0 right-0 z-[9998] transform transition-transform duration-300 -translate-y-full"
+       role="status" aria-live="polite">
+    <div class="bg-emerald-500/95 backdrop-blur-sm text-emerald-950 px-4 py-2.5 text-center">
+      <div class="flex items-center justify-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
+        </svg>
+        <span class="text-sm font-medium">You're back online!</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
+
   <!-- Top Header Bar (fixed on PWA) -->
   <header class="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-lg border-b border-zinc-800/50" style="padding-top: var(--safe-area-top);">
     <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -223,6 +254,111 @@
       const navLink = document.getElementById('my-requests-nav');
       if (navLink) navLink.href = '/my-requests/view?token=' + savedToken;
     }
+  </script>
+
+  <!-- Offline Detection System -->
+  <script>
+  (function() {
+    const offlineBanner = document.getElementById('offline-banner');
+    const onlineBanner = document.getElementById('online-banner');
+    let onlineTimeout;
+    
+    function showBanner(banner) {
+      banner.classList.remove('-translate-y-full');
+      banner.classList.add('translate-y-0');
+    }
+    
+    function hideBanner(banner) {
+      banner.classList.remove('translate-y-0');
+      banner.classList.add('-translate-y-full');
+    }
+    
+    function updateOnlineStatus() {
+      if (!navigator.onLine) {
+        hideBanner(onlineBanner);
+        showBanner(offlineBanner);
+        document.body.classList.add('is-offline');
+        // Disable submit buttons when offline
+        document.querySelectorAll('form button[type="submit"], form input[type="submit"]')
+          .forEach(btn => {
+            if (!btn.dataset.allowOffline) {
+              btn.dataset.wasDisabled = btn.disabled;
+              btn.disabled = true;
+            }
+          });
+      } else {
+        hideBanner(offlineBanner);
+        document.body.classList.remove('is-offline');
+        // Re-enable buttons
+        document.querySelectorAll('form button[type="submit"], form input[type="submit"]')
+          .forEach(btn => {
+            if (btn.dataset.wasDisabled !== undefined) {
+              btn.disabled = btn.dataset.wasDisabled === 'true';
+              delete btn.dataset.wasDisabled;
+            }
+          });
+        showBanner(onlineBanner);
+        clearTimeout(onlineTimeout);
+        onlineTimeout = setTimeout(() => hideBanner(onlineBanner), 3000);
+      }
+    }
+    
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    if (!navigator.onLine) updateOnlineStatus();
+  })();
+  </script>
+
+  <!-- Toast Notification System -->
+  <style>
+    .toast-item { pointer-events: auto; transform: translateY(-100%); opacity: 0; transition: all 0.3s ease-out; }
+    .toast-item.toast-visible { transform: translateY(0); opacity: 1; }
+    .toast-success > div { background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3); }
+    .toast-success .toast-icon { color: #10b981; }
+    .toast-error > div { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); }
+    .toast-error .toast-icon { color: #ef4444; }
+    .toast-warning > div { background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.3); }
+    .toast-warning .toast-icon { color: #f59e0b; }
+    .toast-info > div { background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); }
+    .toast-info .toast-icon { color: #3b82f6; }
+    .toast-loading > div { background: rgba(139, 92, 246, 0.15); border-color: rgba(139, 92, 246, 0.3); }
+    .toast-loading .toast-icon { color: #8b5cf6; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    body.is-offline .requires-online { opacity: 0.5; pointer-events: none; }
+  </style>
+  <script>
+  const toastIcons = {
+    success: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>',
+    error: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>',
+    warning: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>',
+    info: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    loading: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>'
+  };
+  
+  function showToast(message, type = 'info', duration = 4000) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast-item toast-${type}`;
+    toast.innerHTML = `
+      <div class="flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl backdrop-blur-md border min-w-[280px] max-w-[90vw]">
+        <span class="toast-icon flex-shrink-0">${toastIcons[type] || toastIcons.info}</span>
+        <span class="text-sm font-medium text-white flex-1">${message}</span>
+        <button class="toast-close flex-shrink-0 text-white/50 hover:text-white" onclick="this.closest('.toast-item').remove()">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+    `;
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('toast-visible'));
+    if (type !== 'loading' && duration > 0) {
+      setTimeout(() => { toast.classList.remove('toast-visible'); setTimeout(() => toast.remove(), 300); }, duration);
+    }
+    return toast;
+  }
+  
+  function dismissToast(toast) { toast.classList.remove('toast-visible'); setTimeout(() => toast.remove(), 300); }
+  window.showToast = showToast;
+  window.dismissToast = dismissToast;
   </script>
 
   {% block scripts %}{% endblock %}

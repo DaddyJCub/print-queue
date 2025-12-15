@@ -1,0 +1,73 @@
+{# 
+  Empty State Component
+  Use for lists/queues when there's no data
+  
+  Usage:
+    {% from '_components/empty_state.html' import empty_state %}
+    {{ empty_state(
+        icon='inbox',
+        title='No requests yet',
+        message='Submit your first print request to get started.',
+        action_url='/submit',
+        action_text='Submit Request'
+    ) }}
+#}
+
+{% macro empty_state(icon='inbox', title='Nothing here', message='', action_url='', action_text='', compact=false) %}
+
+{% set icons = {
+  'inbox': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>',
+  'search': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>',
+  'document': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>',
+  'cube': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>',
+  'printer': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>',
+  'cart': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>',
+  'notification': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>',
+  'error': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>'
+} %}
+
+<div class="flex flex-col items-center justify-center {{ 'py-8 px-4' if compact else 'py-16 px-6' }} text-center">
+  <!-- Icon -->
+  <div class="w-16 h-16 rounded-2xl bg-zinc-800/50 flex items-center justify-center mb-4">
+    <svg class="w-8 h-8 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      {{ icons.get(icon, icons.inbox)|safe }}
+    </svg>
+  </div>
+  
+  <!-- Title -->
+  <h3 class="text-lg font-semibold text-zinc-300 mb-1">{{ title }}</h3>
+  
+  <!-- Message -->
+  {% if message %}
+  <p class="text-sm text-zinc-500 max-w-xs mb-4">{{ message }}</p>
+  {% endif %}
+  
+  <!-- Action button -->
+  {% if action_url and action_text %}
+  <a href="{{ action_url }}" 
+     class="inline-flex items-center gap-2 px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white font-medium text-sm rounded-lg transition-colors">
+    {{ action_text }}
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+    </svg>
+  </a>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# Inline variant for inside cards #}
+{% macro empty_state_inline(message='No items', icon='inbox') %}
+
+{% set icons = {
+  'inbox': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>',
+  'search': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>'
+} %}
+
+<div class="flex items-center justify-center gap-2 py-4 text-zinc-500 text-sm">
+  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    {{ icons.get(icon, icons.inbox)|safe }}
+  </svg>
+  <span>{{ message }}</span>
+</div>
+{% endmacro %}

@@ -61,9 +61,24 @@
 </script>
 
 {% if error %}
-<div class="mb-4 bg-red-900/30 border border-red-800 text-red-200 p-4 rounded-xl text-sm flex items-center gap-3">
-  <span class="text-xl">⚠️</span>
-  <span>{{ error }}</span>
+<div class="mb-4 bg-red-900/30 border border-red-500/50 text-red-200 rounded-xl overflow-hidden">
+  <div class="px-4 py-3 flex items-start gap-3">
+    <svg class="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+    </svg>
+    <div class="flex-1">
+      <p class="font-medium text-red-200">Unable to submit request</p>
+      <p class="text-sm text-red-300/80 mt-0.5">{{ error }}</p>
+    </div>
+    <button onclick="this.closest('.bg-red-900\\/30').remove()" class="text-red-400 hover:text-red-200 p-1">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </button>
+  </div>
+  <div class="px-4 py-2 bg-red-950/50 text-xs text-red-300/70 border-t border-red-800/50">
+    💡 Tip: Check your file is under 200MB and try again. If the problem persists, <a href="/feedback?type=bug" class="underline hover:text-red-200">report a bug</a>.
+  </div>
 </div>
 {% endif %}
 
@@ -266,8 +281,12 @@
 
   <!-- Submit -->
   <div class="flex gap-3 pt-2">
-    <button type="submit" class="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition py-3.5 font-semibold tap-highlight">
-      Submit Request
+    <button type="submit" id="submit-btn" class="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition py-3.5 font-semibold tap-highlight flex items-center justify-center gap-2">
+      <span id="submit-text">Submit Request</span>
+      <svg id="submit-spinner" class="hidden w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
     </button>
     <button type="button" onclick="showSaveTemplateModal()" 
             class="rounded-xl bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-900 transition px-4 py-3.5 font-semibold tap-highlight"
@@ -389,15 +408,16 @@
       if (tpl.colors) form.querySelector('[name="colors"]').value = tpl.colors;
       if (tpl.notes) form.querySelector('[name="notes"]').value = tpl.notes;
       updateRushPricing();
-      showToast(`Loaded: ${tpl.name}`);
-    } catch (e) { showToast('Failed to load', true); }
+      showToastLocal(`Loaded: ${tpl.name}`);
+    } catch (e) { showToastLocal('Failed to load template', true); }
   }
   async function deleteTemplate(id, name) {
     if (!confirm(`Delete "${name}"?`)) return;
     try {
       await fetch(`/api/templates/${id}`, { method: 'DELETE' });
-      location.reload();
-    } catch (e) { showToast('Delete failed', true); }
+      showToastLocal(`Deleted: ${name}`);
+      setTimeout(() => location.reload(), 500);
+    } catch (e) { showToastLocal('Delete failed', true); }
   }
   function showSaveTemplateModal() {
     document.getElementById('save-template-modal').classList.remove('hidden');
@@ -408,7 +428,7 @@
   }
   async function saveTemplate() {
     const name = document.getElementById('template-name-input').value.trim();
-    if (!name) { showToast('Enter a name', true); return; }
+    if (!name) { showToastLocal('Enter a name', true); return; }
     const form = document.getElementById('request-form');
     const fd = new FormData();
     fd.append('name', name);
@@ -417,18 +437,38 @@
     });
     try {
       const r = await fetch('/api/templates', { method: 'POST', body: fd }).then(r => r.json());
-      if (r.success) { hideSaveTemplateModal(); showToast(`Saved: ${name}`); setTimeout(() => location.reload(), 1000); }
-    } catch (e) { showToast('Save failed', true); }
+      if (r.success) { hideSaveTemplateModal(); showToastLocal(`Saved: ${name}`); setTimeout(() => location.reload(), 1000); }
+    } catch (e) { showToastLocal('Save failed', true); }
   }
 
-  // Toast
-  function showToast(msg, err = false) {
-    const t = document.createElement('div');
-    t.className = `fixed bottom-20 sm:bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-auto px-4 py-3 rounded-xl text-sm font-medium z-50 text-center ${err ? 'bg-red-600' : 'bg-emerald-600'}`;
-    t.textContent = msg;
-    document.body.appendChild(t);
-    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+  // Toast - use global showToast if available
+  function showToastLocal(msg, err = false) {
+    if (window.showToast) {
+      window.showToast(msg, err ? 'error' : 'success');
+    } else {
+      const t = document.createElement('div');
+      t.className = `fixed bottom-20 sm:bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-auto px-4 py-3 rounded-xl text-sm font-medium z-50 text-center ${err ? 'bg-red-600' : 'bg-emerald-600'}`;
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+    }
   }
+
+  // Form submission with loading state
+  document.getElementById('request-form')?.addEventListener('submit', function(e) {
+    const btn = document.getElementById('submit-btn');
+    const text = document.getElementById('submit-text');
+    const spinner = document.getElementById('submit-spinner');
+    
+    // Validate form before showing loading
+    if (!this.checkValidity()) return;
+    
+    // Show loading state
+    btn.disabled = true;
+    btn.classList.add('opacity-75', 'cursor-wait');
+    text.textContent = 'Submitting...';
+    spinner.classList.remove('hidden');
+  });
 
   // Init
   document.addEventListener('DOMContentLoaded', function() {

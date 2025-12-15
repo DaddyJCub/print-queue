@@ -1,35 +1,172 @@
 {% extends "pwa_base.html" %}
 
-{% block title %}My Requests | Printellect{% endblock %}
+{% block title %}My Prints | Printellect{% endblock %}
 
 {% block nav_myrequests %}text-white bg-zinc-800{% endblock %}
 {% block bnav_myrequests %}active{% endblock %}
 
-{% block header_title %}My Requests{% endblock %}
+{% block header_title %}My Prints{% endblock %}
 
 {% block header_right %}
 <div class="flex items-center gap-2">
-  <span class="text-xs text-zinc-400 hidden sm:block">{{ email }}</span>
-  <a href="/my-requests?logout=1" class="px-2 py-1 text-xs text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition">Logout</a>
+  <button onclick="toggleAccountMenu()" class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 rounded-lg transition tap-highlight">
+    <div class="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">
+      {{ email[0]|upper }}
+    </div>
+    <svg class="w-4 h-4 text-zinc-400 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+    </svg>
+  </button>
 </div>
 {% endblock %}
 
+{% block head_extra %}
+<style>
+  /* Tap feedback for mobile */
+  .tap-highlight { -webkit-tap-highlight-color: transparent; }
+</style>
+{% endblock %}
+
 {% block content %}
-<!-- Sync to App Banner (for browser users) -->
-<div id="sync-banner" class="hidden mb-4 bg-gradient-to-r from-indigo-600/20 to-purple-600/10 border border-indigo-500/30 rounded-xl p-3">
-  <div class="flex items-center justify-between">
-    <div class="flex items-center gap-2">
-      <span>📱</span>
-      <span class="text-sm">Sync to Printellect app</span>
+<!-- Account Dropdown Menu -->
+<div id="account-menu" class="hidden absolute right-4 top-16 w-72 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
+  <!-- Account Header -->
+  <div class="p-4 border-b border-zinc-800 bg-zinc-950/50">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold">
+        {{ email[0]|upper }}
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-white truncate">{{ email }}</p>
+        <p class="text-xs text-zinc-500">Printellect Account</p>
+      </div>
     </div>
-    <button onclick="showSyncCode()" class="px-3 py-1.5 bg-white text-indigo-700 rounded-lg text-xs font-semibold tap-highlight">
-      Sync to App
+  </div>
+  
+  <!-- Menu Items -->
+  <div class="p-2">
+    <button onclick="showNotificationSettings()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition text-left">
+      <span class="text-lg">🔔</span>
+      <div>
+        <p class="text-sm font-medium">Notification Settings</p>
+        <p class="text-xs text-zinc-500">Email & push preferences</p>
+      </div>
     </button>
+    <button onclick="showSyncCode()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition text-left">
+      <span class="text-lg">📱</span>
+      <div>
+        <p class="text-sm font-medium">Sync to App</p>
+        <p class="text-xs text-zinc-500">Transfer session to PWA</p>
+      </div>
+    </button>
+    <a href="/feedback?type=suggestion" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+      <span class="text-lg">💡</span>
+      <div>
+        <p class="text-sm font-medium">Send Feedback</p>
+        <p class="text-xs text-zinc-500">Suggestions & bug reports</p>
+      </div>
+    </a>
+  </div>
+  
+  <!-- Logout -->
+  <div class="p-2 border-t border-zinc-800">
+    <a href="/my-requests?logout=1" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-900/30 text-red-400 transition">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+      </svg>
+      <span class="text-sm font-medium">Sign Out</span>
+    </a>
+  </div>
+</div>
+
+<!-- Notification Settings Modal -->
+<div id="notification-modal" class="hidden fixed inset-0 bg-black/80 flex items-end sm:items-center justify-center z-50 pb-20 sm:pb-0" onclick="hideNotificationSettings()">
+  <div class="bg-zinc-900 border border-zinc-700 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[70vh] sm:max-h-[85vh] overflow-y-auto" 
+       onclick="event.stopPropagation()" 
+       style="padding-bottom: env(safe-area-inset-bottom, 0px);">
+    <!-- Modal Header -->
+    <div class="sticky top-0 bg-zinc-900 border-b border-zinc-800 px-4 py-3 flex items-center justify-between z-10">
+      <h2 class="text-lg font-bold">🔔 Notification Settings</h2>
+      <button onclick="hideNotificationSettings()" class="p-2 hover:bg-zinc-800 rounded-lg transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    
+    <div class="p-4 space-y-4">
+      <!-- Push Status Banner -->
+      <div id="push-status-banner" class="hidden p-3 rounded-xl border border-yellow-500/40 bg-yellow-900/20">
+        <div class="flex items-start gap-2">
+          <span class="text-lg">⚠️</span>
+          <p id="push-status-message" class="text-sm text-yellow-200"></p>
+        </div>
+      </div>
+      
+      <!-- Email Notifications -->
+      <div class="bg-zinc-800/50 rounded-xl p-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-lg">📧</span>
+              <span class="font-medium">Email Notifications</span>
+            </div>
+            <p class="text-xs text-zinc-500 mt-1 ml-7">Receive status updates via email</p>
+          </div>
+          <button id="email-toggle" onclick="toggleEmailNotifications()" 
+                  class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-indigo-600">
+            <span id="email-toggle-dot" class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform translate-x-6"></span>
+          </button>
+        </div>
+      </div>
+      
+      <!-- Push Notifications -->
+      <div class="bg-zinc-800/50 rounded-xl p-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-lg">📲</span>
+              <span class="font-medium">Push Notifications</span>
+            </div>
+            <p class="text-xs text-zinc-500 mt-1 ml-7">Instant alerts on your device</p>
+            <div class="mt-2 ml-7">
+              <span id="push-status-indicator" class="inline-flex items-center text-xs font-medium"></span>
+            </div>
+          </div>
+          <button id="push-toggle" onclick="togglePushNotifications()" 
+                  class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-zinc-700">
+            <span id="push-toggle-dot" class="inline-block h-5 w-5 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-1"></span>
+          </button>
+        </div>
+        
+        <!-- Test Button -->
+        <div class="mt-3 pt-3 border-t border-zinc-700/50 ml-7">
+          <button id="test-push-btn" onclick="testPushNotification()" 
+                  class="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 rounded-lg text-xs font-medium text-white transition">
+            Send Test Notification
+          </button>
+        </div>
+      </div>
+      
+      <!-- iOS Install Hint -->
+      <div id="ios-install-hint" class="hidden p-3 bg-blue-900/30 border border-blue-500/30 rounded-xl">
+        <p class="text-xs text-blue-300">
+          <strong>📱 iPhone/iPad:</strong> To get push notifications, first install this app: 
+          tap <span class="inline-block px-1.5 py-0.5 bg-zinc-700 rounded">Share</span> → 
+          <span class="inline-block px-1.5 py-0.5 bg-zinc-700 rounded">Add to Home Screen</span>
+        </p>
+      </div>
+      
+      <!-- Tip -->
+      <p class="text-xs text-zinc-500 text-center">
+        💡 Enable push notifications for instant updates without email clutter
+      </p>
+    </div>
   </div>
 </div>
 
 <!-- Sync Code Modal -->
-<div id="sync-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+<div id="sync-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onclick="closeSyncModal()">
   <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-sm w-full text-center" onclick="event.stopPropagation()">
     <div class="text-4xl mb-3">📲</div>
     <h3 class="font-bold text-lg mb-2">Sync to Printellect App</h3>
@@ -42,10 +179,10 @@
     <p id="sync-expires" class="text-xs text-zinc-500 mb-4">Expires in <span id="sync-timer">10:00</span></p>
     
     <div class="flex gap-2">
-      <button onclick="refreshSyncCode()" class="flex-1 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm font-medium transition">
+      <button onclick="refreshSyncCode()" class="flex-1 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm font-medium transition tap-highlight">
         🔄 New Code
       </button>
-      <button onclick="closeSyncModal()" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-medium transition">
+      <button onclick="closeSyncModal()" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-medium transition tap-highlight">
         Done
       </button>
     </div>
@@ -54,93 +191,45 @@
       <p class="text-xs text-zinc-500 mb-2">📋 Instructions:</p>
       <ol class="text-xs text-zinc-400 space-y-1 list-decimal list-inside">
         <li>Open the Printellect app</li>
-        <li>Go to "My Requests"</li>
+        <li>Go to "My Prints"</li>
         <li>Tap "Sync Code" tab</li>
         <li>Enter the 6-digit code above</li>
       </ol>
     </div>
   </div>
 </div>
-<script>
-(function() {
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-  if (!isStandalone) {
-    document.getElementById('sync-banner')?.classList.remove('hidden');
-  }
-  // Mark PWA as used if standalone
-  if (isStandalone) localStorage.setItem('pwa_used', 'true');
-})();
 
-let syncTimerInterval = null;
-let syncExpiry = null;
-
-async function showSyncCode() {
-  document.getElementById('sync-modal').classList.remove('hidden');
-  await refreshSyncCode();
-}
-
-function closeSyncModal() {
-  document.getElementById('sync-modal').classList.add('hidden');
-  if (syncTimerInterval) clearInterval(syncTimerInterval);
-}
-
-async function refreshSyncCode() {
-  const codeEl = document.getElementById('sync-code');
-  const timerEl = document.getElementById('sync-timer');
-  codeEl.textContent = '......';
-  
-  try {
-    const formData = new FormData();
-    formData.append('token', '{{ token }}');
-    
-    const response = await fetch('/api/generate-sync-code', {
-      method: 'POST',
-      body: formData
-    });
-    const data = await response.json();
-    
-    if (data.success) {
-      // Format code as XXX-XXX
-      const code = data.code;
-      codeEl.textContent = code.slice(0,3) + '-' + code.slice(3);
-      
-      // Start countdown timer
-      syncExpiry = Date.now() + (data.expires_in * 1000);
-      if (syncTimerInterval) clearInterval(syncTimerInterval);
-      syncTimerInterval = setInterval(updateTimer, 1000);
-      updateTimer();
-    } else {
-      codeEl.textContent = 'Error';
-    }
-  } catch (e) {
-    codeEl.textContent = 'Error';
-  }
-}
-
-function updateTimer() {
-  const timerEl = document.getElementById('sync-timer');
-  const remaining = Math.max(0, syncExpiry - Date.now());
-  const mins = Math.floor(remaining / 60000);
-  const secs = Math.floor((remaining % 60000) / 1000);
-  timerEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
-  
-  if (remaining <= 0) {
-    timerEl.textContent = 'Expired';
-    document.getElementById('sync-code').textContent = '------';
-    clearInterval(syncTimerInterval);
-  }
-}
-</script>
+<!-- Page Title -->
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-xl font-bold">My Prints</h1>
+  <a href="/" class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium transition tap-highlight">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+    </svg>
+    <span class="hidden sm:inline">New Request</span>
+  </a>
+</div>
 
 {% set status_colors = {
-  'NEW': 'bg-blue-600/20 border-blue-500/50 text-blue-300',
-  'NEEDS_INFO': 'bg-orange-600/20 border-orange-500/50 text-orange-300',
-  'APPROVED': 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300',
-  'PRINTING': 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300',
-  'DONE': 'bg-green-600/20 border-green-500/50 text-green-300',
-  'PICKED_UP': 'bg-zinc-600/20 border-zinc-500/50 text-zinc-400',
-  'REJECTED': 'bg-red-600/20 border-red-500/50 text-red-300',
-  'CANCELLED': 'bg-zinc-600/20 border-zinc-500/50 text-zinc-400'
+  'NEW': 'bg-blue-500/20 border-blue-500/50 text-blue-300',
+  'NEEDS_INFO': 'bg-orange-500/20 border-orange-500/50 text-orange-300',
+  'APPROVED': 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300',
+  'PRINTING': 'bg-amber-500/20 border-amber-500/50 text-amber-300',
+  'DONE': 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300',
+  'PICKED_UP': 'bg-purple-500/20 border-purple-500/50 text-purple-300',
+  'REJECTED': 'bg-red-500/20 border-red-500/50 text-red-300',
+  'CANCELLED': 'bg-zinc-500/20 border-zinc-500/50 text-zinc-400'
+} %}
+
+{% set status_icons = {
+  'NEW': '🆕',
+  'NEEDS_INFO': '❓',
+  'APPROVED': '✓',
+  'PRINTING': '🖨️',
+  'DONE': '✅',
+  'PICKED_UP': '📦',
+  'REJECTED': '❌',
+  'CANCELLED': '🚫'
 } %}
 
 {% if requests_list %}
@@ -260,13 +349,20 @@ function updateTimer() {
   </div>
 
 {% else %}
-  <!-- No Requests -->
+  <!-- No Requests - Improved Empty State -->
   <div class="text-center py-16 bg-zinc-900/40 border border-zinc-800 rounded-2xl">
-    <div class="text-5xl mb-4">📭</div>
-    <h3 class="font-semibold mb-2">No requests yet</h3>
-    <p class="text-zinc-500 text-sm mb-4">Submit your first print request!</p>
-    <a href="/" class="inline-block rounded-xl bg-indigo-600 hover:bg-indigo-500 px-6 py-3 font-semibold tap-highlight">
+    <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-zinc-800/50 flex items-center justify-center">
+      <svg class="w-8 h-8 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+      </svg>
+    </div>
+    <h3 class="text-lg font-semibold text-zinc-300 mb-2">No requests yet</h3>
+    <p class="text-sm text-zinc-500 mb-6 max-w-xs mx-auto">Submit your first print request and track it here!</p>
+    <a href="/" class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-6 py-3 font-semibold tap-highlight transition">
       New Request
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+      </svg>
     </a>
   </div>
 {% endif %}
@@ -289,20 +385,401 @@ function updateTimer() {
 
 {% block scripts %}
 <script>
+// ========== Constants ==========
+const token = '{{ token }}';
+const email = '{{ email }}';
+let VAPID_PUBLIC_KEY = '';
+
+// Save token for persistent login
+if (token) {
+  localStorage.setItem('my_requests_token', token);
+  localStorage.setItem('my_requests_email', email);
+}
+
+// ========== Account Menu ==========
+function toggleAccountMenu() {
+  const menu = document.getElementById('account-menu');
+  menu.classList.toggle('hidden');
+}
+
+// Close account menu when clicking outside
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('account-menu');
+  const btn = e.target.closest('button[onclick*="toggleAccountMenu"]');
+  if (!btn && !menu.contains(e.target)) {
+    menu.classList.add('hidden');
+  }
+});
+
+// ========== Notification Settings Modal ==========
+function showNotificationSettings() {
+  document.getElementById('account-menu').classList.add('hidden');
+  document.getElementById('notification-modal').classList.remove('hidden');
+  initNotificationUI();
+}
+
+function hideNotificationSettings() {
+  document.getElementById('notification-modal').classList.add('hidden');
+}
+
+// ========== Snapshot Modal ==========
 function showSnapshot(b64) {
   document.getElementById('snapshot-img').src = 'data:image/jpeg;base64,' + b64;
   document.getElementById('snapshot-modal').classList.remove('hidden');
 }
+
 function hideSnapshot() {
   document.getElementById('snapshot-modal').classList.add('hidden');
 }
 
-// Save token for persistent login
-const token = '{{ token }}';
-const email = '{{ email }}';
-if (token) {
-  localStorage.setItem('my_requests_token', token);
-  localStorage.setItem('my_requests_email', email);
+// ========== Sync Code Functions ==========
+let syncTimerInterval = null;
+let syncExpiry = null;
+
+function showSyncCode() {
+  document.getElementById('account-menu').classList.add('hidden');
+  document.getElementById('sync-modal').classList.remove('hidden');
+  refreshSyncCode();
+}
+
+function closeSyncModal() {
+  document.getElementById('sync-modal').classList.add('hidden');
+  if (syncTimerInterval) clearInterval(syncTimerInterval);
+}
+
+async function refreshSyncCode() {
+  const codeEl = document.getElementById('sync-code');
+  const timerEl = document.getElementById('sync-timer');
+  codeEl.textContent = '......';
+  
+  try {
+    const formData = new FormData();
+    formData.append('token', token);
+    
+    const response = await fetch('/api/generate-sync-code', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await response.json();
+    
+    if (data.success) {
+      const code = data.code;
+      codeEl.textContent = code.slice(0,3) + '-' + code.slice(3);
+      
+      syncExpiry = Date.now() + (data.expires_in * 1000);
+      if (syncTimerInterval) clearInterval(syncTimerInterval);
+      syncTimerInterval = setInterval(updateTimer, 1000);
+      updateTimer();
+    } else {
+      codeEl.textContent = 'Error';
+    }
+  } catch (e) {
+    codeEl.textContent = 'Error';
+  }
+}
+
+function updateTimer() {
+  const timerEl = document.getElementById('sync-timer');
+  const remaining = Math.max(0, syncExpiry - Date.now());
+  const mins = Math.floor(remaining / 60000);
+  const secs = Math.floor((remaining % 60000) / 1000);
+  timerEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+  
+  if (remaining <= 0) {
+    timerEl.textContent = 'Expired';
+    document.getElementById('sync-code').textContent = '------';
+    clearInterval(syncTimerInterval);
+  }
+}
+
+// ========== Email Notifications ==========
+// Track email toggle state - default to true (enabled)
+let currentEmailState = localStorage.getItem('email_notify_' + email) !== 'false';
+
+function updateEmailToggle(enabled) {
+  const toggle = document.getElementById('email-toggle');
+  const dot = document.getElementById('email-toggle-dot');
+  
+  if (enabled) {
+    toggle.classList.remove('bg-zinc-700');
+    toggle.classList.add('bg-indigo-600');
+    dot.classList.remove('translate-x-1', 'bg-zinc-400');
+    dot.classList.add('translate-x-6', 'bg-white');
+  } else {
+    toggle.classList.remove('bg-indigo-600');
+    toggle.classList.add('bg-zinc-700');
+    dot.classList.remove('translate-x-6', 'bg-white');
+    dot.classList.add('translate-x-1', 'bg-zinc-400');
+  }
+}
+
+async function toggleEmailNotifications() {
+  const newState = !currentEmailState;
+  
+  // Save preference locally
+  localStorage.setItem('email_notify_' + email, newState ? 'true' : 'false');
+  currentEmailState = newState;
+  updateEmailToggle(newState);
+  
+  // Update all requests for this user
+  try {
+    const formData = new FormData();
+    formData.append('token', token);
+    formData.append('email_enabled', newState ? '1' : '0');
+    
+    const response = await fetch('/api/update-global-email-notify', {
+      method: 'POST',
+      body: formData
+    });
+    
+    const data = await response.json();
+    if (data.success) {
+      showToast(newState ? 'Email notifications enabled' : 'Email notifications disabled', 'success');
+    } else {
+      // API may not exist yet - still save locally
+      showToast(newState ? 'Email notifications enabled' : 'Email notifications disabled', 'success');
+    }
+  } catch (e) {
+    // Still save locally even if API fails
+    showToast(newState ? 'Email notifications enabled' : 'Email notifications disabled', 'success');
+  }
+}
+
+// ========== Push Notifications ==========
+let pushEnabled = false;
+
+async function initNotificationUI() {
+  updateEmailToggle(currentEmailState);
+  
+  // Check for iOS not in standalone mode
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  
+  if (isIOS && !isStandalone) {
+    document.getElementById('ios-install-hint')?.classList.remove('hidden');
+  }
+  
+  // Fetch VAPID key
+  try {
+    const resp = await fetch('/api/push/vapid-public-key');
+    const data = await resp.json();
+    if (data.publicKey) {
+      VAPID_PUBLIC_KEY = data.publicKey;
+    }
+  } catch (e) {
+    console.warn('Could not fetch VAPID key');
+  }
+  
+  // Check push notification status
+  await checkPushStatus();
+}
+
+async function checkPushStatus() {
+  const statusIndicator = document.getElementById('push-status-indicator');
+  const banner = document.getElementById('push-status-banner');
+  const bannerMsg = document.getElementById('push-status-message');
+  
+  // Hide banner by default
+  banner.classList.add('hidden');
+  
+  // Check if service worker and push are supported
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    statusIndicator.textContent = '❌ Not supported';
+    statusIndicator.className = 'inline-flex items-center text-xs font-medium text-red-400';
+    banner.classList.remove('hidden');
+    bannerMsg.textContent = 'Push notifications are not supported in this browser.';
+    updatePushToggle(false, true);
+    return;
+  }
+  
+  // Check notification permission
+  const permission = Notification.permission;
+  
+  if (permission === 'denied') {
+    statusIndicator.textContent = '🚫 Blocked';
+    statusIndicator.className = 'inline-flex items-center text-xs font-medium text-red-400';
+    banner.classList.remove('hidden');
+    bannerMsg.textContent = 'Notifications are blocked. Please enable them in your browser settings.';
+    updatePushToggle(false, true);
+    return;
+  }
+  
+  // Check if we have an active subscription
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    
+    if (subscription) {
+      statusIndicator.textContent = '✅ Active';
+      statusIndicator.className = 'inline-flex items-center text-xs font-medium text-emerald-400';
+      pushEnabled = true;
+      updatePushToggle(true, false);
+    } else if (permission === 'granted') {
+      statusIndicator.textContent = '⚪ Inactive';
+      statusIndicator.className = 'inline-flex items-center text-xs font-medium text-zinc-400';
+      updatePushToggle(false, false);
+    } else {
+      statusIndicator.textContent = '⚪ Not enabled';
+      statusIndicator.className = 'inline-flex items-center text-xs font-medium text-zinc-400';
+      updatePushToggle(false, false);
+    }
+  } catch (e) {
+    statusIndicator.textContent = '⚠️ Error';
+    statusIndicator.className = 'inline-flex items-center text-xs font-medium text-yellow-400';
+    updatePushToggle(false, false);
+  }
+}
+
+function updatePushToggle(enabled, disabled) {
+  const toggle = document.getElementById('push-toggle');
+  const dot = document.getElementById('push-toggle-dot');
+  const testBtn = document.getElementById('test-push-btn');
+  
+  if (disabled) {
+    toggle.disabled = true;
+    toggle.className = 'relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-zinc-800 cursor-not-allowed opacity-50';
+    testBtn.disabled = true;
+    testBtn.className = 'px-3 py-1.5 bg-zinc-700 rounded-lg text-xs font-medium text-zinc-500 cursor-not-allowed';
+    return;
+  }
+  
+  toggle.disabled = false;
+  testBtn.disabled = !enabled;
+  
+  if (enabled) {
+    toggle.className = 'relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-indigo-600';
+    dot.className = 'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform translate-x-6';
+    testBtn.className = 'px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 rounded-lg text-xs font-medium text-white transition';
+  } else {
+    toggle.className = 'relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-zinc-700';
+    dot.className = 'inline-block h-5 w-5 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-1';
+    testBtn.className = 'px-3 py-1.5 bg-zinc-700 rounded-lg text-xs font-medium text-zinc-500 cursor-not-allowed';
+  }
+}
+
+async function togglePushNotifications() {
+  if (pushEnabled) {
+    await unsubscribePush();
+  } else {
+    await subscribePush();
+  }
+}
+
+async function subscribePush() {
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      showToast('Notification permission denied', 'error');
+      await checkPushStatus();
+      return;
+    }
+    
+    if (!VAPID_PUBLIC_KEY) {
+      showToast('Push notifications not configured on server', 'error');
+      return;
+    }
+    
+    const registration = await navigator.serviceWorker.ready;
+    
+    // Create subscription
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+    
+    // Send to server
+    const formData = new FormData();
+    formData.append('token', token);
+    formData.append('subscription', JSON.stringify(subscription));
+    
+    const response = await fetch('/api/push/subscribe', {
+      method: 'POST',
+      body: formData
+    });
+    
+    const data = await response.json();
+    if (data.success) {
+      pushEnabled = true;
+      showToast('Push notifications enabled!', 'success');
+    } else {
+      showToast(data.error || 'Failed to enable push', 'error');
+    }
+  } catch (e) {
+    console.error('Push subscription error:', e);
+    showToast('Failed to enable push notifications', 'error');
+  }
+  
+  await checkPushStatus();
+}
+
+async function unsubscribePush() {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    
+    if (subscription) {
+      // Unsubscribe locally
+      await subscription.unsubscribe();
+      
+      // Notify server
+      const formData = new FormData();
+      formData.append('token', token);
+      formData.append('endpoint', subscription.endpoint);
+      
+      await fetch('/api/push/unsubscribe', {
+        method: 'POST',
+        body: formData
+      });
+    }
+    
+    pushEnabled = false;
+    showToast('Push notifications disabled', 'success');
+  } catch (e) {
+    console.error('Unsubscribe error:', e);
+    showToast('Failed to disable push', 'error');
+  }
+  
+  await checkPushStatus();
+}
+
+async function testPushNotification() {
+  const btn = document.getElementById('test-push-btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  
+  try {
+    const formData = new FormData();
+    formData.append('token', token);
+    
+    const response = await fetch('/api/push/test', {
+      method: 'POST',
+      body: formData
+    });
+    
+    const data = await response.json();
+    if (data.success) {
+      showToast('Test notification sent!', 'success');
+    } else {
+      showToast(data.error || 'Failed to send test', 'error');
+    }
+  } catch (e) {
+    showToast('Network error', 'error');
+  }
+  
+  btn.disabled = false;
+  btn.textContent = 'Send Test Notification';
+}
+
+// ========== Utility Functions ==========
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
 }
 </script>
 {% endblock %}

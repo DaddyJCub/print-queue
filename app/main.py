@@ -3491,6 +3491,152 @@ async def my_requests_view(request: Request, token: str):
     })
 
 
+@app.get("/my-requests/demo", response_class=HTMLResponse)
+async def my_requests_demo(request: Request):
+    """Demo mode for testing the My Prints page without a real account"""
+    from datetime import timedelta
+    
+    demo_email = "admin@jcubhub.com"
+    demo_token = "demo-token-12345"
+    
+    # Generate fake requests with various statuses
+    now = datetime.utcnow()
+    fake_requests = [
+        {
+            "id": "demo-001-done-recent",
+            "print_name": "Benchy Test Print",
+            "status": "DONE",
+            "created_at": (now - timedelta(days=2)).isoformat()[:10],
+            "updated_at": (now - timedelta(hours=1)).isoformat(),
+            "printer": "P1",
+            "material": "PLA",
+            "colors": "Blue",
+            "access_token": "demo-access-1",
+            "completion_snapshot": None,  # No snapshot for demo
+            "printing_started_at": None,
+            "print_time_minutes": 45,
+            "printer_status": None,
+            "smart_eta_display": None,
+        },
+        {
+            "id": "demo-002-printing",
+            "print_name": "Phone Stand v2",
+            "status": "PRINTING",
+            "created_at": (now - timedelta(days=1)).isoformat()[:10],
+            "updated_at": now.isoformat(),
+            "printer": "P2",
+            "material": "PETG",
+            "colors": "White",
+            "access_token": "demo-access-2",
+            "completion_snapshot": None,
+            "printing_started_at": (now - timedelta(hours=2)).isoformat(),
+            "print_time_minutes": 180,
+            "printer_status": {
+                "status": "BUILDING",
+                "is_printing": True,
+                "progress": 67,
+                "current_layer": 134,
+                "total_layers": 200,
+                "temp": "215",
+                "camera_url": None,
+            },
+            "smart_eta_display": "~1h 15m remaining",
+        },
+        {
+            "id": "demo-003-approved",
+            "print_name": "Cable Organizer Set",
+            "status": "APPROVED",
+            "created_at": (now - timedelta(hours=6)).isoformat()[:10],
+            "updated_at": (now - timedelta(hours=4)).isoformat(),
+            "printer": "ANY",
+            "material": "PLA",
+            "colors": "Black",
+            "access_token": "demo-access-3",
+            "completion_snapshot": None,
+            "printing_started_at": None,
+            "print_time_minutes": None,
+            "printer_status": None,
+            "smart_eta_display": None,
+        },
+        {
+            "id": "demo-004-needs-info",
+            "print_name": "Custom Part #47",
+            "status": "NEEDS_INFO",
+            "created_at": (now - timedelta(hours=12)).isoformat()[:10],
+            "updated_at": (now - timedelta(hours=3)).isoformat(),
+            "printer": "ANY",
+            "material": "ABS",
+            "colors": "Red",
+            "access_token": "demo-access-4",
+            "completion_snapshot": None,
+            "printing_started_at": None,
+            "print_time_minutes": None,
+            "printer_status": None,
+            "smart_eta_display": None,
+        },
+        {
+            "id": "demo-005-new",
+            "print_name": "Keycap Set",
+            "status": "NEW",
+            "created_at": (now - timedelta(hours=2)).isoformat()[:10],
+            "updated_at": (now - timedelta(hours=2)).isoformat(),
+            "printer": "ANY",
+            "material": "PLA",
+            "colors": "Rainbow",
+            "access_token": "demo-access-5",
+            "completion_snapshot": None,
+            "printing_started_at": None,
+            "print_time_minutes": None,
+            "printer_status": None,
+            "smart_eta_display": None,
+        },
+        {
+            "id": "demo-006-picked-up",
+            "print_name": "Desk Toy",
+            "status": "PICKED_UP",
+            "created_at": (now - timedelta(days=5)).isoformat()[:10],
+            "updated_at": (now - timedelta(days=3)).isoformat(),
+            "printer": "P1",
+            "material": "PLA",
+            "colors": "Yellow",
+            "access_token": "demo-access-6",
+            "completion_snapshot": None,
+            "printing_started_at": None,
+            "print_time_minutes": 30,
+            "printer_status": None,
+            "smart_eta_display": None,
+        },
+        {
+            "id": "demo-007-done-old",
+            "print_name": "Raspberry Pi Case",
+            "status": "DONE",
+            "created_at": (now - timedelta(days=7)).isoformat()[:10],
+            "updated_at": (now - timedelta(days=6)).isoformat(),
+            "printer": "P3",
+            "material": "PETG",
+            "colors": "Gray",
+            "access_token": "demo-access-7",
+            "completion_snapshot": None,
+            "printing_started_at": None,
+            "print_time_minutes": 120,
+            "printer_status": None,
+            "smart_eta_display": None,
+        },
+    ]
+    
+    # Sort like real requests: DONE first, then PRINTING, then NEEDS_INFO, then others
+    status_order = {"DONE": 0, "PRINTING": 1, "NEEDS_INFO": 2}
+    fake_requests.sort(key=lambda r: (status_order.get(r["status"], 3), r["created_at"]), reverse=False)
+    
+    return templates.TemplateResponse("my_requests_list_new.html", {
+        "request": request,
+        "email": demo_email,
+        "requests_list": fake_requests,
+        "token": demo_token,
+        "version": APP_VERSION,
+    })
+
+
 # API endpoint to verify short code (for PWA session sync)
 @app.post("/api/verify-code")
 def verify_short_code(code: str = Form(...)):
@@ -6157,6 +6303,44 @@ async def update_notification_prefs(rid: str, request: Request):
     conn.close()
     
     return {"status": "updated", "prefs": {"email": email_enabled, "push": push_enabled}}
+
+
+@app.post("/api/update-global-email-notify")
+async def update_global_email_notify(token: str = Form(...), email_enabled: str = Form("1")):
+    """Update email notification preference for ALL requests belonging to a user"""
+    conn = db()
+    
+    # Find user email from token
+    token_row = conn.execute(
+        "SELECT email FROM email_lookup_tokens WHERE token = ?", (token,)
+    ).fetchone()
+    
+    if not token_row:
+        conn.close()
+        return {"success": False, "error": "Invalid token"}
+    
+    user_email = token_row["email"]
+    enabled = email_enabled == "1"
+    
+    # Update all requests for this user
+    prefs_json = json.dumps({"email": enabled, "push": False})
+    conn.execute(
+        """UPDATE requests 
+           SET notification_prefs = json_set(
+               COALESCE(notification_prefs, '{"email": true, "push": false}'), 
+               '$.email', 
+               ?
+           )
+           WHERE requester_email = ?""",
+        (enabled, user_email)
+    )
+    conn.commit()
+    
+    # Count updated rows
+    updated = conn.total_changes
+    conn.close()
+    
+    return {"success": True, "email": user_email, "enabled": enabled, "updated_requests": updated}
 
 
 @app.get("/api/rush-pricing")

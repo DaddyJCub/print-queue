@@ -19,16 +19,16 @@ Write-Host "Using Python: " -NoNewline
 python --version
 
 # Check if virtual environment exists
-$venvPath = ".\venv"
+$venvPath = ".\.venv"
 if (-not (Test-Path $venvPath)) {
     Write-Host ""
     Write-Host "Creating virtual environment..." -ForegroundColor Yellow
-    python -m venv venv
+    python -m venv .venv
 }
 
 # Activate virtual environment
 Write-Host "Activating virtual environment..." -ForegroundColor Yellow
-& ".\venv\Scripts\Activate.ps1"
+& ".\.venv\Scripts\Activate.ps1"
 
 # Install/update dependencies
 Write-Host "Installing dependencies..." -ForegroundColor Yellow

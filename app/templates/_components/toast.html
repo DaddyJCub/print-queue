@@ -1,0 +1,154 @@
+{# 
+  Toast Notification Component
+  Include this once in your base template
+  
+  Usage in JavaScript:
+    showToast('Request submitted!', 'success');
+    showToast('Unable to connect', 'error');
+    showToast('Saving...', 'loading');
+#}
+
+<!-- Toast Container - position at top for mobile -->
+<div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none">
+</div>
+
+<template id="toast-template">
+  <div class="toast-item pointer-events-auto transform transition-all duration-300 ease-out translate-y-[-100%] opacity-0"
+       role="alert" aria-live="polite">
+    <div class="flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl backdrop-blur-md border min-w-[280px] max-w-[90vw]">
+      <!-- Icon -->
+      <span class="toast-icon flex-shrink-0 w-5 h-5"></span>
+      <!-- Message -->
+      <span class="toast-message text-sm font-medium flex-1"></span>
+      <!-- Close button -->
+      <button class="toast-close flex-shrink-0 text-white/50 hover:text-white transition-colors" aria-label="Dismiss">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</template>
+
+<style>
+  .toast-item.toast-visible {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  
+  .toast-item.toast-hiding {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  
+  /* Type-specific styles */
+  .toast-success .toast-icon svg { color: #10b981; }
+  .toast-success > div { 
+    background: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.3);
+  }
+  
+  .toast-error .toast-icon svg { color: #ef4444; }
+  .toast-error > div {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.3);
+  }
+  
+  .toast-warning .toast-icon svg { color: #f59e0b; }
+  .toast-warning > div {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+  
+  .toast-info .toast-icon svg { color: #3b82f6; }
+  .toast-info > div {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.3);
+  }
+  
+  .toast-loading .toast-icon svg {
+    color: #8b5cf6;
+    animation: spin 1s linear infinite;
+  }
+  .toast-loading > div {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.3);
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+</style>
+
+<script>
+// Toast notification system
+const toastIcons = {
+  success: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+  </svg>`,
+  error: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+  </svg>`,
+  warning: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+  </svg>`,
+  info: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+  </svg>`,
+  loading: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+  </svg>`
+};
+
+function showToast(message, type = 'info', duration = 4000) {
+  const container = document.getElementById('toast-container');
+  const template = document.getElementById('toast-template');
+  const toast = template.content.cloneNode(true).querySelector('.toast-item');
+  
+  // Set type class
+  toast.classList.add(`toast-${type}`);
+  
+  // Set content
+  toast.querySelector('.toast-icon').innerHTML = toastIcons[type] || toastIcons.info;
+  toast.querySelector('.toast-message').textContent = message;
+  
+  // Add to container
+  container.appendChild(toast);
+  
+  // Trigger animation
+  requestAnimationFrame(() => {
+    toast.classList.add('toast-visible');
+  });
+  
+  // Auto dismiss (except loading toasts)
+  let timeoutId;
+  if (type !== 'loading' && duration > 0) {
+    timeoutId = setTimeout(() => dismissToast(toast), duration);
+  }
+  
+  // Close button
+  toast.querySelector('.toast-close').addEventListener('click', () => {
+    if (timeoutId) clearTimeout(timeoutId);
+    dismissToast(toast);
+  });
+  
+  // Return toast element for programmatic dismissal (useful for loading toasts)
+  return toast;
+}
+
+function dismissToast(toast) {
+  toast.classList.remove('toast-visible');
+  toast.classList.add('toast-hiding');
+  setTimeout(() => toast.remove(), 300);
+}
+
+// Helper for common loading pattern
+function showLoadingToast(message) {
+  return showToast(message, 'loading', 0);
+}
+
+// Make globally available
+window.showToast = showToast;
+window.dismissToast = dismissToast;
+window.showLoadingToast = showLoadingToast;
+</script>
