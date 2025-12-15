@@ -447,20 +447,32 @@
             // Diagnostics and test notification
             async function testPushNotification() {
               const diag = document.getElementById('push-diagnostics');
-              diag.textContent = 'Sending test notification...';
+              diag.innerHTML = '<span class="text-zinc-500">⏳ Sending test notification...</span>';
               try {
                 const resp = await fetch(`/api/push/test`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ email: requestEmail })
                 });
-                if (resp.ok) {
-                  diag.textContent = 'Test notification sent! Check your device.';
+                const result = await resp.json();
+                console.log('[PUSH TEST] Result:', result);
+                
+                if (result.status === 'sent') {
+                  diag.innerHTML = `<span class="text-emerald-400">✅ Test notification sent!</span> Check your device.` +
+                    `<br><small class="text-zinc-500">Sent to ${result.details?.sent || 0} subscription(s)</small>`;
+                } else if (result.status === 'no_subscriptions') {
+                  diag.innerHTML = `<span class="text-amber-400">⚠️ No subscriptions found for ${requestEmail}</span>` +
+                    `<br><small class="text-zinc-500">Try disabling and re-enabling push notifications.</small>`;
+                } else if (result.status === 'error') {
+                  const errors = result.details?.errors?.join('<br>') || 'Unknown error';
+                  diag.innerHTML = `<span class="text-red-400">❌ Failed to send:</span>` +
+                    `<br><small class="text-zinc-500">${errors}</small>`;
                 } else {
-                  diag.textContent = 'Failed to send test notification.';
+                  diag.innerHTML = `<span class="text-red-400">❌ Error: ${result.error || 'Unknown'}</span>`;
                 }
               } catch (err) {
-                diag.textContent = 'Error sending test notification.';
+                diag.innerHTML = `<span class="text-red-400">❌ Network error: ${err.message}</span>`;
+                console.error('[PUSH TEST] Error:', err);
               }
             }
       
@@ -861,6 +873,26 @@
           lines.push(`vapid_configured: ${data.vapid_configured}`);
           lines.push(`vapid_key_length: ${data.vapid_public_key_length}`);
           lines.push(`base_url: ${data.base_url}`);
+        } catch (e) {
+          lines.push(`Error: ${e.message}`);
+        }
+        
+        // Server-side subscriptions for this email
+        lines.push('\n── Server Subscriptions ──');
+        lines.push(`email: ${requestEmail}`);
+        try {
+          const resp = await fetch(`/api/push/diagnostics/${encodeURIComponent(requestEmail)}`);
+          const data = await resp.json();
+          if (data.subscriptions && data.subscriptions.length > 0) {
+            lines.push(`count: ${data.subscriptions.length}`);
+            for (const sub of data.subscriptions) {
+              lines.push(`  endpoint: ${sub.endpoint.substring(0, 50)}...`);
+              lines.push(`  created: ${sub.created_at}`);
+            }
+          } else {
+            lines.push('⚠️ NO SUBSCRIPTIONS FOUND ON SERVER');
+            lines.push('The subscription may not have been saved correctly.');
+          }
         } catch (e) {
           lines.push(`Error: ${e.message}`);
         }

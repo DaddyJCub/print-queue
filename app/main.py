@@ -2151,34 +2151,52 @@ def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Opt
 
 
 # ─────────────────────────── PUSH NOTIFICATIONS ───────────────────────────
-def send_push_notification(email: str, title: str, body: str, url: str = None):
+def send_push_notification(email: str, title: str, body: str, url: str = None) -> dict:
     """
     Send push notification to all subscriptions for a user (by email).
-    Silently fails if VAPID keys not configured or no subscriptions exist.
+    Returns a dict with status and details for debugging.
     """
+    result = {"email": email, "sent": 0, "failed": 0, "errors": []}
+    
     if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
-        print("[PUSH] ERROR: VAPID keys are not configured. Push notifications will not be sent.")
-        return
+        msg = "VAPID keys are not configured"
+        print(f"[PUSH] ERROR: {msg}")
+        result["errors"].append(msg)
+        return result
+        
     try:
         from pywebpush import webpush, WebPushException
     except ImportError:
-        print("[PUSH] pywebpush not installed")
-        return
+        msg = "pywebpush not installed"
+        print(f"[PUSH] ERROR: {msg}")
+        result["errors"].append(msg)
+        return result
+        
     conn = db()
     subs = conn.execute(
         "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE email = ?",
         (email,)
     ).fetchall()
     conn.close()
+    
+    result["subscriptions_found"] = len(subs)
+    
     if not subs:
-        return
+        msg = f"No push subscriptions found for email: {email}"
+        print(f"[PUSH] {msg}")
+        result["errors"].append(msg)
+        return result
+        
+    print(f"[PUSH] Found {len(subs)} subscription(s) for {email}")
+    
     payload = json.dumps({
         "title": title,
         "body": body,
-        "url": url or "/my-requests/view",  # Default to my-requests page
+        "url": url or "/my-requests/view",
         "icon": "/static/icons/icon-192.png",
     })
     vapid_claims = {"sub": VAPID_CLAIMS_EMAIL}
+    
     for sub in subs:
         subscription_info = {
             "endpoint": sub["endpoint"],
@@ -2188,24 +2206,42 @@ def send_push_notification(email: str, title: str, body: str, url: str = None):
             }
         }
         try:
+            print(f"[PUSH] Sending to endpoint: {sub['endpoint'][:60]}...")
             webpush(
                 subscription_info=subscription_info,
                 data=payload,
                 vapid_private_key=VAPID_PRIVATE_KEY,
                 vapid_claims=vapid_claims,
+                ttl=86400,  # 24 hours - Firefox requires TTL
             )
-            print(f"[PUSH] Sent notification for {email}")
+            print(f"[PUSH] ✓ Sent notification for {email}")
+            result["sent"] += 1
         except WebPushException as e:
-            print(f"[PUSH] Failed: {e}")
+            error_msg = f"WebPush error: {e}"
+            # Include response body if available for debugging
+            if e.response:
+                try:
+                    error_msg += f" | Status: {e.response.status_code} | Body: {e.response.text[:200]}"
+                except:
+                    pass
+            print(f"[PUSH] ✗ Failed: {error_msg}")
+            result["failed"] += 1
+            result["errors"].append(error_msg)
+            
             # Remove invalid subscriptions (410 Gone or 404)
             if e.response and e.response.status_code in [404, 410]:
                 conn = db()
                 conn.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (sub["endpoint"],))
                 conn.commit()
                 conn.close()
-                print(f"[PUSH] Removed expired subscription")
+                print(f"[PUSH] Removed expired subscription (status {e.response.status_code})")
         except Exception as e:
-            print(f"[PUSH] Error: {e}")
+            error_msg = f"Unexpected error: {type(e).__name__}: {e}"
+            print(f"[PUSH] ✗ Error: {error_msg}")
+            result["failed"] += 1
+            result["errors"].append(error_msg)
+    
+    return result
 
 
 def safe_ext(filename: str) -> str:
@@ -5836,16 +5872,30 @@ def get_vapid_public_key():
 # Test push notification endpoint
 @app.post("/api/push/test")
 async def test_push_notification(request: Request):
-    """Test push notification for a user (by email)"""
+    """Test push notification for a user (by email) - returns detailed results"""
     try:
         data = await request.json()
         email = data.get("email")
         if not email:
-            return {"error": "Missing email"}
-        send_push_notification(email, "Test Notification", "This is a test push notification.")
-        return {"status": "sent"}
+            return {"error": "Missing email", "status": "error"}
+        
+        print(f"[PUSH TEST] Testing push for email: {email}")
+        result = send_push_notification(
+            email, 
+            "Test Notification", 
+            "This is a test push notification from Printellect.",
+            "/my-requests/view"
+        )
+        
+        if result["sent"] > 0:
+            return {"status": "sent", "details": result}
+        elif result["errors"]:
+            return {"status": "error", "details": result}
+        else:
+            return {"status": "no_subscriptions", "details": result}
     except Exception as e:
-        return {"error": str(e)}
+        print(f"[PUSH TEST] Exception: {e}")
+        return {"error": str(e), "status": "exception"}
 
 
 @app.post("/api/push/subscribe")
