@@ -167,7 +167,13 @@
       <h3 class="font-medium mb-3 flex items-center gap-2">
         🔔 Notification Settings
       </h3>
-      
+
+      <!-- Push Notification Status Banner (shown if not enabled) -->
+      <div id="push-status-banner" class="hidden mb-3 p-3 rounded-xl border border-yellow-500/40 bg-yellow-900/20 text-yellow-200 flex items-center gap-2">
+        <span class="text-xl">⚠️</span>
+        <span id="push-status-message">Push notifications are not enabled. Enable them below for instant updates.</span>
+      </div>
+
       <!-- Email Notifications Toggle -->
       <div class="flex items-center justify-between py-2">
         <div>
@@ -179,19 +185,28 @@
           <span id="email-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-6"></span>
         </button>
       </div>
-      
-      <!-- Push Notifications Toggle -->
+
+      <!-- Push Notifications Toggle + Status -->
       <div class="flex items-center justify-between py-2 border-t border-zinc-800 mt-2 pt-3">
         <div>
           <span class="text-sm" id="push-label">Push Notifications</span>
           <p class="text-xs text-zinc-500" id="push-desc">Get instant alerts on your device</p>
+          <div class="mt-1">
+            <span id="push-status-indicator" class="inline-flex items-center text-xs font-medium"></span>
+          </div>
         </div>
         <button id="push-toggle" onclick="togglePushNotifications()" 
                 class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none bg-zinc-700">
           <span id="push-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-zinc-400 transition-transform translate-x-1"></span>
         </button>
       </div>
-      
+
+      <!-- Push Diagnostics & Test -->
+      <div class="mt-3 flex flex-col gap-2">
+        <button id="test-push-btn" onclick="testPushNotification()" class="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 rounded-lg text-xs font-medium text-white w-max transition">Test Notification</button>
+        <div id="push-diagnostics" class="text-xs text-zinc-400"></div>
+      </div>
+
       <!-- iOS Install Instructions (shown when needed) -->
       <div id="ios-install-hint" class="hidden mt-3 p-3 bg-blue-900/30 border border-blue-500/30 rounded-xl">
         <p class="text-xs text-blue-300">
@@ -201,7 +216,7 @@
           then open from your home screen.
         </p>
       </div>
-      
+
       <p class="text-xs text-zinc-600 mt-3 pt-2 border-t border-zinc-800">
         💡 Tip: Enable push and disable email for instant notifications without inbox clutter.
       </p>
@@ -236,13 +251,59 @@
       async function initNotifications() {
         // Load saved preferences from server
         await loadPreferences();
-        
         // Setup PWA install tip
         setupPWAInstallTip();
-        
         // Setup push notifications section
         setupPushSection();
+        // Show push status banner if not enabled
+        updatePushStatusBanner();
       }
+            // Update push status indicator and banner
+            function updatePushStatusBanner() {
+              const banner = document.getElementById('push-status-banner');
+              const indicator = document.getElementById('push-status-indicator');
+              let message = '';
+              let status = '';
+              if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                message = 'Push notifications are not supported on this device/browser.';
+                status = '<span class="inline-flex items-center gap-1 text-red-400">❌ Not Supported</span>';
+                banner.classList.remove('hidden');
+              } else if (Notification.permission === 'denied') {
+                message = 'Push notifications are blocked in your browser settings.';
+                status = '<span class="inline-flex items-center gap-1 text-red-400">🚫 Blocked</span>';
+                banner.classList.remove('hidden');
+              } else if (!pushEnabled) {
+                message = 'Push notifications are not enabled. Enable them below for instant updates.';
+                status = '<span class="inline-flex items-center gap-1 text-yellow-400">⚠️ Disabled</span>';
+                banner.classList.remove('hidden');
+              } else {
+                message = '';
+                status = '<span class="inline-flex items-center gap-1 text-emerald-400">✅ Enabled</span>';
+                banner.classList.add('hidden');
+              }
+              document.getElementById('push-status-message').innerHTML = message;
+              indicator.innerHTML = status;
+            }
+
+            // Diagnostics and test notification
+            async function testPushNotification() {
+              const diag = document.getElementById('push-diagnostics');
+              diag.textContent = 'Sending test notification...';
+              try {
+                const resp = await fetch(`/api/push/test`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ request_id: requestId, email: requestEmail })
+                });
+                if (resp.ok) {
+                  diag.textContent = 'Test notification sent! Check your device.';
+                } else {
+                  diag.textContent = 'Failed to send test notification.';
+                }
+              } catch (err) {
+                diag.textContent = 'Error sending test notification.';
+              }
+            }
       
       async function loadPreferences() {
         try {
@@ -402,15 +463,15 @@
           // Request permission
           const permission = await Notification.requestPermission();
           if (permission !== 'granted') {
+            alert('You must allow notifications to enable push. Please check your browser settings.');
             toggle.classList.remove('opacity-50');
             return;
           }
-          
           // Get VAPID key
           const resp = await fetch('/api/push/vapid-public-key');
           const data = await resp.json();
           if (!data.publicKey) {
-            console.error('Push not configured on server');
+            alert('Push notifications are not configured on the server. Please contact the administrator.');
             toggle.classList.remove('opacity-50');
             return;
           }
@@ -444,6 +505,7 @@
           
           toggle.classList.remove('opacity-50');
         } catch (err) {
+          alert('Failed to subscribe to push notifications. Please try again or check your browser settings.');
           console.error('Push subscription error:', err);
           toggle.classList.remove('opacity-50');
         }
@@ -477,7 +539,6 @@
       function updatePushToggleUI() {
         const toggle = document.getElementById('push-toggle');
         const dot = document.getElementById('push-toggle-dot');
-        
         if (pushEnabled) {
           toggle.classList.remove('bg-zinc-700');
           toggle.classList.add('bg-indigo-600');
@@ -489,6 +550,7 @@
           dot.classList.add('translate-x-1', 'bg-zinc-400');
           dot.classList.remove('translate-x-6', 'bg-white');
         }
+        updatePushStatusBanner();
       }
       
       // Convert VAPID key

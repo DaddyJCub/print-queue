@@ -2138,6 +2138,7 @@ def send_push_notification(request_id: str, title: str, body: str, url: str = No
     Silently fails if VAPID keys not configured or no subscriptions exist.
     """
     if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
+        print("[PUSH] ERROR: VAPID keys are not configured. Push notifications will not be sent.")
         return
     
     try:
@@ -5138,26 +5139,31 @@ def admin_set_status(
         send_email([req["requester_email"]], subject, text, html)
 
     # Send push notification for important status changes (if user wants push notifications)
-    push_statuses = ["NEEDS_INFO", "APPROVED", "PRINTING", "DONE"]
+    push_statuses = ["NEEDS_INFO", "APPROVED", "PRINTING", "DONE", "CANCELLED"]
     if to_status in push_statuses and user_wants_push:
         push_titles = {
             "NEEDS_INFO": "📝 Action Needed",
             "APPROVED": "✅ Request Approved",
             "PRINTING": "🖨️ Now Printing",
             "DONE": "🎉 Print Complete!",
+            "CANCELLED": "❌ Request Cancelled",
         }
         push_bodies = {
             "NEEDS_INFO": f"We need more info about '{req['print_name'] or 'your request'}'",
             "APPROVED": f"'{req['print_name'] or 'Your request'}' is approved and in queue",
             "PRINTING": f"'{req['print_name'] or 'Your request'}' has started printing",
             "DONE": f"'{req['print_name'] or 'Your request'}' is ready for pickup!",
+            "CANCELLED": f"'{req['print_name'] or 'Your request'}' has been cancelled.",
         }
-        send_push_notification(
-            request_id=rid,
-            title=push_titles.get(to_status, "Status Update"),
-            body=push_bodies.get(to_status, f"Status changed to {to_status}"),
-            url=f"/my/{rid}?token={req['access_token']}"
-        )
+        try:
+            send_push_notification(
+                request_id=rid,
+                title=push_titles.get(to_status, "Status Update"),
+                body=push_bodies.get(to_status, f"Status changed to {to_status}"),
+                url=f"/my/{rid}?token={req['access_token']}"
+            )
+        except Exception as e:
+            print(f"[PUSH] Error sending push notification: {e}")
 
     if admin_email_on_status and admin_emails:
         # Check fine-grain admin notification settings
