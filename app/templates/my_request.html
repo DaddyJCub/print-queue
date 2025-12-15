@@ -11,8 +11,26 @@
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
+        // --- Service Worker Diagnostics Helpers ---
+        async function getServiceWorkerRegistrationOrThrow(timeout = 10000) {
+          const start = performance.now();
+          let reg;
+          try {
+            reg = await Promise.race([
+              navigator.serviceWorker.ready,
+              new Promise((_, rej) => setTimeout(() => rej(new Error('SW ready timeout')), timeout))
+            ]);
+          } catch (e) {
+            throw new Error(`[SW] Not ready after ${timeout}ms: ${e.message}`);
+          }
+          if (!navigator.serviceWorker.controller) {
+            throw new Error('[SW] No active controller. The page may need to be reloaded to be controlled by the SW.');
+          }
+          return reg;
+        }
+
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('/static/sw.js').catch(() => {}));
+      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js', {scope: '/'}).catch(() => {}));
     }
   </script>
 </head>
@@ -482,15 +500,13 @@
             toggle.classList.remove('opacity-50');
             return;
           }
-          // Get service worker
+          // Get service worker registration robustly
           let registration;
           try {
-            registration = await Promise.race([
-              navigator.serviceWorker.ready,
-              new Promise((_, rej) => setTimeout(() => rej(new Error('SW timeout')), 5000))
-            ]);
-          } catch (swErr) {
-            diag.textContent = '❌ Service worker not ready. Try refreshing the page.';
+            registration = await getServiceWorkerRegistrationOrThrow();
+          } catch (err) {
+            diag.textContent = '❌ ' + err.message;
+            diag.textContent += `\nlocation: ${location.href}\nisSecureContext: ${window.isSecureContext}\ncontroller: ${!!navigator.serviceWorker.controller}`;
             toggle.classList.remove('opacity-50');
             return;
           }
