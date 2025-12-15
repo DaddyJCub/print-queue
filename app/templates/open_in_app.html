@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open in App - Printellect</title>
+  <!-- PWA Support -->
+  <link rel="manifest" href="/static/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/static/sw.js').catch(() => {}));
+    }
+  </script>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+  <div class="max-w-md mx-auto p-6 pt-12">
+    
+    <!-- Loading state (shown first) -->
+    <div id="loading-state" class="text-center">
+      <div class="animate-spin w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+      <p class="text-zinc-400">Checking for app...</p>
+    </div>
+    
+    <!-- PWA detected - auto redirect -->
+    <div id="pwa-state" class="hidden text-center">
+      <div class="text-6xl mb-4">✅</div>
+      <h1 class="text-2xl font-bold mb-2">Opening in App...</h1>
+      <p class="text-zinc-400">Redirecting you now</p>
+    </div>
+    
+    <!-- Browser state - show instructions -->
+    <div id="browser-state" class="hidden">
+      <div class="text-center mb-8">
+        <img src="/static/icons/logo.png" alt="Printellect" class="h-20 w-20 rounded-2xl mx-auto mb-4">
+        <h1 class="text-2xl font-bold mb-2">Open in Printellect</h1>
+        <p class="text-zinc-400">{{ print_name or 'Your request' }}</p>
+        <p class="text-zinc-500 text-xs mt-1">Request #{{ rid[:8] }}</p>
+      </div>
+      
+      <!-- If PWA is likely installed -->
+      <div id="has-pwa" class="hidden">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 mb-4">
+          <h2 class="font-semibold mb-3 flex items-center gap-2">
+            <span class="text-emerald-400">●</span> App Installed
+          </h2>
+          <p class="text-sm text-zinc-400 mb-4">Open the app to view your request with push notifications:</p>
+          
+          <div id="android-instructions" class="hidden space-y-3">
+            <div class="flex items-start gap-3 text-sm">
+              <span class="bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">1</span>
+              <span>Open the <strong>Printellect</strong> app from your home screen</span>
+            </div>
+            <div class="flex items-start gap-3 text-sm">
+              <span class="bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">2</span>
+              <span>Tap <strong>My Requests</strong> — you're logged in as {{ email }}</span>
+            </div>
+          </div>
+          
+          <div id="ios-instructions" class="hidden space-y-3">
+            <div class="flex items-start gap-3 text-sm">
+              <span class="bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">1</span>
+              <span>Go to your <strong>Home Screen</strong></span>
+            </div>
+            <div class="flex items-start gap-3 text-sm">
+              <span class="bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">2</span>
+              <span>Tap the <strong>Printellect</strong> app icon</span>
+            </div>
+            <div class="flex items-start gap-3 text-sm">
+              <span class="bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">3</span>
+              <span>Go to <strong>My Requests</strong> — you're logged in as {{ email }}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="text-center text-sm text-zinc-500 mb-4">
+          — or —
+        </div>
+      </div>
+      
+      <!-- Continue in browser option -->
+      <a href="{{ target_url }}" id="continue-link" class="block w-full text-center py-4 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition mb-4">
+        Continue in Browser
+      </a>
+      
+      <!-- Install PWA prompt (if not installed) -->
+      <div id="install-prompt" class="hidden bg-gradient-to-r from-indigo-900/40 to-purple-900/30 border border-indigo-500/30 rounded-2xl p-5">
+        <h3 class="font-medium text-indigo-200 mb-2">💡 Install the App</h3>
+        <p class="text-sm text-zinc-400 mb-4">Get instant push notifications and quick access from your home screen.</p>
+        
+        <div id="install-ios" class="hidden text-sm text-zinc-400 space-y-2">
+          <p>Tap <span class="inline-block px-2 py-0.5 bg-zinc-700 rounded">Share</span> then <span class="inline-block px-2 py-0.5 bg-zinc-700 rounded">Add to Home Screen</span></p>
+        </div>
+        
+        <button id="install-btn" onclick="installPWA()" class="hidden w-full py-3 bg-white text-indigo-700 rounded-xl font-semibold hover:bg-indigo-50 transition">
+          Install App
+        </button>
+      </div>
+    </div>
+    
+  </div>
+
+  <script>
+    const targetUrl = "{{ target_url }}";
+    let deferredPrompt = null;
+    
+    // Capture install prompt for Chrome/Edge
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      document.getElementById('install-btn').classList.remove('hidden');
+    });
+    
+    async function installPWA() {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const result = await deferredPrompt.userChoice;
+      deferredPrompt = null;
+    }
+    
+    function isInstalledPWA() {
+      return window.matchMedia('(display-mode: standalone)').matches || 
+             window.navigator.standalone === true;
+    }
+    
+    function getDeviceType() {
+      const ua = navigator.userAgent;
+      if (/iPad|iPhone|iPod/.test(ua)) return 'ios';
+      if (/Android/.test(ua)) return 'android';
+      return 'desktop';
+    }
+    
+    function init() {
+      const isStandalone = isInstalledPWA();
+      const hasUsedPWA = localStorage.getItem('pwa_used');
+      const device = getDeviceType();
+      
+      // Mark that we've used the PWA if we're in it
+      if (isStandalone) {
+        localStorage.setItem('pwa_used', 'true');
+      }
+      
+      // Hide loading
+      document.getElementById('loading-state').classList.add('hidden');
+      
+      if (isStandalone) {
+        // We're in the PWA! Just redirect directly
+        document.getElementById('pwa-state').classList.remove('hidden');
+        setTimeout(() => {
+          window.location.href = targetUrl;
+        }, 500);
+        return;
+      }
+      
+      // We're in the browser
+      document.getElementById('browser-state').classList.remove('hidden');
+      
+      if (hasUsedPWA) {
+        // User has used the PWA before - show app instructions
+        document.getElementById('has-pwa').classList.remove('hidden');
+        
+        if (device === 'ios') {
+          document.getElementById('ios-instructions').classList.remove('hidden');
+        } else {
+          document.getElementById('android-instructions').classList.remove('hidden');
+        }
+      } else {
+        // User hasn't installed PWA - show install prompt
+        document.getElementById('install-prompt').classList.remove('hidden');
+        
+        if (device === 'ios') {
+          document.getElementById('install-ios').classList.remove('hidden');
+        }
+        // Chrome install button is shown via beforeinstallprompt
+      }
+    }
+    
+    // Run on page load
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

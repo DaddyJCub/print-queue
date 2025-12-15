@@ -1,4 +1,4 @@
-// Service Worker for 3D Print Queue PWA
+// Service Worker for Printellect PWA
 const CACHE_NAME = 'print-queue-v1';
 const OFFLINE_URL = '/static/offline.html';
 
@@ -110,7 +110,7 @@ self.addEventListener('push', (event) => {
   };
   
   event.waitUntil(
-    self.registration.showNotification(data.title || '3D Print Queue', options)
+    self.registration.showNotification(data.title || 'Printellect', options)
   );
 });
 

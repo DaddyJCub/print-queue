@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Submit Request | 3D Print Queue</title>
+  <title>Submit Request | Printellect</title>
   <!-- PWA Support -->
   <link rel="manifest" href="/static/manifest.json" />
   <meta name="theme-color" content="#6366f1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Print Queue" />
+  <meta name="apple-mobile-web-app-title" content="Printellect" />
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
@@ -26,9 +26,12 @@
   <div class="max-w-2xl mx-auto p-6">
     <!-- Header -->
     <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
-      <div>
-        <h1 class="text-3xl font-bold">3D Print Request</h1>
-        <p class="text-zinc-400 mt-2">Submit your print job — we'll take it from here.</p>
+      <div class="flex items-center gap-4">
+        <img src="/static/icons/logo.png" alt="Printellect" class="h-14 w-14 rounded-xl">
+        <div>
+          <h1 class="text-3xl font-bold">Printellect</h1>
+          <p class="text-zinc-400">Submit your print job — we'll take it from here.</p>
+        </div>
       </div>
       <div class="flex gap-3">
         <a href="/store"

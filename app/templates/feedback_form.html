@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{{ "Bug Report" if feedback_type == "bug" else "Suggestion" }} | 3D Print Queue</title>
+  <title>{{ "Bug Report" if feedback_type == "bug" else "Suggestion" }} | Printellect</title>
   <!-- PWA Support -->
   <link rel="manifest" href="/static/manifest.json" />
   <meta name="theme-color" content="#6366f1" />
@@ -24,7 +24,7 @@
     
     <!-- Header -->
     <div class="text-center mb-8">
-      <a href="/" class="text-indigo-400 hover:underline text-sm">← Back to Print Queue</a>
+      <a href="/" class="text-indigo-400 hover:underline text-sm">← Back to Printellect</a>
       <h1 class="text-3xl font-bold mt-4">
         {% if feedback_type == "bug" %}
           🐛 Report a Bug
@@ -63,7 +63,7 @@
           We appreciate your feedback!
         </p>
         <div class="mt-4 flex justify-center gap-4">
-          <a href="/" class="text-indigo-400 hover:underline text-sm">Return to Print Queue</a>
+          <a href="/" class="text-indigo-400 hover:underline text-sm">Return to Printellect</a>
           <a href="/feedback?type={{ feedback_type }}" class="text-zinc-400 hover:underline text-sm">Submit Another</a>
         </div>
       </div>

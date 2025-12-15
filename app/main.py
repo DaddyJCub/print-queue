@@ -28,7 +28,7 @@ APP_VERSION = "1.8.6"
 # 1.1.0 - File uploads, status tracking, public queue
 # 1.0.0 - Initial release
 
-APP_TITLE = "3D Print Queue"
+APP_TITLE = "Printellect"
 
 DB_PATH = os.getenv("DB_PATH", "/data/app.db")
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/uploads")
@@ -2846,6 +2846,30 @@ def repeat_request(request: Request, short_id: str):
 
 # ─────────────────────────── REQUESTER PORTAL ───────────────────────────
 
+@app.get("/open/{rid}", response_class=HTMLResponse)
+async def open_in_app_page(request: Request, rid: str, token: str):
+    """
+    Smart redirect page that helps users open links in the PWA.
+    If viewing in PWA: redirects directly to the request.
+    If viewing in browser: shows instructions to open the app.
+    """
+    conn = db()
+    req = conn.execute("SELECT access_token, print_name, requester_email FROM requests WHERE id = ?", (rid,)).fetchone()
+    conn.close()
+    
+    if not req or req["access_token"] != token:
+        raise HTTPException(status_code=403, detail="Invalid link")
+    
+    target_url = f"/my/{rid}?token={token}"
+    return templates.TemplateResponse("open_in_app.html", {
+        "request": request,
+        "target_url": target_url,
+        "rid": rid,
+        "print_name": req["print_name"],
+        "email": req["requester_email"],
+    })
+
+
 @app.get("/my/{rid}", response_class=HTMLResponse)
 async def requester_portal(request: Request, rid: str, token: str):
     """Requester portal - view and interact with your request"""
@@ -4358,7 +4382,7 @@ def submit_store_request(
     if get_bool_setting("requester_email_on_submit", True):
         try:
             subject = f"[{APP_TITLE}] Request Received - {item['name']}"
-            text = f"Your print request has been received!\n\nPrint: {item['name']}\nRequest ID: {rid[:8]}\n\nTrack: {BASE_URL}/my/{rid}?token={access_token}"
+            text = f"Your print request has been received!\n\nPrint: {item['name']}\nRequest ID: {rid[:8]}\n\nTrack: {BASE_URL}/open/{rid}?token={access_token}"
             
             email_rows = [
                 ("Print Name", item["name"]),
@@ -4373,7 +4397,7 @@ def submit_store_request(
                 rows=email_rows,
                 footer_note="You'll receive updates as your request is processed.",
                 cta_label="Track Your Request",
-                cta_url=f"{BASE_URL}/my/{rid}?token={access_token}",
+                cta_url=f"{BASE_URL}/open/{rid}?token={access_token}",
             )
             
             send_email([requester_email.strip().lower()], subject, text, html)
@@ -4828,7 +4852,7 @@ def admin_set_status(
             text_lines.append(f"\n⚠ Note: Wait times are estimates and may vary. Check the live queue for the most accurate status.\n")
         text_lines.append(f"\nComment: {comment or '(none)'}\n")
         if to_status == "NEEDS_INFO":
-            text_lines.append(f"\nRespond here: {BASE_URL}/my/{rid}?token={req['access_token']}\n")
+            text_lines.append(f"\nRespond here: {BASE_URL}/open/{rid}?token={req['access_token']}\n")
         else:
             text_lines.append(f"\nView queue: {BASE_URL}/queue?mine={rid[:8]}\n")
         text = "\n".join(text_lines)
@@ -4873,7 +4897,7 @@ def admin_set_status(
             subtitle = f"We need more information about '{print_label}'"
             footer_note = "Click the button below to respond, upload files, or edit your request. Your request is on hold until we hear back from you."
             cta_label = "Respond to Request"
-            cta_url = f"{BASE_URL}/my/{rid}?token={req['access_token']}"
+            cta_url = f"{BASE_URL}/open/{rid}?token={req['access_token']}"
         elif to_status == "APPROVED" and queue_position:
             footer_note = "Wait times are estimates and may vary. Check the live queue for the most accurate status."
         elif to_status == "PRINTING":
@@ -5048,14 +5072,14 @@ def admin_send_message(
     if requester_email_on_status and req["requester_email"]:
         print_label = req["print_name"] or f"Request {rid[:8]}"
         subject = f"[{APP_TITLE}] New message about '{print_label}'"
-        text = f"New message from admin:\n\n{message}\n\nRespond here: {BASE_URL}/my/{rid}?token={req['access_token']}"
+        text = f"New message from admin:\n\n{message}\n\nRespond here: {BASE_URL}/open/{rid}?token={req['access_token']}"
         html = build_email_html(
             title="💬 New Message",
             subtitle=f"About your request '{print_label}'",
             rows=[
                 ("Message", message),
             ],
-            cta_url=f"{BASE_URL}/my/{rid}?token={req['access_token']}",
+            cta_url=f"{BASE_URL}/open/{rid}?token={req['access_token']}",
             cta_label="View & Reply",
             header_color="#6366f1",
         )

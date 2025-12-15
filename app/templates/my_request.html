@@ -43,6 +43,76 @@
       }
     </script>
     
+    <!-- Open in App Banner (shown when viewing in browser but PWA may be installed) -->
+    <div id="open-in-app-banner" class="hidden bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-4 mb-6 shadow-lg">
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl">📱</span>
+          <div>
+            <h3 class="font-medium">Open in App</h3>
+            <p class="text-xs text-indigo-200">For the best experience with push notifications</p>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="openInApp()" class="px-4 py-2 bg-white text-indigo-700 rounded-lg text-sm font-semibold hover:bg-indigo-50 transition">
+            Open App
+          </button>
+          <button onclick="dismissOpenInApp()" class="px-3 py-2 bg-indigo-700/50 rounded-lg text-sm hover:bg-indigo-700 transition">
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
+    <script>
+      // Show "Open in App" banner if viewing in browser but likely has PWA installed
+      (function() {
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+        const hasDismissed = localStorage.getItem('open_in_app_dismissed');
+        const hasUsedPWA = localStorage.getItem('pwa_used'); // Set when running as PWA
+        
+        // If we're in the PWA, mark it as used
+        if (isStandalone) {
+          localStorage.setItem('pwa_used', 'true');
+        }
+        
+        // Show banner if: not in PWA, has used PWA before, hasn't dismissed
+        if (!isStandalone && hasUsedPWA && !hasDismissed) {
+          document.getElementById('open-in-app-banner').classList.remove('hidden');
+        }
+      })();
+      
+      function openInApp() {
+        // Try to open the current URL - on Android this may open the PWA if installed
+        // On iOS, we can only suggest manual action
+        const currentUrl = window.location.href;
+        
+        // For Android, we can try an intent-like approach
+        // But mainly this serves as a reminder to manually switch
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        
+        if (isIOS) {
+          alert('To open in the app:\\n\\n1. Open your home screen\\n2. Tap the Printellect app icon\\n3. Navigate to this request');
+        } else {
+          // On Android, closing browser and opening app is the only reliable way
+          // We can try copying the URL to clipboard
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(currentUrl).then(() => {
+              alert('URL copied!\\n\\nOpen the Printellect app from your home screen and paste the link, or navigate to your request.');
+            }).catch(() => {
+              alert('To view in the app:\\n\\nOpen the Printellect app from your home screen and navigate to your request.');
+            });
+          } else {
+            alert('To view in the app:\\n\\nOpen the Printellect app from your home screen and navigate to your request.');
+          }
+        }
+      }
+      
+      function dismissOpenInApp() {
+        localStorage.setItem('open_in_app_dismissed', 'true');
+        document.getElementById('open-in-app-banner').classList.add('hidden');
+      }
+    </script>
+
     <!-- Status Banner -->
     {% set status_colors = {
       'NEW': 'bg-blue-600/20 border-blue-500/50 text-blue-300',
