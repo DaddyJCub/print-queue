@@ -117,7 +117,7 @@
       </div>
       {% endif %}
       <!-- Live Camera Preview -->
-      <button onclick="toggleCamera('ADVENTURER_4')" id="cam-btn-ADVENTURER_4" class="mt-2 text-xs text-indigo-400 hover:text-indigo-300 tap-highlight">📷 Show camera</button>
+      <button type="button" id="cam-btn-ADVENTURER_4" class="camera-toggle mt-2 text-xs text-indigo-400 hover:text-indigo-300 tap-highlight" data-printer="ADVENTURER_4">📷 Show camera</button>
       <div id="cam-ADVENTURER_4" class="hidden mt-2">
         <img id="cam-img-ADVENTURER_4" class="w-full rounded-lg bg-zinc-800" alt="Camera" />
       </div>
@@ -177,7 +177,7 @@
       </div>
       {% endif %}
       <!-- Live Camera Preview -->
-      <button onclick="toggleCamera('AD5X')" id="cam-btn-AD5X" class="mt-2 text-xs text-indigo-400 hover:text-indigo-300 tap-highlight">📷 Show camera</button>
+      <button type="button" id="cam-btn-AD5X" class="camera-toggle mt-2 text-xs text-indigo-400 hover:text-indigo-300 tap-highlight" data-printer="AD5X">📷 Show camera</button>
       <div id="cam-AD5X" class="hidden mt-2">
         <img id="cam-img-AD5X" class="w-full rounded-lg bg-zinc-800" alt="Camera" />
       </div>
@@ -342,9 +342,16 @@
   // Camera toggle
   const camIntervals = {};
   function toggleCamera(printer) {
+    console.log('toggleCamera called for:', printer);
     const div = document.getElementById(`cam-${printer}`);
     const btn = document.getElementById(`cam-btn-${printer}`);
     const img = document.getElementById(`cam-img-${printer}`);
+    
+    if (!div || !btn || !img) {
+      console.error('Camera elements not found for:', printer);
+      return;
+    }
+    
     if (div.classList.contains('hidden')) {
       div.classList.remove('hidden');
       btn.textContent = '📷 Hide camera';
@@ -358,6 +365,24 @@
       clearInterval(camIntervals[printer]);
     }
   }
+  
+  // Attach camera toggle handlers after DOM loads
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.camera-toggle').forEach(btn => {
+      const printer = btn.dataset.printer;
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleCamera(printer);
+      });
+      // Also handle touch for iOS
+      btn.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleCamera(printer);
+      });
+    });
+  });
   
   // AJAX-based auto-refresh (no full page reload)
   let autoRefresh = true;
