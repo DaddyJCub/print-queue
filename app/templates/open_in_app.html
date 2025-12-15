@@ -76,13 +76,19 @@
           </div>
         </div>
         
+        <!-- Copy link for PWA -->
+        <button onclick="copyPWALink()" class="w-full py-3 bg-white text-indigo-700 rounded-xl font-semibold hover:bg-indigo-50 transition mb-3">
+          📋 Copy Link for App
+        </button>
+        <p id="copy-success" class="hidden text-xs text-emerald-400 text-center mb-3">✓ Copied! Open Printellect and paste in the address bar</p>
+        
         <div class="text-center text-sm text-zinc-500 mb-4">
           — or —
         </div>
       </div>
       
       <!-- Continue in browser option -->
-      <a href="{{ target_url }}" id="continue-link" class="block w-full text-center py-4 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition mb-4">
+      <a href="{{ target_url }}" id="continue-link" class="block w-full text-center py-4 bg-zinc-700 hover:bg-zinc-600 rounded-xl font-semibold transition mb-4">
         Continue in Browser
       </a>
       
@@ -119,6 +125,20 @@
       deferredPrompt.prompt();
       const result = await deferredPrompt.userChoice;
       deferredPrompt = null;
+    }
+    
+    function copyPWALink() {
+      // Copy the full URL that can be pasted into the PWA
+      const fullUrl = window.location.origin + targetUrl;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(fullUrl).then(() => {
+          document.getElementById('copy-success').classList.remove('hidden');
+        }).catch(() => {
+          alert('Copy this link:\\n\\n' + fullUrl);
+        });
+      } else {
+        alert('Copy this link:\\n\\n' + fullUrl);
+      }
     }
     
     function isInstalledPWA() {

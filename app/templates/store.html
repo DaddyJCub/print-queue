@@ -8,16 +8,88 @@
   <link rel="manifest" href="/static/manifest.json" />
   <meta name="theme-color" content="#6366f1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Printellect" />
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('/static/sw.js').catch(() => {}));
     }
+    
+    // PWA Install prompt handling
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      // Show banner if not dismissed recently
+      const dismissedAt = localStorage.getItem('pwa-install-dismissed-at');
+      const daysSinceDismiss = dismissedAt ? (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24) : 999;
+      if (daysSinceDismiss > 7) {
+        document.getElementById('pwa-install-banner')?.classList.remove('hidden');
+      }
+    });
+    
+    function installPWA() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((choice) => {
+          if (choice.outcome === 'accepted') {
+            document.getElementById('pwa-install-banner')?.classList.add('hidden');
+          }
+          deferredPrompt = null;
+        });
+      }
+    }
+    
+    function dismissInstallBanner() {
+      document.getElementById('pwa-install-banner')?.classList.add('hidden');
+      localStorage.setItem('pwa-install-dismissed-at', Date.now().toString());
+    }
   </script>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen">
   <div class="max-w-6xl mx-auto p-6">
+    
+    <!-- PWA Install Banner -->
+    <div id="pwa-install-banner" class="hidden mb-6 bg-gradient-to-r from-indigo-900/40 to-purple-900/30 border border-indigo-500/40 rounded-2xl p-4">
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="text-3xl">📲</div>
+          <div>
+            <p class="font-semibold text-indigo-200">Install Printellect App</p>
+            <p class="text-sm text-zinc-400">Quick access + push notifications for your prints</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="dismissInstallBanner()" class="px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition">
+            Not now
+          </button>
+          <button onclick="installPWA()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold transition">
+            Install App
+          </button>
+        </div>
+      </div>
+      <!-- iOS hint -->
+      <div id="ios-hint" class="hidden mt-3 pt-3 border-t border-zinc-700/50 text-sm text-zinc-400">
+        <span class="text-indigo-300">iPhone/iPad:</span> Tap <span class="px-1 bg-zinc-700 rounded">⬆️ Share</span> → <span class="px-1 bg-zinc-700 rounded">Add to Home Screen</span>
+      </div>
+    </div>
+    <script>
+      // Show iOS hint instead of install button
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+      if (isIOS && !isStandalone) {
+        const dismissedAt = localStorage.getItem('pwa-install-dismissed-at');
+        const daysSinceDismiss = dismissedAt ? (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24) : 999;
+        if (daysSinceDismiss > 7) {
+          document.getElementById('pwa-install-banner')?.classList.remove('hidden');
+          document.getElementById('ios-hint')?.classList.remove('hidden');
+          // Hide the install button on iOS
+          document.querySelector('#pwa-install-banner button[onclick="installPWA()"]')?.classList.add('hidden');
+        }
+      }
+    </script>
     
     <!-- Header -->
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">

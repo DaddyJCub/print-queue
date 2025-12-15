@@ -15,15 +15,23 @@
       window.addEventListener('load', () => navigator.serviceWorker.register('/static/sw.js').catch(() => {}));
     }
     
-    // Check for logout request
+    // Check URL params
     const urlParams = new URLSearchParams(window.location.search);
+    
+    // Check for logout request
     if (urlParams.get('logout') === '1') {
       localStorage.removeItem('my_requests_token');
       localStorage.removeItem('my_requests_email');
       // Clean up URL
       window.history.replaceState({}, '', '/my-requests');
-    } else {
-      // Auto-redirect if user has saved token (unless they just got an error)
+    } 
+    // Check if token was passed in URL (for PWA deep linking)
+    else if (urlParams.get('token')) {
+      // Redirect to view with this token
+      window.location.href = '/my-requests/view?token=' + urlParams.get('token');
+    }
+    // Auto-redirect if user has saved token (unless they just got an error)
+    else {
       const savedToken = localStorage.getItem('my_requests_token');
       const hasError = urlParams.get('error');
       const hasSent = urlParams.get('sent');

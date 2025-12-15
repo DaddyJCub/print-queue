@@ -3218,8 +3218,12 @@ def requester_resubmit(request: Request, rid: str, token: str):
 # ─────────────────────────── MY REQUESTS LOOKUP ───────────────────────────
 
 @app.get("/my-requests", response_class=HTMLResponse)
-def my_requests_lookup(request: Request, sent: Optional[str] = None, error: Optional[str] = None):
+def my_requests_lookup(request: Request, sent: Optional[str] = None, error: Optional[str] = None, token: Optional[str] = None):
     """Email lookup form for viewing all requests"""
+    # If token provided in URL, redirect to view page (for PWA deep linking)
+    if token:
+        return RedirectResponse(url=f"/my-requests/view?token={token}", status_code=302)
+    
     return templates.TemplateResponse("my_requests_lookup.html", {
         "request": request,
         "sent": sent,
@@ -5452,8 +5456,8 @@ def admin_batch_update(
 # ─────────────────────────── CAMERA ENDPOINTS ───────────────────────────
 
 @app.get("/api/camera/{printer_code}/snapshot")
-async def camera_snapshot(printer_code: str, _=Depends(require_admin)):
-    """Get a snapshot from printer camera"""
+async def camera_snapshot(printer_code: str):
+    """Get a snapshot from printer camera (public for live view feature)"""
     if printer_code not in ["ADVENTURER_4", "AD5X"]:
         raise HTTPException(status_code=400, detail="Invalid printer code")
     

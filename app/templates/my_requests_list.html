@@ -40,51 +40,47 @@
         <div class="flex items-center gap-3">
           <span class="text-2xl">📱</span>
           <div>
-            <h3 class="font-medium">Open in App</h3>
-            <p class="text-xs text-indigo-200">For the best experience with push notifications</p>
+            <h3 class="font-medium">You're logged in!</h3>
+            <p class="text-xs text-indigo-200">Open the app to stay logged in there too</p>
           </div>
         </div>
         <div class="flex gap-2">
-          <button onclick="openInApp()" class="px-4 py-2 bg-white text-indigo-700 rounded-lg text-sm font-semibold hover:bg-indigo-50 transition">
-            Open App
+          <button onclick="copyLinkForApp()" class="px-4 py-2 bg-white text-indigo-700 rounded-lg text-sm font-semibold hover:bg-indigo-50 transition">
+            Copy Link
           </button>
           <button onclick="dismissOpenInApp()" class="px-3 py-2 bg-indigo-700/50 rounded-lg text-sm hover:bg-indigo-700 transition">
             ✕
           </button>
         </div>
       </div>
+      <p id="copy-success" class="hidden text-xs text-emerald-300 mt-2">✓ Link copied! Open the Printellect app and paste in the address bar, or go to My Requests.</p>
     </div>
     <script>
       (function() {
         const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
         const hasDismissed = localStorage.getItem('open_in_app_dismissed');
-        const hasUsedPWA = localStorage.getItem('pwa_used');
         
+        // Mark PWA as used if we're in standalone mode
         if (isStandalone) {
           localStorage.setItem('pwa_used', 'true');
         }
         
-        if (!isStandalone && hasUsedPWA && !hasDismissed) {
+        // Show banner if in browser (not PWA)
+        if (!isStandalone && !hasDismissed) {
           document.getElementById('open-in-app-banner').classList.remove('hidden');
         }
       })();
       
-      function openInApp() {
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      function copyLinkForApp() {
         const currentUrl = window.location.href;
-        
-        if (isIOS) {
-          alert('To open in the app:\\n\\n1. Open your home screen\\n2. Tap the Printellect app icon\\n3. Your requests will appear');
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(currentUrl).then(() => {
+            document.getElementById('copy-success').classList.remove('hidden');
+          }).catch(() => {
+            alert('Copy this link and paste it in the Printellect app:\\n\\n' + currentUrl);
+          });
         } else {
-          if (navigator.clipboard) {
-            navigator.clipboard.writeText(currentUrl).then(() => {
-              alert('URL copied!\\n\\nOpen the Printellect app from your home screen and paste the link.');
-            }).catch(() => {
-              alert('Open the Printellect app from your home screen to view your requests.');
-            });
-          } else {
-            alert('Open the Printellect app from your home screen to view your requests.');
-          }
+          alert('Copy this link and paste it in the Printellect app:\\n\\n' + currentUrl);
         }
       }
       

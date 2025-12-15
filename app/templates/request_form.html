@@ -49,6 +49,96 @@
       </div>
     </div>
 
+    <!-- PWA Install Banner -->
+    <div id="pwa-install-banner" class="hidden mb-6">
+      <div class="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 rounded-2xl p-4 shadow-lg relative overflow-hidden">
+        <div class="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\"30\" height=\"30\" viewBox=\"0 0 30 30\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Ccircle cx=\"15\" cy=\"15\" r=\"2\" fill=\"white\" fill-opacity=\"0.1\"/%3E%3C/svg%3E')]"></div>
+        <div class="relative flex items-center gap-4">
+          <div class="flex-shrink-0">
+            <img src="/static/icons/logo.png" alt="Printellect" class="h-16 w-16 rounded-xl shadow-lg border-2 border-white/20">
+          </div>
+          <div class="flex-1 min-w-0">
+            <h3 class="font-bold text-lg">Get the Printellect App</h3>
+            <p class="text-sm text-indigo-100 mt-0.5">Install for instant notifications, quick access & offline support</p>
+          </div>
+          <div class="flex-shrink-0 flex flex-col gap-2">
+            <button id="pwa-install-btn" onclick="installPWA()" class="px-5 py-2.5 bg-white text-indigo-700 rounded-xl font-semibold hover:bg-indigo-50 transition shadow-lg">
+              Install
+            </button>
+            <button onclick="dismissPWABanner()" class="text-xs text-indigo-200 hover:text-white transition">
+              Maybe later
+            </button>
+          </div>
+        </div>
+        <!-- iOS Instructions (shown when needed) -->
+        <div id="ios-install-hint" class="hidden mt-3 pt-3 border-t border-white/20">
+          <p class="text-sm text-indigo-100">
+            <strong>iPhone/iPad:</strong> Tap 
+            <span class="inline-flex items-center px-1.5 py-0.5 bg-white/20 rounded">
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M15 8a1 1 0 00-1-1h-1V6a1 1 0 00-2 0v1H9a1 1 0 000 2h2v6H9a1 1 0 000 2h4a1 1 0 000-2h-1V9h2a1 1 0 001-1z"/><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 0h8v12H6V4z" clip-rule="evenodd"/></svg>
+              Share
+            </span>
+            → <span class="inline-block px-1.5 py-0.5 bg-white/20 rounded">Add to Home Screen</span>
+          </p>
+        </div>
+      </div>
+    </div>
+    
+    <script>
+      let deferredInstallPrompt = null;
+      
+      // Check if should show PWA banner
+      (function() {
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+        const dismissed = localStorage.getItem('pwa_banner_dismissed');
+        const dismissedTime = localStorage.getItem('pwa_banner_dismissed_time');
+        
+        // Show again after 7 days if dismissed
+        const shouldShowAgain = dismissedTime && (Date.now() - parseInt(dismissedTime)) > 7 * 24 * 60 * 60 * 1000;
+        
+        if (!isStandalone && (!dismissed || shouldShowAgain)) {
+          document.getElementById('pwa-install-banner').classList.remove('hidden');
+          
+          // Detect iOS
+          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+          if (isIOS) {
+            document.getElementById('ios-install-hint').classList.remove('hidden');
+            document.getElementById('pwa-install-btn').style.display = 'none';
+          }
+        }
+        
+        // Mark PWA as used if in standalone
+        if (isStandalone) {
+          localStorage.setItem('pwa_used', 'true');
+        }
+      })();
+      
+      // Capture Chrome/Edge install prompt
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+        document.getElementById('pwa-install-btn').style.display = 'block';
+      });
+      
+      async function installPWA() {
+        if (deferredInstallPrompt) {
+          deferredInstallPrompt.prompt();
+          const result = await deferredInstallPrompt.userChoice;
+          if (result.outcome === 'accepted') {
+            document.getElementById('pwa-install-banner').style.display = 'none';
+            localStorage.setItem('pwa_banner_dismissed', 'true');
+          }
+          deferredInstallPrompt = null;
+        }
+      }
+      
+      function dismissPWABanner() {
+        document.getElementById('pwa-install-banner').style.display = 'none';
+        localStorage.setItem('pwa_banner_dismissed', 'true');
+        localStorage.setItem('pwa_banner_dismissed_time', Date.now().toString());
+      }
+    </script>
+
     {% if error %}
       <div class="mt-4 bg-red-900/30 border border-red-800 text-red-200 p-3 rounded-xl text-sm">
         {{ error }}

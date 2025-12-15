@@ -25,8 +25,10 @@
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredPrompt = e;
-      // Show install banner if not dismissed before
-      if (!localStorage.getItem('pwa-install-dismissed')) {
+      // Show install banner if not dismissed recently (re-show after 7 days)
+      const dismissedAt = localStorage.getItem('pwa-install-dismissed-at');
+      const daysSinceDismiss = dismissedAt ? (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24) : 999;
+      if (daysSinceDismiss > 7) {
         document.getElementById('pwa-install-banner')?.classList.remove('hidden');
       }
     });
@@ -45,7 +47,7 @@
     
     function dismissInstallBanner() {
       document.getElementById('pwa-install-banner')?.classList.add('hidden');
-      localStorage.setItem('pwa-install-dismissed', 'true');
+      localStorage.setItem('pwa-install-dismissed-at', Date.now().toString());
     }
     
     // Check if already installed (standalone mode)
@@ -100,16 +102,16 @@
     </div>
     
     <!-- iOS Install Instructions (shown separately since iOS doesn't support beforeinstallprompt) -->
-    <div id="ios-install-hint" class="hidden mb-6 bg-zinc-900/60 border border-zinc-700 rounded-2xl p-4">
+    <div id="ios-install-hint" class="hidden mb-6 bg-gradient-to-r from-indigo-900/40 to-purple-900/30 border border-indigo-500/40 rounded-2xl p-4">
       <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div class="flex items-center gap-3">
           <div class="text-3xl">📲</div>
           <div>
-            <p class="font-semibold">Add to Home Screen</p>
+            <p class="font-semibold text-indigo-200">Install Printellect App</p>
             <p class="text-sm text-zinc-400">Tap <span class="inline-block px-1 bg-zinc-700 rounded">⬆️ Share</span> then <span class="inline-block px-1 bg-zinc-700 rounded">Add to Home Screen</span></p>
           </div>
         </div>
-        <button onclick="this.parentElement.parentElement.classList.add('hidden'); localStorage.setItem('ios-install-dismissed', 'true');" 
+        <button onclick="this.parentElement.parentElement.classList.add('hidden'); localStorage.setItem('pwa-install-dismissed-at', Date.now().toString());" 
                 class="px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition">
           Dismiss
         </button>
@@ -120,7 +122,9 @@
       // Show iOS install hint for Safari users
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-      if (isIOS && !isStandalone && !localStorage.getItem('ios-install-dismissed')) {
+      const iosDismissedAt = localStorage.getItem('pwa-install-dismissed-at');
+      const daysSinceDismiss = iosDismissedAt ? (Date.now() - parseInt(iosDismissedAt)) / (1000 * 60 * 60 * 24) : 999;
+      if (isIOS && !isStandalone && daysSinceDismiss > 7) {
         document.getElementById('ios-install-hint')?.classList.remove('hidden');
       }
     </script>
