@@ -1,24 +1,3 @@
-# Test push notification endpoint
-from fastapi import HTTPException
-
-@app.post("/api/push/test")
-async def push_test(request: Request):
-    """Send a test push notification to all subscriptions for a request"""
-    data = await request.json()
-    request_id = data.get("request_id")
-    email = data.get("email", "")
-    if not request_id:
-        raise HTTPException(status_code=400, detail="Missing request_id")
-    # Use the existing send_push_notification function
-    try:
-        send_push_notification(
-            request_id,
-            title="Test Notification",
-            body="This is a test push notification from Printellect.",
-        )
-        return {"status": "sent"}
-    except Exception as e:
-        return {"error": str(e)}
 import os, uuid, sqlite3, hashlib, smtplib, ssl, urllib.parse, json, base64, secrets
 from email.message import EmailMessage
 from datetime import datetime
