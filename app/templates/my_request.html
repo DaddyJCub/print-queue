@@ -12,25 +12,150 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
         // --- Service Worker Diagnostics Helpers ---
-        async function getServiceWorkerRegistrationOrThrow(timeout = 10000) {
+        
+        /**
+         * Get detailed SW status for diagnostics
+         */
+        function getSWStatus() {
+          const status = {
+            supported: 'serviceWorker' in navigator,
+            isSecureContext: window.isSecureContext,
+            origin: location.origin,
+            controller: null,
+            registration: null,
+            timestamp: new Date().toISOString()
+          };
+          
+          if (status.supported) {
+            const ctrl = navigator.serviceWorker.controller;
+            status.controller = ctrl ? {
+              scriptURL: ctrl.scriptURL,
+              state: ctrl.state
+            } : null;
+          }
+          return status;
+        }
+        
+        /**
+         * Log SW diagnostic info to console
+         */
+        function logSWDiagnostics(context, extra = {}) {
+          const status = getSWStatus();
+          console.log(`[SW Diagnostics] ${context}:`, { ...status, ...extra });
+          return status;
+        }
+        
+        /**
+         * Ensure SW is registered and get a ready registration.
+         * Handles first-install case by waiting for activation.
+         * @param {number} timeout - Max wait time in ms
+         * @returns {Promise<ServiceWorkerRegistration>}
+         */
+        async function getServiceWorkerRegistrationOrThrow(timeout = 15000) {
+          logSWDiagnostics('getServiceWorkerRegistrationOrThrow called');
+          
+          if (!('serviceWorker' in navigator)) {
+            throw new Error('Service Workers are not supported in this browser.');
+          }
+          
+          if (!window.isSecureContext) {
+            throw new Error(`Service Workers require HTTPS. Current origin: ${location.origin}`);
+          }
+          
           const start = performance.now();
-          let reg;
+          
+          // Step 1: Ensure SW is registered
+          let registration;
           try {
-            reg = await Promise.race([
+            registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+            logSWDiagnostics('SW registered', { 
+              scope: registration.scope,
+              installing: !!registration.installing,
+              waiting: !!registration.waiting,
+              active: !!registration.active
+            });
+          } catch (regErr) {
+            throw new Error(`SW registration failed: ${regErr.message}. Check if /sw.js is accessible.`);
+          }
+          
+          // Step 2: Wait for SW to be active
+          if (!registration.active) {
+            const sw = registration.installing || registration.waiting;
+            if (sw) {
+              logSWDiagnostics('SW not active yet, waiting for activation', { state: sw.state });
+              await new Promise((resolve, reject) => {
+                const timeoutId = setTimeout(() => {
+                  reject(new Error(`SW activation timeout after ${timeout}ms`));
+                }, timeout);
+                
+                sw.addEventListener('statechange', () => {
+                  logSWDiagnostics('SW state changed', { newState: sw.state });
+                  if (sw.state === 'activated') {
+                    clearTimeout(timeoutId);
+                    resolve();
+                  } else if (sw.state === 'redundant') {
+                    clearTimeout(timeoutId);
+                    reject(new Error('SW became redundant (replaced or error during install)'));
+                  }
+                });
+                
+                // Also resolve if already activated
+                if (sw.state === 'activated') {
+                  clearTimeout(timeoutId);
+                  resolve();
+                }
+              });
+            } else {
+              throw new Error('No SW found (installing, waiting, or active)');
+            }
+          }
+          
+          // Step 3: Wait for navigator.serviceWorker.ready (guarantees active SW)
+          try {
+            const readyReg = await Promise.race([
               navigator.serviceWorker.ready,
               new Promise((_, rej) => setTimeout(() => rej(new Error('SW ready timeout')), timeout))
             ]);
+            logSWDiagnostics('SW ready', { 
+              elapsed: Math.round(performance.now() - start),
+              activeScriptURL: readyReg.active?.scriptURL 
+            });
+            return readyReg;
           } catch (e) {
-            throw new Error(`[SW] Not ready after ${timeout}ms: ${e.message}`);
+            throw new Error(`SW not ready: ${e.message}`);
           }
-          if (!navigator.serviceWorker.controller) {
-            throw new Error('[SW] No active controller. The page may need to be reloaded to be controlled by the SW.');
+        }
+        
+        /**
+         * Wait for this page to be controlled by the SW (optional, for postMessage etc)
+         */
+        async function ensureController(timeout = 5000) {
+          if (navigator.serviceWorker.controller) {
+            return navigator.serviceWorker.controller;
           }
-          return reg;
+          
+          logSWDiagnostics('No controller yet, waiting for controllerchange');
+          return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+              // Controller not strictly required for push subscription
+              logSWDiagnostics('Controller wait timeout - proceeding anyway');
+              resolve(null);
+            }, timeout);
+            
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+              clearTimeout(timeoutId);
+              logSWDiagnostics('Controller changed', { controller: navigator.serviceWorker.controller?.scriptURL });
+              resolve(navigator.serviceWorker.controller);
+            }, { once: true });
+          });
         }
 
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js', {scope: '/'}).catch(() => {}));
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js', {scope: '/'})
+          .then(reg => console.log('[SW] Registered:', reg.scope))
+          .catch(err => console.error('[SW] Registration failed:', err));
+      });
     }
   </script>
 </head>
@@ -221,8 +346,24 @@
 
       <!-- Push Diagnostics & Test -->
       <div class="mt-3 flex flex-col gap-2">
-        <button id="test-push-btn" onclick="testPushNotification()" class="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 rounded-lg text-xs font-medium text-white w-max transition">Test Notification</button>
-        <div id="push-diagnostics" class="text-xs text-zinc-400"></div>
+        <div class="flex items-center gap-2">
+          <button id="test-push-btn" onclick="testPushNotification()" class="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 rounded-lg text-xs font-medium text-white transition">Test Notification</button>
+          <button onclick="showSWDebugPanel()" class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition">🔧 Debug</button>
+        </div>
+        <div id="push-diagnostics" class="text-xs text-zinc-400 whitespace-pre-wrap"></div>
+      </div>
+      
+      <!-- SW Debug Panel (hidden by default) -->
+      <div id="sw-debug-panel" class="hidden mt-3 p-3 bg-zinc-900 border border-zinc-700 rounded-xl text-xs font-mono">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-semibold text-zinc-300">Service Worker Debug</span>
+          <button onclick="document.getElementById('sw-debug-panel').classList.add('hidden')" class="text-zinc-500 hover:text-zinc-300">✕</button>
+        </div>
+        <div id="sw-debug-content" class="text-zinc-400 whitespace-pre-wrap"></div>
+        <div class="mt-2 flex gap-2">
+          <button onclick="refreshSWDebug()" class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-300">Refresh</button>
+          <button onclick="unregisterAllSW()" class="px-2 py-1 bg-red-900/50 hover:bg-red-800 rounded text-red-300">Unregister SW</button>
+        </div>
       </div>
 
       <!-- iOS Install Instructions (shown when needed) -->
@@ -482,35 +623,59 @@
       async function subscribeToPush() {
         const toggle = document.getElementById('push-toggle');
         const diag = document.getElementById('push-diagnostics');
+        const startTime = performance.now();
+        
+        const updateDiag = (msg, isError = false) => {
+          const elapsed = Math.round(performance.now() - startTime);
+          const prefix = isError ? '❌ ' : '⏳ ';
+          diag.textContent = prefix + msg + ` [${elapsed}ms]`;
+          console.log(`[Push Subscribe] ${msg}`, { elapsed });
+        };
+        
         try {
           toggle.classList.add('opacity-50');
           diag.textContent = '';
-          // Request permission
+          
+          // Step 1: Log initial diagnostics
+          logSWDiagnostics('Starting push subscription');
+          updateDiag('Requesting notification permission...');
+          
+          // Step 2: Request permission (must be from user gesture)
           const permission = await Notification.requestPermission();
           if (permission !== 'granted') {
-            diag.textContent = '❌ You must allow notifications to enable push. Please check your browser settings.';
+            updateDiag(`Permission ${permission}. You must allow notifications.`, true);
             toggle.classList.remove('opacity-50');
             return;
           }
-          // Get VAPID key
+          updateDiag('Permission granted, fetching VAPID key...');
+          
+          // Step 3: Get VAPID key from server
           const resp = await fetch('/api/push/vapid-public-key');
           const data = await resp.json();
           if (!data.publicKey) {
-            diag.textContent = '❌ Push notifications are not configured on the server. Please contact the administrator.';
+            updateDiag('Push not configured on server (no VAPID key).', true);
             toggle.classList.remove('opacity-50');
             return;
           }
-          // Get service worker registration robustly
+          updateDiag('Got VAPID key, getting SW registration...');
+          
+          // Step 4: Get service worker registration
           let registration;
           try {
             registration = await getServiceWorkerRegistrationOrThrow();
           } catch (err) {
-            diag.textContent = '❌ ' + err.message;
-            diag.textContent += `\nlocation: ${location.href}\nisSecureContext: ${window.isSecureContext}\ncontroller: ${!!navigator.serviceWorker.controller}`;
+            const status = getSWStatus();
+            diag.innerHTML = `❌ ${err.message}<br><small style="color:#888">` +
+              `origin: ${status.origin}<br>` +
+              `secure: ${status.isSecureContext}<br>` +
+              `controller: ${status.controller ? 'yes' : 'no'}</small>`;
+            console.error('[Push Subscribe] SW error:', err, status);
             toggle.classList.remove('opacity-50');
             return;
           }
-          // Subscribe
+          updateDiag('SW ready, subscribing to push...');
+          
+          // Step 5: Subscribe to push
           let subscription;
           try {
             subscription = await registration.pushManager.subscribe({
@@ -518,11 +683,14 @@
               applicationServerKey: urlBase64ToUint8Array(data.publicKey)
             });
           } catch (subErr) {
-            diag.textContent = '❌ Failed to subscribe for push. This browser/device may not support push notifications.';
+            updateDiag(`Push subscribe failed: ${subErr.message}`, true);
+            console.error('[Push Subscribe] PushManager.subscribe error:', subErr);
             toggle.classList.remove('opacity-50');
             return;
           }
-          // Send to server
+          updateDiag('Subscribed locally, saving to server...');
+          
+          // Step 6: Send subscription to server
           const serverResp = await fetch('/api/push/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -532,18 +700,23 @@
             })
           });
           if (!serverResp.ok) {
-            diag.textContent = '❌ Server error subscribing for push. Please try again later.';
+            const errText = await serverResp.text();
+            updateDiag(`Server error: ${serverResp.status} ${errText}`, true);
             toggle.classList.remove('opacity-50');
             return;
           }
+          
+          // Success!
           pushEnabled = true;
           updatePushToggleUI();
           await savePreferences();
-          diag.textContent = '✅ Push notifications enabled!';
+          const elapsed = Math.round(performance.now() - startTime);
+          diag.textContent = `✅ Push notifications enabled! [${elapsed}ms]`;
+          console.log('[Push Subscribe] Success', { elapsed, endpoint: subscription.endpoint });
           toggle.classList.remove('opacity-50');
         } catch (err) {
-          diag.textContent = '❌ Failed to subscribe to push notifications. See console for details.';
-          console.error('Push subscription error:', err);
+          diag.textContent = `❌ Unexpected error: ${err.message}`;
+          console.error('[Push Subscribe] Unexpected error:', err);
           toggle.classList.remove('opacity-50');
         }
       }
@@ -605,6 +778,109 @@
           outputArray[i] = rawData.charCodeAt(i);
         }
         return outputArray;
+      }
+      
+      // ─────────────────────────── SW DEBUG PANEL ───────────────────────────
+      async function showSWDebugPanel() {
+        const panel = document.getElementById('sw-debug-panel');
+        panel.classList.remove('hidden');
+        await refreshSWDebug();
+      }
+      
+      async function refreshSWDebug() {
+        const content = document.getElementById('sw-debug-content');
+        content.textContent = 'Loading...';
+        
+        const lines = [];
+        
+        // Client-side info
+        lines.push('── Client Info ──');
+        lines.push(`origin: ${location.origin}`);
+        lines.push(`isSecureContext: ${window.isSecureContext}`);
+        lines.push(`protocol: ${location.protocol}`);
+        lines.push(`SW supported: ${'serviceWorker' in navigator}`);
+        lines.push(`Push supported: ${'PushManager' in window}`);
+        lines.push(`Notification permission: ${Notification.permission}`);
+        
+        // SW Registration
+        lines.push('\n── Service Worker ──');
+        if ('serviceWorker' in navigator) {
+          try {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            lines.push(`Registrations: ${regs.length}`);
+            for (const reg of regs) {
+              lines.push(`  scope: ${reg.scope}`);
+              lines.push(`  active: ${reg.active?.scriptURL || 'none'} (${reg.active?.state || '-'})`);
+              lines.push(`  installing: ${reg.installing?.scriptURL || 'none'} (${reg.installing?.state || '-'})`);
+              lines.push(`  waiting: ${reg.waiting?.scriptURL || 'none'} (${reg.waiting?.state || '-'})`);
+            }
+            lines.push(`controller: ${navigator.serviceWorker.controller?.scriptURL || 'none'}`);
+            
+            // Try to get SW status via message
+            if (navigator.serviceWorker.controller) {
+              try {
+                const swStatus = await new Promise((resolve, reject) => {
+                  const mc = new MessageChannel();
+                  mc.port1.onmessage = (e) => resolve(e.data);
+                  setTimeout(() => reject(new Error('timeout')), 2000);
+                  navigator.serviceWorker.controller.postMessage({ type: 'GET_SW_STATUS' }, [mc.port2]);
+                });
+                lines.push(`SW version: ${swStatus.version || 'unknown'}`);
+              } catch (e) {
+                lines.push(`SW message: ${e.message}`);
+              }
+            }
+          } catch (e) {
+            lines.push(`Error: ${e.message}`);
+          }
+        } else {
+          lines.push('Not supported');
+        }
+        
+        // Push subscription
+        lines.push('\n── Push Subscription ──');
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) {
+            lines.push(`endpoint: ${sub.endpoint.substring(0, 60)}...`);
+            lines.push(`expirationTime: ${sub.expirationTime || 'none'}`);
+          } else {
+            lines.push('No active subscription');
+          }
+        } catch (e) {
+          lines.push(`Error: ${e.message}`);
+        }
+        
+        // Server-side info
+        lines.push('\n── Server Config ──');
+        try {
+          const resp = await fetch('/api/sw/debug');
+          const data = await resp.json();
+          lines.push(`sw_file_exists: ${data.sw_file_exists}`);
+          lines.push(`vapid_configured: ${data.vapid_configured}`);
+          lines.push(`vapid_key_length: ${data.vapid_public_key_length}`);
+          lines.push(`base_url: ${data.base_url}`);
+        } catch (e) {
+          lines.push(`Error: ${e.message}`);
+        }
+        
+        content.textContent = lines.join('\n');
+      }
+      
+      async function unregisterAllSW() {
+        if (!confirm('Unregister all service workers? You will need to reload the page.')) return;
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const reg of regs) {
+            await reg.unregister();
+            console.log('[SW] Unregistered:', reg.scope);
+          }
+          alert('Service workers unregistered. Reloading page...');
+          location.reload();
+        } catch (e) {
+          alert('Error: ' + e.message);
+        }
       }
       
       // Initialize on page load

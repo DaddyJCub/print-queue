@@ -1,6 +1,13 @@
 // Service Worker for Printellect PWA
-const CACHE_NAME = 'print-queue-v1';
+const SW_VERSION = '2.0.0';
+const CACHE_NAME = 'print-queue-v2';
 const OFFLINE_URL = '/static/offline.html';
+
+// Log helper with timestamp
+function swLog(level, ...args) {
+  const ts = new Date().toISOString();
+  console[level](`[SW ${SW_VERSION}] [${ts}]`, ...args);
+}
 
 // Assets to cache immediately
 const PRECACHE_ASSETS = [
@@ -10,34 +17,56 @@ const PRECACHE_ASSETS = [
   '/static/offline.html',
 ];
 
-// Install event - precache essential assets
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Precaching assets');
-      return cache.addAll(PRECACHE_ASSETS);
-    })
-  );
-  // Activate immediately
-  self.skipWaiting();
+// Error handlers for diagnostics
+self.addEventListener('error', (event) => {
+  swLog('error', 'Uncaught error:', event.message, event.filename, event.lineno);
 });
 
-// Activate event - clean up old caches
-self.addEventListener('activate', (event) => {
+self.addEventListener('unhandledrejection', (event) => {
+  swLog('error', 'Unhandled promise rejection:', event.reason);
+});
+
+// Install event - precache essential assets
+self.addEventListener('install', (event) => {
+  swLog('info', 'Installing...');
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => {
-            console.log('[SW] Deleting old cache:', name);
-            return caches.delete(name);
-          })
-      );
+    caches.open(CACHE_NAME).then((cache) => {
+      swLog('info', 'Precaching assets');
+      return cache.addAll(PRECACHE_ASSETS).then(() => {
+        swLog('info', 'Precache complete');
+      }).catch(err => {
+        swLog('error', 'Precache failed:', err);
+        // Don't fail install if precache fails (network issues)
+      });
     })
   );
-  // Take control immediately
-  self.clients.claim();
+  // Activate immediately without waiting for old SW to be replaced
+  self.skipWaiting();
+  swLog('info', 'skipWaiting() called');
+});
+
+// Activate event - clean up old caches and claim clients
+self.addEventListener('activate', (event) => {
+  swLog('info', 'Activating...');
+  event.waitUntil(
+    Promise.all([
+      // Clean old caches
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames
+            .filter((name) => name !== CACHE_NAME)
+            .map((name) => {
+              swLog('info', 'Deleting old cache:', name);
+              return caches.delete(name);
+            })
+        );
+      }),
+      // Claim all clients so push works immediately
+      self.clients.claim().then(() => {
+        swLog('info', 'clients.claim() complete - SW now controls all tabs');
+      })
+    ])
+  );
 });
 
 // Fetch event - network first with cache fallback
@@ -94,16 +123,30 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Handle push notifications (if enabled in the future)
+// Handle push notifications
 self.addEventListener('push', (event) => {
-  if (!event.data) return;
+  swLog('info', 'Push event received');
+  if (!event.data) {
+    swLog('warn', 'Push event has no data');
+    return;
+  }
   
-  const data = event.data.json();
+  let data;
+  try {
+    data = event.data.json();
+    swLog('info', 'Push payload:', JSON.stringify(data));
+  } catch (e) {
+    swLog('error', 'Failed to parse push data:', e);
+    data = { title: 'Printellect', body: event.data.text() };
+  }
+  
   const options = {
     body: data.body || 'New notification',
     icon: '/static/icons/icon-192.png',
     badge: '/static/icons/icon-192.png',
     vibrate: [100, 50, 100],
+    tag: data.tag || 'printellect-notification',
+    renotify: true,
     data: {
       url: data.url || '/',
     },
@@ -111,14 +154,28 @@ self.addEventListener('push', (event) => {
   
   event.waitUntil(
     self.registration.showNotification(data.title || 'Printellect', options)
+      .then(() => swLog('info', 'Notification shown'))
+      .catch(err => swLog('error', 'Failed to show notification:', err))
   );
 });
 
 // Handle notification click
 self.addEventListener('notificationclick', (event) => {
+  swLog('info', 'Notification clicked:', event.notification.tag);
   event.notification.close();
   
   event.waitUntil(
     clients.openWindow(event.notification.data.url || '/')
   );
+});
+
+// Message handler for diagnostics
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'GET_SW_STATUS') {
+    event.ports[0].postMessage({
+      version: SW_VERSION,
+      cacheName: CACHE_NAME,
+      state: 'active'
+    });
+  }
 });

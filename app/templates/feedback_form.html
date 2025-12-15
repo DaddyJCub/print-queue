@@ -15,7 +15,9 @@
   {% endif %}
   <script>
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js', {scope: '/'}).catch(() => {}));
+      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js', {scope: '/'})
+        .then(r => console.log('[SW] Registered:', r.scope))
+        .catch(e => console.error('[SW] Registration failed:', e)));
     }
   </script>
 </head>

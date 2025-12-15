@@ -66,13 +66,21 @@ app.trust_proxy_headers = True
 from fastapi.responses import FileResponse
 @app.get('/sw.js')
 async def service_worker():
-    # Adjust path if your sw.js is not at project root
+    # Serve sw.js from app/static/sw.js at the root scope
     import os
-    sw_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'sw.js'))
+    sw_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'static', 'sw.js'))
     if not os.path.exists(sw_path):
         from fastapi import HTTPException
+        print(f"[SW] ERROR: Service worker file not found at: {sw_path}")
         raise HTTPException(status_code=404, detail='Service worker not found')
-    return FileResponse(sw_path, media_type='application/javascript')
+    return FileResponse(
+        sw_path, 
+        media_type='application/javascript',
+        headers={
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Service-Worker-Allowed': '/'
+        }
+    )
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -5891,6 +5899,23 @@ def push_diagnostics(email: str):
     ).fetchall()
     conn.close()
     return {"subscriptions": [dict(row) for row in subs]}
+
+
+# Service Worker + Push debugging info endpoint
+@app.get("/api/sw/debug")
+def sw_debug_info():
+    """Return server-side SW and push configuration info for debugging"""
+    import os
+    sw_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'static', 'sw.js'))
+    return {
+        "sw_file_exists": os.path.exists(sw_path),
+        "sw_file_path": sw_path,
+        "vapid_configured": bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY),
+        "vapid_public_key_length": len(VAPID_PUBLIC_KEY) if VAPID_PUBLIC_KEY else 0,
+        "vapid_claims_email": VAPID_CLAIMS_EMAIL,
+        "base_url": BASE_URL,
+        "app_version": APP_VERSION
+    }
 
 
 @app.post("/api/push/unsubscribe")

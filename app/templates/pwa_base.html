@@ -85,10 +85,29 @@
   </style>
   
   <script>
-    // Register service worker
+    // Register service worker with logging
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js', {scope: '/'}).catch(err => console.log('SW registration failed:', err));
+      window.addEventListener('load', async () => {
+        try {
+          const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+          console.log('[SW] Registered successfully:', {
+            scope: reg.scope,
+            active: reg.active?.scriptURL,
+            installing: reg.installing?.state,
+            waiting: reg.waiting?.state
+          });
+          
+          // Listen for updates
+          reg.addEventListener('updatefound', () => {
+            const newSW = reg.installing;
+            console.log('[SW] Update found, new SW installing:', newSW?.state);
+            newSW?.addEventListener('statechange', () => {
+              console.log('[SW] New SW state:', newSW.state);
+            });
+          });
+        } catch (err) {
+          console.error('[SW] Registration failed:', err);
+        }
       });
     }
     
