@@ -21,8 +21,9 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.14"
+APP_VERSION = "1.8.15"
 # Changelog:
+# 1.8.15 - Progress notifications at milestones (25/50/75/90%), broadcast system for app updates, admin broadcast page
 # 1.8.14 - Multi-build UX: clearer status labels (Queued/Done vs READY/COMPLETED), tooltips, queue build progress
 # 1.8.13 - Push notification robustness: safe body parsing, JSON API contract, /api/push/health endpoint
 # 1.8.12 - Per-build photos gallery, push notification fixes (JSONDecodeError), diagnostics panel
@@ -855,6 +856,22 @@ def init_db():
             notification_type TEXT DEFAULT 'push',
             FOREIGN KEY(build_id) REFERENCES builds(id),
             UNIQUE(build_id, milestone_percent)
+        );
+    """)
+
+    # Broadcast notifications - history of system-wide notifications sent to all subscribers
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS broadcast_notifications (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL,
+            url TEXT,
+            broadcast_type TEXT DEFAULT 'custom',
+            sent_at TEXT NOT NULL,
+            sent_by TEXT,
+            total_sent INTEGER DEFAULT 0,
+            total_failed INTEGER DEFAULT 0,
+            metadata TEXT
         );
     """)
 
@@ -4326,7 +4343,7 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
                 vapid_claims=vapid_claims,
                 ttl=43200,  # 12 hours - matches our exp
             )
-            print(f"[PUSH] ✓ Sent notification for {email}")
+            print(f"[PUSH] OK: Sent notification for {email}")
             result["sent"] += 1
         except WebPushException as e:
             error_msg = f"WebPush error: {e}"
@@ -4354,6 +4371,138 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
             result["errors"].append(error_msg)
     
     return result
+
+
+def send_broadcast_notification(title: str, body: str, url: str = None, 
+                                broadcast_type: str = "custom", sent_by: str = None,
+                                metadata: dict = None, also_email: bool = False) -> dict:
+    """
+    Send a push notification to ALL subscribed users.
+    Used for system announcements, app updates, etc.
+    
+    Args:
+        title: Notification title
+        body: Notification body text
+        url: Click-through URL (default: /changelog for updates, / for others)
+        broadcast_type: Type of broadcast ('custom', 'app_update', 'announcement', 'maintenance')
+        sent_by: Admin email or identifier who sent this
+        metadata: Optional dict of additional metadata (e.g., version number)
+        also_email: If True, also send email to all subscribed users
+    
+    Returns:
+        dict with total_sent, total_failed, and details
+    """
+    result = {
+        "broadcast_type": broadcast_type,
+        "total_sent": 0,
+        "total_failed": 0,
+        "unique_emails": 0,
+        "emails_sent": 0,
+        "errors": []
+    }
+    
+    # Get all unique emails with push subscriptions
+    conn = db()
+    emails = conn.execute(
+        "SELECT DISTINCT email FROM push_subscriptions"
+    ).fetchall()
+    conn.close()
+    
+    result["unique_emails"] = len(emails)
+    
+    # Determine default URL based on broadcast type
+    if not url:
+        if broadcast_type == "app_update":
+            url = "/changelog"
+        else:
+            url = "/"
+    
+    full_url = f"{BASE_URL}{url}" if url.startswith("/") else url
+    
+    # Send PUSH notifications (if VAPID is configured)
+    if VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY:
+        if emails:
+            print(f"[BROADCAST] Sending '{broadcast_type}' push to {len(emails)} subscribers")
+            for row in emails:
+                email = row["email"]
+                push_result = send_push_notification(
+                    email=email,
+                    title=title,
+                    body=body,
+                    url=url,
+                    tag=f"broadcast-{broadcast_type}"  # Group by type, replaces previous same-type broadcasts
+                )
+                result["total_sent"] += push_result.get("sent", 0)
+                result["total_failed"] += push_result.get("failed", 0)
+                if push_result.get("errors"):
+                    result["errors"].extend(push_result["errors"])
+        else:
+            result["errors"].append("No push subscriptions found")
+    else:
+        result["errors"].append("VAPID keys not configured - push skipped")
+    
+    # Send EMAIL if requested
+    if also_email and emails:
+        print(f"[BROADCAST] Sending '{broadcast_type}' email to {len(emails)} subscribers")
+        email_list = [row["email"] for row in emails]
+        
+        # Build broadcast email
+        subject = f"[{APP_TITLE}] {title}"
+        text_body = f"{body}\n\nView: {full_url}"
+        html_body = build_email_html(
+            title=title,
+            subtitle=body,
+            rows=[],
+            cta_url=full_url,
+            cta_label="View Details",
+            header_color="#6366f1",  # Indigo for broadcasts
+        )
+        
+        try:
+            send_email(email_list, subject, text_body, html_body)
+            result["emails_sent"] = len(email_list)
+            print(f"[BROADCAST] Sent email to {len(email_list)} recipients")
+        except Exception as e:
+            result["errors"].append(f"Email error: {str(e)}")
+            print(f"[BROADCAST] Email error: {e}")
+    
+    # Record the broadcast in history (include email count in metadata)
+    broadcast_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    
+    # Merge emails_sent into metadata
+    full_metadata = metadata.copy() if metadata else {}
+    if result["emails_sent"] > 0:
+        full_metadata["emails_sent"] = result["emails_sent"]
+    metadata_json = json.dumps(full_metadata) if full_metadata else None
+    
+    conn = db()
+    conn.execute("""
+        INSERT INTO broadcast_notifications 
+        (id, title, body, url, broadcast_type, sent_at, sent_by, total_sent, total_failed, metadata)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (broadcast_id, title, body, url, broadcast_type, now, sent_by, 
+          result["total_sent"], result["total_failed"], metadata_json))
+    conn.commit()
+    conn.close()
+    
+    result["broadcast_id"] = broadcast_id
+    email_info = f", {result['emails_sent']} emails" if result['emails_sent'] > 0 else ""
+    print(f"[BROADCAST] Completed: {result['total_sent']} push sent, {result['total_failed']} failed{email_info}")
+    
+    return result
+
+
+def get_broadcast_history(limit: int = 20) -> List[Dict]:
+    """Get recent broadcast notification history."""
+    conn = db()
+    rows = conn.execute("""
+        SELECT * FROM broadcast_notifications 
+        ORDER BY sent_at DESC 
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 
 def safe_ext(filename: str) -> str:
@@ -6594,6 +6743,104 @@ def admin_debug(request: Request, _=Depends(require_admin)):
         "failure_counts": _printer_failure_count,
         "version": APP_VERSION,
     })
+
+
+# ─────────────────────────── BROADCAST NOTIFICATIONS ───────────────────────────
+
+@app.get("/admin/broadcast", response_class=HTMLResponse)
+def admin_broadcast_page(request: Request, _=Depends(require_admin)):
+    """Admin page for sending broadcast notifications to all subscribers"""
+    # Get subscriber count
+    conn = db()
+    subscriber_count = conn.execute(
+        "SELECT COUNT(DISTINCT email) as c FROM push_subscriptions"
+    ).fetchone()["c"]
+    conn.close()
+    
+    # Get broadcast history
+    history = get_broadcast_history(limit=10)
+    
+    return templates.TemplateResponse("admin_broadcast.html", {
+        "request": request,
+        "subscriber_count": subscriber_count,
+        "history": history,
+        "version": APP_VERSION,
+    })
+
+
+@app.post("/admin/broadcast/send")
+def admin_broadcast_send(
+    request: Request,
+    title: str = Form(...),
+    body: str = Form(...),
+    url: str = Form(""),
+    broadcast_type: str = Form("custom"),
+    send_email: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """Send a broadcast notification to all subscribers"""
+    # Don't access session directly - just log as 'admin'
+    admin_user = "admin"
+    
+    result = send_broadcast_notification(
+        title=title,
+        body=body,
+        url=url if url.strip() else None,
+        broadcast_type=broadcast_type,
+        sent_by=admin_user,
+        also_email=bool(send_email)
+    )
+    
+    return RedirectResponse(
+        url=f"/admin/broadcast?sent=1&total={result['total_sent']}&failed={result['total_failed']}&emails={result.get('emails_sent', 0)}",
+        status_code=303
+    )
+
+
+@app.post("/api/admin/broadcast/app-update")
+def api_broadcast_app_update(
+    request: Request,
+    version: str = Form(None),
+    send_email: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """
+    Send an app update notification to all subscribers.
+    Uses the current APP_VERSION if no version is specified.
+    Links to the specific version section in the changelog.
+    """
+    version = version or APP_VERSION
+    
+    # Link to specific version anchor in changelog
+    changelog_url = f"/changelog#v{version}"
+    
+    result = send_broadcast_notification(
+        title="🎉 New Update Available!",
+        body=f"Printellect v{version} is here with new features and improvements. Tap to see what's new!",
+        url=changelog_url,
+        broadcast_type="app_update",
+        sent_by="admin",
+        metadata={"version": version},
+        also_email=bool(send_email)
+    )
+    
+    # Check if request wants JSON (API call) or redirect (form submission)
+    accept = request.headers.get("accept", "")
+    if "application/json" in accept:
+        return {
+            "success": result["total_sent"] > 0,
+            "version": version,
+            "total_sent": result["total_sent"],
+            "total_failed": result["total_failed"],
+            "unique_emails": result["unique_emails"],
+            "emails_sent": result.get("emails_sent", 0)
+        }
+    
+    # Form submission - redirect back to broadcast page
+    return RedirectResponse(
+        url=f"/admin/broadcast?sent=1&total={result['total_sent']}&failed={result['total_failed']}&emails={result.get('emails_sent', 0)}",
+        status_code=303
+    )
 
 
 # ─────────────────────────── ERROR TESTING ENDPOINTS ───────────────────────────
@@ -9415,16 +9662,15 @@ async def update_global_email_notify(token: str = Form(...), email_enabled: str 
     user_email = token_row["email"]
     enabled = email_enabled == "1"
     
-    # Update all requests for this user
-    prefs_json = json.dumps({"email": enabled, "push": False})
+    # Update all requests for this user - preserve existing push setting
     conn.execute(
         """UPDATE requests 
            SET notification_prefs = json_set(
                COALESCE(notification_prefs, '{"email": true, "push": false}'), 
                '$.email', 
-               ?
+               json(?)
            )
-           WHERE requester_email = ?""",
+           WHERE LOWER(requester_email) = LOWER(?)""",
         (enabled, user_email)
     )
     conn.commit()
