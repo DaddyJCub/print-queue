@@ -4657,11 +4657,8 @@ async def my_requests_view(request: Request, token: str):
     
     if not token_row:
         conn.close()
-        return templates.TemplateResponse("my_requests_lookup_new.html", {
-            "request": request,
-            "error": "expired",
-            "version": APP_VERSION,
-        })
+        # Redirect to clean URL instead of rendering at /my-requests/view
+        return RedirectResponse(url="/my-requests?error=expired", status_code=302)
     
     # Check expiry
     expiry = datetime.fromisoformat(token_row["expires_at"].replace("Z", "+00:00"))
@@ -4670,11 +4667,8 @@ async def my_requests_view(request: Request, token: str):
         conn.execute("DELETE FROM email_lookup_tokens WHERE token = ?", (token,))
         conn.commit()
         conn.close()
-        return templates.TemplateResponse("my_requests_lookup_new.html", {
-            "request": request,
-            "error": "expired",
-            "version": APP_VERSION,
-        })
+        # Redirect to clean URL instead of rendering at /my-requests/view
+        return RedirectResponse(url="/my-requests?error=expired", status_code=302)
     
     email = token_row["email"]
     
@@ -6421,10 +6415,13 @@ def admin_set_status(
         raise HTTPException(status_code=400, detail="Invalid status")
 
     conn = db()
-    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
-    if not req:
+    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req_row:
         conn.close()
         raise HTTPException(status_code=404, detail="Not found")
+    
+    # Convert sqlite3.Row to dict for .get() access
+    req = dict(req_row)
 
     from_status = req["status"]
     

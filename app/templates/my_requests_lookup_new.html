@@ -11,18 +11,26 @@
 <script>
   // Check URL params before page renders
   const urlParams = new URLSearchParams(window.location.search);
+  const hasError = urlParams.get('error');
+  const hasSent = urlParams.get('sent');
   
   if (urlParams.get('logout') === '1') {
     localStorage.removeItem('my_requests_token');
     localStorage.removeItem('my_requests_email');
     window.history.replaceState({}, '', '/my-requests');
+  } else if (hasError) {
+    // If there's an error (e.g., expired token), clear the saved token to prevent redirect loops
+    // The server returned this page because the token is invalid
+    localStorage.removeItem('my_requests_token');
+    localStorage.removeItem('my_requests_email');
+    // Clean up URL to just /my-requests?error=xxx
+    window.history.replaceState({}, '', '/my-requests?error=' + hasError);
   } else if (urlParams.get('token')) {
+    // Only redirect if we have a token AND no error
     window.location.href = '/my-requests/view?token=' + urlParams.get('token');
   } else {
     const savedToken = localStorage.getItem('my_requests_token');
-    const hasError = urlParams.get('error');
-    const hasSent = urlParams.get('sent');
-    if (savedToken && !hasError && !hasSent) {
+    if (savedToken && !hasSent) {
       window.location.href = '/my-requests/view?token=' + savedToken;
     }
   }
