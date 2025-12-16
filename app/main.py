@@ -881,6 +881,7 @@ def init_db():
             email TEXT PRIMARY KEY,
             progress_push INTEGER DEFAULT 1,
             progress_email INTEGER DEFAULT 0,
+            progress_milestones TEXT DEFAULT '50,75',
             status_push INTEGER DEFAULT 1,
             status_email INTEGER DEFAULT 1,
             broadcast_push INTEGER DEFAULT 1,
@@ -1035,6 +1036,12 @@ def ensure_migrations():
         
         # Update request with total_builds count
         cur.execute("UPDATE requests SET total_builds = ? WHERE id = ?", (build_count, request_id))
+
+    # Add progress_milestones column to user_notification_prefs if missing
+    cur.execute("PRAGMA table_info(user_notification_prefs)")
+    prefs_cols = {row[1] for row in cur.fetchall()}
+    if prefs_cols and "progress_milestones" not in prefs_cols:
+        cur.execute("ALTER TABLE user_notification_prefs ADD COLUMN progress_milestones TEXT DEFAULT '50,75'")
 
     conn.commit()
     conn.close()
@@ -2815,15 +2822,15 @@ def clear_progress_milestones(build_id: str):
 
 
 # ─────────────────────────── USER NOTIFICATION PREFERENCES ───────────────────────────
-def get_user_notification_prefs(email: str) -> Dict[str, bool]:
+def get_user_notification_prefs(email: str) -> dict:
     """
     Get notification preferences for a user.
-    Returns dict with progress_push, progress_email, status_push, status_email, broadcast_push.
+    Returns dict with progress_push, progress_email, progress_milestones, status_push, status_email, broadcast_push.
     Defaults to all push enabled, progress email disabled.
     """
     conn = db()
     row = conn.execute(
-        "SELECT progress_push, progress_email, status_push, status_email, broadcast_push FROM user_notification_prefs WHERE email = ?",
+        "SELECT progress_push, progress_email, progress_milestones, status_push, status_email, broadcast_push FROM user_notification_prefs WHERE email = ?",
         (email,)
     ).fetchone()
     conn.close()
@@ -2832,6 +2839,7 @@ def get_user_notification_prefs(email: str) -> Dict[str, bool]:
         return {
             "progress_push": bool(row["progress_push"]),
             "progress_email": bool(row["progress_email"]),
+            "progress_milestones": row["progress_milestones"] if row["progress_milestones"] else "50,75",
             "status_push": bool(row["status_push"]),
             "status_email": bool(row["status_email"]),
             "broadcast_push": bool(row["broadcast_push"]),
@@ -2841,22 +2849,24 @@ def get_user_notification_prefs(email: str) -> Dict[str, bool]:
     return {
         "progress_push": True,
         "progress_email": False,
+        "progress_milestones": "50,75",
         "status_push": True,
         "status_email": True,
         "broadcast_push": True,
     }
 
 
-def update_user_notification_prefs(email: str, prefs: Dict[str, bool]) -> bool:
+def update_user_notification_prefs(email: str, prefs: dict) -> bool:
     """Update notification preferences for a user. Creates record if doesn't exist."""
     conn = db()
     try:
         conn.execute("""
-            INSERT INTO user_notification_prefs (email, progress_push, progress_email, status_push, status_email, broadcast_push, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO user_notification_prefs (email, progress_push, progress_email, progress_milestones, status_push, status_email, broadcast_push, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(email) DO UPDATE SET
                 progress_push = excluded.progress_push,
                 progress_email = excluded.progress_email,
+                progress_milestones = excluded.progress_milestones,
                 status_push = excluded.status_push,
                 status_email = excluded.status_email,
                 broadcast_push = excluded.broadcast_push,
@@ -2865,6 +2875,7 @@ def update_user_notification_prefs(email: str, prefs: Dict[str, bool]) -> bool:
             email,
             1 if prefs.get("progress_push", True) else 0,
             1 if prefs.get("progress_email", False) else 0,
+            prefs.get("progress_milestones", "50,75"),
             1 if prefs.get("status_push", True) else 0,
             1 if prefs.get("status_email", True) else 0,
             1 if prefs.get("broadcast_push", True) else 0,
@@ -2884,7 +2895,7 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
     Send progress notification for a build at a specific percentage.
     
     Rules:
-    - PUSH notifications are sent for all configured thresholds (if user has push enabled)
+    - PUSH notifications are sent for user-configured thresholds (if user has push enabled)
     - EMAIL is sent ONLY at 50% threshold (if user has email enabled)
     - Message format: "Hey your print is XX% — check it out! (Build X of Y)"
     - Push notifications include a snapshot image URL when camera is available
@@ -2899,8 +2910,30 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
     if not get_bool_setting("enable_progress_notifications", True):
         return
     
-    # Get configured thresholds
-    thresholds = get_progress_notification_thresholds()
+    # Get user-level notification preferences FIRST (includes their custom milestones)
+    requester_email = request.get("requester_email")
+    if not requester_email:
+        return
+    
+    user_prefs = get_user_notification_prefs(requester_email)
+    user_wants_progress_push = user_prefs.get("progress_push", True)
+    user_wants_progress_email = user_prefs.get("progress_email", False)
+    
+    # If user has disabled both progress notification types, skip early
+    if not user_wants_progress_push and not user_wants_progress_email:
+        return
+    
+    # Get user's configured thresholds (or defaults)
+    user_milestones_str = user_prefs.get("progress_milestones", "50,75")
+    thresholds = []
+    for p in user_milestones_str.split(","):
+        p = p.strip()
+        if p.isdigit():
+            pct = int(p)
+            if 0 < pct < 100:
+                thresholds.append(pct)
+    thresholds = sorted(set(thresholds))
+    
     if not thresholds:
         return
     
@@ -2916,16 +2949,7 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
     if not milestones_to_send:
         return
     
-    # Get user-level notification preferences
-    requester_email = request.get("requester_email")
-    if not requester_email:
-        return
-    
-    user_prefs = get_user_notification_prefs(requester_email)
-    user_wants_progress_push = user_prefs.get("progress_push", True)
-    user_wants_progress_email = user_prefs.get("progress_email", False)
-    
-    # If user has disabled both progress notification types, skip
+    # Record milestones if user disabled notifications (to prevent future checks)
     if not user_wants_progress_push and not user_wants_progress_email:
         print(f"[PROGRESS-NOTIFY] User {requester_email} has disabled all progress notifications")
         # Still record milestones to prevent future checks
@@ -9875,6 +9899,7 @@ async def api_update_user_notification_prefs(request: Request):
         "prefs": {
             "progress_push": true,
             "progress_email": false,
+            "progress_milestones": "25,50,75,90",
             "status_push": true,
             "status_email": true,
             "broadcast_push": true
@@ -9897,12 +9922,25 @@ async def api_update_user_notification_prefs(request: Request):
                 content={"success": False, "error": "Missing email or invalid token"}
             )
         
-        # Validate prefs structure
-        valid_keys = {"progress_push", "progress_email", "status_push", "status_email", "broadcast_push"}
+        # Validate prefs structure - boolean keys
+        bool_keys = {"progress_push", "progress_email", "status_push", "status_email", "broadcast_push"}
         sanitized_prefs = {}
-        for key in valid_keys:
+        for key in bool_keys:
             if key in prefs:
                 sanitized_prefs[key] = bool(prefs[key])
+        
+        # Handle progress_milestones (comma-separated string of percentages)
+        if "progress_milestones" in prefs:
+            milestones_raw = str(prefs["progress_milestones"])
+            # Validate and sanitize milestones
+            valid_milestones = []
+            for p in milestones_raw.split(","):
+                p = p.strip()
+                if p.isdigit():
+                    pct = int(p)
+                    if 0 < pct < 100:
+                        valid_milestones.append(pct)
+            sanitized_prefs["progress_milestones"] = ",".join(str(m) for m in sorted(set(valid_milestones)))
         
         # Get existing prefs and merge
         existing = get_user_notification_prefs(email)

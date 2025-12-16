@@ -89,12 +89,14 @@
 {% block content %}
 <!-- Notification Settings Modal -->
 <div id="notification-modal" class="hidden fixed inset-0 bg-black/80 flex items-end sm:items-center justify-center z-50 pb-20 sm:pb-0" onclick="hideNotificationSettings()">
-  <div class="bg-zinc-900 border border-zinc-700 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[70vh] sm:max-h-[85vh] overflow-y-auto" 
+  <div class="bg-zinc-900 border border-zinc-700 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[80vh] sm:max-h-[90vh] overflow-y-auto" 
        onclick="event.stopPropagation()" 
        style="padding-bottom: env(safe-area-inset-bottom, 0px);">
     <!-- Modal Header -->
     <div class="sticky top-0 bg-zinc-900 border-b border-zinc-800 px-4 py-3 flex items-center justify-between z-10">
-      <h2 class="text-lg font-bold">🔔 Notification Settings</h2>
+      <h2 class="text-lg font-bold flex items-center gap-2">
+        <span>🔔</span> Notifications
+      </h2>
       <button onclick="hideNotificationSettings()" class="p-2 hover:bg-zinc-800 rounded-lg transition">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -102,40 +104,12 @@
       </button>
     </div>
     
-    <div class="p-4 space-y-4">
-      <!-- Push Status Banner -->
+    <div class="p-4 space-y-5">
+      <!-- Push Status Banner (only shown when there's an issue) -->
       <div id="push-status-banner" class="hidden p-3 rounded-xl border border-yellow-500/40 bg-yellow-900/20">
         <div class="flex items-start gap-2">
           <span class="text-lg">⚠️</span>
           <p id="push-status-message" class="text-sm text-yellow-200"></p>
-        </div>
-      </div>
-      
-      <!-- Push Notification Setup -->
-      <div class="bg-zinc-800/50 rounded-xl p-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="text-lg">📲</span>
-              <span class="font-medium">Push Notifications</span>
-            </div>
-            <p class="text-xs text-zinc-500 mt-1 ml-7">Instant alerts on your device</p>
-            <div class="mt-2 ml-7">
-              <span id="push-status-indicator" class="inline-flex items-center text-xs font-medium"></span>
-            </div>
-          </div>
-          <button id="push-toggle" onclick="togglePushNotifications()" 
-                  class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-zinc-700">
-            <span id="push-toggle-dot" class="inline-block h-5 w-5 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-1"></span>
-          </button>
-        </div>
-        
-        <!-- Test Button -->
-        <div class="mt-3 pt-3 border-t border-zinc-700/50 ml-7">
-          <button id="test-push-btn" onclick="testPushNotification()" 
-                  class="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 rounded-lg text-xs font-medium text-white transition">
-            Send Test Notification
-          </button>
         </div>
       </div>
       
@@ -148,80 +122,177 @@
         </p>
       </div>
       
-      <!-- Notification Type Preferences -->
-      <div class="border-t border-zinc-700 pt-4">
-        <h3 class="text-sm font-semibold text-zinc-300 mb-3 flex items-center gap-2">
-          <span>⚙️</span> Notification Preferences
-        </h3>
-        <p class="text-xs text-zinc-500 mb-4">Choose which notifications you want to receive</p>
-        
-        <!-- Progress Milestones -->
-        <div class="bg-zinc-800/50 rounded-xl p-3 mb-3">
-          <div class="flex items-center gap-2 mb-2">
-            <span class="text-base">📊</span>
-            <span class="text-sm font-medium">Build Progress Milestones</span>
+      <!-- ========== MAIN PUSH TOGGLE ========== -->
+      <div class="bg-gradient-to-br from-indigo-900/40 to-purple-900/30 rounded-2xl p-4 border border-indigo-500/30">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-indigo-600/30 flex items-center justify-center">
+              <span class="text-xl">📲</span>
+            </div>
+            <div>
+              <span class="font-semibold text-white">Push Notifications</span>
+              <div class="mt-0.5">
+                <span id="push-status-indicator" class="text-xs font-medium text-zinc-400">Checking...</span>
+              </div>
+            </div>
           </div>
-          <p class="text-xs text-zinc-500 mb-3 ml-6">Get notified at 25%, 50%, 75% and 90% completion</p>
-          <div class="flex gap-4 ml-6">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" id="pref-progress-push" onchange="updateUserPrefs()" 
-                     class="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-zinc-900">
-              <span class="text-xs text-zinc-400">Push</span>
-            </label>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" id="pref-progress-email" onchange="updateUserPrefs()" 
-                     class="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-zinc-900">
-              <span class="text-xs text-zinc-400">Email</span>
-            </label>
+          <button id="push-toggle" onclick="togglePushNotifications()" 
+                  class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-zinc-700">
+            <span id="push-toggle-dot" class="inline-block h-5 w-5 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-1"></span>
+          </button>
+        </div>
+        
+        <!-- Test Button -->
+        <div class="mt-3 pt-3 border-t border-white/10">
+          <button id="test-push-btn" onclick="testPushNotification()" 
+                  class="w-full px-4 py-2 bg-white/10 hover:bg-white/15 rounded-xl text-sm font-medium text-white transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
+            <span>🧪</span> Send Test Notification
+          </button>
+        </div>
+      </div>
+      
+      <!-- ========== NOTIFICATION TYPES ========== -->
+      <div class="space-y-3">
+        <h3 class="text-xs font-semibold text-zinc-500 uppercase tracking-wider px-1">What to notify me about</h3>
+        
+        <!-- Progress Updates Card -->
+        <div class="bg-zinc-800/60 rounded-xl overflow-hidden border border-zinc-700/50">
+          <div class="p-4">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-emerald-600/20 flex items-center justify-center flex-shrink-0">
+                  <span class="text-lg">📊</span>
+                </div>
+                <div>
+                  <span class="font-medium text-white">Build Progress</span>
+                  <p class="text-xs text-zinc-400 mt-0.5">Get notified at key milestones</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Progress Milestone Chips -->
+            <div class="mt-4">
+              <p class="text-xs text-zinc-500 mb-2">Notify me at:</p>
+              <div class="flex flex-wrap gap-2" id="milestone-chips">
+                <button type="button" data-milestone="25" onclick="toggleMilestone(25)" 
+                        class="milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border">
+                  25%
+                </button>
+                <button type="button" data-milestone="50" onclick="toggleMilestone(50)" 
+                        class="milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border">
+                  50%
+                </button>
+                <button type="button" data-milestone="75" onclick="toggleMilestone(75)" 
+                        class="milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border">
+                  75%
+                </button>
+                <button type="button" data-milestone="90" onclick="toggleMilestone(90)" 
+                        class="milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border">
+                  90%
+                </button>
+              </div>
+            </div>
+            
+            <!-- Push/Email toggles -->
+            <div class="mt-4 pt-3 border-t border-zinc-700/50 flex items-center gap-4">
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-progress-push" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Push</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-progress-email" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Email</span>
+              </label>
+            </div>
           </div>
         </div>
         
-        <!-- Status Changes -->
-        <div class="bg-zinc-800/50 rounded-xl p-3 mb-3">
-          <div class="flex items-center gap-2 mb-2">
-            <span class="text-base">🔄</span>
-            <span class="text-sm font-medium">Status Updates</span>
-          </div>
-          <p class="text-xs text-zinc-500 mb-3 ml-6">When your print status changes (approved, completed, etc.)</p>
-          <div class="flex gap-4 ml-6">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" id="pref-status-push" onchange="updateUserPrefs()" 
-                     class="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-zinc-900">
-              <span class="text-xs text-zinc-400">Push</span>
-            </label>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" id="pref-status-email" onchange="updateUserPrefs()" 
-                     class="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-zinc-900">
-              <span class="text-xs text-zinc-400">Email</span>
-            </label>
+        <!-- Status Updates Card -->
+        <div class="bg-zinc-800/60 rounded-xl overflow-hidden border border-zinc-700/50">
+          <div class="p-4">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-blue-600/20 flex items-center justify-center flex-shrink-0">
+                  <span class="text-lg">🔄</span>
+                </div>
+                <div>
+                  <span class="font-medium text-white">Status Changes</span>
+                  <p class="text-xs text-zinc-400 mt-0.5">Approved, printing, ready for pickup</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Push/Email toggles -->
+            <div class="mt-4 pt-3 border-t border-zinc-700/50 flex items-center gap-4">
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-status-push" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Push</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-status-email" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Email</span>
+              </label>
+            </div>
           </div>
         </div>
         
-        <!-- Announcements -->
-        <div class="bg-zinc-800/50 rounded-xl p-3">
-          <div class="flex items-center gap-2 mb-2">
-            <span class="text-base">📢</span>
-            <span class="text-sm font-medium">Announcements & Updates</span>
-          </div>
-          <p class="text-xs text-zinc-500 mb-3 ml-6">App updates, new features, and important announcements</p>
-          <div class="flex gap-4 ml-6">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" id="pref-broadcast-push" onchange="updateUserPrefs()" 
-                     class="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-zinc-900">
-              <span class="text-xs text-zinc-400">Push</span>
-            </label>
+        <!-- Announcements Card -->
+        <div class="bg-zinc-800/60 rounded-xl overflow-hidden border border-zinc-700/50">
+          <div class="p-4">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-amber-600/20 flex items-center justify-center flex-shrink-0">
+                  <span class="text-lg">📢</span>
+                </div>
+                <div>
+                  <span class="font-medium text-white">Announcements</span>
+                  <p class="text-xs text-zinc-400 mt-0.5">App updates & important news</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Push toggle only -->
+            <div class="mt-4 pt-3 border-t border-zinc-700/50 flex items-center gap-4">
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-broadcast-push" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Push</span>
+              </label>
+            </div>
           </div>
         </div>
       </div>
       
       <!-- Saving indicator -->
-      <div id="prefs-saving" class="hidden text-center py-2">
-        <span class="text-xs text-zinc-400">💾 Saving preferences...</span>
+      <div id="prefs-saving" class="hidden">
+        <div class="flex items-center justify-center gap-2 py-2">
+          <div class="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          <span class="text-xs text-zinc-400">Saving...</span>
+        </div>
       </div>
       
-      <!-- Tip -->
-      <p class="text-xs text-zinc-500 text-center">
-        💡 Your preferences are saved automatically
+      <!-- Footer tip -->
+      <p class="text-xs text-zinc-500 text-center pt-2">
+        Changes are saved automatically
       </p>
     </div>
   </div>
@@ -582,10 +653,14 @@ function updateTimer() {
 let userPrefs = {
   progress_push: true,
   progress_email: false,
+  progress_milestones: '50,75',
   status_push: true,
   status_email: true,
   broadcast_push: true
 };
+
+// Track selected milestones
+let selectedMilestones = new Set([50, 75]);
 
 // Debounce timer for saving preferences
 let prefsSaveTimeout = null;
@@ -597,6 +672,14 @@ async function loadUserPrefs() {
     
     if (data.success && data.prefs) {
       userPrefs = data.prefs;
+      // Parse milestones
+      if (userPrefs.progress_milestones) {
+        selectedMilestones = new Set(
+          userPrefs.progress_milestones.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
+        );
+      } else {
+        selectedMilestones = new Set([50, 75]); // Default
+      }
       applyPrefsToUI();
     }
   } catch (e) {
@@ -610,6 +693,30 @@ function applyPrefsToUI() {
   document.getElementById('pref-status-push').checked = userPrefs.status_push;
   document.getElementById('pref-status-email').checked = userPrefs.status_email;
   document.getElementById('pref-broadcast-push').checked = userPrefs.broadcast_push;
+  
+  // Update milestone chips
+  updateMilestoneChipsUI();
+}
+
+function updateMilestoneChipsUI() {
+  document.querySelectorAll('.milestone-chip').forEach(chip => {
+    const milestone = parseInt(chip.dataset.milestone);
+    if (selectedMilestones.has(milestone)) {
+      chip.className = 'milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border bg-indigo-600 border-indigo-500 text-white';
+    } else {
+      chip.className = 'milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border bg-zinc-800 border-zinc-600 text-zinc-400 hover:border-zinc-500';
+    }
+  });
+}
+
+function toggleMilestone(value) {
+  if (selectedMilestones.has(value)) {
+    selectedMilestones.delete(value);
+  } else {
+    selectedMilestones.add(value);
+  }
+  updateMilestoneChipsUI();
+  updateUserPrefs();
 }
 
 function updateUserPrefs() {
@@ -619,6 +726,9 @@ function updateUserPrefs() {
   userPrefs.status_push = document.getElementById('pref-status-push').checked;
   userPrefs.status_email = document.getElementById('pref-status-email').checked;
   userPrefs.broadcast_push = document.getElementById('pref-broadcast-push').checked;
+  
+  // Convert milestone set to comma-separated string
+  userPrefs.progress_milestones = Array.from(selectedMilestones).sort((a, b) => a - b).join(',');
   
   // Debounce the save
   if (prefsSaveTimeout) clearTimeout(prefsSaveTimeout);
@@ -748,7 +858,7 @@ function updatePushToggle(enabled, disabled) {
     toggle.disabled = true;
     toggle.className = 'relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-zinc-800 cursor-not-allowed opacity-50';
     testBtn.disabled = true;
-    testBtn.className = 'px-3 py-1.5 bg-zinc-700 rounded-lg text-xs font-medium text-zinc-500 cursor-not-allowed';
+    testBtn.className = 'w-full px-4 py-2 bg-white/10 rounded-xl text-sm font-medium text-white/40 flex items-center justify-center gap-2 cursor-not-allowed';
     return;
   }
   
@@ -758,11 +868,11 @@ function updatePushToggle(enabled, disabled) {
   if (enabled) {
     toggle.className = 'relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-indigo-600';
     dot.className = 'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform translate-x-6';
-    testBtn.className = 'px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 rounded-lg text-xs font-medium text-white transition';
+    testBtn.className = 'w-full px-4 py-2 bg-white/10 hover:bg-white/15 rounded-xl text-sm font-medium text-white transition flex items-center justify-center gap-2';
   } else {
     toggle.className = 'relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-zinc-700';
     dot.className = 'inline-block h-5 w-5 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-1';
-    testBtn.className = 'px-3 py-1.5 bg-zinc-700 rounded-lg text-xs font-medium text-zinc-500 cursor-not-allowed';
+    testBtn.className = 'w-full px-4 py-2 bg-white/10 rounded-xl text-sm font-medium text-white/40 flex items-center justify-center gap-2 cursor-not-allowed';
   }
 }
 
@@ -853,8 +963,9 @@ async function unsubscribePush() {
 
 async function testPushNotification() {
   const btn = document.getElementById('test-push-btn');
+  const originalHTML = btn.innerHTML;
   btn.disabled = true;
-  btn.textContent = 'Sending...';
+  btn.innerHTML = '<div class="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></div> Sending...';
   
   try {
     const response = await fetch('/api/push/test', {
@@ -874,7 +985,7 @@ async function testPushNotification() {
   }
   
   btn.disabled = false;
-  btn.textContent = 'Send Test Notification';
+  btn.innerHTML = '<span>🧪</span> Send Test Notification';
 }
 
 // ========== Utility Functions ==========
