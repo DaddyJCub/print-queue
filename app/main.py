@@ -21,7 +21,7 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.15"
+APP_VERSION = "1.8.16"
 # Changelog:
 # 1.8.15 - Progress notifications at milestones (25/50/75/90%), broadcast system for app updates, admin broadcast page
 # 1.8.14 - Multi-build UX: clearer status labels (Queued/Done vs READY/COMPLETED), tooltips, queue build progress
@@ -872,6 +872,19 @@ def init_db():
             total_sent INTEGER DEFAULT 0,
             total_failed INTEGER DEFAULT 0,
             metadata TEXT
+        );
+    """)
+
+    # User notification preferences - per-user settings for notification types
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_notification_prefs (
+            email TEXT PRIMARY KEY,
+            progress_push INTEGER DEFAULT 1,
+            progress_email INTEGER DEFAULT 0,
+            status_push INTEGER DEFAULT 1,
+            status_email INTEGER DEFAULT 1,
+            broadcast_push INTEGER DEFAULT 1,
+            updated_at TEXT
         );
     """)
 
@@ -2432,16 +2445,10 @@ def send_build_start_notification(build: Dict, request: Dict):
     if not requester_email_on_status or not should_notify:
         return
     
-    # Parse user notification preferences
-    user_prefs = {"email": True, "push": False}
-    if request.get("notification_prefs"):
-        try:
-            user_prefs = json.loads(request["notification_prefs"])
-        except:
-            pass
-    
-    user_wants_email = user_prefs.get("email", True)
-    user_wants_push = user_prefs.get("push", False)
+    # Get user-level notification preferences (from user_notification_prefs table)
+    user_prefs = get_user_notification_prefs(request.get("requester_email", ""))
+    user_wants_email = user_prefs.get("status_email", True)
+    user_wants_push = user_prefs.get("status_push", True)
     
     print_label = request.get("print_name") or f"Request {request_id[:8]}"
     build_label = build.get("print_name") or f"Build {build_num}"
@@ -2531,16 +2538,10 @@ def send_build_complete_notification(build: Dict, request: Dict, snapshot_b64: O
     if not requester_email_on_status or not should_notify:
         return
     
-    # Parse user notification preferences
-    user_prefs = {"email": True, "push": False}
-    if request.get("notification_prefs"):
-        try:
-            user_prefs = json.loads(request["notification_prefs"])
-        except:
-            pass
-    
-    user_wants_email = user_prefs.get("email", True)
-    user_wants_push = user_prefs.get("push", False)
+    # Get user-level notification preferences (from user_notification_prefs table)
+    user_prefs = get_user_notification_prefs(request.get("requester_email", ""))
+    user_wants_email = user_prefs.get("status_email", True)
+    user_wants_push = user_prefs.get("status_push", True)
     
     print_label = request.get("print_name") or f"Request {request_id[:8]}"
     build_label = build.get("print_name") or f"Build {build_num}"
@@ -2627,16 +2628,10 @@ def send_build_fail_notification(build: Dict, request: Dict, reason: Optional[st
     if not requester_email_on_status:
         return
     
-    # Parse user notification preferences
-    user_prefs = {"email": True, "push": False}
-    if request.get("notification_prefs"):
-        try:
-            user_prefs = json.loads(request["notification_prefs"])
-        except:
-            pass
-    
-    user_wants_email = user_prefs.get("email", True)
-    user_wants_push = user_prefs.get("push", False)
+    # Get user-level notification preferences (from user_notification_prefs table)
+    user_prefs = get_user_notification_prefs(request.get("requester_email", ""))
+    user_wants_email = user_prefs.get("status_email", True)
+    user_wants_push = user_prefs.get("status_push", True)
     
     print_label = request.get("print_name") or f"Request {request_id[:8]}"
     build_label = build.get("print_name") or f"Build {build_num}"
@@ -2707,16 +2702,10 @@ def send_request_complete_notification(request: Dict, snapshot_b64: Optional[str
     if not requester_email_on_status or not should_notify:
         return
     
-    # Parse user notification preferences
-    user_prefs = {"email": True, "push": False}
-    if request.get("notification_prefs"):
-        try:
-            user_prefs = json.loads(request["notification_prefs"])
-        except:
-            pass
-    
-    user_wants_email = user_prefs.get("email", True)
-    user_wants_push = user_prefs.get("push", False)
+    # Get user-level notification preferences (from user_notification_prefs table)
+    user_prefs = get_user_notification_prefs(request.get("requester_email", ""))
+    user_wants_email = user_prefs.get("status_email", True)
+    user_wants_push = user_prefs.get("status_push", True)
     
     print_label = request.get("print_name") or f"Request {request_id[:8]}"
     
@@ -2825,6 +2814,71 @@ def clear_progress_milestones(build_id: str):
     conn.close()
 
 
+# ─────────────────────────── USER NOTIFICATION PREFERENCES ───────────────────────────
+def get_user_notification_prefs(email: str) -> Dict[str, bool]:
+    """
+    Get notification preferences for a user.
+    Returns dict with progress_push, progress_email, status_push, status_email, broadcast_push.
+    Defaults to all push enabled, progress email disabled.
+    """
+    conn = db()
+    row = conn.execute(
+        "SELECT progress_push, progress_email, status_push, status_email, broadcast_push FROM user_notification_prefs WHERE email = ?",
+        (email,)
+    ).fetchone()
+    conn.close()
+    
+    if row:
+        return {
+            "progress_push": bool(row["progress_push"]),
+            "progress_email": bool(row["progress_email"]),
+            "status_push": bool(row["status_push"]),
+            "status_email": bool(row["status_email"]),
+            "broadcast_push": bool(row["broadcast_push"]),
+        }
+    
+    # Default preferences - push on, progress email off (to avoid spam)
+    return {
+        "progress_push": True,
+        "progress_email": False,
+        "status_push": True,
+        "status_email": True,
+        "broadcast_push": True,
+    }
+
+
+def update_user_notification_prefs(email: str, prefs: Dict[str, bool]) -> bool:
+    """Update notification preferences for a user. Creates record if doesn't exist."""
+    conn = db()
+    try:
+        conn.execute("""
+            INSERT INTO user_notification_prefs (email, progress_push, progress_email, status_push, status_email, broadcast_push, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(email) DO UPDATE SET
+                progress_push = excluded.progress_push,
+                progress_email = excluded.progress_email,
+                status_push = excluded.status_push,
+                status_email = excluded.status_email,
+                broadcast_push = excluded.broadcast_push,
+                updated_at = excluded.updated_at
+        """, (
+            email,
+            1 if prefs.get("progress_push", True) else 0,
+            1 if prefs.get("progress_email", False) else 0,
+            1 if prefs.get("status_push", True) else 0,
+            1 if prefs.get("status_email", True) else 0,
+            1 if prefs.get("broadcast_push", True) else 0,
+            now_iso()
+        ))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[PREFS] Error updating notification prefs for {email}: {e}")
+        conn.close()
+        return False
+
+
 def send_progress_notification(build: Dict, request: Dict, current_percent: int):
     """
     Send progress notification for a build at a specific percentage.
@@ -2862,18 +2916,23 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
     if not milestones_to_send:
         return
     
-    # Parse user notification preferences
-    user_prefs = {"email": True, "push": False}
-    if request.get("notification_prefs"):
-        try:
-            user_prefs = json.loads(request["notification_prefs"])
-        except:
-            pass
-    
-    user_wants_email = user_prefs.get("email", True)
-    user_wants_push = user_prefs.get("push", False)
-    
+    # Get user-level notification preferences
     requester_email = request.get("requester_email")
+    if not requester_email:
+        return
+    
+    user_prefs = get_user_notification_prefs(requester_email)
+    user_wants_progress_push = user_prefs.get("progress_push", True)
+    user_wants_progress_email = user_prefs.get("progress_email", False)
+    
+    # If user has disabled both progress notification types, skip
+    if not user_wants_progress_push and not user_wants_progress_email:
+        print(f"[PROGRESS-NOTIFY] User {requester_email} has disabled all progress notifications")
+        # Still record milestones to prevent future checks
+        for milestone in milestones_to_send:
+            record_progress_milestone(build_id, milestone, "disabled")
+        return
+    
     print_label = request.get("print_name") or f"Request {request_id[:8]}"
     access_token = request.get("access_token", "")
     
@@ -2916,8 +2975,8 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
         # Tag for this specific build's progress (allows replacing previous progress notification)
         notification_tag = f"progress-{build_id[:8]}"
         
-        # Send PUSH notification (always, if user enabled)
-        if user_wants_push and requester_email:
+        # Send PUSH notification (if user enabled)
+        if user_wants_progress_push:
             send_push_notification(
                 email=requester_email,
                 title=notification_title,
@@ -2928,8 +2987,8 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
             )
             record_progress_milestone(build_id, milestone, "push")
         
-        # Send EMAIL only at 50% threshold
-        if milestone == 50 and user_wants_email and requester_email:
+        # Send EMAIL only at 50% threshold (to avoid spam)
+        if milestone == 50 and user_wants_progress_email:
             subject = f"[{APP_TITLE}] Print update - {print_label}"
             
             email_rows = [
@@ -2963,7 +3022,7 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
             record_progress_milestone(build_id, milestone, "email")
         
         # Record milestone even if no notifications sent (prevents re-check)
-        if not user_wants_push and not (milestone == 50 and user_wants_email):
+        if not user_wants_progress_push and not (milestone == 50 and user_wants_progress_email):
             record_progress_milestone(build_id, milestone, "none")
 
 
@@ -6750,11 +6809,26 @@ def admin_debug(request: Request, _=Depends(require_admin)):
 @app.get("/admin/broadcast", response_class=HTMLResponse)
 def admin_broadcast_page(request: Request, _=Depends(require_admin)):
     """Admin page for sending broadcast notifications to all subscribers"""
-    # Get subscriber count
     conn = db()
+    
+    # Get unique subscriber count
     subscriber_count = conn.execute(
         "SELECT COUNT(DISTINCT email) as c FROM push_subscriptions"
     ).fetchone()["c"]
+    
+    # Get total subscription count (includes multiple devices per user)
+    total_subscriptions = conn.execute(
+        "SELECT COUNT(*) as c FROM push_subscriptions"
+    ).fetchone()["c"]
+    
+    # Get subscriber breakdown (email + device count)
+    subscribers = conn.execute("""
+        SELECT email, COUNT(*) as device_count 
+        FROM push_subscriptions 
+        GROUP BY email 
+        ORDER BY device_count DESC, email
+    """).fetchall()
+    
     conn.close()
     
     # Get broadcast history
@@ -6763,6 +6837,8 @@ def admin_broadcast_page(request: Request, _=Depends(require_admin)):
     return templates.TemplateResponse("admin_broadcast.html", {
         "request": request,
         "subscriber_count": subscriber_count,
+        "total_subscriptions": total_subscriptions,
+        "subscribers": [dict(s) for s in subscribers],
         "history": history,
         "version": APP_VERSION,
     })
@@ -6841,6 +6917,189 @@ def api_broadcast_app_update(
         url=f"/admin/broadcast?sent=1&total={result['total_sent']}&failed={result['total_failed']}&emails={result.get('emails_sent', 0)}",
         status_code=303
     )
+
+
+# ─────────────────────────── PUSH SUBSCRIPTION MANAGEMENT ───────────────────────────
+
+@app.post("/api/admin/push/cleanup")
+async def api_admin_push_cleanup(request: Request, _=Depends(require_admin)):
+    """
+    Test and cleanup push subscriptions for a specific email.
+    Sends a silent test push and removes subscriptions that fail with 404/410.
+    """
+    try:
+        data = await _parse_request_data(request)
+        email = data.get("email")
+        
+        if not email:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Email required"})
+        
+        removed = await _cleanup_subscriptions_for_email(email)
+        
+        return {"success": True, "email": email, "removed": removed}
+    except Exception as e:
+        print(f"[PUSH-CLEANUP] Error: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@app.post("/api/admin/push/cleanup-all")
+async def api_admin_push_cleanup_all(_=Depends(require_admin)):
+    """
+    Test and cleanup ALL push subscriptions.
+    Sends silent test pushes and removes any that fail.
+    """
+    try:
+        conn = db()
+        subs = conn.execute("SELECT id, endpoint FROM push_subscriptions").fetchall()
+        conn.close()
+        
+        removed = 0
+        
+        # Test each subscription
+        for sub in subs:
+            is_valid = await _test_subscription(sub["endpoint"])
+            if not is_valid:
+                conn = db()
+                conn.execute("DELETE FROM push_subscriptions WHERE id = ?", (sub["id"],))
+                conn.commit()
+                conn.close()
+                removed += 1
+                print(f"[PUSH-CLEANUP] Removed stale subscription: {sub['endpoint'][:50]}...")
+        
+        print(f"[PUSH-CLEANUP] Cleaned up {removed} stale subscriptions out of {len(subs)}")
+        return {"success": True, "tested": len(subs), "removed": removed}
+    except Exception as e:
+        print(f"[PUSH-CLEANUP] Error: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+@app.post("/api/admin/push/test-all")
+async def api_admin_push_test_all(_=Depends(require_admin)):
+    """
+    Test all push subscriptions and report which are valid/invalid.
+    Automatically removes invalid ones.
+    """
+    try:
+        conn = db()
+        subs = conn.execute("""
+            SELECT id, email, endpoint 
+            FROM push_subscriptions
+        """).fetchall()
+        conn.close()
+        
+        valid = 0
+        invalid = 0
+        removed = 0
+        
+        for sub in subs:
+            is_valid = await _test_subscription(sub["endpoint"])
+            if is_valid:
+                valid += 1
+            else:
+                invalid += 1
+                # Remove invalid subscription
+                conn = db()
+                conn.execute("DELETE FROM push_subscriptions WHERE id = ?", (sub["id"],))
+                conn.commit()
+                conn.close()
+                removed += 1
+                print(f"[PUSH-TEST] Removed invalid subscription for {sub['email']}: {sub['endpoint'][:40]}...")
+        
+        print(f"[PUSH-TEST] Results: {valid} valid, {invalid} invalid, {removed} removed")
+        return {"success": True, "valid": valid, "invalid": invalid, "removed": removed}
+    except Exception as e:
+        print(f"[PUSH-TEST] Error: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+async def _test_subscription(endpoint: str) -> bool:
+    """
+    Test if a push subscription endpoint is still valid.
+    Returns True if valid, False if expired/invalid.
+    """
+    if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
+        return True  # Can't test without VAPID, assume valid
+    
+    try:
+        from pywebpush import webpush, WebPushException
+        from urllib.parse import urlparse
+        import time
+        
+        # We need the full subscription info, but we only have endpoint
+        # We'll do a lightweight test by checking the endpoint status
+        conn = db()
+        sub = conn.execute(
+            "SELECT p256dh, auth FROM push_subscriptions WHERE endpoint = ?",
+            (endpoint,)
+        ).fetchone()
+        conn.close()
+        
+        if not sub:
+            return False
+        
+        subscription_info = {
+            "endpoint": endpoint,
+            "keys": {
+                "p256dh": sub["p256dh"],
+                "auth": sub["auth"],
+            }
+        }
+        
+        # Build VAPID claims
+        parsed = urlparse(endpoint)
+        aud = f"{parsed.scheme}://{parsed.netloc}"
+        
+        vapid_email = VAPID_CLAIMS_EMAIL
+        if not vapid_email.startswith("mailto:"):
+            vapid_email = f"mailto:{vapid_email}"
+        
+        exp_12h = int(time.time()) + (12 * 3600)
+        vapid_claims = {"sub": vapid_email, "aud": aud, "exp": exp_12h}
+        
+        # Send empty/silent push to test validity
+        # Most push services will reject invalid subscriptions
+        webpush(
+            subscription_info=subscription_info,
+            data="",  # Empty payload
+            vapid_private_key=VAPID_PRIVATE_KEY,
+            vapid_claims=vapid_claims,
+            ttl=0,  # Immediate expiry - don't actually deliver
+        )
+        return True
+    except WebPushException as e:
+        # 404 or 410 means subscription is expired/invalid
+        if e.response and e.response.status_code in [404, 410]:
+            return False
+        # Other errors might be temporary, consider valid
+        return True
+    except Exception:
+        return True  # Assume valid on other errors
+
+
+async def _cleanup_subscriptions_for_email(email: str) -> int:
+    """
+    Test and remove invalid subscriptions for a specific email.
+    Returns number of subscriptions removed.
+    """
+    conn = db()
+    subs = conn.execute(
+        "SELECT id, endpoint FROM push_subscriptions WHERE email = ?",
+        (email,)
+    ).fetchall()
+    conn.close()
+    
+    removed = 0
+    for sub in subs:
+        is_valid = await _test_subscription(sub["endpoint"])
+        if not is_valid:
+            conn = db()
+            conn.execute("DELETE FROM push_subscriptions WHERE id = ?", (sub["id"],))
+            conn.commit()
+            conn.close()
+            removed += 1
+            print(f"[PUSH-CLEANUP] Removed stale subscription for {email}")
+    
+    return removed
 
 
 # ─────────────────────────── ERROR TESTING ENDPOINTS ───────────────────────────
@@ -9576,6 +9835,91 @@ async def clear_all_push_subscriptions(request: Request):
         return {"success": True, "status": "cleared", "deleted": deleted}
     except Exception as e:
         print(f"[PUSH] ERROR in clear-all: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+
+# ─────────────────────────── USER NOTIFICATION PREFERENCES API ───────────────────────────
+@app.get("/api/user/notification-prefs")
+async def api_get_user_notification_prefs(request: Request, email: str = None, token: str = None):
+    """
+    Get user-level notification preferences.
+    Requires either email or my-requests token for auth.
+    """
+    # Try to get email from token if not provided directly
+    if not email and token:
+        email = _get_email_from_token(token)
+    
+    if not email:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Missing email or token"}
+        )
+    
+    prefs = get_user_notification_prefs(email)
+    return {
+        "success": True,
+        "email": email,
+        "prefs": prefs
+    }
+
+
+@app.post("/api/user/notification-prefs")
+async def api_update_user_notification_prefs(request: Request):
+    """
+    Update user-level notification preferences.
+    Expected JSON body: {
+        "email": "user@example.com", OR "token": "my-requests-token",
+        "prefs": {
+            "progress_push": true,
+            "progress_email": false,
+            "status_push": true,
+            "status_email": true,
+            "broadcast_push": true
+        }
+    }
+    """
+    try:
+        data = await _parse_request_data(request)
+        
+        email = data.get("email")
+        token = data.get("token")
+        prefs = data.get("prefs", {})
+        
+        if not email and token:
+            email = _get_email_from_token(token)
+        
+        if not email:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Missing email or invalid token"}
+            )
+        
+        # Validate prefs structure
+        valid_keys = {"progress_push", "progress_email", "status_push", "status_email", "broadcast_push"}
+        sanitized_prefs = {}
+        for key in valid_keys:
+            if key in prefs:
+                sanitized_prefs[key] = bool(prefs[key])
+        
+        # Get existing prefs and merge
+        existing = get_user_notification_prefs(email)
+        existing.update(sanitized_prefs)
+        
+        success = update_user_notification_prefs(email, existing)
+        
+        if success:
+            print(f"[PREFS] Updated notification prefs for {email}: {existing}")
+            return {"success": True, "prefs": existing}
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={"success": False, "error": "Failed to update preferences"}
+            )
+    except Exception as e:
+        print(f"[PREFS] ERROR: {e}")
         return JSONResponse(
             status_code=500,
             content={"success": False, "error": str(e)}

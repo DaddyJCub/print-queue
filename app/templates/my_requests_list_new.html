@@ -111,24 +111,7 @@
         </div>
       </div>
       
-      <!-- Email Notifications -->
-      <div class="bg-zinc-800/50 rounded-xl p-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="text-lg">📧</span>
-              <span class="font-medium">Email Notifications</span>
-            </div>
-            <p class="text-xs text-zinc-500 mt-1 ml-7">Receive status updates via email</p>
-          </div>
-          <button id="email-toggle" onclick="toggleEmailNotifications()" 
-                  class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-indigo-600">
-            <span id="email-toggle-dot" class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform translate-x-6"></span>
-          </button>
-        </div>
-      </div>
-      
-      <!-- Push Notifications -->
+      <!-- Push Notification Setup -->
       <div class="bg-zinc-800/50 rounded-xl p-4">
         <div class="flex items-center justify-between">
           <div>
@@ -165,9 +148,80 @@
         </p>
       </div>
       
+      <!-- Notification Type Preferences -->
+      <div class="border-t border-zinc-700 pt-4">
+        <h3 class="text-sm font-semibold text-zinc-300 mb-3 flex items-center gap-2">
+          <span>⚙️</span> Notification Preferences
+        </h3>
+        <p class="text-xs text-zinc-500 mb-4">Choose which notifications you want to receive</p>
+        
+        <!-- Progress Milestones -->
+        <div class="bg-zinc-800/50 rounded-xl p-3 mb-3">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-base">📊</span>
+            <span class="text-sm font-medium">Build Progress Milestones</span>
+          </div>
+          <p class="text-xs text-zinc-500 mb-3 ml-6">Get notified at 25%, 50%, 75% and 90% completion</p>
+          <div class="flex gap-4 ml-6">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="pref-progress-push" onchange="updateUserPrefs()" 
+                     class="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-zinc-900">
+              <span class="text-xs text-zinc-400">Push</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="pref-progress-email" onchange="updateUserPrefs()" 
+                     class="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-zinc-900">
+              <span class="text-xs text-zinc-400">Email</span>
+            </label>
+          </div>
+        </div>
+        
+        <!-- Status Changes -->
+        <div class="bg-zinc-800/50 rounded-xl p-3 mb-3">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-base">🔄</span>
+            <span class="text-sm font-medium">Status Updates</span>
+          </div>
+          <p class="text-xs text-zinc-500 mb-3 ml-6">When your print status changes (approved, completed, etc.)</p>
+          <div class="flex gap-4 ml-6">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="pref-status-push" onchange="updateUserPrefs()" 
+                     class="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-zinc-900">
+              <span class="text-xs text-zinc-400">Push</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="pref-status-email" onchange="updateUserPrefs()" 
+                     class="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-zinc-900">
+              <span class="text-xs text-zinc-400">Email</span>
+            </label>
+          </div>
+        </div>
+        
+        <!-- Announcements -->
+        <div class="bg-zinc-800/50 rounded-xl p-3">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-base">📢</span>
+            <span class="text-sm font-medium">Announcements & Updates</span>
+          </div>
+          <p class="text-xs text-zinc-500 mb-3 ml-6">App updates, new features, and important announcements</p>
+          <div class="flex gap-4 ml-6">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="pref-broadcast-push" onchange="updateUserPrefs()" 
+                     class="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-zinc-900">
+              <span class="text-xs text-zinc-400">Push</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Saving indicator -->
+      <div id="prefs-saving" class="hidden text-center py-2">
+        <span class="text-xs text-zinc-400">💾 Saving preferences...</span>
+      </div>
+      
       <!-- Tip -->
       <p class="text-xs text-zinc-500 text-center">
-        💡 Enable push notifications for instant updates without email clutter
+        💡 Your preferences are saved automatically
       </p>
     </div>
   </div>
@@ -447,6 +501,7 @@ function showNotificationSettings() {
   document.getElementById('account-menu').classList.add('hidden');
   document.getElementById('notification-modal').classList.remove('hidden');
   initNotificationUI();
+  loadUserPrefs();
 }
 
 function hideNotificationSettings() {
@@ -523,56 +578,81 @@ function updateTimer() {
   }
 }
 
-// ========== Email Notifications ==========
-// Track email toggle state - default to true (enabled)
-let currentEmailState = localStorage.getItem('email_notify_' + email) !== 'false';
+// ========== User Notification Preferences ==========
+let userPrefs = {
+  progress_push: true,
+  progress_email: false,
+  status_push: true,
+  status_email: true,
+  broadcast_push: true
+};
 
-function updateEmailToggle(enabled) {
-  const toggle = document.getElementById('email-toggle');
-  const dot = document.getElementById('email-toggle-dot');
-  
-  if (enabled) {
-    toggle.classList.remove('bg-zinc-700');
-    toggle.classList.add('bg-indigo-600');
-    dot.classList.remove('translate-x-1', 'bg-zinc-400');
-    dot.classList.add('translate-x-6', 'bg-white');
-  } else {
-    toggle.classList.remove('bg-indigo-600');
-    toggle.classList.add('bg-zinc-700');
-    dot.classList.remove('translate-x-6', 'bg-white');
-    dot.classList.add('translate-x-1', 'bg-zinc-400');
+// Debounce timer for saving preferences
+let prefsSaveTimeout = null;
+
+async function loadUserPrefs() {
+  try {
+    const response = await fetch(`/api/user/notification-prefs?token=${encodeURIComponent(token)}`);
+    const data = await response.json();
+    
+    if (data.success && data.prefs) {
+      userPrefs = data.prefs;
+      applyPrefsToUI();
+    }
+  } catch (e) {
+    console.error('Error loading user prefs:', e);
   }
 }
 
-async function toggleEmailNotifications() {
-  const newState = !currentEmailState;
+function applyPrefsToUI() {
+  document.getElementById('pref-progress-push').checked = userPrefs.progress_push;
+  document.getElementById('pref-progress-email').checked = userPrefs.progress_email;
+  document.getElementById('pref-status-push').checked = userPrefs.status_push;
+  document.getElementById('pref-status-email').checked = userPrefs.status_email;
+  document.getElementById('pref-broadcast-push').checked = userPrefs.broadcast_push;
+}
+
+function updateUserPrefs() {
+  // Gather values from UI
+  userPrefs.progress_push = document.getElementById('pref-progress-push').checked;
+  userPrefs.progress_email = document.getElementById('pref-progress-email').checked;
+  userPrefs.status_push = document.getElementById('pref-status-push').checked;
+  userPrefs.status_email = document.getElementById('pref-status-email').checked;
+  userPrefs.broadcast_push = document.getElementById('pref-broadcast-push').checked;
   
-  // Save preference locally
-  localStorage.setItem('email_notify_' + email, newState ? 'true' : 'false');
-  currentEmailState = newState;
-  updateEmailToggle(newState);
+  // Debounce the save
+  if (prefsSaveTimeout) clearTimeout(prefsSaveTimeout);
   
-  // Update all requests for this user
+  document.getElementById('prefs-saving').classList.remove('hidden');
+  
+  prefsSaveTimeout = setTimeout(async () => {
+    await saveUserPrefs();
+  }, 500);
+}
+
+async function saveUserPrefs() {
   try {
-    const formData = new FormData();
-    formData.append('token', token);
-    formData.append('email_enabled', newState ? '1' : '0');
-    
-    const response = await fetch('/api/update-global-email-notify', {
+    const response = await fetch('/api/user/notification-prefs', {
       method: 'POST',
-      body: formData
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: token,
+        prefs: userPrefs
+      })
     });
     
     const data = await response.json();
+    
     if (data.success) {
-      showToast(newState ? 'Email notifications enabled' : 'Email notifications disabled', 'success');
+      showToast('Preferences saved', 'success');
     } else {
-      // API may not exist yet - still save locally
-      showToast(newState ? 'Email notifications enabled' : 'Email notifications disabled', 'success');
+      showToast('Failed to save preferences', 'error');
     }
   } catch (e) {
-    // Still save locally even if API fails
-    showToast(newState ? 'Email notifications enabled' : 'Email notifications disabled', 'success');
+    console.error('Error saving prefs:', e);
+    showToast('Error saving preferences', 'error');
+  } finally {
+    document.getElementById('prefs-saving').classList.add('hidden');
   }
 }
 
@@ -580,8 +660,6 @@ async function toggleEmailNotifications() {
 let pushEnabled = false;
 
 async function initNotificationUI() {
-  updateEmailToggle(currentEmailState);
-  
   // Check for iOS not in standalone mode
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
