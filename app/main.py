@@ -3940,14 +3940,15 @@ async def poll_builds_status_worker():
                 if not should_complete and percent_complete is not None and percent_complete > 0 and percent_complete < 100:
                     try:
                         # Build request dict for notification function
+                        # Note: build is a sqlite3.Row, so use [] not .get()
                         request_dict = {
                             "id": request_id,
-                            "requester_email": build.get("requester_email"),
-                            "requester_name": build.get("requester_name"),
-                            "access_token": build.get("access_token"),
-                            "notification_prefs": build.get("notification_prefs"),
+                            "requester_email": build["requester_email"],
+                            "requester_name": build["requester_name"],
+                            "access_token": build["access_token"],
+                            "notification_prefs": build["notification_prefs"],
                             "total_builds": total_builds,
-                            "print_name": build.get("request_print_name"),
+                            "print_name": build["request_print_name"],
                         }
                         build_dict = dict(build)
                         send_progress_notification(build_dict, request_dict, percent_complete)
