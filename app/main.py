@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from app.demo_data import DEMO_MODE, seed_demo_data, reset_demo_data, get_demo_status
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.7"
+APP_VERSION = "1.8.8"
 # Changelog:
 # 1.8.7 - Added logging system, fixed database connection errors in requester portal
 # 1.8.6 - Build state fixes for IN_PROGRESS status in My Requests
@@ -4360,6 +4360,21 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     for pit in printing_items:
         if pit["printer"] in printing_by_printer:
             printing_by_printer[pit["printer"]] = pit
+    
+    # If printer is BUILDING but no PRINTING item exists, show "likely printing" item
+    # This handles the case where admin hasn't clicked "Started" yet but printer is running
+    for printer_code in ["ADVENTURER_4", "AD5X"]:
+        if printing_by_printer[printer_code] is None:
+            pstat = printer_status.get(printer_code, {})
+            if pstat.get("is_printing"):
+                # Find first approved item assigned to this printer (or ANY)
+                for item in approved_items:
+                    if item["printer"] in [printer_code, "ANY"]:
+                        # Clone and mark as "likely" printing - will show in printer card
+                        likely_item = dict(item)
+                        likely_item["_likely_printing"] = True
+                        printing_by_printer[printer_code] = likely_item
+                        break
     
     # Helper to estimate remaining time for a printing item
     def estimate_remaining_minutes(item):
