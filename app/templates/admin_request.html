@@ -398,6 +398,78 @@
           </form>
         </div>
 
+        <!-- Build Configuration -->
+        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold">🔧 Build Configuration</h2>
+            <span class="text-xs text-zinc-500">For multi-part prints</span>
+          </div>
+          
+          <form method="POST" action="/admin/request/{{ req['id'] }}/configure-builds" class="mb-4">
+            <div class="flex items-center gap-3">
+              <label class="text-sm text-zinc-400 whitespace-nowrap">Number of builds:</label>
+              <input type="number" name="build_count" min="1" max="20" 
+                     value="{{ builds|length if builds else (req.total_builds or 1) }}"
+                     class="w-20 rounded-lg bg-zinc-950 border border-zinc-800 p-2 text-sm text-center" />
+              <button type="submit" class="flex-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-2 text-sm font-semibold">
+                Update Builds
+              </button>
+            </div>
+            <p class="text-xs text-zinc-500 mt-2">
+              Set how many separate prints this request needs. Default is one per file uploaded.
+            </p>
+          </form>
+          
+          {% if builds and builds|length > 0 %}
+            <div class="border-t border-zinc-800 pt-4 mt-4">
+              <h3 class="text-sm font-medium text-zinc-300 mb-3">Build Details</h3>
+              <div class="space-y-3 max-h-64 overflow-y-auto">
+                {% for b in builds %}
+                  <div class="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="text-sm font-medium">Build {{ b.build_number }}</span>
+                      <span class="text-xs px-2 py-0.5 rounded-full 
+                        {% if b.status == 'COMPLETED' %}bg-emerald-500/20 text-emerald-300
+                        {% elif b.status == 'PRINTING' %}bg-amber-500/20 text-amber-300
+                        {% elif b.status == 'FAILED' %}bg-red-500/20 text-red-300
+                        {% elif b.status == 'READY' %}bg-blue-500/20 text-blue-300
+                        {% elif b.status == 'SKIPPED' %}bg-zinc-600/20 text-zinc-400
+                        {% else %}bg-zinc-700/50 text-zinc-400{% endif %}">
+                        {{ b.status }}
+                      </span>
+                    </div>
+                    <form method="POST" action="/admin/build/{{ b.id }}/update" class="space-y-2">
+                      <input type="text" name="print_name" value="{{ b.print_name or '' }}" 
+                             placeholder="Part name (e.g., 'Left arm', 'Base')"
+                             class="w-full rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs" />
+                      <div class="flex gap-2">
+                        <input type="number" name="print_time_minutes" value="{{ b.print_time_minutes or '' }}" 
+                               placeholder="Est. minutes"
+                               class="w-24 rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs" />
+                        <select name="material" class="flex-1 rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs">
+                          <option value="">Same as request</option>
+                          {% for code, label in materials %}
+                            <option value="{{ code }}" {% if code == b.material %}selected{% endif %}>{{ label }}</option>
+                          {% endfor %}
+                        </select>
+                      </div>
+                      <textarea name="notes" rows="1" placeholder="Build notes..."
+                                class="w-full rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs">{{ b.notes or '' }}</textarea>
+                      <button type="submit" class="w-full rounded-md bg-zinc-700 hover:bg-zinc-600 transition px-2 py-1 text-xs">
+                        Save Build {{ b.build_number }}
+                      </button>
+                    </form>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% else %}
+            <p class="text-xs text-zinc-500 mt-2 italic">
+              Builds will be created when this request is approved.
+            </p>
+          {% endif %}
+        </div>
+
         <!-- Work Notes (Admin Private) -->
         <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
           <div class="flex items-center justify-between mb-4">
@@ -435,35 +507,41 @@
       <!-- Right Sidebar -->
       <div class="space-y-6">
 
-        <!-- Build Progress Card (for multi-build requests) -->
-        {% if builds and builds|length > 0 %}
+        <!-- Build Progress Card (ONLY for multi-build requests with 2+ builds) -->
+        {% if builds and builds|length > 1 %}
           <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
-            <h2 class="text-lg font-semibold mb-4">🔧 Builds ({{ builds|length }})</h2>
+            <h2 class="text-lg font-semibold mb-4">🔧 Multi-Build Progress</h2>
             
             <!-- Progress summary -->
-            {% if build_eta_info %}
-              <div class="mb-4 p-3 bg-zinc-800/50 rounded-lg">
-                <div class="flex justify-between text-sm mb-2">
-                  <span class="text-zinc-400">Progress</span>
-                  <span class="font-semibold">{{ build_eta_info.completed_builds }}/{{ build_eta_info.total_builds }} completed</span>
-                </div>
-                <div class="flex gap-1">
-                  {% for b in builds %}
-                    <div class="flex-1 h-2 rounded-full 
-                      {% if b.status == 'COMPLETED' %}bg-emerald-500
-                      {% elif b.status == 'PRINTING' %}bg-amber-500 animate-pulse
-                      {% elif b.status == 'FAILED' %}bg-red-500
-                      {% elif b.status == 'READY' %}bg-blue-500
-                      {% elif b.status == 'SKIPPED' %}bg-zinc-600
-                      {% else %}bg-zinc-700{% endif %}"
-                      title="Build {{ b.build_number }}: {{ b.status }}"></div>
-                  {% endfor %}
-                </div>
+            <div class="mb-4 p-3 bg-zinc-800/50 rounded-lg">
+              <div class="flex justify-between text-sm mb-2">
+                <span class="text-zinc-400">Builds</span>
+                <span class="font-semibold">
+                  {{ builds|selectattr('status', 'equalto', 'COMPLETED')|list|length }}/{{ builds|length }} completed
+                </span>
               </div>
-            {% endif %}
+              <div class="flex gap-1">
+                {% for b in builds %}
+                  <div class="flex-1 h-2 rounded-full 
+                    {% if b.status == 'COMPLETED' %}bg-emerald-500
+                    {% elif b.status == 'PRINTING' %}bg-amber-500 animate-pulse
+                    {% elif b.status == 'FAILED' %}bg-red-500
+                    {% elif b.status == 'READY' %}bg-blue-500
+                    {% elif b.status == 'SKIPPED' %}bg-zinc-600
+                    {% else %}bg-zinc-700{% endif %}"
+                    title="Build {{ b.build_number }}: {{ b.status }}"></div>
+                {% endfor %}
+              </div>
+              <div class="flex gap-2 mt-2 text-xs text-zinc-500">
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Done</span>
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-500"></span> Printing</span>
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-500"></span> Ready</span>
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500"></span> Failed</span>
+              </div>
+            </div>
             
             <!-- Build list -->
-            <div class="space-y-2 max-h-80 overflow-y-auto">
+            <div class="space-y-2 max-h-64 overflow-y-auto">
               {% for b in builds %}
                 <div class="p-3 rounded-lg border 
                   {% if b.status == 'COMPLETED' %}bg-emerald-900/20 border-emerald-700/50
@@ -489,62 +567,58 @@
                       <span class="text-xs text-zinc-500">{{ b.printer }}</span>
                     {% endif %}
                   </div>
-                  {% if b.progress %}
+                  {% if b.progress and b.status == 'PRINTING' %}
                     <div class="mt-2">
-                      <div class="flex justify-between text-xs mb-1">
-                        <span class="text-zinc-500">Progress</span>
-                        <span>{{ b.progress }}%</span>
-                      </div>
                       <div class="h-1.5 bg-zinc-700 rounded-full overflow-hidden">
                         <div class="h-full bg-amber-500" style="width: {{ b.progress }}%"></div>
                       </div>
+                      <span class="text-xs text-zinc-500">{{ b.progress }}%</span>
                     </div>
                   {% endif %}
-                  {% if b.file_name %}
-                    <p class="text-xs text-zinc-500 mt-1 truncate">{{ b.file_name }}</p>
-                  {% endif %}
                   
-                  <!-- Build Actions -->
-                  <div class="mt-2 flex flex-wrap gap-1">
-                    {% if b.status == 'READY' %}
-                      <form action="/admin/build/{{ b.id }}/start" method="POST" class="inline">
-                        <input type="hidden" name="printer" value="{{ req.printer or printers[0] }}" />
-                        <button type="submit" class="text-xs px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white">
-                          ▶ Start
-                        </button>
-                      </form>
-                      <form action="/admin/build/{{ b.id }}/skip" method="POST" class="inline">
-                        <button type="submit" class="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-300">
-                          ⏭ Skip
-                        </button>
-                      </form>
-                    {% elif b.status == 'PRINTING' %}
-                      <form action="/admin/build/{{ b.id }}/fail" method="POST" class="inline">
-                        <button type="submit" class="text-xs px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white"
-                                onclick="return confirm('Mark this build as failed?')">
-                          ✕ Mark Failed
-                        </button>
-                      </form>
-                    {% elif b.status == 'FAILED' %}
-                      <form action="/admin/build/{{ b.id }}/retry" method="POST" class="inline">
-                        <button type="submit" class="text-xs px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white">
-                          🔄 Retry
-                        </button>
-                      </form>
-                      <form action="/admin/build/{{ b.id }}/skip" method="POST" class="inline">
-                        <button type="submit" class="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-300">
-                          ⏭ Skip
-                        </button>
-                      </form>
-                    {% endif %}
-                  </div>
+                  <!-- Build Actions (only show when request is IN_PROGRESS or PRINTING) -->
+                  {% if req.status in ['IN_PROGRESS', 'PRINTING', 'BLOCKED'] %}
+                    <div class="mt-2 flex flex-wrap gap-1">
+                      {% if b.status == 'READY' %}
+                        <form action="/admin/build/{{ b.id }}/start" method="POST" class="inline">
+                          <input type="hidden" name="printer" value="{{ req.printer or printers[0] }}" />
+                          <button type="submit" class="text-xs px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white">
+                            ▶ Start
+                          </button>
+                        </form>
+                        <form action="/admin/build/{{ b.id }}/skip" method="POST" class="inline">
+                          <button type="submit" class="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-300">
+                            ⏭ Skip
+                          </button>
+                        </form>
+                      {% elif b.status == 'PRINTING' %}
+                        <form action="/admin/build/{{ b.id }}/fail" method="POST" class="inline">
+                          <button type="submit" class="text-xs px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white"
+                                  onclick="return confirm('Mark this build as failed?')">
+                            ✕ Failed
+                          </button>
+                        </form>
+                      {% elif b.status == 'FAILED' %}
+                        <form action="/admin/build/{{ b.id }}/retry" method="POST" class="inline">
+                          <button type="submit" class="text-xs px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white">
+                            🔄 Retry
+                          </button>
+                        </form>
+                        <form action="/admin/build/{{ b.id }}/skip" method="POST" class="inline">
+                          <button type="submit" class="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-300">
+                            ⏭ Skip
+                          </button>
+                        </form>
+                      {% endif %}
+                    </div>
+                  {% endif %}
                 </div>
               {% endfor %}
             </div>
             
-            <!-- Start Next Build (if any READY) -->
+            <!-- Start Next Build (only show when printing/in-progress and has READY builds) -->
             {% set has_ready = builds|selectattr('status', 'equalto', 'READY')|list|length > 0 %}
-            {% if has_ready %}
+            {% if has_ready and req.status in ['IN_PROGRESS', 'PRINTING', 'BLOCKED'] %}
               <div class="mt-4 pt-4 border-t border-zinc-700">
                 <form action="/admin/request/{{ req['id'] }}/start-next-build" method="POST" class="flex gap-2">
                   <select name="printer" class="flex-1 text-sm rounded-lg bg-zinc-800 border-zinc-700 px-3 py-2">
@@ -553,7 +627,7 @@
                     {% endfor %}
                   </select>
                   <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium">
-                    ▶ Start Next Build
+                    ▶ Start Next
                   </button>
                 </form>
               </div>

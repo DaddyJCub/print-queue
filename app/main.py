@@ -403,6 +403,7 @@ def init_db():
             final_temperature TEXT,
             file_name TEXT,
             total_layers INTEGER,
+            notes TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY(request_id) REFERENCES requests(id)
@@ -548,6 +549,12 @@ def ensure_migrations():
     # Add build_id to files table to associate files with specific builds
     if files_cols and "build_id" not in files_cols:
         cur.execute("ALTER TABLE files ADD COLUMN build_id TEXT")
+
+    # Builds table migrations
+    cur.execute("PRAGMA table_info(builds)")
+    builds_cols = {row[1] for row in cur.fetchall()}
+    if builds_cols and "notes" not in builds_cols:
+        cur.execute("ALTER TABLE builds ADD COLUMN notes TEXT")
 
     # Migrate existing approved/printing/done requests that don't have builds yet
     existing_without_builds = cur.execute("""
@@ -6708,6 +6715,122 @@ def admin_skip_build(
     success = skip_build(build_id, comment or "Skipped by admin")
     if not success:
         raise HTTPException(status_code=400, detail="Cannot skip build - invalid state")
+    
+    return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
+
+
+@app.post("/admin/request/{rid}/configure-builds")
+def admin_configure_builds(
+    request: Request,
+    rid: str,
+    build_count: int = Form(...),
+    _=Depends(require_admin)
+):
+    """Configure the number of builds for a request. Adjusts builds up or down."""
+    if build_count < 1 or build_count > 20:
+        raise HTTPException(status_code=400, detail="Build count must be 1-20")
+    
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    # Get current builds
+    existing_builds = conn.execute(
+        "SELECT * FROM builds WHERE request_id = ? ORDER BY build_number", (rid,)
+    ).fetchall()
+    current_count = len(existing_builds)
+    
+    now = now_iso()
+    
+    if build_count > current_count:
+        # Add more builds
+        for i in range(current_count + 1, build_count + 1):
+            build_id = str(uuid.uuid4())
+            # New builds start as PENDING, or READY if request is approved
+            initial_status = "READY" if req["status"] in ["APPROVED", "PRINTING", "IN_PROGRESS"] else "PENDING"
+            conn.execute("""
+                INSERT INTO builds (id, request_id, build_number, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (build_id, rid, i, initial_status, now, now))
+    elif build_count < current_count:
+        # Remove builds from the end (only if they haven't started)
+        for b in reversed(existing_builds):
+            if current_count <= build_count:
+                break
+            if b["status"] in ["PENDING", "READY"]:
+                conn.execute("DELETE FROM builds WHERE id = ?", (b["id"],))
+                current_count -= 1
+    
+    # Update total_builds on request
+    conn.execute("UPDATE requests SET total_builds = ?, updated_at = ? WHERE id = ?", 
+                 (build_count, now, rid))
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@app.post("/admin/build/{build_id}/notes")
+def admin_update_build_notes(
+    request: Request,
+    build_id: str,
+    notes: str = Form(""),
+    _=Depends(require_admin)
+):
+    """Update notes for a specific build."""
+    conn = db()
+    build = conn.execute("SELECT request_id FROM builds WHERE id = ?", (build_id,)).fetchone()
+    if not build:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Build not found")
+    
+    conn.execute("UPDATE builds SET notes = ?, updated_at = ? WHERE id = ?", 
+                 (notes.strip() if notes else None, now_iso(), build_id))
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
+
+
+@app.post("/admin/build/{build_id}/update")
+def admin_update_build(
+    request: Request,
+    build_id: str,
+    print_name: Optional[str] = Form(None),
+    material: Optional[str] = Form(None),
+    print_time_minutes: Optional[int] = Form(None),
+    notes: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """Update details for a specific build."""
+    conn = db()
+    build = conn.execute("SELECT request_id FROM builds WHERE id = ?", (build_id,)).fetchone()
+    if not build:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Build not found")
+    
+    updates = ["updated_at = ?"]
+    values = [now_iso()]
+    
+    if print_name is not None:
+        updates.append("print_name = ?")
+        values.append(print_name.strip() if print_name else None)
+    if material is not None:
+        updates.append("material = ?")
+        values.append(material.strip() if material else None)
+    if print_time_minutes is not None:
+        updates.append("print_time_minutes = ?")
+        values.append(print_time_minutes if print_time_minutes > 0 else None)
+    if notes is not None:
+        updates.append("notes = ?")
+        values.append(notes.strip() if notes else None)
+    
+    values.append(build_id)
+    conn.execute(f"UPDATE builds SET {', '.join(updates)} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
     
     return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
 
