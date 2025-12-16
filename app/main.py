@@ -1,9 +1,12 @@
 import os, uuid, sqlite3, hashlib, smtplib, ssl, urllib.parse, json, base64, secrets
+import logging
+from logging.handlers import RotatingFileHandler
 from email.message import EmailMessage
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
 import asyncio
 import threading
+from collections import deque
 
 import httpx
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException, Depends
@@ -11,9 +14,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Resp
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
+# Demo mode for local testing with fake data
+from app.demo_data import DEMO_MODE, seed_demo_data, reset_demo_data, get_demo_status
+
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.6"
+APP_VERSION = "1.8.7"
 # Changelog:
+# 1.8.7 - Added logging system, fixed database connection errors in requester portal
+# 1.8.6 - Build state fixes for IN_PROGRESS status in My Requests
 # 1.8.1 - Printer retry logic (3 retries before offline), admin per-status email controls, duplicate request fix
 # 1.8.0 - Store feature, my-request enhancements (cancel/resubmit, live printer view)
 # 1.7.3 - Timelapse API: list and download timelapse videos from printers
@@ -27,6 +35,64 @@ APP_VERSION = "1.8.6"
 # 1.2.0 - Admin dashboard, priority system, email notifications
 # 1.1.0 - File uploads, status tracking, public queue
 # 1.0.0 - Initial release
+
+# ─────────────────────────── LOGGING SETUP ───────────────────────────
+# In-memory log buffer for quick access via API
+LOG_BUFFER_SIZE = 500
+log_buffer = deque(maxlen=LOG_BUFFER_SIZE)
+
+class BufferHandler(logging.Handler):
+    """Custom handler that stores logs in memory buffer"""
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            log_buffer.append({
+                "time": datetime.fromtimestamp(record.created).isoformat(),
+                "level": record.levelname,
+                "module": record.module,
+                "message": record.getMessage(),
+                "formatted": msg,
+            })
+        except Exception:
+            pass
+
+# Configure logging
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_FILE = os.getenv("LOG_FILE", "/data/printellect.log")
+
+# Create formatters
+log_format = logging.Formatter(
+    '%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# Root logger setup
+logger = logging.getLogger("printellect")
+logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_format)
+logger.addHandler(console_handler)
+
+# Buffer handler (for API access)
+buffer_handler = BufferHandler()
+buffer_handler.setFormatter(log_format)
+logger.addHandler(buffer_handler)
+
+# File handler (optional, only if writable)
+try:
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+    file_handler = RotatingFileHandler(
+        LOG_FILE, maxBytes=5*1024*1024, backupCount=3  # 5MB per file, keep 3 backups
+    )
+    file_handler.setFormatter(log_format)
+    logger.addHandler(file_handler)
+    logger.info(f"File logging enabled: {LOG_FILE}")
+except Exception as e:
+    logger.warning(f"Could not enable file logging: {e}")
+
+logger.info(f"Logging initialized at level {LOG_LEVEL}")
 
 APP_TITLE = "Printellect"
 
@@ -1207,6 +1273,12 @@ def _startup():
     init_db()
     ensure_migrations()
     seed_default_settings()
+    
+    # Seed demo data if DEMO_MODE is enabled
+    if DEMO_MODE:
+        print("[DEMO] Demo mode enabled - seeding fake data...")
+        seed_demo_data(db)
+    
     start_printer_polling()  # Start background printer status polling
 
 
@@ -2476,6 +2548,7 @@ async def capture_camera_snapshot(printer_code: str) -> Optional[bytes]:
     """Capture a snapshot from the printer's camera by extracting a frame from MJPEG stream"""
     camera_url = get_camera_url(printer_code)
     if not camera_url:
+        logger.debug(f"[CAMERA] No camera URL configured for {printer_code}")
         return None
     
     try:
@@ -2485,13 +2558,13 @@ async def capture_camera_snapshot(printer_code: str) -> Optional[bytes]:
             try:
                 response = await client.get(snapshot_url)
                 if response.status_code == 200 and response.headers.get("content-type", "").startswith("image/"):
-                    print(f"[CAMERA] Got snapshot from {printer_code} via snapshot endpoint")
+                    logger.debug(f"[CAMERA] Got snapshot from {printer_code} via snapshot endpoint ({len(response.content)} bytes)")
                     return response.content
             except httpx.TimeoutException:
-                pass  # Snapshot endpoint not available, try stream method
+                logger.debug(f"[CAMERA] Snapshot endpoint timed out for {printer_code}, trying stream method")
         
         # Fallback: Extract a single frame from the MJPEG stream
-        print(f"[CAMERA] Trying to extract frame from MJPEG stream for {printer_code}")
+        logger.debug(f"[CAMERA] Trying to extract frame from MJPEG stream for {printer_code}")
         async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=5.0)) as client:
             async with client.stream("GET", camera_url) as response:
                 buffer = b""
@@ -2503,14 +2576,14 @@ async def capture_camera_snapshot(printer_code: str) -> Optional[bytes]:
                         end = buffer.find(b"\xff\xd9", start)
                         if end != -1:
                             jpeg_data = buffer[start:end + 2]
-                            print(f"[CAMERA] Extracted JPEG frame ({len(jpeg_data)} bytes) from {printer_code}")
+                            logger.debug(f"[CAMERA] Extracted JPEG frame ({len(jpeg_data)} bytes) from {printer_code}")
                             return jpeg_data
                     # Prevent buffer from growing too large
                     if len(buffer) > 500000:  # 500KB max
-                        print(f"[CAMERA] Buffer too large, no JPEG found for {printer_code}")
+                        logger.warning(f"[CAMERA] Buffer too large, no JPEG found for {printer_code}")
                         break
     except Exception as e:
-        print(f"[CAMERA] Error capturing snapshot from {printer_code}: {e}")
+        logger.error(f"[CAMERA] Error capturing snapshot from {printer_code}: {e}")
     
     return None
 
@@ -4262,6 +4335,7 @@ async def open_in_app_page(request: Request, rid: str, token: str):
 @app.get("/my/{rid}", response_class=HTMLResponse)
 async def requester_portal(request: Request, rid: str, token: str):
     """Requester portal - view and interact with your request"""
+    logger.debug(f"[REQUESTER_PORTAL] Loading request {rid[:8]}")
     conn = db()
     req = conn.execute(
         "SELECT * FROM requests WHERE id = ?", (rid,)
@@ -4269,6 +4343,7 @@ async def requester_portal(request: Request, rid: str, token: str):
     
     if not req:
         conn.close()
+        logger.warning(f"[REQUESTER_PORTAL] Request not found: {rid[:8]}")
         raise HTTPException(status_code=404, detail="Request not found")
     
     # Verify access token
@@ -4290,8 +4365,6 @@ async def requester_portal(request: Request, rid: str, token: str):
     messages = conn.execute(
         "SELECT * FROM request_messages WHERE request_id = ? ORDER BY created_at ASC", (rid,)
     ).fetchall()
-    
-    conn.close()
     
     # Fetch printer status if currently printing or in progress
     printer_status = None
@@ -4332,6 +4405,7 @@ async def requester_portal(request: Request, rid: str, token: str):
                         "total_layers": total_layers,
                         "camera_url": get_camera_url(active_printer),
                     }
+                    logger.debug(f"[REQUESTER_PORTAL] Printer status for {active_printer}: {machine_status}, {progress}%")
                     
                     # Calculate smart ETA
                     eta_dt = get_smart_eta(
@@ -4345,7 +4419,7 @@ async def requester_portal(request: Request, rid: str, token: str):
                     if eta_dt:
                         smart_eta_display = format_eta_display(eta_dt)
             except Exception as e:
-                print(f"[REQUESTER_PORTAL] Error fetching printer status: {e}")
+                logger.error(f"[REQUESTER_PORTAL] Error fetching printer status for {active_printer}: {e}", exc_info=True)
     
     conn.close()
     
@@ -5838,6 +5912,89 @@ def admin_debug(request: Request, _=Depends(require_admin)):
         "failure_counts": _printer_failure_count,
         "version": APP_VERSION,
     })
+
+
+@app.get("/api/logs")
+def get_logs(
+    level: Optional[str] = None,
+    limit: int = 100,
+    search: Optional[str] = None,
+    _=Depends(require_admin)
+):
+    """
+    Get application logs (admin only)
+    
+    Query params:
+    - level: Filter by log level (DEBUG, INFO, WARNING, ERROR)
+    - limit: Number of logs to return (default 100, max 500)
+    - search: Search text in log messages
+    
+    Returns JSON array of log entries, most recent first
+    """
+    limit = min(limit, LOG_BUFFER_SIZE)
+    
+    # Get logs from buffer (newest first)
+    logs = list(log_buffer)
+    logs.reverse()
+    
+    # Filter by level if specified
+    if level:
+        level = level.upper()
+        logs = [l for l in logs if l["level"] == level]
+    
+    # Filter by search text
+    if search:
+        search = search.lower()
+        logs = [l for l in logs if search in l["message"].lower() or search in l.get("module", "").lower()]
+    
+    # Limit results
+    logs = logs[:limit]
+    
+    return {
+        "count": len(logs),
+        "total_in_buffer": len(log_buffer),
+        "logs": logs
+    }
+
+
+@app.get("/api/logs/download")
+def download_logs(_=Depends(require_admin)):
+    """Download full log file (if available)"""
+    if os.path.exists(LOG_FILE):
+        return FileResponse(
+            LOG_FILE,
+            media_type="text/plain",
+            filename=f"printellect-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
+        )
+    else:
+        # Return buffer logs as text
+        log_text = "\n".join([l["formatted"] for l in log_buffer])
+        return Response(
+            content=log_text,
+            media_type="text/plain",
+            headers={"Content-Disposition": f"attachment; filename=printellect-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"}
+        )
+
+
+# ─────────────────────────── DEMO MODE ───────────────────────────
+
+@app.get("/api/demo/status")
+def api_demo_status():
+    """Check if demo mode is active and get status info"""
+    return get_demo_status()
+
+
+@app.post("/api/demo/reset")
+def api_demo_reset(request: Request, _=Depends(require_admin)):
+    """Reset all data and reseed with fresh demo data (admin only, demo mode only)"""
+    if not DEMO_MODE:
+        raise HTTPException(status_code=403, detail="Demo reset only available in DEMO_MODE")
+    
+    success = reset_demo_data(db)
+    if success:
+        return {"success": True, "message": "Demo data reset successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to reset demo data")
 
 
 # ─────────────────────────── STORE MANAGEMENT ───────────────────────────
@@ -7632,13 +7789,22 @@ def admin_batch_update(
 async def camera_snapshot(printer_code: str):
     """Get a snapshot from printer camera (public for live view feature)"""
     if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        logger.warning(f"[CAMERA] Invalid printer code requested: {printer_code}")
         raise HTTPException(status_code=400, detail="Invalid printer code")
     
-    image_data = await capture_camera_snapshot(printer_code)
-    if not image_data:
-        raise HTTPException(status_code=503, detail="Camera not available or not configured")
-    
-    return Response(content=image_data, media_type="image/jpeg")
+    try:
+        image_data = await capture_camera_snapshot(printer_code)
+        if not image_data:
+            logger.warning(f"[CAMERA] No image data returned for {printer_code}")
+            raise HTTPException(status_code=503, detail="Camera not available or not configured")
+        
+        logger.debug(f"[CAMERA] Snapshot captured for {printer_code}, size: {len(image_data)} bytes")
+        return Response(content=image_data, media_type="image/jpeg")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[CAMERA] Error getting snapshot for {printer_code}: {e}")
+        raise HTTPException(status_code=503, detail=f"Camera error: {str(e)}")
 
 
 @app.get("/api/camera/{printer_code}/stream")

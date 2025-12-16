@@ -1,8 +1,19 @@
 # Local Development Script for Print Queue App
 # Run this script from the print-queue directory
+#
+# Usage:
+#   .\run_local.ps1          # Normal mode
+#   .\run_local.ps1 -Demo    # Demo mode with fake data
+
+param(
+    [switch]$Demo
+)
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Print Queue - Local Development" -ForegroundColor Cyan
+if ($Demo) {
+    Write-Host "  [DEMO MODE ENABLED]" -ForegroundColor Yellow
+}
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -54,6 +65,13 @@ $env:UPLOAD_DIR = "$PWD\local_uploads"
 $env:BASE_URL = "http://localhost:3000"
 $env:ADMIN_PASSWORD = "admin"  # Simple password for local testing
 
+# Enable demo mode if -Demo flag is passed
+if ($Demo) {
+    $env:DEMO_MODE = "true"
+    # Use separate database for demo mode
+    $env:DB_PATH = "$PWD\local_data\demo.db"
+}
+
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Environment Configuration:" -ForegroundColor Cyan
@@ -62,10 +80,17 @@ Write-Host "  DB_PATH:      $env:DB_PATH" -ForegroundColor Gray
 Write-Host "  UPLOAD_DIR:   $env:UPLOAD_DIR" -ForegroundColor Gray
 Write-Host "  BASE_URL:     $env:BASE_URL" -ForegroundColor Gray
 Write-Host "  ADMIN_PASSWORD: admin" -ForegroundColor Gray
+if ($Demo) {
+    Write-Host "  DEMO_MODE:    true (fake data enabled)" -ForegroundColor Yellow
+}
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "  Starting server at:" -ForegroundColor Green
 Write-Host "  http://localhost:3000" -ForegroundColor White
+if ($Demo) {
+    Write-Host "  Admin: http://localhost:3000/admin/queue" -ForegroundColor White
+    Write-Host "  Reset Demo: POST /api/demo/reset" -ForegroundColor Gray
+}
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "Press Ctrl+C to stop the server" -ForegroundColor Yellow
