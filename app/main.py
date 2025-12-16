@@ -1551,6 +1551,7 @@ def setup_builds_for_request(request_id: str, build_count: int = None) -> int:
     Create build records for a request based on its files.
     If build_count is specified, creates that many builds.
     Otherwise, creates one build per file.
+    Auto-assigns files to builds 1:1 when file count matches build count.
     Returns the number of builds created.
     """
     conn = db()
@@ -1564,22 +1565,42 @@ def setup_builds_for_request(request_id: str, build_count: int = None) -> int:
         conn.close()
         return 0  # Builds already exist
     
+    # Get files for this request
+    files = conn.execute(
+        "SELECT id, original_filename FROM files WHERE request_id = ? ORDER BY created_at ASC",
+        (request_id,)
+    ).fetchall()
+    
     # Get file count if build_count not specified
     if build_count is None:
-        files = conn.execute(
-            "SELECT COUNT(*) as cnt FROM files WHERE request_id = ?", (request_id,)
-        ).fetchone()
-        build_count = max(1, files["cnt"])
+        build_count = max(1, len(files))
     
     now = now_iso()
+    build_ids = []
     
     # Create builds
     for i in range(build_count):
         build_id = str(uuid.uuid4())
+        # Use file name as print_name if we have a matching file
+        print_name = None
+        if i < len(files):
+            # Use filename without extension as print name
+            original = files[i]["original_filename"]
+            print_name = os.path.splitext(original)[0] if original else None
+        
         conn.execute("""
-            INSERT INTO builds (id, request_id, build_number, status, created_at, updated_at)
-            VALUES (?, ?, ?, 'PENDING', ?, ?)
-        """, (build_id, request_id, i + 1, now, now))
+            INSERT INTO builds (id, request_id, build_number, status, print_name, created_at, updated_at)
+            VALUES (?, ?, ?, 'PENDING', ?, ?, ?)
+        """, (build_id, request_id, i + 1, print_name, now, now))
+        build_ids.append(build_id)
+    
+    # Auto-assign files to builds (1:1 mapping)
+    for i, file in enumerate(files):
+        if i < len(build_ids):
+            conn.execute(
+                "UPDATE files SET build_id = ? WHERE id = ?",
+                (build_ids[i], file["id"])
+            )
     
     # Update request with total_builds
     conn.execute(
@@ -7776,13 +7797,27 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
             f_dict["metadata"] = None
         enriched_files.append(f_dict)
     
+    # Build a map of build_id -> list of files
+    files_by_build = {}
+    for f in enriched_files:
+        bid = f.get("build_id")
+        if bid:
+            if bid not in files_by_build:
+                files_by_build[bid] = []
+            files_by_build[bid].append(f)
+    
     # Mark all requester messages as read when admin views the request
     conn.execute("UPDATE request_messages SET is_read = 1 WHERE request_id = ? AND sender_type = 'requester' AND is_read = 0", (rid,))
     conn.commit()
     
     # Get builds for this request
     builds = conn.execute("SELECT * FROM builds WHERE request_id = ? ORDER BY build_number", (rid,)).fetchall()
-    builds_list = [dict(b) for b in builds]
+    builds_list = []
+    for b in builds:
+        b_dict = dict(b)
+        # Attach files assigned to this build
+        b_dict["assigned_files"] = files_by_build.get(b["id"], [])
+        builds_list.append(b_dict)
     conn.close()
     
     # Get camera URL for the printer if configured
@@ -8695,7 +8730,8 @@ def admin_update_build(
     build_id: str,
     print_name: Optional[str] = Form(""),
     material: Optional[str] = Form(""),
-    print_time_minutes: Optional[str] = Form(""),  # Accept as string to handle empty
+    est_hours: Optional[str] = Form(""),  # Hours component
+    est_minutes: Optional[str] = Form(""),  # Minutes component
     notes: Optional[str] = Form(""),
     colors: Optional[str] = Form(""),
     printer: Optional[str] = Form(""),  # Allow editing printer assignment
@@ -8721,12 +8757,14 @@ def admin_update_build(
         updates.append("material = ?")
         values.append(material.strip() if material.strip() else None)
     
-    # Handle print_time_minutes - parse string to int, empty/0 clears it
-    if print_time_minutes is not None:
+    # Handle estimated time - combine hours and minutes
+    if est_hours is not None or est_minutes is not None:
         updates.append("print_time_minutes = ?")
         try:
-            parsed_time = int(print_time_minutes) if print_time_minutes.strip() else 0
-            values.append(parsed_time if parsed_time > 0 else None)
+            hours = int(est_hours) if est_hours and est_hours.strip() else 0
+            minutes = int(est_minutes) if est_minutes and est_minutes.strip() else 0
+            total_minutes = (hours * 60) + minutes
+            values.append(total_minutes if total_minutes > 0 else None)
         except (ValueError, TypeError):
             values.append(None)
     
@@ -9253,6 +9291,105 @@ def admin_delete_file(request: Request, rid: str, file_id: str, _=Depends(requir
             pass  # File couldn't be deleted, but DB record is gone
     
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@app.post("/admin/request/{rid}/file/{file_id}/assign-build")
+def admin_assign_file_to_build(
+    request: Request,
+    rid: str,
+    file_id: str,
+    build_id: str = Form(""),
+    _=Depends(require_admin)
+):
+    """Assign or unassign a file to a specific build."""
+    conn = db()
+    
+    # Verify request exists
+    req = conn.execute("SELECT id FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    # Verify file exists and belongs to this request
+    file_info = conn.execute(
+        "SELECT id, original_filename FROM files WHERE id = ? AND request_id = ?",
+        (file_id, rid)
+    ).fetchone()
+    
+    if not file_info:
+        conn.close()
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # If build_id is empty, unassign the file
+    if not build_id or build_id.strip() == "":
+        conn.execute("UPDATE files SET build_id = NULL WHERE id = ?", (file_id,))
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+    
+    # Verify build exists and belongs to this request
+    build = conn.execute(
+        "SELECT id, build_number FROM builds WHERE id = ? AND request_id = ?",
+        (build_id, rid)
+    ).fetchone()
+    
+    if not build:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Build not found")
+    
+    # Assign file to build
+    conn.execute("UPDATE files SET build_id = ? WHERE id = ?", (build_id, file_id))
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@app.get("/admin/request/{rid}/file/{file_id}/preview")
+async def admin_preview_file(request: Request, rid: str, file_id: str, _=Depends(require_admin)):
+    """Preview a 3D file (STL) using an embedded viewer."""
+    conn = db()
+    
+    # Verify request exists
+    req = conn.execute("SELECT id FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    # Verify file exists and belongs to this request
+    file_info = conn.execute(
+        "SELECT id, stored_filename, original_filename, file_metadata FROM files WHERE id = ? AND request_id = ?",
+        (file_id, rid)
+    ).fetchone()
+    conn.close()
+    
+    if not file_info:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Check if it's a supported 3D file
+    ext = os.path.splitext(file_info["original_filename"].lower())[1]
+    if ext not in [".stl", ".obj"]:
+        raise HTTPException(status_code=400, detail="Preview only available for STL and OBJ files")
+    
+    file_path = os.path.join(UPLOAD_DIR, file_info["stored_filename"])
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    
+    # Parse metadata
+    metadata = None
+    if file_info["file_metadata"]:
+        try:
+            metadata = json.loads(file_info["file_metadata"])
+        except:
+            pass
+    
+    return templates.TemplateResponse("file_preview.html", {
+        "request": request,
+        "req_id": rid,
+        "file": dict(file_info),
+        "metadata": metadata,
+        "file_url": f"/admin/request/{rid}/file/{file_id}",
+    })
 
 
 @app.post("/admin/batch-update")

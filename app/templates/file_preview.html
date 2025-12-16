@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Preview - {{ file.original_filename }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+  <style>
+    body { margin: 0; padding: 0; overflow: hidden; background: #18181b; }
+    #viewer { width: 100vw; height: 100vh; }
+    .overlay { position: absolute; z-index: 10; }
+  </style>
+</head>
+<body class="bg-zinc-900 text-white">
+  <!-- Header -->
+  <div class="overlay top-0 left-0 right-0 bg-zinc-900/90 backdrop-blur border-b border-zinc-800 p-4">
+    <div class="flex items-center justify-between max-w-7xl mx-auto">
+      <div class="flex items-center gap-4">
+        <a href="/admin/request/{{ req_id }}" class="text-zinc-400 hover:text-white transition">
+          ← Back
+        </a>
+        <div>
+          <h1 class="font-semibold truncate max-w-md">{{ file.original_filename }}</h1>
+          {% if metadata and metadata.dimensions_mm %}
+          <p class="text-xs text-zinc-400">
+            📐 {{ metadata.dimensions_mm.x }} × {{ metadata.dimensions_mm.y }} × {{ metadata.dimensions_mm.z }} mm
+            {% if metadata.volume_cm3 %}• {{ metadata.volume_cm3 }} cm³{% endif %}
+            {% if metadata.triangle_count %}• {{ "{:,}".format(metadata.triangle_count) }} triangles{% endif %}
+          </p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <a href="{{ file_url }}" download class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-medium transition">
+          Download
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3D Viewer -->
+  <div id="viewer"></div>
+
+  <!-- Controls Overlay -->
+  <div class="overlay bottom-4 left-4 bg-zinc-900/90 backdrop-blur border border-zinc-700 rounded-lg p-4">
+    <h3 class="text-sm font-medium mb-2">Controls</h3>
+    <ul class="text-xs text-zinc-400 space-y-1">
+      <li>🖱️ Left drag: Rotate</li>
+      <li>🖱️ Right drag: Pan</li>
+      <li>🖱️ Scroll: Zoom</li>
+    </ul>
+    <div class="mt-3 pt-3 border-t border-zinc-700">
+      <label class="text-xs text-zinc-400 block mb-1">Model Color</label>
+      <input type="color" id="model-color" value="#6366f1" class="w-full h-8 rounded cursor-pointer">
+    </div>
+    <div class="mt-2">
+      <label class="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+        <input type="checkbox" id="wireframe" class="rounded">
+        Wireframe
+      </label>
+    </div>
+    <div class="mt-2">
+      <button id="reset-camera" class="w-full px-3 py-1.5 rounded bg-zinc-700 hover:bg-zinc-600 text-xs transition">
+        Reset Camera
+      </button>
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loading" class="fixed inset-0 bg-zinc-900 flex items-center justify-center z-50">
+    <div class="text-center">
+      <div class="animate-spin rounded-full h-12 w-12 border-4 border-indigo-500 border-t-transparent mx-auto mb-4"></div>
+      <p class="text-zinc-400">Loading 3D model...</p>
+    </div>
+  </div>
+
+  <!-- Error Overlay -->
+  <div id="error" class="hidden fixed inset-0 bg-zinc-900 flex items-center justify-center z-50">
+    <div class="text-center">
+      <div class="text-4xl mb-4">⚠️</div>
+      <p class="text-red-400 mb-2">Failed to load 3D model</p>
+      <p id="error-message" class="text-xs text-zinc-500 mb-4"></p>
+      <a href="/admin/request/{{ req_id }}" class="px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-sm transition">
+        Go Back
+      </a>
+    </div>
+  </div>
+
+  <script>
+    const fileUrl = "{{ file_url }}";
+    const fileName = "{{ file.original_filename }}";
+    const fileExt = fileName.toLowerCase().split('.').pop();
+    
+    let scene, camera, renderer, controls, mesh;
+    let initialCameraPosition, initialControlsTarget;
+
+    function init() {
+      // Scene setup
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x18181b);
+
+      // Camera
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+      camera.position.set(100, 100, 100);
+
+      // Renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      document.getElementById('viewer').appendChild(renderer.domElement);
+
+      // Controls
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+      scene.add(ambientLight);
+
+      const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight1.position.set(1, 1, 1);
+      scene.add(directionalLight1);
+
+      const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+      directionalLight2.position.set(-1, -1, -1);
+      scene.add(directionalLight2);
+
+      // Grid helper
+      const gridHelper = new THREE.GridHelper(200, 20, 0x444444, 0x333333);
+      scene.add(gridHelper);
+
+      // Load model
+      loadModel();
+
+      // Event listeners
+      window.addEventListener('resize', onWindowResize);
+      document.getElementById('model-color').addEventListener('input', onColorChange);
+      document.getElementById('wireframe').addEventListener('change', onWireframeChange);
+      document.getElementById('reset-camera').addEventListener('click', resetCamera);
+
+      animate();
+    }
+
+    function loadModel() {
+      const loader = fileExt === 'stl' ? new THREE.STLLoader() : new THREE.OBJLoader();
+      
+      loader.load(
+        fileUrl,
+        function(geometry) {
+          document.getElementById('loading').classList.add('hidden');
+          
+          let finalGeometry;
+          if (fileExt === 'stl') {
+            finalGeometry = geometry;
+          } else {
+            // OBJ loader returns a group
+            if (geometry.children && geometry.children.length > 0) {
+              finalGeometry = geometry.children[0].geometry;
+            } else {
+              finalGeometry = geometry;
+            }
+          }
+          
+          // Center the geometry
+          finalGeometry.computeBoundingBox();
+          const center = new THREE.Vector3();
+          finalGeometry.boundingBox.getCenter(center);
+          finalGeometry.translate(-center.x, -center.y, -center.z);
+          
+          // Move to sit on grid (Y = 0 at bottom)
+          const minY = finalGeometry.boundingBox.min.y - center.y;
+          finalGeometry.translate(0, -minY, 0);
+          
+          // Material
+          const material = new THREE.MeshPhongMaterial({
+            color: 0x6366f1,
+            specular: 0x111111,
+            shininess: 30,
+            flatShading: false
+          });
+          
+          mesh = new THREE.Mesh(finalGeometry, material);
+          scene.add(mesh);
+          
+          // Fit camera to model
+          fitCameraToObject(mesh);
+          
+          // Store initial camera state for reset
+          initialCameraPosition = camera.position.clone();
+          initialControlsTarget = controls.target.clone();
+        },
+        function(xhr) {
+          // Progress
+          if (xhr.lengthComputable) {
+            const percent = Math.round((xhr.loaded / xhr.total) * 100);
+            console.log(`Loading: ${percent}%`);
+          }
+        },
+        function(error) {
+          console.error('Error loading model:', error);
+          document.getElementById('loading').classList.add('hidden');
+          document.getElementById('error').classList.remove('hidden');
+          document.getElementById('error-message').textContent = error.message || 'Unknown error';
+        }
+      );
+    }
+
+    function fitCameraToObject(object) {
+      const box = new THREE.Box3().setFromObject(object);
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      
+      const fov = camera.fov * (Math.PI / 180);
+      let cameraDistance = maxDim / (2 * Math.tan(fov / 2));
+      cameraDistance *= 1.5; // Add some padding
+      
+      const direction = new THREE.Vector3(1, 0.5, 1).normalize();
+      camera.position.copy(direction.multiplyScalar(cameraDistance));
+      
+      controls.target.set(0, size.y / 2, 0);
+      controls.update();
+    }
+
+    function resetCamera() {
+      if (initialCameraPosition && initialControlsTarget) {
+        camera.position.copy(initialCameraPosition);
+        controls.target.copy(initialControlsTarget);
+        controls.update();
+      }
+    }
+
+    function onColorChange(e) {
+      if (mesh) {
+        mesh.material.color.set(e.target.value);
+      }
+    }
+
+    function onWireframeChange(e) {
+      if (mesh) {
+        mesh.material.wireframe = e.target.checked;
+      }
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    init();
+  </script>
+</body>
+</html>
