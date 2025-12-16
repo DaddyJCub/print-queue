@@ -28,13 +28,19 @@ run_local.bat demo
 
 ### Demo Mode
 - Separate database at `local_data/demo.db`
+- **No real printer polling** - fake printer data is used
 - Pre-populated with:
   - **15+ requests** in various statuses (NEW, APPROVED, PRINTING, DONE, etc.)
   - **8 store items** (ready-to-print designs)
   - **20 print history entries** (for ETA learning)
   - **5 feedback entries** (bug reports, suggestions)
+  - **3 request templates** (for quick form filling)
+  - **Demo messages** (two-way communication example)
   - **Multi-build request** example
   - Realistic names, emails, and notes
+- **Simulated printers:**
+  - ADVENTURER_4: Actively "printing" at ~67% progress
+  - AD5X: Idle/ready status
 
 ## URLs & Access
 

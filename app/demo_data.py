@@ -21,6 +21,170 @@ from typing import List, Dict, Any, Optional
 # Demo mode flag - enabled via environment variable
 DEMO_MODE = os.getenv("DEMO_MODE", "").lower() in ("true", "1", "yes", "demo")
 
+# ─────────────────────────── DEMO PRINTER STATUS ───────────────────────────
+
+# Fake printer status data - simulates real printers
+DEMO_PRINTER_STATUS: Dict[str, Dict[str, Any]] = {
+    "ADVENTURER_4": {
+        "status": "BUILDING",
+        "raw_status": "BUILDING_FROM_SD",
+        "temp": "210",
+        "target_temp": "210",
+        "healthy": True,
+        "is_printing": True,
+        "progress": 67,
+        "current_file": "dragon_figurine.gcode",
+        "current_layer": 134,
+        "total_layers": 200,
+        "camera_url": None,  # Will be populated dynamically
+    },
+    "AD5X": {
+        "status": "READY",
+        "raw_status": "READY",
+        "temp": "25",
+        "target_temp": "0",
+        "healthy": True,
+        "is_printing": False,
+        "progress": None,
+        "current_file": None,
+        "current_layer": None,
+        "total_layers": None,
+        "camera_url": None,
+    },
+}
+
+# Printer job info for demo
+DEMO_PRINTER_JOBS: Dict[str, Dict[str, Any]] = {
+    "ADVENTURER_4": {
+        "status": "printing",
+        "machine_status": "BUILDING_FROM_SD",
+        "file_name": "dragon_figurine.gcode",
+        "progress": 67,
+        "layer_info": "Layer 134/200",
+        "current_layer": 134,
+        "total_layers": 200,
+        "temp": "210°C / 210°C",
+        "elapsed": "1h 23m",
+        "remaining_estimate": "~42 minutes",
+        "started_at": None,  # Will be set dynamically
+    },
+    "AD5X": {
+        "status": "idle",
+        "machine_status": "READY",
+        "file_name": None,
+        "progress": None,
+        "layer_info": None,
+        "current_layer": None,
+        "total_layers": None,
+        "temp": "25°C / 0°C",
+        "elapsed": None,
+        "remaining_estimate": None,
+        "started_at": None,
+    },
+}
+
+
+def get_demo_printer_status(printer_code: str) -> Optional[Dict[str, Any]]:
+    """Get demo printer status - returns fake data for UI testing"""
+    if not DEMO_MODE:
+        return None
+    
+    status = DEMO_PRINTER_STATUS.get(printer_code)
+    if status:
+        # Add some randomization to make it feel "live"
+        result = status.copy()
+        if result.get("is_printing"):
+            # Slowly increment progress (simulates printing)
+            base_progress = 67
+            time_offset = (datetime.utcnow().minute % 10) * 3  # Changes every minute
+            result["progress"] = min(99, base_progress + time_offset)
+            result["current_layer"] = int(result["total_layers"] * result["progress"] / 100)
+        return result
+    return None
+
+
+def get_demo_printer_job(printer_code: str) -> Optional[Dict[str, Any]]:
+    """Get demo printer job info"""
+    if not DEMO_MODE:
+        return None
+    
+    job = DEMO_PRINTER_JOBS.get(printer_code)
+    if job:
+        result = job.copy()
+        if result.get("status") == "printing":
+            # Dynamic timing
+            result["started_at"] = (datetime.utcnow() - timedelta(hours=1, minutes=23)).isoformat()
+            # Update progress to match status
+            base_progress = 67
+            time_offset = (datetime.utcnow().minute % 10) * 3
+            result["progress"] = min(99, base_progress + time_offset)
+            result["current_layer"] = int(200 * result["progress"] / 100)
+            result["layer_info"] = f"Layer {result['current_layer']}/200"
+        return result
+    return None
+
+
+def get_demo_all_printers_status() -> Dict[str, Dict[str, Any]]:
+    """Get status of all demo printers"""
+    if not DEMO_MODE:
+        return {}
+    
+    result = {}
+    for printer_code in DEMO_PRINTER_STATUS.keys():
+        status = get_demo_printer_status(printer_code)
+        if status:
+            result[printer_code] = status
+    return result
+
+
+# ─────────────────────────── DEMO REQUEST TEMPLATES ───────────────────────────
+
+DEMO_REQUEST_TEMPLATES = [
+    {
+        "name": "Quick PLA Print",
+        "requester_name": "",
+        "requester_email": "",
+        "printer": "ANY",
+        "material": "PLA",
+        "colors": "Black",
+        "notes": "Standard quality is fine",
+    },
+    {
+        "name": "High Quality Gift",
+        "requester_name": "",
+        "requester_email": "",
+        "printer": "ADVENTURER_4",
+        "material": "PLA",
+        "colors": "White",
+        "notes": "This is a gift - please use highest quality settings",
+    },
+    {
+        "name": "Flexible Part (TPU)",
+        "requester_name": "",
+        "requester_email": "",
+        "printer": "ANY",
+        "material": "TPU",
+        "colors": "Black",
+        "notes": "Needs to be flexible - TPU required",
+    },
+]
+
+
+# ─────────────────────────── DEMO EMAIL TOKENS ───────────────────────────
+
+def generate_demo_email_token(email: str) -> Dict[str, Any]:
+    """Generate a demo email lookup token"""
+    now = datetime.utcnow()
+    return {
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "token": secrets.token_urlsafe(32),
+        "short_code": f"{random.randint(100000, 999999)}",
+        "created_at": now.isoformat(timespec="seconds") + "Z",
+        "expires_at": (now + timedelta(days=7)).isoformat(timespec="seconds") + "Z",
+    }
+
+
 # ─────────────────────────── FAKE DATA GENERATORS ───────────────────────────
 
 # Realistic names for demo
@@ -515,6 +679,63 @@ def seed_demo_data(db_func, force: bool = False):
         except Exception as e:
             print(f"[DEMO] Error inserting feedback: {e}")
     
+    # ── Seed Request Templates ──
+    for tmpl in DEMO_REQUEST_TEMPLATES:
+        try:
+            cur.execute("""
+                INSERT INTO request_templates (
+                    id, name, requester_name, requester_email, printer, material, colors, notes, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                str(uuid.uuid4()), tmpl["name"], tmpl.get("requester_name", ""),
+                tmpl.get("requester_email", ""), tmpl.get("printer", "ANY"),
+                tmpl.get("material", "PLA"), tmpl.get("colors", ""),
+                tmpl.get("notes", ""), now_iso, now_iso
+            ))
+        except Exception as e:
+            print(f"[DEMO] Error inserting template: {e}")
+    
+    # ── Seed Email Lookup Tokens (for demo "My Requests" access) ──
+    # Create tokens for a few demo emails so users can test the my-requests flow
+    demo_emails = list(set(req["requester_email"] for req in demo_requests[:5]))
+    for email in demo_emails:
+        try:
+            token_data = generate_demo_email_token(email)
+            cur.execute("""
+                INSERT INTO email_lookup_tokens (id, email, token, short_code, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                token_data["id"], token_data["email"], token_data["token"],
+                token_data["short_code"], token_data["created_at"], token_data["expires_at"]
+            ))
+        except Exception as e:
+            print(f"[DEMO] Error inserting email token: {e}")
+    
+    # ── Seed Request Messages (for two-way communication demo) ──
+    # Add some demo messages to the NEEDS_INFO request
+    needs_info_req = next((r for r in demo_requests if r["status"] == "NEEDS_INFO"), None)
+    if needs_info_req:
+        demo_messages = [
+            {"sender_type": "admin", "message": "Could you clarify what size you need? The model can be scaled."},
+            {"sender_type": "requester", "message": "I need it to be about 10cm tall. Is that possible?"},
+            {"sender_type": "admin", "message": "Absolutely! I'll scale it to 10cm. Expect about 2 hours print time."},
+        ]
+        msg_time = datetime.fromisoformat(needs_info_req["created_at"].replace("Z", "+00:00"))
+        for i, msg in enumerate(demo_messages):
+            msg_time = msg_time + timedelta(hours=i+1)
+            try:
+                cur.execute("""
+                    INSERT INTO request_messages (id, request_id, created_at, sender_type, message, is_read)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    str(uuid.uuid4()), needs_info_req["id"],
+                    msg_time.isoformat(timespec="seconds") + "Z",
+                    msg["sender_type"], msg["message"],
+                    1 if msg["sender_type"] == "admin" else 0
+                ))
+            except Exception as e:
+                print(f"[DEMO] Error inserting message: {e}")
+    
     # ── Mark as seeded ──
     try:
         cur.execute("""
@@ -527,7 +748,7 @@ def seed_demo_data(db_func, force: bool = False):
     conn.commit()
     conn.close()
     
-    print(f"[DEMO] ✓ Seeded {len(demo_requests)} requests, {len(DEMO_STORE_ITEMS)} store items, 20 print history entries")
+    print(f"[DEMO] ✓ Seeded {len(demo_requests)} requests, {len(DEMO_STORE_ITEMS)} store items, {len(DEMO_REQUEST_TEMPLATES)} templates, 20 print history entries")
 
 
 def reset_demo_data(db_func):

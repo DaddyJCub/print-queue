@@ -15,7 +15,10 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 # Demo mode for local testing with fake data
-from app.demo_data import DEMO_MODE, seed_demo_data, reset_demo_data, get_demo_status
+from app.demo_data import (
+    DEMO_MODE, seed_demo_data, reset_demo_data, get_demo_status,
+    get_demo_printer_status, get_demo_printer_job, get_demo_all_printers_status
+)
 
 # ─────────────────────────── VERSION ───────────────────────────
 APP_VERSION = "1.8.13"
@@ -452,8 +455,31 @@ async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.
     Fetch printer status with cache fallback and timeout.
     Returns status dict with 'is_cached' flag if using cached data.
     Always includes camera_url even if offline.
+    
+    In DEMO_MODE, returns fake printer data instead of polling real printers.
     """
     camera_url = get_camera_url(printer_code)
+    
+    # Return demo data if in demo mode
+    if DEMO_MODE:
+        demo_status = get_demo_printer_status(printer_code)
+        if demo_status:
+            return {
+                **demo_status,
+                "camera_url": camera_url,
+                "is_cached": False,
+                "is_offline": False,
+                "last_seen": now_iso(),
+            }
+        # Unknown printer in demo mode
+        return {
+            "status": "READY",
+            "healthy": True,
+            "is_printing": False,
+            "camera_url": camera_url,
+            "is_cached": False,
+            "is_offline": False,
+        }
     
     # Try live API first with short timeout
     try:
@@ -3016,8 +3042,17 @@ async def poll_printer_status_worker():
     """
     Background worker that polls all configured printers every 30s.
     Auto-updates PRINTING -> DONE when printer reports 100% complete.
+    
+    In DEMO_MODE, this worker is disabled and fake printer data is used instead.
     """
     print("[POLL] Background printer polling started")
+    
+    # Skip real polling in demo mode
+    if DEMO_MODE:
+        print("[POLL] Demo mode active - printer polling disabled (using fake data)")
+        while True:
+            await asyncio.sleep(60)  # Just keep the task alive but do nothing
+    
     while True:
         try:
             if not get_bool_setting("enable_printer_polling", True):
@@ -3511,8 +3546,17 @@ async def poll_builds_status_worker():
     Works at the build level for multi-build requests.
     Auto-updates build PRINTING -> COMPLETED when printer reports 100% complete.
     Then syncs the parent request status.
+    
+    In DEMO_MODE, this worker is disabled and fake printer data is used instead.
     """
     print("[BUILD-POLL] Background build polling started")
+    
+    # Skip real polling in demo mode
+    if DEMO_MODE:
+        print("[BUILD-POLL] Demo mode active - build polling disabled (using fake data)")
+        while True:
+            await asyncio.sleep(60)  # Just keep the task alive but do nothing
+    
     while True:
         try:
             if not get_bool_setting("enable_printer_polling", True):
@@ -9113,9 +9157,31 @@ def get_template(template_id: str):
 
 @app.get("/api/printer/{printer_code}/debug")
 async def printer_debug(printer_code: str, _=Depends(require_admin)):
-    """Debug endpoint to test all available printer API endpoints"""
+    """Debug endpoint to test all available printer API endpoints.
+    
+    In DEMO_MODE, returns fake printer data.
+    """
     if printer_code not in ["ADVENTURER_4", "AD5X"]:
         raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    # Return demo data if in demo mode
+    if DEMO_MODE:
+        status = get_demo_printer_status(printer_code)
+        job = get_demo_printer_job(printer_code)
+        return {
+            "_printer": printer_code,
+            "_demo_mode": True,
+            "info": {"Machine": f"Demo {printer_code}", "Type": "Demo Printer"},
+            "status": {"MachineStatus": status.get("raw_status") if status else "READY"},
+            "progress": {"PercentageCompleted": status.get("progress") if status else None},
+            "temperature": {"Temperature": status.get("temp", "25") if status else "25"},
+            "head_location": {"X": 0, "Y": 0, "Z": 0},
+            "extended_status": {
+                "current_file": job.get("file_name") if job else None,
+                "current_layer": job.get("current_layer") if job else None,
+                "total_layers": job.get("total_layers") if job else None,
+            }
+        }
     
     printer_api = get_printer_api(printer_code)
     if not printer_api:
@@ -9138,9 +9204,19 @@ async def printer_debug(printer_code: str, _=Depends(require_admin)):
 
 @app.get("/api/printer/{printer_code}/job")
 async def printer_job(printer_code: str, _=Depends(require_admin)):
-    """Get current print job info - filename, layer progress, status"""
+    """Get current print job info - filename, layer progress, status.
+    
+    In DEMO_MODE, returns fake job data.
+    """
     if printer_code not in ["ADVENTURER_4", "AD5X"]:
         raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    # Return demo data if in demo mode
+    if DEMO_MODE:
+        job = get_demo_printer_job(printer_code)
+        if job:
+            return job
+        return {"status": "idle", "message": "Demo printer is idle"}
     
     printer_api = get_printer_api(printer_code)
     if not printer_api:
@@ -9168,7 +9244,14 @@ async def printer_job(printer_code: str, _=Depends(require_admin)):
 
 @app.get("/api/printers/status")
 async def get_all_printers_status(_=Depends(require_admin)):
-    """Get status of all printers - for AJAX refresh with retry logic"""
+    """Get status of all printers - for AJAX refresh with retry logic.
+    
+    In DEMO_MODE, returns fake printer data instead of polling real printers.
+    """
+    # Return demo data if in demo mode
+    if DEMO_MODE:
+        return get_demo_all_printers_status()
+    
     printer_status = {}
     max_retries = int(get_setting("printer_offline_retries", "3"))
     
