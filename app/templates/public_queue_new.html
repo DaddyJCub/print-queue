@@ -251,7 +251,7 @@
       </div>
       <h3 class="text-lg font-semibold text-zinc-300">Queue is empty!</h3>
       <p class="text-sm text-zinc-500 mt-1 max-w-xs mx-auto">No prints waiting. Be the first to submit a request!</p>
-      <a href="/" class="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm rounded-lg transition tap-highlight">
+      <a href="/" class="inline-flex items-center gap-2 mt-4 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition tap-highlight">
         Submit Request
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
@@ -339,8 +339,8 @@
   </div>
 </div>
 
-<!-- Footer Links -->
-<div class="pt-4 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
+<!-- Footer -->
+<div class="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
   <span id="last-update">Updated just now</span>
   <div class="flex items-center gap-4">
     <a href="/feedback?type=bug" class="hover:text-red-400 transition">🐛</a>
@@ -354,22 +354,43 @@
 <script>
   // Camera toggle
   const camIntervals = {};
+  let touchHandled = {};
+  
   function toggleCamera(printer) {
     const div = document.getElementById(`cam-${printer}`);
     const btn = document.getElementById(`cam-btn-${printer}`);
     const img = document.getElementById(`cam-img-${printer}`);
     if (!div || !btn || !img) {
-      btn.disabled = true;
-      btn.classList.add('opacity-50', 'cursor-not-allowed');
-      btn.title = 'Camera unavailable';
+      if (btn) {
+        btn.disabled = true;
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+        btn.title = 'Camera unavailable';
+      }
       return;
     }
     if (div.classList.contains('hidden')) {
       div.classList.remove('hidden');
       btn.textContent = '📷 Hide camera';
+      // Show loading state
+      img.alt = 'Loading camera...';
       img.src = `/api/camera/${printer}/snapshot?t=${Date.now()}`;
+      
+      // Handle image load error
+      img.onerror = function() {
+        img.alt = 'Camera unavailable';
+        btn.textContent = '📷 Camera error - tap to retry';
+        clearInterval(camIntervals[printer]);
+      };
+      img.onload = function() {
+        img.alt = 'Camera feed';
+      };
+      
       camIntervals[printer] = setInterval(() => {
-        img.src = `/api/camera/${printer}/snapshot?t=${Date.now()}`;
+        const newImg = new Image();
+        newImg.onload = function() {
+          img.src = this.src;
+        };
+        newImg.src = `/api/camera/${printer}/snapshot?t=${Date.now()}`;
       }, 10000);
     } else {
       div.classList.add('hidden');
@@ -382,16 +403,31 @@
   document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.camera-toggle').forEach(btn => {
       const printer = btn.dataset.printer;
+      
+      // Use a single handler that works for both touch and click
+      // touchstart sets a flag, click checks the flag
+      btn.addEventListener('touchstart', function(e) {
+        touchHandled[printer] = true;
+      }, {passive: true});
+      
       btn.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
+        // If touch just happened, skip the click (touchend will handle it)
+        if (touchHandled[printer]) {
+          touchHandled[printer] = false;
+          return;
+        }
         toggleCamera(printer);
       });
-      // Also handle touch for iOS
+      
       btn.addEventListener('touchend', function(e) {
         e.preventDefault();
         e.stopPropagation();
-        toggleCamera(printer);
+        if (touchHandled[printer]) {
+          touchHandled[printer] = false;
+          toggleCamera(printer);
+        }
       });
     });
   });
@@ -537,9 +573,12 @@
     if (activeQueue.length === 0) {
       mobileEl.innerHTML = `
         <div class="text-center py-12 bg-zinc-900/30 rounded-2xl border border-zinc-800">
-          <div class="text-4xl mb-3">🎉</div>
+          <div class="text-5xl mb-4">🎉</div>
           <h3 class="text-lg font-semibold text-zinc-300">Queue is empty!</h3>
-          <p class="text-zinc-500 mt-1">No prints waiting.</p>
+          <p class="text-sm text-zinc-500 mt-1 max-w-xs mx-auto">No prints waiting. Be the first to submit a request!</p>
+          <a href="/" class="inline-flex items-center gap-2 mt-4 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition tap-highlight">
+            Submit Request →
+          </a>
         </div>
       `;
       desktopEl.innerHTML = mobileEl.innerHTML;

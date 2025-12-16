@@ -8,8 +8,16 @@
 {% block header_title %}My Prints{% endblock %}
 
 {% block header_right %}
-<div class="flex items-center gap-2">
-  <button onclick="toggleAccountMenu()" class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 rounded-lg transition tap-highlight">
+<!-- Desktop nav links + Account menu -->
+<nav class="hidden sm:flex items-center gap-1">
+  <a href="/" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">Submit</a>
+  <a href="/queue" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">Queue</a>
+  <a href="/store" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">Store</a>
+  <div class="w-px h-5 bg-zinc-700 mx-1"></div>
+</nav>
+
+<div class="flex items-center gap-2 relative">
+  <button id="account-menu-btn" onclick="toggleAccountMenu()" class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 rounded-lg transition tap-highlight">
     <div class="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">
       {{ email[0]|upper }}
     </div>
@@ -17,6 +25,57 @@
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
     </svg>
   </button>
+  
+  <!-- Account Dropdown Menu - positioned relative to button -->
+  <div id="account-menu" class="hidden absolute right-0 top-full mt-2 w-72 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
+    <!-- Account Header -->
+    <div class="p-4 border-b border-zinc-800 bg-zinc-950/50">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold">
+          {{ email[0]|upper }}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-white truncate">{{ email }}</p>
+          <p class="text-xs text-zinc-500">Printellect Account</p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Menu Items -->
+    <div class="p-2">
+      <button onclick="showNotificationSettings()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition text-left">
+        <span class="text-lg">🔔</span>
+        <div>
+          <p class="text-sm font-medium">Notification Settings</p>
+          <p class="text-xs text-zinc-500">Email & push preferences</p>
+        </div>
+      </button>
+      <button onclick="showSyncCode()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition text-left">
+        <span class="text-lg">📱</span>
+        <div>
+          <p class="text-sm font-medium">Sync to App</p>
+          <p class="text-xs text-zinc-500">Transfer session to PWA</p>
+        </div>
+      </button>
+      <a href="/feedback?type=suggestion" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+        <span class="text-lg">💡</span>
+        <div>
+          <p class="text-sm font-medium">Send Feedback</p>
+          <p class="text-xs text-zinc-500">Suggestions & bug reports</p>
+        </div>
+      </a>
+    </div>
+    
+    <!-- Logout -->
+    <div class="p-2 border-t border-zinc-800">
+      <a href="/my-requests?logout=1" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-900/30 text-red-400 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+        </svg>
+        <span class="text-sm font-medium">Sign Out</span>
+      </a>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -28,57 +87,6 @@
 {% endblock %}
 
 {% block content %}
-<!-- Account Dropdown Menu -->
-<div id="account-menu" class="hidden absolute right-4 top-16 w-72 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
-  <!-- Account Header -->
-  <div class="p-4 border-b border-zinc-800 bg-zinc-950/50">
-    <div class="flex items-center gap-3">
-      <div class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold">
-        {{ email[0]|upper }}
-      </div>
-      <div class="flex-1 min-w-0">
-        <p class="text-sm font-medium text-white truncate">{{ email }}</p>
-        <p class="text-xs text-zinc-500">Printellect Account</p>
-      </div>
-    </div>
-  </div>
-  
-  <!-- Menu Items -->
-  <div class="p-2">
-    <button onclick="showNotificationSettings()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition text-left">
-      <span class="text-lg">🔔</span>
-      <div>
-        <p class="text-sm font-medium">Notification Settings</p>
-        <p class="text-xs text-zinc-500">Email & push preferences</p>
-      </div>
-    </button>
-    <button onclick="showSyncCode()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition text-left">
-      <span class="text-lg">📱</span>
-      <div>
-        <p class="text-sm font-medium">Sync to App</p>
-        <p class="text-xs text-zinc-500">Transfer session to PWA</p>
-      </div>
-    </button>
-    <a href="/feedback?type=suggestion" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
-      <span class="text-lg">💡</span>
-      <div>
-        <p class="text-sm font-medium">Send Feedback</p>
-        <p class="text-xs text-zinc-500">Suggestions & bug reports</p>
-      </div>
-    </a>
-  </div>
-  
-  <!-- Logout -->
-  <div class="p-2 border-t border-zinc-800">
-    <a href="/my-requests?logout=1" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-900/30 text-red-400 transition">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-      </svg>
-      <span class="text-sm font-medium">Sign Out</span>
-    </a>
-  </div>
-</div>
-
 <!-- Notification Settings Modal -->
 <div id="notification-modal" class="hidden fixed inset-0 bg-black/80 flex items-end sm:items-center justify-center z-50 pb-20 sm:pb-0" onclick="hideNotificationSettings()">
   <div class="bg-zinc-900 border border-zinc-700 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[70vh] sm:max-h-[85vh] overflow-y-auto" 
@@ -200,8 +208,11 @@
 </div>
 
 <!-- Page Title -->
-<div class="flex items-center justify-between mb-4">
-  <h1 class="text-xl font-bold">My Prints</h1>
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold">My Prints</h1>
+    <p class="text-zinc-400 text-sm mt-1">Track your print requests</p>
+  </div>
   <a href="/" class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium transition tap-highlight">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>

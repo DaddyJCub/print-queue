@@ -4017,7 +4017,9 @@ def admin_login_post(password: str = Form(...), next: Optional[str] = Form(None)
     # Redirect to next URL if provided, otherwise admin dashboard
     redirect_to = next if next and next.startswith("/admin") else "/admin"
     resp = RedirectResponse(url=redirect_to, status_code=303)
-    resp.set_cookie("admin_pw", password, httponly=True, samesite="lax", secure=True, max_age=604800)  # 7 days, HTTPS only
+    # Only set secure=True if using HTTPS (production)
+    is_https = BASE_URL.startswith("https://")
+    resp.set_cookie("admin_pw", password, httponly=True, samesite="lax", secure=is_https, max_age=604800)  # 7 days
     return resp
 
 
@@ -6044,12 +6046,34 @@ def get_vapid_public_key():
 # Test push notification endpoint
 @app.post("/api/push/test")
 async def test_push_notification(request: Request):
-    """Test push notification for a user (by email) - returns detailed results"""
+    """Test push notification for a user - handles both token (FormData) and email (JSON)"""
     try:
-        data = await request.json()
-        email = data.get("email")
+        content_type = request.headers.get("content-type", "")
+        email = None
+        
+        # Handle FormData (from frontend with token)
+        if "form" in content_type or "multipart" in content_type:
+            form = await request.form()
+            token = form.get("token")
+            if token:
+                # Look up email from token
+                conn = db()
+                token_row = conn.execute(
+                    "SELECT email FROM email_lookup_tokens WHERE token = ?", (token,)
+                ).fetchone()
+                conn.close()
+                if token_row:
+                    email = token_row["email"]
+        else:
+            # Handle JSON (legacy)
+            try:
+                data = await request.json()
+                email = data.get("email")
+            except:
+                pass
+        
         if not email:
-            return {"error": "Missing email", "status": "error"}
+            return {"success": False, "error": "Could not determine email from token", "status": "error"}
         
         print(f"[PUSH TEST] Testing push for email: {email}")
         result = send_push_notification(
@@ -6060,14 +6084,16 @@ async def test_push_notification(request: Request):
         )
         
         if result["sent"] > 0:
-            return {"status": "sent", "details": result}
-        elif result["errors"]:
-            return {"status": "error", "details": result}
+            return {"success": True, "status": "sent", "details": result}
+        elif result.get("errors"):
+            return {"success": False, "status": "error", "error": "Failed to send", "details": result}
         else:
-            return {"status": "no_subscriptions", "details": result}
+            return {"success": False, "status": "no_subscriptions", "error": "No push subscriptions found for your account"}
     except Exception as e:
         print(f"[PUSH TEST] Exception: {e}")
-        return {"error": str(e), "status": "exception"}
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e), "status": "exception"}
 
 
 @app.post("/api/push/subscribe")
@@ -6183,23 +6209,6 @@ def sw_debug_info():
         "base_url": BASE_URL,
         "app_version": APP_VERSION
     }
-
-
-@app.post("/api/push/test")
-async def api_test_push_notification(request: Request):
-    """Test push notification sending - returns detailed diagnostics"""
-    data = await request.json()
-    email = data.get("email")
-    if not email:
-        return {"error": "Missing email"}
-    
-    result = send_push_notification(
-        email=email,
-        title="Test Notification",
-        body="If you see this, push notifications are working!",
-        url="/my-requests/view"
-    )
-    return result
 
 
 @app.post("/api/push/unsubscribe")
