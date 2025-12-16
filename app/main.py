@@ -3964,11 +3964,12 @@ async def public_queue(request: Request, mine: Optional[str] = None):
         active_printer = r["printer"]  # Default to request printer
         
         # Handle IN_PROGRESS (multi-build) - get active build's printer
-        if r["status"] == "IN_PROGRESS" and r.get("active_build_id"):
+        active_build_id = r["active_build_id"] if "active_build_id" in r.keys() else None
+        if r["status"] == "IN_PROGRESS" and active_build_id:
             conn_build = db()
             active_build = conn_build.execute(
                 "SELECT printer, started_at FROM builds WHERE id = ?", 
-                (r["active_build_id"],)
+                (active_build_id,)
             ).fetchone()
             conn_build.close()
             if active_build and active_build["printer"]:
