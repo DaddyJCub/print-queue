@@ -1,6 +1,6 @@
 // Service Worker for Printellect PWA
-const SW_VERSION = '2.0.0';
-const CACHE_NAME = 'print-queue-v2';
+const SW_VERSION = '2.1.0';
+const CACHE_NAME = 'print-queue-v3';
 const OFFLINE_URL = '/static/offline.html';
 
 // Log helper with timestamp
@@ -79,6 +79,9 @@ self.addEventListener('fetch', (event) => {
   
   // Skip API routes
   if (event.request.url.includes('/api/')) return;
+  
+  // Skip my-requests routes (has dynamic redirect logic that shouldn't be cached)
+  if (event.request.url.includes('/my-requests')) return;
   
   event.respondWith(
     fetch(event.request)
