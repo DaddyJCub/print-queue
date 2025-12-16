@@ -38,7 +38,7 @@ APP_VERSION = "1.8.7"
 
 # ─────────────────────────── LOGGING SETUP ───────────────────────────
 # In-memory log buffer for quick access via API
-LOG_BUFFER_SIZE = 500
+LOG_BUFFER_SIZE = 1000
 log_buffer = deque(maxlen=LOG_BUFFER_SIZE)
 
 class BufferHandler(logging.Handler):
@@ -46,12 +46,18 @@ class BufferHandler(logging.Handler):
     def emit(self, record):
         try:
             msg = self.format(record)
+            exc_text = None
+            if record.exc_info:
+                import traceback
+                exc_text = ''.join(traceback.format_exception(*record.exc_info))
             log_buffer.append({
                 "time": datetime.fromtimestamp(record.created).isoformat(),
                 "level": record.levelname,
                 "module": record.module,
+                "name": record.name,
                 "message": record.getMessage(),
                 "formatted": msg,
+                "exc_info": exc_text,
             })
         except Exception:
             pass
@@ -66,33 +72,62 @@ log_format = logging.Formatter(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# Root logger setup
+# Setup root logger to capture ALL logs (including uvicorn, fastapi, httpx, etc.)
+root_logger = logging.getLogger()
+root_logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+
+# Our app logger
 logger = logging.getLogger("printellect")
 logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 
-# Console handler
+# Console handler - attached to root to capture everything
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(log_format)
-logger.addHandler(console_handler)
+console_handler.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 
-# Buffer handler (for API access)
+# Buffer handler (for API access) - attached to root to capture everything
 buffer_handler = BufferHandler()
 buffer_handler.setFormatter(log_format)
-logger.addHandler(buffer_handler)
+buffer_handler.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+
+# Add handlers to root logger (captures all loggers including uvicorn, fastapi)
+root_logger.addHandler(console_handler)
+root_logger.addHandler(buffer_handler)
 
 # File handler (optional, only if writable)
 try:
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
     file_handler = RotatingFileHandler(
-        LOG_FILE, maxBytes=5*1024*1024, backupCount=3  # 5MB per file, keep 3 backups
+        LOG_FILE, maxBytes=10*1024*1024, backupCount=5  # 10MB per file, keep 5 backups
     )
     file_handler.setFormatter(log_format)
-    logger.addHandler(file_handler)
+    file_handler.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+    root_logger.addHandler(file_handler)
     logger.info(f"File logging enabled: {LOG_FILE}")
 except Exception as e:
     logger.warning(f"Could not enable file logging: {e}")
 
-logger.info(f"Logging initialized at level {LOG_LEVEL}")
+# Redirect print() statements to logger
+class PrintToLogger:
+    """Intercepts print() calls and sends them to the logger"""
+    def __init__(self, logger, level=logging.INFO):
+        self.logger = logger
+        self.level = level
+        self.buffer = ""
+    
+    def write(self, message):
+        if message and message.strip():
+            self.logger.log(self.level, message.rstrip())
+    
+    def flush(self):
+        pass
+
+# Redirect stdout/stderr to capture print() statements
+import sys
+sys.stdout = PrintToLogger(logging.getLogger("printellect.stdout"), logging.INFO)
+sys.stderr = PrintToLogger(logging.getLogger("printellect.stderr"), logging.ERROR)
+
+logger.info(f"Logging initialized at level {LOG_LEVEL} - capturing all output")
 
 APP_TITLE = "Printellect"
 
@@ -127,7 +162,24 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # FastAPI app with reverse proxy support (trust X-Forwarded-* headers for HTTPS detection)
 
 app = FastAPI(title=APP_TITLE)
-app.trust_proxy_headers = True
+
+# Exception handler middleware to log all unhandled exceptions
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+class ExceptionLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        try:
+            response = await call_next(request)
+            return response
+        except Exception as e:
+            logger.error(
+                f"Unhandled exception on {request.method} {request.url.path}: {e}",
+                exc_info=True
+            )
+            raise
+
+app.add_middleware(ExceptionLoggingMiddleware)
 
 # --- Serve /sw.js from site root for PWA ---
 from fastapi.responses import FileResponse

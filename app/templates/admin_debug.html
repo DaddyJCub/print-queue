@@ -204,10 +204,13 @@
         
         container.innerHTML = data.logs.map(log => {
           const color = levelColors[log.level] || 'text-zinc-400';
+          const excInfo = log.exc_info ? `<details class="mt-1 ml-4"><summary class="text-xs text-red-400 cursor-pointer">Show Traceback</summary><pre class="mt-1 text-xs bg-zinc-950 p-2 rounded overflow-auto max-h-48 text-red-300">${escapeHtml(log.exc_info)}</pre></details>` : '';
           return `<div class="py-1 px-2 hover:bg-zinc-800/50 rounded ${log.level === 'ERROR' ? 'bg-red-900/20' : ''}">
             <span class="text-zinc-600">${log.time.split('T')[1].split('.')[0]}</span>
             <span class="${color} font-semibold">${log.level.padEnd(8)}</span>
+            <span class="text-zinc-500 text-xs">[${log.name || log.module}]</span>
             <span class="text-zinc-300">${escapeHtml(log.message)}</span>
+            ${excInfo}
           </div>`;
         }).join('');
       } catch (e) {
