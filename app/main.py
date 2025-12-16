@@ -137,6 +137,21 @@ sys.stderr = PrintToLogger(logging.getLogger("printellect.stderr"), logging.ERRO
 
 logger.info(f"Logging initialized at level {LOG_LEVEL} - capturing all output")
 
+# ─────────────────────────── HELPER FUNCTIONS ───────────────────────────
+def row_get(row, key, default=None):
+    """
+    Safely get a value from a sqlite3.Row or dict.
+    sqlite3.Row doesn't support .get(), so this provides a consistent interface.
+    """
+    if row is None:
+        return default
+    try:
+        # Try bracket notation first (works for both Row and dict)
+        val = row[key]
+        return val if val is not None else default
+    except (KeyError, IndexError):
+        return default
+
 APP_TITLE = "Printellect"
 
 DB_PATH = os.getenv("DB_PATH", "/data/app.db")
@@ -3065,14 +3080,15 @@ async def poll_printer_status_worker():
 
             conn = db()
             printing_reqs = conn.execute(
-                "SELECT id, printer, printing_started_at, printing_email_sent, requester_email, requester_name, print_name, material, access_token, print_time_minutes FROM requests WHERE status = ?",
+                "SELECT id, printer, printing_started_at, printing_email_sent, requester_email, requester_name, print_name, material, access_token, print_time_minutes, notification_prefs FROM requests WHERE status = ?",
                 ("PRINTING",)
             ).fetchall()
             conn.close()
             
             add_poll_debug_log({"type": "poll_found", "message": f"Found {len(printing_reqs)} PRINTING requests"})
 
-            for req in printing_reqs:
+            for req_row in printing_reqs:
+                req = dict(req_row)  # Convert to dict for .get() support
                 printer_api = get_printer_api(req["printer"])
                 if not printer_api:
                     add_poll_debug_log({
@@ -3330,7 +3346,8 @@ async def poll_printer_status_worker():
 
                     # Auto-update status with completion data
                     conn = db()
-                    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+                    req_row_raw = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+                    req_row = dict(req_row_raw) if req_row_raw else None  # Convert to dict for .get() support
                     
                     # Record to print history for learning ETAs
                     if req_row and req_row["printing_started_at"]:
@@ -7214,11 +7231,12 @@ def admin_set_status(
         raise HTTPException(status_code=400, detail="Invalid status")
 
     conn = db()
-    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
-    if not req:
+    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req_row:
         conn.close()
         raise HTTPException(status_code=404, detail="Not found")
-
+    
+    req = dict(req_row)  # Convert to dict for .get() support
     from_status = req["status"]
     
     # Validate printer selection when changing to PRINTING
