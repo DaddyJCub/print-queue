@@ -145,7 +145,7 @@ self.addEventListener('push', (event) => {
   
   const options = {
     body: data.body || 'New notification',
-    icon: '/static/icons/icon-192.png',
+    icon: data.icon || '/static/icons/icon-192.png',
     badge: '/static/icons/icon-192.png',
     vibrate: [100, 50, 100],
     tag: data.tag || 'printellect-notification',
@@ -154,6 +154,13 @@ self.addEventListener('push', (event) => {
       url: data.url || '/',
     },
   };
+  
+  // Add image if provided (for progress notifications with snapshots)
+  // Note: 'image' shows as a large image in the notification on supported platforms
+  if (data.image) {
+    options.image = data.image;
+    swLog('info', 'Including image in notification:', data.image);
+  }
   
   event.waitUntil(
     self.registration.showNotification(data.title || 'Printellect', options)
