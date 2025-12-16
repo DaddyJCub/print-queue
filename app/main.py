@@ -4037,8 +4037,8 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             "printing_started_at": printing_started_at,
             "current_layer": current_layer,  # Current layer number
             "total_layers": total_layers,  # Total layers in print
-            "total_builds": r.get("total_builds") or 1,  # Multi-build support
-            "completed_builds": r.get("completed_builds") or 0,  # Multi-build support
+            "total_builds": r["total_builds"] if "total_builds" in r.keys() else 1,  # Multi-build support
+            "completed_builds": r["completed_builds"] if "completed_builds" in r.keys() else 0,  # Multi-build support
         })
     
     # Separate items by status for display
