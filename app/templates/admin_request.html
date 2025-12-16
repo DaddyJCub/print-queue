@@ -465,6 +465,7 @@
                       <div class="flex items-center gap-2">
                         <span class="text-sm font-medium">Build {{ b.build_number }}</span>
                         {% if b.print_name %}<span class="text-xs text-zinc-400">{{ b.print_name }}</span>{% endif %}
+                        {% if b.printer %}<span class="text-xs px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded">{{ b.printer }}</span>{% endif %}
                       </div>
                       <div class="flex items-center gap-2">
                         <span class="text-xs px-2 py-0.5 rounded-full 
@@ -497,7 +498,7 @@
                                class="w-full rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs" />
                         <div class="flex gap-2">
                           <input type="number" name="print_time_minutes" value="{{ b.print_time_minutes or '' }}" 
-                                 placeholder="Est. minutes"
+                                 placeholder="Est. minutes" min="0"
                                  class="w-20 rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs" />
                           <select name="material" class="flex-1 rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs">
                             <option value="">Same as request</option>
@@ -506,6 +507,20 @@
                             {% endfor %}
                           </select>
                         </div>
+                        <!-- Printer assignment (only for non-printing builds) -->
+                        {% if b.status != 'PRINTING' %}
+                        <div>
+                          <label class="text-xs text-zinc-500">Assign Printer</label>
+                          <select name="printer" class="w-full rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs mt-1">
+                            <option value="">Not assigned</option>
+                            {% for code, label in printers %}
+                              {% if code != 'ANY' %}
+                              <option value="{{ code }}" {% if code == b.printer %}selected{% endif %}>{{ label }}</option>
+                              {% endif %}
+                            {% endfor %}
+                          </select>
+                        </div>
+                        {% endif %}
                         <input type="text" name="colors" value="{{ b.colors or '' }}" 
                                placeholder="Colors (e.g., 'Black', 'Red/White')"
                                class="w-full rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs" />
@@ -515,6 +530,16 @@
                           Save Build {{ b.build_number }}
                         </button>
                       </form>
+                      
+                      <!-- Delete build button -->
+                      {% if b.status not in ['PRINTING'] or builds|length > 1 %}
+                      <div class="mt-3 pt-2 border-t border-zinc-700">
+                        <button type="button" onclick="showDeleteBuildModal('{{ b.id }}', {{ b.build_number }}, '{{ b.status }}')"
+                                class="text-xs px-2 py-1 rounded bg-red-900/30 hover:bg-red-800/50 text-red-400 hover:text-red-300 transition">
+                          🗑️ Delete Build
+                        </button>
+                      </div>
+                      {% endif %}
                     </details>
                     
                     {% if b.colors or b.material or b.print_time_minutes or b.notes %}
@@ -537,17 +562,21 @@
         </div>
 
         <!-- Start Specific Build Modal -->
-        <div id="start-build-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+        <div id="start-build-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" style="padding-top: env(safe-area-inset-top, 0); padding-bottom: env(safe-area-inset-bottom, 0);">
           <div class="bg-zinc-900 border border-zinc-700 rounded-xl p-6 w-full max-w-sm">
             <h3 class="text-lg font-semibold mb-4">▶️ Start Build <span id="start-build-number"></span></h3>
-            <form id="start-build-form" method="POST" action="" class="space-y-4">
+            <form id="start-build-form" method="POST" action="" class="space-y-4" onsubmit="return validateStartBuildForm()">
               <div>
-                <label class="text-sm text-zinc-400">Printer</label>
-                <select name="printer" required class="w-full mt-1 rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm">
+                <label class="text-sm text-zinc-400">Printer <span class="text-red-400">*</span></label>
+                <select id="start-build-printer" name="printer" required class="w-full mt-1 rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm">
+                  <option value="">-- Select Printer --</option>
                   {% for code, label in printers %}
+                    {% if code != 'ANY' %}
                     <option value="{{ code }}">{{ label }}</option>
+                    {% endif %}
                   {% endfor %}
                 </select>
+                <p id="printer-error" class="hidden text-xs text-red-400 mt-1">⚠️ You must select a specific printer to start a build</p>
               </div>
               <div>
                 <label class="text-sm text-zinc-400">Comment (optional)</label>
@@ -555,10 +584,30 @@
                        class="w-full mt-1 rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm" />
               </div>
               <div class="flex gap-2">
-                <button type="submit" class="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+                <button type="submit" id="start-build-btn" class="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed transition px-4 py-2 text-sm font-semibold">
                   Start Build
                 </button>
                 <button type="button" onclick="closeStartBuildModal()" class="rounded-lg bg-zinc-700 hover:bg-zinc-600 transition px-4 py-2 text-sm">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Delete Build Confirmation Modal -->
+        <div id="delete-build-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" style="padding-top: env(safe-area-inset-top, 0); padding-bottom: env(safe-area-inset-bottom, 0);">
+          <div class="bg-zinc-900 border border-red-700/50 rounded-xl p-6 w-full max-w-sm">
+            <h3 class="text-lg font-semibold mb-2 text-red-400">🗑️ Delete Build <span id="delete-build-number"></span></h3>
+            <p id="delete-build-warning" class="text-sm text-zinc-300 mb-4"></p>
+            <form id="delete-build-form" method="POST" action="" class="space-y-4">
+              <input type="hidden" name="confirm" id="delete-confirm-input" value="0" />
+              <input type="hidden" name="force" id="delete-force-input" value="0" />
+              <div class="flex gap-2">
+                <button type="submit" class="flex-1 rounded-lg bg-red-600 hover:bg-red-500 transition px-4 py-2 text-sm font-semibold">
+                  Delete Build
+                </button>
+                <button type="button" onclick="closeDeleteBuildModal()" class="rounded-lg bg-zinc-700 hover:bg-zinc-600 transition px-4 py-2 text-sm">
                   Cancel
                 </button>
               </div>
@@ -1020,6 +1069,7 @@
           hideAddToStoreModal();
           hidePrintStartModal();
           closeStartBuildModal();
+          closeDeleteBuildModal();
         }
       });
       
@@ -1027,8 +1077,12 @@
       function showStartBuildModal(buildId, buildNumber) {
         const modal = document.getElementById('start-build-modal');
         const form = document.getElementById('start-build-form');
+        const printerSelect = document.getElementById('start-build-printer');
         document.getElementById('start-build-number').textContent = buildNumber;
         form.action = '/admin/build/' + buildId + '/start';
+        // Reset printer selection
+        printerSelect.value = '';
+        document.getElementById('printer-error').classList.add('hidden');
         modal.classList.remove('hidden');
       }
       
@@ -1036,8 +1090,68 @@
         document.getElementById('start-build-modal').classList.add('hidden');
       }
       
+      function validateStartBuildForm() {
+        const printerSelect = document.getElementById('start-build-printer');
+        const errorEl = document.getElementById('printer-error');
+        if (!printerSelect.value || printerSelect.value === '' || printerSelect.value === 'ANY') {
+          errorEl.classList.remove('hidden');
+          printerSelect.classList.add('border-red-500');
+          printerSelect.focus();
+          return false;
+        }
+        errorEl.classList.add('hidden');
+        printerSelect.classList.remove('border-red-500');
+        return true;
+      }
+      
+      // Update button state when printer changes
+      document.getElementById('start-build-printer')?.addEventListener('change', function() {
+        const errorEl = document.getElementById('printer-error');
+        if (this.value && this.value !== 'ANY') {
+          errorEl.classList.add('hidden');
+          this.classList.remove('border-red-500');
+        }
+      });
+      
       document.getElementById('start-build-modal')?.addEventListener('click', (e) => {
         if (e.target.id === 'start-build-modal') closeStartBuildModal();
+      });
+      
+      // Delete build modal
+      function showDeleteBuildModal(buildId, buildNumber, status) {
+        const modal = document.getElementById('delete-build-modal');
+        const form = document.getElementById('delete-build-form');
+        const warning = document.getElementById('delete-build-warning');
+        const confirmInput = document.getElementById('delete-confirm-input');
+        const forceInput = document.getElementById('delete-force-input');
+        
+        document.getElementById('delete-build-number').textContent = buildNumber;
+        form.action = '/admin/build/' + buildId + '/delete';
+        
+        // Set warning message and required confirmations based on status
+        if (status === 'COMPLETED') {
+          warning.innerHTML = '<span class="text-amber-400">⚠️ Warning:</span> This build is already <strong>COMPLETED</strong>. Deleting it will remove it from the request history. Are you sure?';
+          confirmInput.value = '1';
+          forceInput.value = '0';
+        } else if (status === 'PRINTING') {
+          warning.innerHTML = '<span class="text-red-400">⚠️ Danger:</span> This build is currently <strong>PRINTING</strong>. The printer may still be running. Force delete?';
+          confirmInput.value = '1';
+          forceInput.value = '1';
+        } else {
+          warning.textContent = 'This will permanently delete build ' + buildNumber + '. This action cannot be undone.';
+          confirmInput.value = '0';
+          forceInput.value = '0';
+        }
+        
+        modal.classList.remove('hidden');
+      }
+      
+      function closeDeleteBuildModal() {
+        document.getElementById('delete-build-modal').classList.add('hidden');
+      }
+      
+      document.getElementById('delete-build-modal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'delete-build-modal') closeDeleteBuildModal();
       });
       
       // Reorder builds

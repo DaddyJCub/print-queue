@@ -142,7 +142,8 @@
   <!-- Offline Banner - auto shows/hides based on connectivity -->
   <div id="offline-banner" 
        class="fixed top-0 left-0 right-0 z-[9998] transform transition-transform duration-300 -translate-y-full"
-       role="alert" aria-live="assertive">
+       role="alert" aria-live="assertive"
+       style="padding-top: var(--safe-area-top);">
     <div class="bg-amber-500/95 backdrop-blur-sm text-amber-950 px-4 py-2.5 text-center">
       <div class="flex items-center justify-center gap-2">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -156,7 +157,8 @@
   <!-- Back Online Banner -->
   <div id="online-banner" 
        class="fixed top-0 left-0 right-0 z-[9998] transform transition-transform duration-300 -translate-y-full"
-       role="status" aria-live="polite">
+       role="status" aria-live="polite"
+       style="padding-top: var(--safe-area-top);">
     <div class="bg-emerald-500/95 backdrop-blur-sm text-emerald-950 px-4 py-2.5 text-center">
       <div class="flex items-center justify-center gap-2">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -167,8 +169,8 @@
     </div>
   </div>
 
-  <!-- Toast Container -->
-  <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
+  <!-- Toast Container - with safe area for iOS Dynamic Island -->
+  <div id="toast-container" class="fixed left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none" style="top: max(1rem, calc(var(--safe-area-top) + 0.5rem));"></div>
 
   <!-- Top Header Bar (fixed on PWA) -->
   <header class="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-lg border-b border-zinc-800/50" style="padding-top: var(--safe-area-top);">
@@ -196,7 +198,10 @@
           <a href="/" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition {% block nav_home %}{% endblock %}">Submit</a>
           <a href="/queue" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition {% block nav_queue %}{% endblock %}">Queue</a>
           <a href="/store" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition {% block nav_store %}{% endblock %}">Store</a>
-          <a href="/my-requests" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition {% block nav_myrequests %}{% endblock %}">My Requests</a>
+          <a href="/my-requests" id="desktop-my-requests-link" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition flex items-center gap-1.5 {% block nav_myrequests %}{% endblock %}">
+            <span id="user-indicator" class="hidden w-2 h-2 rounded-full bg-indigo-500"></span>
+            My Prints
+          </a>
         </nav>
         {% endblock %}
       </div>
@@ -252,8 +257,17 @@
     // Update My Requests nav link if user has token
     const savedToken = localStorage.getItem('my_requests_token');
     if (savedToken) {
+      // Update mobile bottom nav
       const navLink = document.getElementById('my-requests-nav');
       if (navLink) navLink.href = '/my-requests/view?token=' + savedToken;
+      
+      // Update desktop nav link
+      const desktopLink = document.getElementById('desktop-my-requests-link');
+      if (desktopLink) desktopLink.href = '/my-requests/view?token=' + savedToken;
+      
+      // Show user indicator dot on desktop
+      const userIndicator = document.getElementById('user-indicator');
+      if (userIndicator) userIndicator.classList.remove('hidden');
     }
   </script>
 

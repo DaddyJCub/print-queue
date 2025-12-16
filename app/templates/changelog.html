@@ -36,12 +36,116 @@
     <!-- Changelog Entries -->
     <div class="space-y-6">
       
-      <!-- v1.8.9 -->
+      <!-- v1.8.13 -->
       <div class="bg-zinc-900/50 border border-indigo-500/50 rounded-xl p-6">
         <div class="flex items-center gap-3 mb-4">
-          <span class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg">v1.8.9</span>
+          <span class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg">v1.8.13</span>
           <span class="text-zinc-400 text-sm">December 2024</span>
           <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50">Latest</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Push Notification Robustness</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Safe request body parsing</strong> - All push endpoints now gracefully handle empty bodies, wrong Content-Types, and malformed JSON</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Consistent JSON API contract</strong> - Push subscribe/unsubscribe/test/prefs endpoints return structured <code class="bg-zinc-800 px-1 rounded">{success: bool, error: "..."}</code> responses</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Push health endpoint</strong> - New <code class="bg-zinc-800 px-1 rounded">/api/push/health</code> admin diagnostic shows VAPID config, subscription counts, JWT generation status</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Frontend consistency</strong> - All push JS now sends JSON with proper Content-Type headers instead of mixed FormData/JSON</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.8.12 -->
+      <div class="bg-zinc-900/50 border border-zinc-700/50 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.8.12</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Build Photos, Progress UI & Push Notifications</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Per-build photo gallery</strong> - Requester view now shows completion photos for each build in a mobile-friendly grid with lightbox</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Build progress details</strong> - Multi-build requests show detailed status for each build (PENDING → READY → PRINTING → COMPLETED)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Push notifications fixed</strong> - Resolved JSONDecodeError that broke subscribe/unsubscribe/test flows</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Push diagnostics panel</strong> - New floating panel showing notification permission, SW state, and subscription status for debugging</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.8.11 -->
+      <div class="bg-zinc-900/50 border border-zinc-700/50 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.8.11</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Build Management & Printer Selection</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Delete builds</strong> - Admins can now delete individual builds from requests with proper safeguards and confirmations</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Edit printer assignment</strong> - Build edit form now allows changing the assigned printer before starting a build</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Strict printer validation</strong> - Builds can no longer be started with "Any" printer selected; a specific printer must be chosen</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Robust form handling</strong> - Build forms now handle empty/optional fields gracefully without causing errors</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.8.10 -->
+      <div class="bg-zinc-900/50 border border-zinc-700/50 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.8.10</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Session Persistence & Development Tools</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Fixed admin session persistence</strong> - Navigating between admin and public pages no longer requires re-login</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Cookie configuration</strong> - Session cookies now work correctly on both HTTP (localhost) and HTTPS (production)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Smoke check endpoint</strong> - New <code class="bg-zinc-800 px-1 rounded">/admin/smoke-check</code> route for quick system health verification</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.8.9 -->
+      <div class="bg-zinc-900/50 border border-zinc-700/50 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.8.9</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
         </div>
         <h3 class="text-lg font-semibold mb-3">Printer Offline Handling & Push Notifications</h3>
         <ul class="space-y-2 text-sm text-zinc-300">

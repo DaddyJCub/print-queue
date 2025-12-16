@@ -10,7 +10,7 @@ from collections import deque
 
 import httpx
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Response, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
@@ -18,8 +18,12 @@ from fastapi.staticfiles import StaticFiles
 from app.demo_data import DEMO_MODE, seed_demo_data, reset_demo_data, get_demo_status
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.9"
+APP_VERSION = "1.8.13"
 # Changelog:
+# 1.8.13 - Push notification robustness: safe body parsing, JSON API contract, /api/push/health endpoint
+# 1.8.12 - Per-build photos gallery, push notification fixes (JSONDecodeError), diagnostics panel
+# 1.8.11 - Build management: edit/delete builds, strict printer validation, robust form handling
+# 1.8.10 - Fixed admin session persistence (cookie path/secure), added smoke check endpoint
 # 1.8.7 - Added logging system, fixed database connection errors in requester portal
 # 1.8.6 - Build state fixes for IN_PROGRESS status in My Requests
 # 1.8.1 - Printer retry logic (3 retries before offline), admin per-status email controls, duplicate request fix
@@ -1072,22 +1076,37 @@ def sync_request_status_from_builds(request_id: str, skip_done_notification: boo
     return new_status
 
 
-def start_build(build_id: str, printer: str, comment: Optional[str] = None) -> bool:
+def start_build(build_id: str, printer: str, comment: Optional[str] = None) -> Dict[str, Any]:
     """
     Start a build (transition from READY/PENDING to PRINTING).
     Assigns the printer and records the start time.
-    Returns True if successful.
+    
+    Args:
+        build_id: The ID of the build to start
+        printer: The printer code (must be a valid, specific printer - not "ANY")
+        comment: Optional comment for the status change
+    
+    Returns:
+        dict with keys: success, error (if failed)
     """
+    # Validate printer selection - must be a specific printer, not "ANY" or empty
+    valid_printer_codes = [p[0] for p in PRINTERS if p[0] != "ANY"]
+    if not printer or printer.strip() == "" or printer == "ANY":
+        return {"success": False, "error": "A specific printer must be selected to start a build"}
+    
+    if printer not in valid_printer_codes:
+        return {"success": False, "error": f"Invalid printer: {printer}. Choose from: {', '.join(valid_printer_codes)}"}
+    
     conn = db()
     build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
     
     if not build:
         conn.close()
-        return False
+        return {"success": False, "error": "Build not found"}
     
     if build["status"] not in ("PENDING", "READY"):
         conn.close()
-        return False
+        return {"success": False, "error": f"Cannot start build - current status is {build['status']}"}
     
     now = now_iso()
     old_status = build["status"]
@@ -1130,7 +1149,7 @@ def start_build(build_id: str, printer: str, comment: Optional[str] = None) -> b
     except Exception as e:
         print(f"[BUILD-START] Failed to send start notification: {e}")
     
-    return True
+    return {"success": True}
 
 
 def fail_build(build_id: str, comment: Optional[str] = None) -> bool:
@@ -1332,6 +1351,100 @@ def complete_build(build_id: str, comment: Optional[str] = None, snapshot_b64: O
             print(f"[BUILD-COMPLETE] Failed to send notification: {e}")
     
     return True
+
+
+def delete_build(build_id: str, force: bool = False) -> Dict[str, Any]:
+    """
+    Delete a build and clean up associated data.
+    
+    Args:
+        build_id: The ID of the build to delete
+        force: If True, allow deleting PRINTING builds (with warning)
+    
+    Returns:
+        dict with keys: success, error, warning, request_id
+    """
+    conn = db()
+    build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
+    
+    if not build:
+        conn.close()
+        return {"success": False, "error": "Build not found"}
+    
+    request_id = build["request_id"]
+    status = build["status"]
+    build_number = build["build_number"]
+    
+    # Block deletion of PRINTING builds unless forced
+    if status == "PRINTING" and not force:
+        conn.close()
+        return {
+            "success": False, 
+            "error": "Cannot delete a build that is currently PRINTING. Use force=True to override.",
+            "requires_force": True
+        }
+    
+    warning = None
+    if status == "COMPLETED":
+        warning = "Deleted a COMPLETED build - this may affect request history"
+    elif status == "PRINTING" and force:
+        warning = "Force-deleted a PRINTING build - printer may still be running"
+    
+    # Delete associated data
+    # 1. Delete build snapshots
+    conn.execute("DELETE FROM build_snapshots WHERE build_id = ?", (build_id,))
+    
+    # 2. Delete build status events
+    conn.execute("DELETE FROM build_status_events WHERE build_id = ?", (build_id,))
+    
+    # 3. Delete the build itself
+    conn.execute("DELETE FROM builds WHERE id = ?", (build_id,))
+    
+    # 4. Renumber remaining builds to maintain consistency
+    remaining_builds = conn.execute(
+        "SELECT id FROM builds WHERE request_id = ? ORDER BY build_number",
+        (request_id,)
+    ).fetchall()
+    
+    for i, b in enumerate(remaining_builds, start=1):
+        conn.execute(
+            "UPDATE builds SET build_number = ?, updated_at = ? WHERE id = ?",
+            (i, now_iso(), b["id"])
+        )
+    
+    # 5. Update total_builds on the request
+    new_total = len(remaining_builds)
+    conn.execute(
+        "UPDATE requests SET total_builds = ?, updated_at = ? WHERE id = ?",
+        (new_total, now_iso(), request_id)
+    )
+    
+    # 6. Clear active_build_id if we deleted the active build
+    req = conn.execute("SELECT active_build_id FROM requests WHERE id = ?", (request_id,)).fetchone()
+    if req and req["active_build_id"] == build_id:
+        conn.execute(
+            "UPDATE requests SET active_build_id = NULL, updated_at = ? WHERE id = ?",
+            (now_iso(), request_id)
+        )
+    
+    conn.commit()
+    conn.close()
+    
+    # Sync parent request status (recalculate from remaining builds)
+    sync_request_status_from_builds(request_id)
+    
+    # Clear from print match suggestions if the build's printer was involved
+    if build["printer"]:
+        clear_print_match_suggestion(build["printer"])
+    
+    print(f"[BUILD-DELETE] Deleted build {build_id[:8]} (was #{build_number}, status={status}) from request {request_id[:8]}")
+    
+    return {
+        "success": True, 
+        "warning": warning,
+        "request_id": request_id,
+        "deleted_build_number": build_number
+    }
 
 
 def setup_builds_for_request(request_id: str, build_count: int = None) -> int:
@@ -4669,6 +4782,21 @@ async def requester_portal(request: Request, rid: str, token: str):
         "SELECT * FROM request_messages WHERE request_id = ? ORDER BY created_at ASC", (rid,)
     ).fetchall()
     
+    # Get builds with snapshots (for multi-build requests or DONE status)
+    builds_with_snapshots = []
+    builds = conn.execute(
+        """SELECT b.*, bs.snapshot_data, bs.created_at as snapshot_created_at
+           FROM builds b
+           LEFT JOIN build_snapshots bs ON b.id = bs.build_id AND bs.snapshot_type = 'completion'
+           WHERE b.request_id = ?
+           ORDER BY b.build_number""",
+        (rid,)
+    ).fetchall()
+    
+    for b in builds:
+        build_dict = dict(b)
+        builds_with_snapshots.append(build_dict)
+    
     # Fetch printer status if currently printing or in progress
     printer_status = None
     smart_eta_display = None
@@ -4705,6 +4833,9 @@ async def requester_portal(request: Request, rid: str, token: str):
                 if eta_dt:
                     smart_eta_display = format_eta_display(eta_dt)
     
+    # Get requester email for push diagnostics
+    requester_email = req["requester_email"]
+    
     conn.close()
     
     return templates.TemplateResponse("my_request.html", {
@@ -4718,7 +4849,9 @@ async def requester_portal(request: Request, rid: str, token: str):
         "printer_status": printer_status,
         "smart_eta_display": smart_eta_display,
         "build_eta_info": get_request_eta_info(rid, dict(req)),
-        "active_printer": active_printer,  # Pass the active printer to template
+        "active_printer": active_printer,
+        "builds_with_snapshots": builds_with_snapshots,
+        "requester_email": requester_email,
     })
 
 
@@ -5678,7 +5811,18 @@ def admin_login_post(password: str = Form(...), next: Optional[str] = Form(None)
     # Redirect to next URL if provided, otherwise admin dashboard
     redirect_to = next if next and next.startswith("/admin") else "/admin"
     resp = RedirectResponse(url=redirect_to, status_code=303)
-    resp.set_cookie("admin_pw", password, httponly=True, samesite="lax", secure=True, max_age=604800)  # 7 days, HTTPS only
+    # Set cookie with path=/ to ensure it's sent for all routes
+    # secure=True only when running over HTTPS (production)
+    is_https = BASE_URL.startswith("https://")
+    resp.set_cookie(
+        "admin_pw", 
+        password, 
+        httponly=True, 
+        samesite="lax", 
+        secure=is_https,  # Only require HTTPS in production
+        path="/",  # Ensure cookie is sent for all routes
+        max_age=604800  # 7 days
+    )
     return resp
 
 
@@ -5686,7 +5830,7 @@ def admin_login_post(password: str = Form(...), next: Optional[str] = Form(None)
 def admin_logout():
     """Clear admin session cookie and redirect to home."""
     resp = RedirectResponse(url="/", status_code=303)
-    resp.delete_cookie("admin_pw")
+    resp.delete_cookie("admin_pw", path="/")  # Must match path used when setting
     return resp
 
 
@@ -6150,6 +6294,90 @@ def test_error_403():
 def test_error_400():
     """Test endpoint to trigger a 400 Bad Request error"""
     raise HTTPException(status_code=400, detail="This is a test 400 bad request error")
+
+
+# ─────────────────────────── SMOKE CHECK ENDPOINT ───────────────────────────
+@app.get("/admin/smoke-check")
+def admin_smoke_check(_=Depends(require_admin)):
+    """
+    Lightweight smoke check for regression safety.
+    Tests core functionality without triggering side effects.
+    Returns JSON health summary.
+    """
+    import time
+    start = time.time()
+    checks = {}
+    
+    # 1. Database connectivity
+    try:
+        conn = db()
+        cur = conn.execute("SELECT COUNT(*) FROM requests")
+        count = cur.fetchone()[0]
+        conn.close()
+        checks["database"] = {"ok": True, "requests_count": count}
+    except Exception as e:
+        checks["database"] = {"ok": False, "error": str(e)}
+    
+    # 2. Template loading (just verify they parse without rendering)
+    key_templates = [
+        "pwa_base.html",
+        "public_queue_new.html", 
+        "request_form_new.html",
+        "my_requests_lookup_new.html",
+        "admin_queue.html",
+        "admin_request.html",
+    ]
+    template_checks = {}
+    for tpl in key_templates:
+        try:
+            # Just get the template to verify it parses
+            templates.get_template(tpl)
+            template_checks[tpl] = True
+        except Exception as e:
+            template_checks[tpl] = str(e)
+    checks["templates"] = {
+        "ok": all(v is True for v in template_checks.values()),
+        "details": template_checks
+    }
+    
+    # 3. Settings database check
+    try:
+        admin_email = get_setting("admin_email", "")
+        checks["settings"] = {"ok": True, "admin_email_set": bool(admin_email)}
+    except Exception as e:
+        checks["settings"] = {"ok": False, "error": str(e)}
+    
+    # 4. File storage paths
+    try:
+        data_dir = os.path.dirname(DB_PATH)
+        uploads_exists = os.path.isdir(UPLOAD_DIR)
+        data_exists = os.path.isdir(data_dir)
+        checks["storage"] = {
+            "ok": uploads_exists and data_exists,
+            "uploads_dir": uploads_exists,
+            "data_dir": data_exists
+        }
+    except Exception as e:
+        checks["storage"] = {"ok": False, "error": str(e)}
+    
+    # 5. Environment config
+    checks["environment"] = {
+        "ok": True,
+        "base_url": BASE_URL,
+        "demo_mode": DEMO_MODE,
+        "version": APP_VERSION
+    }
+    
+    # Summary
+    elapsed_ms = round((time.time() - start) * 1000, 2)
+    all_ok = all(c.get("ok", False) for c in checks.values())
+    
+    return {
+        "status": "healthy" if all_ok else "degraded",
+        "checks": checks,
+        "elapsed_ms": elapsed_ms,
+        "timestamp": datetime.now().isoformat()
+    }
 
 
 @app.get("/api/logs")
@@ -6920,9 +7148,25 @@ def admin_set_status(
 
     from_status = req["status"]
     
+    # Validate printer selection when changing to PRINTING
+    # Must have a specific printer selected (not "ANY" or empty)
+    valid_printer_codes = [p[0] for p in PRINTERS if p[0] != "ANY"]
+    effective_printer = printer.strip() if printer and printer.strip() else None
+    
+    if to_status == "PRINTING" and from_status != "PRINTING":
+        if not effective_printer or effective_printer == "ANY":
+            conn.close()
+            raise HTTPException(
+                status_code=400, 
+                detail="A specific printer must be selected to start printing. 'Any' is not allowed."
+            )
+        if effective_printer not in valid_printer_codes:
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"Invalid printer: {effective_printer}")
+    
     # Track printing start time when transitioning to PRINTING
     update_cols = ["status", "updated_at"]
-    update_vals = [to_status, now_iso()]
+    update_vals: list = [to_status, now_iso()]
     
     if to_status == "PRINTING" and from_status != "PRINTING":
         update_cols.append("printing_started_at")
@@ -6972,7 +7216,11 @@ def admin_set_status(
         
         if first_ready:
             # Start the first build with the selected printer
-            start_build(first_ready["id"], printer or req["printer"], comment)
+            # Use the specific printer from the status change (never "ANY")
+            start_printer = printer if printer and printer != "ANY" else None
+            if start_printer:
+                start_build(first_ready["id"], start_printer, comment)
+            # If no specific printer, don't auto-start (admin must select one)
 
     # Settings-driven emails
     admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))
@@ -7330,9 +7578,9 @@ def admin_start_build(
     if not build:
         raise HTTPException(status_code=404, detail="Build not found")
     
-    success = start_build(build_id, printer, comment)
-    if not success:
-        raise HTTPException(status_code=400, detail="Cannot start build - invalid state")
+    result = start_build(build_id, printer, comment)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Cannot start build - invalid state"))
     
     return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
 
@@ -7443,12 +7691,18 @@ async def admin_complete_build(
 def admin_configure_builds(
     request: Request,
     rid: str,
-    build_count: int = Form(...),
+    build_count: str = Form("1"),  # Accept as string to handle empty/invalid
     _=Depends(require_admin)
 ):
     """Configure the number of builds for a request. Adjusts builds up or down."""
-    if build_count < 1 or build_count > 20:
-        raise HTTPException(status_code=400, detail="Build count must be 1-20")
+    # Parse build_count with safe defaults
+    try:
+        build_count_int = int(build_count) if build_count and build_count.strip() else 1
+    except (ValueError, TypeError):
+        build_count_int = 1
+    
+    # Clamp to valid range
+    build_count_int = max(1, min(20, build_count_int))
     
     conn = db()
     req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
@@ -7464,9 +7718,9 @@ def admin_configure_builds(
     
     now = now_iso()
     
-    if build_count > current_count:
+    if build_count_int > current_count:
         # Add more builds
-        for i in range(current_count + 1, build_count + 1):
+        for i in range(current_count + 1, build_count_int + 1):
             build_id = str(uuid.uuid4())
             # New builds start as PENDING, or READY if request is approved
             initial_status = "READY" if req["status"] in ["APPROVED", "PRINTING", "IN_PROGRESS"] else "PENDING"
@@ -7474,10 +7728,10 @@ def admin_configure_builds(
                 INSERT INTO builds (id, request_id, build_number, status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (build_id, rid, i, initial_status, now, now))
-    elif build_count < current_count:
+    elif build_count_int < current_count:
         # Remove builds from the end (only if they haven't started)
         for b in reversed(existing_builds):
-            if current_count <= build_count:
+            if current_count <= build_count_int:
                 break
             if b["status"] in ["PENDING", "READY"]:
                 conn.execute("DELETE FROM builds WHERE id = ?", (b["id"],))
@@ -7485,11 +7739,55 @@ def admin_configure_builds(
     
     # Update total_builds on request
     conn.execute("UPDATE requests SET total_builds = ?, updated_at = ? WHERE id = ?", 
-                 (build_count, now, rid))
+                 (build_count_int, now, rid))
     conn.commit()
     conn.close()
     
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@app.post("/admin/build/{build_id}/delete")
+def admin_delete_build(
+    request: Request,
+    build_id: str,
+    force: Optional[str] = Form(None),
+    confirm: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """
+    Delete a build and clean up associated data.
+    
+    - Blocks PRINTING builds unless force=1
+    - Warns for COMPLETED builds, requires confirm=1
+    """
+    conn = db()
+    build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
+    conn.close()
+    
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found")
+    
+    # Require confirmation for COMPLETED builds
+    if build["status"] == "COMPLETED" and confirm != "1":
+        raise HTTPException(
+            status_code=400, 
+            detail="Deleting a COMPLETED build requires confirmation. Set confirm=1 to proceed."
+        )
+    
+    # Require force for PRINTING builds
+    force_delete = force == "1"
+    
+    result = delete_build(build_id, force=force_delete)
+    
+    if not result["success"]:
+        if result.get("requires_force"):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"{result['error']} Stop the print first, or use force=1 to override."
+            )
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to delete build"))
+    
+    return RedirectResponse(url=f"/admin/request/{result['request_id']}", status_code=303)
 
 
 @app.post("/admin/build/{build_id}/notes")
@@ -7518,38 +7816,65 @@ def admin_update_build_notes(
 def admin_update_build(
     request: Request,
     build_id: str,
-    print_name: Optional[str] = Form(None),
-    material: Optional[str] = Form(None),
-    print_time_minutes: Optional[int] = Form(None),
-    notes: Optional[str] = Form(None),
-    colors: Optional[str] = Form(None),
+    print_name: Optional[str] = Form(""),
+    material: Optional[str] = Form(""),
+    print_time_minutes: Optional[str] = Form(""),  # Accept as string to handle empty
+    notes: Optional[str] = Form(""),
+    colors: Optional[str] = Form(""),
+    printer: Optional[str] = Form(""),  # Allow editing printer assignment
     _=Depends(require_admin)
 ):
-    """Update details for a specific build."""
+    """Update details for a specific build. All fields are optional."""
     conn = db()
-    build = conn.execute("SELECT request_id FROM builds WHERE id = ?", (build_id,)).fetchone()
+    build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
     if not build:
         conn.close()
         raise HTTPException(status_code=404, detail="Build not found")
     
     updates = ["updated_at = ?"]
-    values = [now_iso()]
+    values: list = [now_iso()]
     
+    # Handle print_name - empty string means clear, None means don't update
     if print_name is not None:
         updates.append("print_name = ?")
-        values.append(print_name.strip() if print_name else None)
+        values.append(print_name.strip() if print_name.strip() else None)
+    
+    # Handle material - empty or "same as request" clears it
     if material is not None:
         updates.append("material = ?")
-        values.append(material.strip() if material else None)
+        values.append(material.strip() if material.strip() else None)
+    
+    # Handle print_time_minutes - parse string to int, empty/0 clears it
     if print_time_minutes is not None:
         updates.append("print_time_minutes = ?")
-        values.append(print_time_minutes if print_time_minutes > 0 else None)
+        try:
+            parsed_time = int(print_time_minutes) if print_time_minutes.strip() else 0
+            values.append(parsed_time if parsed_time > 0 else None)
+        except (ValueError, TypeError):
+            values.append(None)
+    
+    # Handle notes
     if notes is not None:
         updates.append("notes = ?")
-        values.append(notes.strip() if notes else None)
+        values.append(notes.strip() if notes.strip() else None)
+    
+    # Handle colors
     if colors is not None:
         updates.append("colors = ?")
-        values.append(colors.strip() if colors else None)
+        values.append(colors.strip() if colors.strip() else None)
+    
+    # Handle printer - only allow changing if build is not PRINTING
+    # and validate against known printers (excluding "ANY")
+    if printer is not None and printer.strip():
+        printer_val = printer.strip()
+        valid_printer_codes = [p[0] for p in PRINTERS if p[0] != "ANY"]
+        
+        if printer_val in valid_printer_codes:
+            if build["status"] != "PRINTING":
+                updates.append("printer = ?")
+                values.append(printer_val)
+            # If PRINTING, silently ignore printer change (can't change mid-print)
+        # Empty or invalid printer is ignored (don't clear an existing assignment)
     
     values.append(build_id)
     conn.execute(f"UPDATE builds SET {', '.join(updates)} WHERE id = ?", values)
@@ -7578,9 +7903,9 @@ def admin_start_next_build(
     if not next_build:
         raise HTTPException(status_code=400, detail="No READY builds available")
     
-    success = start_build(next_build["id"], printer, comment)
-    if not success:
-        raise HTTPException(status_code=400, detail="Failed to start build")
+    result = start_build(next_build["id"], printer, comment)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to start build"))
     
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
@@ -7604,9 +7929,9 @@ def admin_start_specific_build(
     if build["status"] not in ["PENDING", "READY"]:
         raise HTTPException(status_code=400, detail=f"Cannot start build in {build['status']} status")
     
-    success = start_build(build_id, printer, comment)
-    if not success:
-        raise HTTPException(status_code=400, detail="Failed to start build")
+    result = start_build(build_id, printer, comment)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to start build"))
     
     return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
 
@@ -8178,6 +8503,76 @@ def get_version():
 
 # ─────────────────────────── PUSH NOTIFICATION API ───────────────────────────
 
+def _get_email_from_token(token: str) -> Optional[str]:
+    """Helper to resolve a my-requests token to email"""
+    if not token:
+        return None
+    conn = db()
+    row = conn.execute(
+        "SELECT email FROM email_lookup_tokens WHERE token = ?", (token,)
+    ).fetchone()
+    conn.close()
+    return row["email"] if row else None
+
+
+async def _parse_request_data(request: Request) -> dict:
+    """Parse request body - handles both JSON and FormData, returns empty dict on error.
+    Logs content-type and body length for debugging push issues."""
+    content_type = request.headers.get("content-type", "")
+    
+    # Log request info for debugging (without sensitive data)
+    try:
+        body_bytes = await request.body()
+        body_len = len(body_bytes) if body_bytes else 0
+        print(f"[PUSH_PARSE] Content-Type: {content_type}, Body length: {body_len}")
+    except:
+        body_bytes = b""
+        body_len = 0
+        print(f"[PUSH_PARSE] Content-Type: {content_type}, Body: unreadable")
+    
+    # Try JSON first
+    if "application/json" in content_type:
+        try:
+            if body_bytes:
+                return json.loads(body_bytes)
+            return {}
+        except json.JSONDecodeError as e:
+            print(f"[PUSH_PARSE] JSON decode error: {e}")
+            return {}
+        except Exception as e:
+            print(f"[PUSH_PARSE] JSON parse error: {e}")
+            return {}
+    
+    # Try FormData
+    if "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
+        try:
+            # Need to re-create request body since we already consumed it
+            async def receive():
+                return {"type": "http.request", "body": body_bytes}
+            request._receive = receive
+            form = await request.form()
+            data = dict(form)
+            # Parse nested JSON in subscription field
+            if "subscription" in data and isinstance(data["subscription"], str):
+                try:
+                    data["subscription"] = json.loads(data["subscription"])
+                except:
+                    pass
+            return data
+        except Exception as e:
+            print(f"[PUSH_PARSE] FormData parse error: {e}")
+            return {}
+    
+    # Fallback: try JSON anyway (some clients don't set Content-Type)
+    try:
+        if body_bytes:
+            return json.loads(body_bytes)
+    except:
+        pass
+    
+    return {}
+
+
 @app.get("/api/push/vapid-public-key")
 def get_vapid_public_key():
     """Get the VAPID public key for push subscription"""
@@ -8189,12 +8584,22 @@ def get_vapid_public_key():
 # Test push notification endpoint
 @app.post("/api/push/test")
 async def test_push_notification(request: Request):
-    """Test push notification for a user (by email) - returns detailed results"""
+    """Test push notification for a user (by email or token) - returns detailed results"""
     try:
-        data = await request.json()
+        data = await _parse_request_data(request)
+        
+        # Accept either email or token
         email = data.get("email")
+        token = data.get("token")
+        
+        if not email and token:
+            email = _get_email_from_token(token)
+        
         if not email:
-            return {"error": "Missing email", "status": "error"}
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Missing email or invalid token", "status": "error"}
+            )
         
         print(f"[PUSH TEST] Testing push for email: {email}")
         result = send_push_notification(
@@ -8204,45 +8609,86 @@ async def test_push_notification(request: Request):
             "/my-requests/view"
         )
         
-        if result["sent"] > 0:
-            return {"status": "sent", "details": result}
-        elif result["errors"]:
-            return {"status": "error", "details": result}
+        if result.get("sent", 0) > 0:
+            return {"success": True, "status": "sent", "details": result}
+        elif result.get("errors"):
+            return {"success": False, "status": "error", "error": result.get("errors", [{}])[0].get("error", "Unknown error"), "details": result}
         else:
-            return {"status": "no_subscriptions", "details": result}
+            return {"success": False, "status": "no_subscriptions", "error": "No push subscriptions found for this email", "details": result}
     except Exception as e:
         print(f"[PUSH TEST] Exception: {e}")
-        return {"error": str(e), "status": "exception"}
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e), "status": "exception"}
+        )
 
 
 @app.post("/api/push/subscribe")
 async def subscribe_push(request: Request):
-    """Subscribe to push notifications for a user (with diagnostics logging)"""
+    """Subscribe to push notifications for a user (with diagnostics logging)
+    
+    Accepts either:
+    - JSON with {email, subscription}
+    - FormData with {token, subscription} (token resolved to email)
+    """
     try:
-        data = await request.json()
+        data = await _parse_request_data(request)
         print(f"[PUSH] Subscribe attempt: {data}")
+        
+        # Accept either email or token
         email = data.get("email", "")
+        token = data.get("token", "")
+        
+        if not email and token:
+            email = _get_email_from_token(token)
+        
         subscription = data.get("subscription", {})
-        if not email or not subscription:
-            print(f"[PUSH] ERROR: Missing email or subscription: {data}")
-            return {"error": "Missing email or subscription"}
+        
+        if not email:
+            print(f"[PUSH] ERROR: Missing email (token={token})")
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Missing email or invalid token"}
+            )
+        
+        if not subscription:
+            print(f"[PUSH] ERROR: Missing subscription data")
+            return JSONResponse(
+                status_code=400, 
+                content={"success": False, "error": "Missing subscription"}
+            )
+        
         endpoint = subscription.get("endpoint")
         keys = subscription.get("keys", {})
         p256dh = keys.get("p256dh")
         auth = keys.get("auth")
+        
         if not endpoint or not p256dh or not auth:
             print(f"[PUSH] ERROR: Invalid subscription data: {subscription}")
-            return {"error": "Invalid subscription data"}
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Invalid subscription data (missing endpoint/keys)"}
+            )
+        
         conn = db()
         # Check if subscription already exists for this endpoint
         existing = conn.execute(
-            "SELECT id FROM push_subscriptions WHERE endpoint = ?",
+            "SELECT id, email FROM push_subscriptions WHERE endpoint = ?",
             (endpoint,)
         ).fetchone()
+        
         if existing:
+            # Update email if endpoint exists but email changed
+            if existing["email"] != email:
+                conn.execute(
+                    "UPDATE push_subscriptions SET email = ? WHERE endpoint = ?",
+                    (email, endpoint)
+                )
+                conn.commit()
+                print(f"[PUSH] Updated subscription email: {endpoint}")
             conn.close()
-            print(f"[PUSH] Already subscribed: {endpoint}")
-            return {"status": "already_subscribed"}
+            return {"success": True, "status": "already_subscribed"}
+        
         conn.execute(
             """INSERT INTO push_subscriptions (id, email, endpoint, p256dh, auth, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
@@ -8250,11 +8696,18 @@ async def subscribe_push(request: Request):
         )
         conn.commit()
         conn.close()
-        print(f"[PUSH] Subscribed: {endpoint}")
-        return {"status": "subscribed"}
+        print(f"[PUSH] Subscribed: {email} -> {endpoint[:50]}...")
+        return {"success": True, "status": "subscribed"}
     except Exception as e:
         print(f"[PUSH] ERROR: Exception in subscribe_push: {e}")
-        return {"error": str(e)}
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+
 # Push diagnostics endpoint
 @app.get("/api/push/diagnostics/{email}")
 def push_diagnostics(email: str):
@@ -8266,6 +8719,70 @@ def push_diagnostics(email: str):
     ).fetchall()
     conn.close()
     return {"subscriptions": [dict(row) for row in subs]}
+
+
+@app.get("/api/push/health")
+def push_health_check(_=Depends(require_admin)):
+    """Admin-only push notification health check endpoint.
+    Confirms VAPID configuration, subscription counts, and tests push capability.
+    """
+    health = {
+        "ok": True,
+        "vapid_configured": bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY),
+        "vapid_public_key_length": len(VAPID_PUBLIC_KEY) if VAPID_PUBLIC_KEY else 0,
+        "vapid_claims_email": VAPID_CLAIMS_EMAIL,
+        "subscriptions": {"total": 0, "by_email": {}},
+        "pywebpush_available": False,
+        "test_result": None,
+        "errors": []
+    }
+    
+    # Check pywebpush
+    try:
+        from pywebpush import webpush, WebPushException
+        health["pywebpush_available"] = True
+    except ImportError:
+        health["ok"] = False
+        health["errors"].append("pywebpush not installed")
+    
+    # Check VAPID
+    if not health["vapid_configured"]:
+        health["ok"] = False
+        health["errors"].append("VAPID keys not configured")
+    
+    # Count subscriptions
+    conn = db()
+    try:
+        total = conn.execute("SELECT COUNT(*) as cnt FROM push_subscriptions").fetchone()
+        health["subscriptions"]["total"] = total["cnt"] if total else 0
+        
+        by_email = conn.execute(
+            "SELECT email, COUNT(*) as cnt FROM push_subscriptions GROUP BY email ORDER BY cnt DESC LIMIT 10"
+        ).fetchall()
+        health["subscriptions"]["by_email"] = {row["email"]: row["cnt"] for row in by_email}
+    except Exception as e:
+        health["errors"].append(f"DB error: {e}")
+    finally:
+        conn.close()
+    
+    # Test VAPID JWT generation
+    if health["vapid_configured"]:
+        try:
+            from py_vapid import Vapid
+            import base64
+            key_bytes = base64.urlsafe_b64decode(VAPID_PRIVATE_KEY + '==')
+            v = Vapid.from_raw(key_bytes)
+            test_claims = {
+                'sub': VAPID_CLAIMS_EMAIL if VAPID_CLAIMS_EMAIL.startswith('mailto:') else f'mailto:{VAPID_CLAIMS_EMAIL}',
+                'aud': 'https://fcm.googleapis.com'
+            }
+            token = v.sign(test_claims)
+            health["test_result"] = "JWT generation OK"
+        except Exception as e:
+            health["ok"] = False
+            health["errors"].append(f"VAPID JWT test failed: {e}")
+    
+    return health
 
 
 # Service Worker + Push debugging info endpoint
@@ -8330,65 +8847,90 @@ def sw_debug_info():
     }
 
 
-@app.post("/api/push/test")
-async def api_test_push_notification(request: Request):
-    """Test push notification sending - returns detailed diagnostics"""
-    data = await request.json()
-    email = data.get("email")
-    if not email:
-        return {"error": "Missing email"}
-    
-    result = send_push_notification(
-        email=email,
-        title="Test Notification",
-        body="If you see this, push notifications are working!",
-        url="/my-requests/view"
-    )
-    return result
-
-
 @app.post("/api/push/unsubscribe")
 async def unsubscribe_push(request: Request):
-    """Unsubscribe from push notifications (per user/email)"""
-    data = await request.json()
-    email = data.get("email")
-    endpoint = data.get("endpoint")
-    if not email:
-        return {"error": "Missing email"}
-    conn = db()
-    if endpoint:
-        conn.execute(
-            "DELETE FROM push_subscriptions WHERE email = ? AND endpoint = ?",
-            (email, endpoint)
+    """Unsubscribe from push notifications (per user/email or token)
+    
+    Accepts either:
+    - JSON with {email, endpoint?}
+    - FormData with {token, endpoint?}
+    """
+    try:
+        data = await _parse_request_data(request)
+        
+        email = data.get("email")
+        token = data.get("token")
+        endpoint = data.get("endpoint")
+        
+        if not email and token:
+            email = _get_email_from_token(token)
+        
+        if not email:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Missing email or invalid token"}
+            )
+        
+        conn = db()
+        if endpoint:
+            result = conn.execute(
+                "DELETE FROM push_subscriptions WHERE email = ? AND endpoint = ?",
+                (email, endpoint)
+            )
+        else:
+            # Remove all subscriptions for this user
+            result = conn.execute(
+                "DELETE FROM push_subscriptions WHERE email = ?",
+                (email,)
+            )
+        deleted = result.rowcount
+        conn.commit()
+        conn.close()
+        
+        print(f"[PUSH] Unsubscribed {deleted} subscription(s) for {email}")
+        return {"success": True, "status": "unsubscribed", "deleted": deleted}
+    except Exception as e:
+        print(f"[PUSH] ERROR in unsubscribe: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
         )
-    else:
-        # Remove all subscriptions for this user
-        conn.execute(
-            "DELETE FROM push_subscriptions WHERE email = ?",
-            (email,)
-        )
-    conn.commit()
-    conn.close()
-    return {"status": "unsubscribed"}
 
 
 @app.post("/api/push/clear-all")
 async def clear_all_push_subscriptions(request: Request):
     """Clear ALL push subscriptions for a user - use when VAPID keys change"""
-    data = await request.json()
-    email = data.get("email")
-    if not email:
-        return {"error": "Missing email"}
-    conn = db()
-    result = conn.execute(
-        "DELETE FROM push_subscriptions WHERE email = ?",
-        (email,)
-    )
-    deleted = result.rowcount
-    conn.commit()
-    conn.close()
-    print(f"[PUSH] Cleared {deleted} subscriptions for {email}")
-    return {"status": "cleared", "deleted": deleted}
+    try:
+        data = await _parse_request_data(request)
+        
+        email = data.get("email")
+        token = data.get("token")
+        
+        if not email and token:
+            email = _get_email_from_token(token)
+        
+        if not email:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Missing email or invalid token"}
+            )
+        
+        conn = db()
+        result = conn.execute(
+            "DELETE FROM push_subscriptions WHERE email = ?",
+            (email,)
+        )
+        deleted = result.rowcount
+        conn.commit()
+        conn.close()
+        print(f"[PUSH] Cleared {deleted} subscriptions for {email}")
+        return {"success": True, "status": "cleared", "deleted": deleted}
+    except Exception as e:
+        print(f"[PUSH] ERROR in clear-all: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
 
 
 @app.get("/api/notification-prefs/{rid}")
@@ -8420,7 +8962,11 @@ async def get_notification_prefs(rid: str, token: str = ""):
 @app.post("/api/notification-prefs/{rid}")
 async def update_notification_prefs(rid: str, request: Request):
     """Update notification preferences for a request"""
-    data = await request.json()
+    try:
+        data = await _parse_request_data(request)
+    except:
+        data = {}
+    
     token = data.get("token", "")
     email_enabled = data.get("email", True)
     push_enabled = data.get("push", False)
@@ -8432,12 +8978,12 @@ async def update_notification_prefs(rid: str, request: Request):
     
     if not req:
         conn.close()
-        return {"error": "Request not found"}
+        return JSONResponse(status_code=404, content={"ok": False, "error": "Request not found"})
     
     # Verify token
     if req["access_token"] != token:
         conn.close()
-        return {"error": "Invalid token"}
+        return JSONResponse(status_code=403, content={"ok": False, "error": "Invalid token"})
     
     prefs = json.dumps({"email": email_enabled, "push": push_enabled})
     conn.execute(
@@ -8447,7 +8993,7 @@ async def update_notification_prefs(rid: str, request: Request):
     conn.commit()
     conn.close()
     
-    return {"status": "updated", "prefs": {"email": email_enabled, "push": push_enabled}}
+    return {"ok": True, "status": "updated", "prefs": {"email": email_enabled, "push": push_enabled}}
 
 
 @app.post("/api/update-global-email-notify")

@@ -495,6 +495,117 @@
       </div>
     {% endif %}
     
+    <!-- Build Photos Gallery (for multi-build or completed builds) -->
+    {% set completed_builds_with_photos = builds_with_snapshots|selectattr('snapshot_data')|list if builds_with_snapshots else [] %}
+    {% if completed_builds_with_photos|length > 0 %}
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+        <h2 class="font-semibold mb-4 flex items-center gap-2">
+          📸 Build Photos
+          <span class="text-xs text-zinc-500 font-normal">({{ completed_builds_with_photos|length }} of {{ builds_with_snapshots|length }} builds)</span>
+        </h2>
+        
+        {% if completed_builds_with_photos|length == 1 %}
+          <!-- Single photo - full width -->
+          {% set photo = completed_builds_with_photos[0] %}
+          <div class="relative">
+            <img src="data:image/jpeg;base64,{{ photo.snapshot_data }}" 
+                 alt="Build {{ photo.build_number }} completion"
+                 class="w-full rounded-xl border border-zinc-700 cursor-pointer hover:opacity-90 transition"
+                 onclick="showSnapshot(this.src)" />
+            <div class="absolute bottom-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded-lg text-xs">
+              Build {{ photo.build_number }}{% if photo.print_name %} • {{ photo.print_name }}{% endif %}
+            </div>
+          </div>
+        {% else %}
+          <!-- Multiple photos - grid gallery -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {% for photo in completed_builds_with_photos %}
+              <div class="relative aspect-square">
+                <img src="data:image/jpeg;base64,{{ photo.snapshot_data }}" 
+                     alt="Build {{ photo.build_number }} completion"
+                     class="w-full h-full object-cover rounded-xl border border-zinc-700 cursor-pointer hover:opacity-90 transition"
+                     onclick="showSnapshot(this.src)" />
+                <div class="absolute bottom-1 left-1 bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded text-xs">
+                  #{{ photo.build_number }}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+        
+        <!-- Pending photos placeholder -->
+        {% set pending_count = builds_with_snapshots|rejectattr('snapshot_data')|selectattr('status', 'in', ['PENDING', 'READY', 'PRINTING'])|list|length %}
+        {% if pending_count > 0 %}
+          <p class="text-xs text-zinc-500 mt-3 text-center">
+            {{ pending_count }} more build(s) in progress — photos will appear when each completes
+          </p>
+        {% endif %}
+      </div>
+    {% elif builds_with_snapshots|length > 0 and req.status not in ['DONE', 'PICKED_UP', 'CANCELLED', 'REJECTED'] %}
+      <!-- Placeholder for builds without photos yet -->
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+        <div class="flex items-center gap-3 text-zinc-500">
+          <span class="text-2xl opacity-50">📷</span>
+          <div>
+            <p class="text-sm">Photos will appear here as builds complete</p>
+            <p class="text-xs text-zinc-600">{{ builds_with_snapshots|length }} build(s) scheduled</p>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+    
+    <!-- Detailed Build Progress (for multi-build requests) -->
+    {% if builds_with_snapshots|length > 1 %}
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+        <h2 class="font-semibold mb-4">🔧 Build Details</h2>
+        <div class="space-y-2">
+          {% for b in builds_with_snapshots %}
+            {% set status_colors = {
+              'PENDING': 'bg-zinc-700 text-zinc-300',
+              'READY': 'bg-blue-600/30 text-blue-300 border border-blue-500/30',
+              'PRINTING': 'bg-amber-600/30 text-amber-300 border border-amber-500/30',
+              'COMPLETED': 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/30',
+              'FAILED': 'bg-red-600/30 text-red-300 border border-red-500/30',
+              'SKIPPED': 'bg-zinc-600/30 text-zinc-400 border border-zinc-500/30'
+            } %}
+            {% set status_icons = {
+              'PENDING': '⏳',
+              'READY': '✓',
+              'PRINTING': '🖨️',
+              'COMPLETED': '✅',
+              'FAILED': '❌',
+              'SKIPPED': '⏭️'
+            } %}
+            <div class="flex items-center justify-between bg-zinc-950/50 rounded-xl p-3 {% if b.status == 'PRINTING' %}ring-1 ring-amber-500/50{% endif %}">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center {{ status_colors.get(b.status, 'bg-zinc-700') }} text-sm flex-shrink-0">
+                  {{ status_icons.get(b.status, '•') }}
+                </div>
+                <div class="min-w-0">
+                  <p class="font-medium text-sm truncate">{{ b.print_name or ('Build ' ~ b.build_number) }}</p>
+                  <p class="text-xs text-zinc-500">
+                    {% if b.printer and b.printer != 'ANY' %}{{ b.printer }}{% endif %}
+                    {% if b.progress and b.status == 'PRINTING' %} • {{ b.progress }}%{% endif %}
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                {% if b.snapshot_data %}
+                  <img src="data:image/jpeg;base64,{{ b.snapshot_data }}" 
+                       alt="Build {{ b.build_number }}"
+                       class="w-10 h-10 rounded-lg object-cover border border-zinc-700 cursor-pointer hover:opacity-80 transition"
+                       onclick="showSnapshot(this.src)" />
+                {% endif %}
+                <span class="text-xs {{ status_colors.get(b.status, 'bg-zinc-700') }} px-2 py-1 rounded-lg">
+                  {{ b.status }}
+                </span>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+    
     <!-- Request Details -->
     <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
       <h2 class="font-semibold mb-4">Request Details</h2>
@@ -857,6 +968,202 @@
         hideSnapshot();
       }
     });
+  </script>
+  
+  <!-- Push Diagnostics Panel (dev-friendly) -->
+  <div id="push-diagnostics" class="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur-sm border-t border-zinc-800 transform translate-y-full transition-transform duration-300 z-40" 
+       style="padding-bottom: env(safe-area-inset-bottom, 0px);">
+    <div class="max-w-2xl mx-auto p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold flex items-center gap-2">
+          🔔 Push Notification Diagnostics
+          <span id="diag-status-badge" class="text-xs px-2 py-0.5 rounded-full bg-zinc-700">checking...</span>
+        </h3>
+        <button onclick="toggleDiagnosticsPanel()" class="p-1 hover:bg-zinc-800 rounded">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="grid grid-cols-2 gap-3 text-xs">
+        <div class="bg-zinc-900/50 rounded-lg p-2">
+          <span class="text-zinc-500">Permission</span>
+          <p id="diag-permission" class="font-mono">-</p>
+        </div>
+        <div class="bg-zinc-900/50 rounded-lg p-2">
+          <span class="text-zinc-500">SW State</span>
+          <p id="diag-sw-state" class="font-mono">-</p>
+        </div>
+        <div class="bg-zinc-900/50 rounded-lg p-2">
+          <span class="text-zinc-500">Subscription</span>
+          <p id="diag-subscription" class="font-mono truncate">-</p>
+        </div>
+        <div class="bg-zinc-900/50 rounded-lg p-2">
+          <span class="text-zinc-500">Server Subs</span>
+          <p id="diag-server-subs" class="font-mono">-</p>
+        </div>
+      </div>
+      
+      <div class="flex gap-2 mt-3">
+        <button onclick="testPushFromDiagnostics()" id="diag-test-btn"
+                class="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-medium transition">
+          Test Push
+        </button>
+        <button onclick="refreshDiagnostics()" 
+                class="px-3 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-xs font-medium transition">
+          Refresh
+        </button>
+      </div>
+      
+      <div id="diag-result" class="hidden mt-3 p-2 rounded-lg text-xs"></div>
+    </div>
+  </div>
+  
+  <!-- Diagnostics Toggle Button (floating) -->
+  <button id="diag-toggle-btn" onclick="toggleDiagnosticsPanel()" 
+          class="fixed bottom-4 right-4 w-10 h-10 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-full flex items-center justify-center shadow-lg transition z-30"
+          style="bottom: calc(1rem + env(safe-area-inset-bottom, 0px));"
+          title="Push Diagnostics">
+    🔔
+  </button>
+  
+  <script>
+    // Push diagnostics state
+    let diagPanelOpen = false;
+    const requesterEmail = "{{ requester_email }}";
+    
+    function toggleDiagnosticsPanel() {
+      const panel = document.getElementById('push-diagnostics');
+      const btn = document.getElementById('diag-toggle-btn');
+      diagPanelOpen = !diagPanelOpen;
+      
+      if (diagPanelOpen) {
+        panel.classList.remove('translate-y-full');
+        btn.classList.add('hidden');
+        refreshDiagnostics();
+      } else {
+        panel.classList.add('translate-y-full');
+        btn.classList.remove('hidden');
+      }
+    }
+    
+    async function refreshDiagnostics() {
+      const permEl = document.getElementById('diag-permission');
+      const swEl = document.getElementById('diag-sw-state');
+      const subEl = document.getElementById('diag-subscription');
+      const serverEl = document.getElementById('diag-server-subs');
+      const badge = document.getElementById('diag-status-badge');
+      
+      // Check permission
+      if ('Notification' in window) {
+        const perm = Notification.permission;
+        permEl.textContent = perm;
+        permEl.className = 'font-mono ' + (perm === 'granted' ? 'text-emerald-400' : perm === 'denied' ? 'text-red-400' : 'text-yellow-400');
+      } else {
+        permEl.textContent = 'N/A';
+        permEl.className = 'font-mono text-zinc-500';
+      }
+      
+      // Check SW state
+      if ('serviceWorker' in navigator) {
+        try {
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg) {
+            const sw = reg.active || reg.installing || reg.waiting;
+            swEl.textContent = sw ? sw.state : 'none';
+            swEl.className = 'font-mono ' + (sw?.state === 'activated' ? 'text-emerald-400' : 'text-yellow-400');
+          } else {
+            swEl.textContent = 'not registered';
+            swEl.className = 'font-mono text-red-400';
+          }
+        } catch (e) {
+          swEl.textContent = 'error';
+          swEl.className = 'font-mono text-red-400';
+        }
+      } else {
+        swEl.textContent = 'not supported';
+        swEl.className = 'font-mono text-zinc-500';
+      }
+      
+      // Check local subscription
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          const endpoint = sub.endpoint;
+          subEl.textContent = endpoint.slice(-20) + '...';
+          subEl.title = endpoint;
+          subEl.className = 'font-mono text-emerald-400 truncate';
+        } else {
+          subEl.textContent = 'none';
+          subEl.className = 'font-mono text-zinc-500';
+        }
+      } catch (e) {
+        subEl.textContent = 'error';
+        subEl.className = 'font-mono text-red-400';
+      }
+      
+      // Check server subscriptions
+      try {
+        const resp = await fetch(`/api/push/diagnostics/${encodeURIComponent(requesterEmail)}`);
+        const data = await resp.json();
+        const count = data.subscriptions?.length || 0;
+        serverEl.textContent = count + ' sub(s)';
+        serverEl.className = 'font-mono ' + (count > 0 ? 'text-emerald-400' : 'text-zinc-500');
+      } catch (e) {
+        serverEl.textContent = 'error';
+        serverEl.className = 'font-mono text-red-400';
+      }
+      
+      // Update badge
+      const perm = Notification.permission;
+      if (perm === 'granted') {
+        badge.textContent = 'enabled';
+        badge.className = 'text-xs px-2 py-0.5 rounded-full bg-emerald-600/30 text-emerald-300';
+      } else if (perm === 'denied') {
+        badge.textContent = 'blocked';
+        badge.className = 'text-xs px-2 py-0.5 rounded-full bg-red-600/30 text-red-300';
+      } else {
+        badge.textContent = 'not enabled';
+        badge.className = 'text-xs px-2 py-0.5 rounded-full bg-zinc-700 text-zinc-300';
+      }
+    }
+    
+    async function testPushFromDiagnostics() {
+      const btn = document.getElementById('diag-test-btn');
+      const resultEl = document.getElementById('diag-result');
+      
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      resultEl.classList.add('hidden');
+      
+      try {
+        const resp = await fetch('/api/push/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: requesterEmail })
+        });
+        
+        const data = await resp.json();
+        resultEl.classList.remove('hidden');
+        
+        if (data.success) {
+          resultEl.className = 'mt-3 p-2 rounded-lg text-xs bg-emerald-600/20 text-emerald-300 border border-emerald-500/30';
+          resultEl.innerHTML = '✅ Test notification sent! Check your device.';
+        } else {
+          resultEl.className = 'mt-3 p-2 rounded-lg text-xs bg-red-600/20 text-red-300 border border-red-500/30';
+          resultEl.innerHTML = '❌ ' + (data.error || 'Failed to send test notification');
+        }
+      } catch (e) {
+        resultEl.classList.remove('hidden');
+        resultEl.className = 'mt-3 p-2 rounded-lg text-xs bg-red-600/20 text-red-300 border border-red-500/30';
+        resultEl.innerHTML = '❌ Network error: ' + e.message;
+      }
+      
+      btn.disabled = false;
+      btn.textContent = 'Test Push';
+    }
   </script>
 </body>
 </html>

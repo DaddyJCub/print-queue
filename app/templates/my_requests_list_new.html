@@ -16,7 +16,7 @@
   <div class="w-px h-5 bg-zinc-700 mx-1"></div>
 </nav>
 
-<div class="flex items-center gap-2 relative">
+<div class="relative">
   <button id="account-menu-btn" onclick="toggleAccountMenu()" class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 rounded-lg transition tap-highlight">
     <div class="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">
       {{ email[0]|upper }}
@@ -26,8 +26,8 @@
     </svg>
   </button>
   
-  <!-- Account Dropdown Menu - positioned relative to button -->
-  <div id="account-menu" class="hidden absolute right-0 top-full mt-2 w-72 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
+  <!-- Account Dropdown Menu - positioned to right edge of viewport on desktop -->
+  <div id="account-menu" class="hidden absolute top-full mt-2 w-72 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl z-50 overflow-hidden right-0 sm:right-0">
     <!-- Account Header -->
     <div class="p-4 border-b border-zinc-800 bg-zinc-950/50">
       <div class="flex items-center gap-3">
@@ -718,14 +718,14 @@ async function subscribePush() {
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
     });
     
-    // Send to server
-    const formData = new FormData();
-    formData.append('token', token);
-    formData.append('subscription', JSON.stringify(subscription));
-    
+    // Send to server as JSON
     const response = await fetch('/api/push/subscribe', {
       method: 'POST',
-      body: formData
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: token,
+        subscription: subscription.toJSON()
+      })
     });
     
     const data = await response.json();
@@ -752,14 +752,14 @@ async function unsubscribePush() {
       // Unsubscribe locally
       await subscription.unsubscribe();
       
-      // Notify server
-      const formData = new FormData();
-      formData.append('token', token);
-      formData.append('endpoint', subscription.endpoint);
-      
+      // Notify server as JSON
       await fetch('/api/push/unsubscribe', {
         method: 'POST',
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: token,
+          endpoint: subscription.endpoint
+        })
       });
     }
     
@@ -779,12 +779,10 @@ async function testPushNotification() {
   btn.textContent = 'Sending...';
   
   try {
-    const formData = new FormData();
-    formData.append('token', token);
-    
     const response = await fetch('/api/push/test', {
       method: 'POST',
-      body: formData
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token })
     });
     
     const data = await response.json();
