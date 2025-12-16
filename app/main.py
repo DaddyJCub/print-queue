@@ -1659,22 +1659,23 @@ def _parse_stl_file(file_path: str) -> Optional[Dict[str, Any]]:
         min_coords = stl_mesh.min_
         max_coords = stl_mesh.max_
         
+        # Convert numpy types to Python native types to avoid JSON serialization issues
         dimensions = {
-            "x": round(max_coords[0] - min_coords[0], 2),
-            "y": round(max_coords[1] - min_coords[1], 2),
-            "z": round(max_coords[2] - min_coords[2], 2),
+            "x": float(round(max_coords[0] - min_coords[0], 2)),
+            "y": float(round(max_coords[1] - min_coords[1], 2)),
+            "z": float(round(max_coords[2] - min_coords[2], 2)),
         }
         
         # Calculate volume (approximate using signed volume method)
         # This works for closed meshes
         try:
             volume = abs(stl_mesh.get_mass_properties()[0])
-            volume_cm3 = round(volume / 1000, 2)  # Convert mm³ to cm³
+            volume_cm3 = float(round(volume / 1000, 2))  # Convert mm³ to cm³
         except:
             volume_cm3 = None
         
         # Triangle count
-        triangle_count = len(stl_mesh.vectors)
+        triangle_count = int(len(stl_mesh.vectors))
         
         return {
             "type": "stl",
@@ -9120,31 +9121,11 @@ def admin_edit_request(
 async def admin_add_file(
     request: Request,
     rid: str,
-    upload: UploadFile = File(...),
+    upload: List[UploadFile] = File(...),
     _=Depends(require_admin)
 ):
-    if not upload or not upload.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-
-    ext = safe_ext(upload.filename)
-    if ext not in ALLOWED_EXTS:
-        raise HTTPException(status_code=400, detail=f"Only these file types are allowed: {', '.join(sorted(ALLOWED_EXTS))}")
-
-    data = await upload.read()
-    max_bytes = MAX_UPLOAD_MB * 1024 * 1024
-    if len(data) > max_bytes:
-        raise HTTPException(status_code=400, detail=f"File too large. Max size is {MAX_UPLOAD_MB}MB.")
-
-    stored = f"{uuid.uuid4()}{ext}"
-    out_path = os.path.join(UPLOAD_DIR, stored)
-
-    sha = hashlib.sha256(data).hexdigest()
-    with open(out_path, "wb") as f:
-        f.write(data)
-
-    # Parse 3D file metadata (dimensions, volume, etc.)
-    file_metadata = parse_3d_file_metadata(out_path, upload.filename)
-    file_metadata_json = json.dumps(file_metadata) if file_metadata else None
+    if not upload or len(upload) == 0:
+        raise HTTPException(status_code=400, detail="No files provided")
 
     conn = db()
     req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
@@ -9152,17 +9133,51 @@ async def admin_add_file(
         conn.close()
         raise HTTPException(status_code=404, detail="Not found")
 
-    conn.execute(
-        """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (str(uuid.uuid4()), rid, now_iso(), upload.filename, stored, len(data), sha, file_metadata_json)
-    )
-    conn.execute(
-        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
-        (str(uuid.uuid4()), rid, now_iso(), req["status"], req["status"], f"Admin added file: {upload.filename}")
-    )
-    conn.execute("UPDATE requests SET updated_at = ? WHERE id = ?", (now_iso(), rid))
-    conn.commit()
+    max_bytes = MAX_UPLOAD_MB * 1024 * 1024
+    files_added = []
+    errors = []
+
+    for file in upload:
+        if not file or not file.filename:
+            continue
+
+        ext = safe_ext(file.filename)
+        if ext not in ALLOWED_EXTS:
+            errors.append(f"{file.filename}: File type not allowed")
+            continue
+
+        data = await file.read()
+        if len(data) > max_bytes:
+            errors.append(f"{file.filename}: File too large (max {MAX_UPLOAD_MB}MB)")
+            continue
+
+        stored = f"{uuid.uuid4()}{ext}"
+        out_path = os.path.join(UPLOAD_DIR, stored)
+
+        sha = hashlib.sha256(data).hexdigest()
+        with open(out_path, "wb") as f:
+            f.write(data)
+
+        # Parse 3D file metadata (dimensions, volume, etc.)
+        file_metadata = parse_3d_file_metadata(out_path, file.filename)
+        file_metadata_json = json.dumps(file_metadata) if file_metadata else None
+
+        conn.execute(
+            """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (str(uuid.uuid4()), rid, now_iso(), file.filename, stored, len(data), sha, file_metadata_json)
+        )
+        files_added.append(file.filename)
+
+    if files_added:
+        comment = f"Admin added {len(files_added)} file(s): {', '.join(files_added)}"
+        conn.execute(
+            "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), rid, now_iso(), req["status"], req["status"], comment)
+        )
+        conn.execute("UPDATE requests SET updated_at = ? WHERE id = ?", (now_iso(), rid))
+        conn.commit()
+
     conn.close()
 
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)

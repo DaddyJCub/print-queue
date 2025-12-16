@@ -840,11 +840,11 @@
           <h2 class="text-lg font-semibold mb-4">📁 Files</h2>
           
           <form class="mb-4" method="POST" action="/admin/request/{{ req['id'] }}/add-file" enctype="multipart/form-data">
-            <p class="text-xs text-zinc-400 mb-2">{{ allowed_exts }} • {{ max_upload_mb }}MB max</p>
+            <p class="text-xs text-zinc-400 mb-2">{{ allowed_exts }} • {{ max_upload_mb }}MB max per file • Multiple files supported</p>
             <div class="flex gap-2">
-              <input type="file" name="upload" class="flex-1 text-sm rounded-lg border border-zinc-700" />
+              <input type="file" name="upload" multiple class="flex-1 text-sm rounded-lg border border-zinc-700" />
               <button class="rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-3 text-sm font-semibold whitespace-nowrap">
-                Add
+                Add Files
               </button>
             </div>
           </form>
