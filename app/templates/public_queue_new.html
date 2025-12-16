@@ -678,12 +678,5 @@
   
   // Start auto-refresh
   startAutoRefresh();
-  
-  // Update saved token link
-  const savedToken = localStorage.getItem('my_requests_token');
-  if (savedToken) {
-    const link = document.getElementById('my-requests-nav');
-    if (link) link.href = '/my-requests/view?token=' + savedToken;
-  }
 </script>
 {% endblock %}
