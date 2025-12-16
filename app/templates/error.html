@@ -1,0 +1,91 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}{{ title }} | Printellect{% endblock %}
+
+{% block content %}
+<div class="min-h-[60vh] flex items-center justify-center">
+  <div class="text-center px-4 py-12 max-w-md">
+    <!-- Error Icon -->
+    <div class="mb-6">
+      {% if error_code == 404 %}
+      <div class="w-24 h-24 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center">
+        <svg class="w-12 h-12 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+        </svg>
+      </div>
+      {% elif error_code == 403 %}
+      <div class="w-24 h-24 mx-auto rounded-full bg-red-500/10 flex items-center justify-center">
+        <svg class="w-12 h-12 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+        </svg>
+      </div>
+      {% elif error_code == 500 %}
+      <div class="w-24 h-24 mx-auto rounded-full bg-purple-500/10 flex items-center justify-center">
+        <svg class="w-12 h-12 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
+        </svg>
+      </div>
+      {% else %}
+      <div class="w-24 h-24 mx-auto rounded-full bg-zinc-500/10 flex items-center justify-center">
+        <svg class="w-12 h-12 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+        </svg>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Error Code -->
+    <div class="text-6xl font-bold text-zinc-600 mb-2">{{ error_code }}</div>
+
+    <!-- Title -->
+    <h1 class="text-2xl font-bold text-white mb-3">{{ title }}</h1>
+
+    <!-- Message -->
+    <p class="text-zinc-400 mb-8 leading-relaxed">{{ message }}</p>
+
+    <!-- Actions -->
+    <div class="flex flex-col sm:flex-row gap-3 justify-center">
+      <a href="/" class="inline-flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition tap-highlight">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        </svg>
+        Go Home
+      </a>
+      <button onclick="history.back()" class="inline-flex items-center justify-center gap-2 px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-medium rounded-xl transition tap-highlight">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+        </svg>
+        Go Back
+      </button>
+    </div>
+
+    {% if error_code == 500 %}
+    <!-- Error sent for review notice -->
+    <div class="mt-8 p-4 bg-zinc-900 rounded-xl border border-zinc-800">
+      <div class="flex items-start gap-3">
+        <svg class="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div class="text-left">
+          <p class="text-sm text-zinc-300 font-medium">This error has been logged</p>
+          <p class="text-xs text-zinc-500 mt-1">Our team will review it. If this keeps happening, please try again later or contact support.</p>
+          {% if error_id %}
+          <p class="text-xs text-zinc-600 mt-2 font-mono">Reference: {{ error_id }}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if show_details and detail %}
+    <!-- Technical Details (collapsible) -->
+    <details class="mt-6 text-left">
+      <summary class="text-sm text-zinc-500 cursor-pointer hover:text-zinc-400 transition">Technical details</summary>
+      <div class="mt-2 p-3 bg-zinc-900 rounded-lg border border-zinc-800 text-xs text-zinc-400 font-mono break-all">
+        {{ detail }}
+      </div>
+    </details>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

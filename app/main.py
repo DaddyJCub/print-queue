@@ -238,6 +238,164 @@ templates.env.filters["localtime"] = format_datetime_local
 # NOTE: app/static must exist in your repo (can be empty with a .gitkeep)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+# ─────────────────────────── ERROR HANDLERS ───────────────────────────
+# Custom error pages for better UX
+
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+ERROR_MESSAGES = {
+    400: {
+        "title": "Bad Request",
+        "message": "Hmm, something's not quite right with that request. Double-check what you're trying to do and give it another shot!"
+    },
+    401: {
+        "title": "Not Authorized",
+        "message": "You'll need to log in first to access this page. Don't worry, it only takes a second!"
+    },
+    403: {
+        "title": "Access Denied",
+        "message": "Oops! Looks like you don't have permission to view this page. If you think this is a mistake, try logging in again."
+    },
+    404: {
+        "title": "Page Not Found",
+        "message": "Uh oh... we couldn't find what you were looking for. It might have been moved, deleted, or maybe the link is just taking a coffee break."
+    },
+    405: {
+        "title": "Method Not Allowed",
+        "message": "Whoops! That action isn't supported here. Try a different approach!"
+    },
+    408: {
+        "title": "Request Timeout",
+        "message": "That took a bit too long. The server got tired of waiting. Mind trying again?"
+    },
+    429: {
+        "title": "Too Many Requests",
+        "message": "Whoa there, speedster! You're going a bit too fast. Take a breather and try again in a moment."
+    },
+    500: {
+        "title": "Something Went Wrong",
+        "message": "Ope... not sure what happened there. We've logged this hiccup and will look into it. Try refreshing or come back in a bit!"
+    },
+    502: {
+        "title": "Bad Gateway",
+        "message": "Looks like there's a communication problem between our servers. Hang tight while we sort this out!"
+    },
+    503: {
+        "title": "Service Unavailable",
+        "message": "We're temporarily offline for maintenance or experiencing high traffic. We'll be back shortly!"
+    },
+    504: {
+        "title": "Gateway Timeout",
+        "message": "The server took too long to respond. Please try again in a moment."
+    },
+}
+
+@app.exception_handler(StarletteHTTPException)
+async def custom_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Handle HTTP exceptions with custom error pages"""
+    error_code = exc.status_code
+    error_info = ERROR_MESSAGES.get(error_code, {
+        "title": "Error",
+        "message": "Something unexpected happened. Please try again."
+    })
+    
+    # Log the error
+    logger.warning(f"HTTP {error_code} on {request.method} {request.url.path}: {exc.detail}")
+    
+    # Check if this is an API request (wants JSON response)
+    accept_header = request.headers.get("accept", "")
+    if "application/json" in accept_header and "text/html" not in accept_header:
+        return Response(
+            content=json.dumps({"detail": exc.detail or error_info["message"]}),
+            status_code=error_code,
+            media_type="application/json"
+        )
+    
+    # Return HTML error page
+    return templates.TemplateResponse(
+        "error.html",
+        {
+            "request": request,
+            "error_code": error_code,
+            "title": error_info["title"],
+            "message": error_info["message"],
+            "detail": exc.detail,
+            "show_details": error_code >= 400 and error_code < 500,  # Show details for client errors
+        },
+        status_code=error_code
+    )
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    """Handle unexpected exceptions with a friendly error page"""
+    import traceback
+    
+    # Log the full exception
+    logger.error(
+        f"Unhandled exception on {request.method} {request.url.path}: {exc}",
+        exc_info=True
+    )
+    
+    # Get full traceback for error report
+    tb_str = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    
+    # Generate error ID for reference
+    error_id = str(uuid.uuid4())[:8]
+    
+    # Try to save error to feedback table for admin review
+    try:
+        error_message = f"""🔴 Automatic Error Report (ID: {error_id})
+
+URL: {request.method} {request.url}
+Error: {type(exc).__name__}: {str(exc)}
+
+User Agent: {request.headers.get('user-agent', 'N/A')[:200]}
+Referer: {request.headers.get('referer', 'N/A')}
+
+Traceback:
+{tb_str[:2000]}"""
+        
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        feedback_id = str(uuid.uuid4())
+        conn.execute(
+            """INSERT INTO feedback (id, type, name, email, message, page_url, user_agent, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?)""",
+            (feedback_id, "error", "System", None, error_message.strip(), 
+             str(request.url), request.headers.get('user-agent', '')[:500], datetime.utcnow().isoformat() + "Z")
+        )
+        conn.commit()
+        conn.close()
+        logger.info(f"Error report saved to feedback table with ID: {feedback_id}")
+    except Exception as save_err:
+        logger.error(f"Failed to save error report: {save_err}")
+    
+    error_info = ERROR_MESSAGES[500]
+    
+    # Check if this is an API request (wants JSON response)
+    accept_header = request.headers.get("accept", "")
+    if "application/json" in accept_header and "text/html" not in accept_header:
+        return Response(
+            content=json.dumps({"detail": "Internal server error", "error_id": error_id}),
+            status_code=500,
+            media_type="application/json"
+        )
+    
+    # Return HTML error page
+    return templates.TemplateResponse(
+        "error.html",
+        {
+            "request": request,
+            "error_code": 500,
+            "title": error_info["title"],
+            "message": error_info["message"],
+            "detail": str(exc) if os.getenv("DEBUG", "").lower() == "true" else None,
+            "show_details": False,  # Don't show details for server errors in production
+            "error_id": error_id,
+        },
+        status_code=500
+    )
+
 # Global printer status cache with retry logic
 # Stores last successful status and failure count per printer
 _printer_status_cache: Dict[str, Dict[str, Any]] = {}
@@ -5964,6 +6122,33 @@ def admin_debug(request: Request, _=Depends(require_admin)):
         "failure_counts": _printer_failure_count,
         "version": APP_VERSION,
     })
+
+
+# ─────────────────────────── ERROR TESTING ENDPOINTS ───────────────────────────
+# These endpoints are for testing the error handling system
+
+@app.get("/test-error/500")
+def test_error_500(_=Depends(require_admin)):
+    """Test endpoint to trigger a 500 Internal Server Error (admin only)"""
+    raise ValueError("This is a test error to verify error handling and reporting works correctly")
+
+
+@app.get("/test-error/404")
+def test_error_404():
+    """Test endpoint to trigger a 404 Not Found error"""
+    raise HTTPException(status_code=404, detail="This is a test 404 error")
+
+
+@app.get("/test-error/403")
+def test_error_403():
+    """Test endpoint to trigger a 403 Forbidden error"""
+    raise HTTPException(status_code=403, detail="This is a test 403 access denied error")
+
+
+@app.get("/test-error/400")
+def test_error_400():
+    """Test endpoint to trigger a 400 Bad Request error"""
+    raise HTTPException(status_code=400, detail="This is a test 400 bad request error")
 
 
 @app.get("/api/logs")
