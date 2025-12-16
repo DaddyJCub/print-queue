@@ -32,16 +32,78 @@
         <div class="text-2xl font-bold text-indigo-400">v{{ version }}</div>
       </div>
     </div>
+    
+    <!-- Version Legend -->
+    <div class="mb-6 p-4 bg-zinc-900/30 border border-zinc-800 rounded-xl">
+      <p class="text-xs text-zinc-500 mb-3 font-medium uppercase tracking-wider">Release Types</p>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-1 bg-red-600/20 text-red-300 text-xs rounded-lg border border-red-500/50">🚨 Hotfix</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-1 bg-purple-600/20 text-purple-300 text-xs rounded-lg border border-purple-500/50">🔒 Security</span>
+        </div>
+      </div>
+    </div>
 
     <!-- Changelog Entries -->
     <div class="space-y-6">
       
-      <!-- v1.8.15 -->
-      <div id="v1.8.15" class="bg-zinc-900/50 border border-indigo-500/50 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
-        <div class="flex items-center gap-3 mb-4">
-          <a href="#v1.8.15" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v1.8.15</a>
+      <!-- v1.8.16 -->
+      <div id="v1.8.16" class="bg-zinc-900/50 border border-indigo-500/50 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <a href="#v1.8.16" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v1.8.16</a>
           <span class="text-zinc-400 text-sm">December 2024</span>
           <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50">Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">User Notification Preferences & Push Debugging</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Redesigned notification settings</strong> - Beautiful new modal with toggle switches and visual milestone selector</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Customizable progress milestones</strong> - Choose which percentages (25%, 50%, 75%, 90%) you want notifications at</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Granular notification control</strong> - Choose exactly which notifications you want via push or email</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Status update preferences</strong> - Control notifications for approval, completion, and other status changes</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Push subscription debugging</strong> - Admin can now view subscriber device counts and cleanup stale subscriptions</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Subscription health tools</strong> - Test all subscriptions and auto-remove invalid/expired ones</span>
+          </li>
+        </ul>
+        <!-- Tip box -->
+        <div class="mt-4 p-3 bg-indigo-900/30 border border-indigo-500/30 rounded-lg">
+          <p class="text-sm text-indigo-200">
+            <strong>💡 Tip:</strong> To customize your notification preferences, go to <strong>My Prints</strong>, tap your profile icon in the top right, then select <strong>Notification Settings</strong>. You can choose which milestone percentages to be notified at and toggle push/email for each notification type.
+          </p>
+        </div>
+      </div>
+
+      <!-- v1.8.15 -->
+      <div id="v1.8.15" class="bg-zinc-900/50 border border-zinc-700/50 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <a href="#v1.8.15" class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg hover:bg-zinc-600 transition">v1.8.15</a>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-3">Progress Notifications & Broadcast System</h3>
         <ul class="space-y-2 text-sm text-zinc-300">
@@ -70,9 +132,10 @@
 
       <!-- v1.8.14 -->
       <div id="v1.8.14" class="bg-zinc-900/50 border border-zinc-700/50 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
-        <div class="flex items-center gap-3 mb-4">
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
           <a href="#v1.8.14" class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg hover:bg-zinc-600 transition">v1.8.14</a>
           <span class="text-zinc-400 text-sm">December 2024</span>
+          <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
         </div>
         <h3 class="text-lg font-semibold mb-3">Multi-Build UX Improvements</h3>
         <ul class="space-y-2 text-sm text-zinc-300">
@@ -97,9 +160,10 @@
 
       <!-- v1.8.13 -->
       <div id="v1.8.13" class="bg-zinc-900/50 border border-zinc-700/50 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
-        <div class="flex items-center gap-3 mb-4">
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
           <a href="#v1.8.13" class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg hover:bg-zinc-600 transition">v1.8.13</a>
           <span class="text-zinc-400 text-sm">December 2024</span>
+          <span class="px-2 py-1 bg-red-600/20 text-red-300 text-xs rounded-lg border border-red-500/50">🚨 Hotfix</span>
         </div>
         <h3 class="text-lg font-semibold mb-3">Push Notification Robustness</h3>
         <ul class="space-y-2 text-sm text-zinc-300">
