@@ -3929,26 +3929,46 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     # Fetch current printer status for health indicators
     printer_status = {}
     for printer_code in ["ADVENTURER_4", "AD5X"]:
+        # Always include camera_url even if printer API fails
+        camera_url = get_camera_url(printer_code)
         try:
             printer_api = get_printer_api(printer_code)
             if printer_api:
                 status = await printer_api.get_status()
                 progress = await printer_api.get_percent_complete()
                 extended = await printer_api.get_extended_status()
+                temp_data = await printer_api.get_temperature()
                 if status:
                     machine_status = status.get("MachineStatus", "UNKNOWN")
                     printer_status[printer_code] = {
                         "status": machine_status.replace("_FROM_SD", ""),
-                        "temp": status.get("Temperature"),
+                        "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
+                        "target_temp": temp_data.get("TargetTemperature") if temp_data else None,
                         "progress": progress,
                         "healthy": machine_status in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD"],
                         "is_printing": machine_status in ["BUILDING", "BUILDING_FROM_SD"],
                         "current_file": extended.get("current_file") if extended else None,
                         "current_layer": extended.get("current_layer") if extended else None,
                         "total_layers": extended.get("total_layers") if extended else None,
+                        "camera_url": camera_url,
                     }
-        except Exception:
-            pass
+                    continue
+        except Exception as e:
+            print(f"[PUBLIC_QUEUE] Error fetching printer {printer_code} status: {e}")
+        
+        # Fallback: set minimal status with camera_url so camera button still works
+        printer_status[printer_code] = {
+            "status": None,
+            "temp": None,
+            "target_temp": None,
+            "progress": None,
+            "healthy": None,
+            "is_printing": False,
+            "current_file": None,
+            "current_layer": None,
+            "total_layers": None,
+            "camera_url": camera_url,
+        }
     
     # First pass: build items and find printing index, fetch real progress for PRINTING
     for idx, r in enumerate(rows):
@@ -4273,42 +4293,61 @@ async def requester_portal(request: Request, rid: str, token: str):
     
     conn.close()
     
-    # Fetch printer status if currently printing
+    # Fetch printer status if currently printing or in progress
     printer_status = None
     smart_eta_display = None
-    if req["status"] == "PRINTING" and req["printer"]:
-        printer_api = get_printer_api(req["printer"])
+    active_printer = req["printer"]
+    printing_started_at = req["printing_started_at"]
+    
+    if req["status"] in ["PRINTING", "IN_PROGRESS"]:
+        # For IN_PROGRESS, get the printer from the active build
+        if req["status"] == "IN_PROGRESS" and req["active_build_id"]:
+            active_build = conn.execute(
+                "SELECT printer, started_at FROM builds WHERE id = ?",
+                (req["active_build_id"],)
+            ).fetchone()
+            if active_build and active_build["printer"]:
+                active_printer = active_build["printer"]
+                if active_build["started_at"]:
+                    printing_started_at = active_build["started_at"]
+        
+        printer_api = get_printer_api(active_printer)
         if printer_api:
             try:
                 status = await printer_api.get_status()
                 progress = await printer_api.get_percent_complete()
                 extended = await printer_api.get_extended_status()
+                temp_data = await printer_api.get_temperature()
                 if status:
                     machine_status = status.get("MachineStatus", "UNKNOWN")
                     current_layer = extended.get("current_layer") if extended else None
                     total_layers = extended.get("total_layers") if extended else None
                     printer_status = {
                         "status": machine_status.replace("_FROM_SD", ""),
-                        "temp": status.get("Temperature"),
+                        "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
+                        "target_temp": temp_data.get("TargetTemperature") if temp_data else None,
                         "progress": progress,
                         "is_printing": machine_status in ["BUILDING", "BUILDING_FROM_SD"],
                         "current_layer": current_layer,
                         "total_layers": total_layers,
+                        "camera_url": get_camera_url(active_printer),
                     }
                     
                     # Calculate smart ETA
                     eta_dt = get_smart_eta(
-                        printer=req["printer"],
+                        printer=active_printer,
                         material=req["material"],
-                        current_percent=progress,
-                        printing_started_at=req["printing_started_at"],
-                        current_layer=current_layer,
-                        total_layers=total_layers
+                        current_percent=progress or 0,
+                        printing_started_at=printing_started_at or now_iso(),
+                        current_layer=current_layer or 0,
+                        total_layers=total_layers or 0
                     )
                     if eta_dt:
                         smart_eta_display = format_eta_display(eta_dt)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[REQUESTER_PORTAL] Error fetching printer status: {e}")
+    
+    conn.close()
     
     return templates.TemplateResponse("my_request.html", {
         "request": request,
@@ -4321,6 +4360,7 @@ async def requester_portal(request: Request, rid: str, token: str):
         "printer_status": printer_status,
         "smart_eta_display": smart_eta_display,
         "build_eta_info": get_request_eta_info(rid, dict(req)),
+        "active_printer": active_printer,  # Pass the active printer to template
     })
 
 
@@ -4698,76 +4738,94 @@ async def my_requests_view(request: Request, token: str):
     
     email = token_row["email"]
     
-    # Fetch all requests for this email, including completion_snapshot
+    # Fetch all requests for this email, including multi-build info
     requests_list = conn.execute(
         """SELECT id, print_name, status, created_at, updated_at, printer, material, colors, 
-                  access_token, completion_snapshot, printing_started_at, print_time_minutes
+                  access_token, completion_snapshot, printing_started_at, print_time_minutes,
+                  active_build_id, total_builds, completed_builds
            FROM requests 
            WHERE LOWER(requester_email) = ?
            ORDER BY 
              CASE WHEN status = 'DONE' THEN 0
-                  WHEN status = 'PRINTING' THEN 1
+                  WHEN status IN ('PRINTING', 'IN_PROGRESS') THEN 1
                   WHEN status = 'NEEDS_INFO' THEN 2
                   ELSE 3 END,
              created_at DESC""",
         (email,)
     ).fetchall()
     
-    conn.close()
-    
-    # Enrich printing requests with real-time printer status
+    # Enrich printing/in_progress requests with real-time printer status
     enriched_requests = []
     printer_status_cache = {}
     
     for req in requests_list:
         req_dict = dict(req)
+        req_dict["printer_status"] = None
+        req_dict["smart_eta_display"] = None
         
-        # If printing, fetch real-time printer status
-        if req["status"] == "PRINTING" and req["printer"]:
+        # If printing or in_progress, fetch real-time printer status
+        if req["status"] in ["PRINTING", "IN_PROGRESS"]:
+            # For IN_PROGRESS, get the printer from the active build
             printer_code = req["printer"]
+            printing_started_at = req["printing_started_at"]
             
-            # Cache printer status to avoid multiple calls
-            if printer_code not in printer_status_cache:
-                try:
-                    printer_api = get_printer_api(printer_code)
-                    if printer_api:
-                        status = await printer_api.get_status()
-                        progress = await printer_api.get_progress()
-                        extended = await printer_api.get_extended_status()
-                        temp_data = await printer_api.get_temperature()
-                        
-                        if status:
-                            machine_status = status.get("MachineStatus", "UNKNOWN")
-                            is_printing = machine_status in ["BUILDING", "BUILDING_FROM_SD"]
+            if req["status"] == "IN_PROGRESS" and req["active_build_id"]:
+                active_build = conn.execute(
+                    "SELECT printer, started_at FROM builds WHERE id = ?",
+                    (req["active_build_id"],)
+                ).fetchone()
+                if active_build and active_build["printer"]:
+                    printer_code = active_build["printer"]
+                    if active_build["started_at"]:
+                        printing_started_at = active_build["started_at"]
+            
+            req_dict["active_printer"] = printer_code  # Track which printer is active
+            
+            if printer_code:
+                # Cache printer status to avoid multiple calls
+                if printer_code not in printer_status_cache:
+                    try:
+                        printer_api = get_printer_api(printer_code)
+                        if printer_api:
+                            status = await printer_api.get_status()
+                            progress = await printer_api.get_progress()
+                            extended = await printer_api.get_extended_status()
+                            temp_data = await printer_api.get_temperature()
                             
-                            printer_status_cache[printer_code] = {
-                                "status": machine_status.replace("_FROM_SD", ""),
-                                "is_printing": is_printing,
-                                "progress": progress.get("PercentageCompleted") if progress else None,
-                                "current_file": extended.get("current_file") if extended else None,
-                                "current_layer": extended.get("current_layer") if extended else None,
-                                "total_layers": extended.get("total_layers") if extended else None,
-                                "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
-                                "camera_url": get_camera_url(printer_code),
-                            }
-                except Exception as e:
-                    print(f"[MY-REQUESTS] Error fetching printer status: {e}")
-            
-            req_dict["printer_status"] = printer_status_cache.get(printer_code)
-            
-            # Calculate smart ETA
-            if req_dict.get("printer_status"):
-                eta_dt = get_smart_eta(
-                    printer=printer_code,
-                    material=req["material"],
-                    current_percent=req_dict["printer_status"].get("progress") or 0,
-                    printing_started_at=req["printing_started_at"] or now_iso(),
-                    current_layer=req_dict["printer_status"].get("current_layer") or 0,
-                    total_layers=req_dict["printer_status"].get("total_layers") or 0
-                )
-                req_dict["smart_eta_display"] = format_eta_display(eta_dt) if eta_dt else None
+                            if status:
+                                machine_status = status.get("MachineStatus", "UNKNOWN")
+                                is_printing = machine_status in ["BUILDING", "BUILDING_FROM_SD"]
+                                
+                                printer_status_cache[printer_code] = {
+                                    "status": machine_status.replace("_FROM_SD", ""),
+                                    "is_printing": is_printing,
+                                    "progress": progress.get("PercentageCompleted") if progress else None,
+                                    "current_file": extended.get("current_file") if extended else None,
+                                    "current_layer": extended.get("current_layer") if extended else None,
+                                    "total_layers": extended.get("total_layers") if extended else None,
+                                    "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
+                                    "camera_url": get_camera_url(printer_code),
+                                }
+                    except Exception as e:
+                        print(f"[MY-REQUESTS] Error fetching printer status: {e}")
+                
+                req_dict["printer_status"] = printer_status_cache.get(printer_code)
+                
+                # Calculate smart ETA
+                if req_dict.get("printer_status"):
+                    eta_dt = get_smart_eta(
+                        printer=printer_code,
+                        material=req["material"],
+                        current_percent=req_dict["printer_status"].get("progress") or 0,
+                        printing_started_at=printing_started_at or now_iso(),
+                        current_layer=req_dict["printer_status"].get("current_layer") or 0,
+                        total_layers=req_dict["printer_status"].get("total_layers") or 0
+                    )
+                    req_dict["smart_eta_display"] = format_eta_display(eta_dt) if eta_dt else None
         
         enriched_requests.append(req_dict)
+    
+    conn.close()
     
     return templates.TemplateResponse("my_requests_list_new.html", {
         "request": request,

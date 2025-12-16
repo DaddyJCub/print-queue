@@ -67,7 +67,7 @@
 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
   <!-- Adventurer 4 -->
   <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
-    <div class="flex items-center justify-between mb-2">
+    <div class="flex items-center justify-between mb-3">
       <span class="font-semibold text-sm">🖨 Adventurer 4</span>
       <span id="printer-status-ADVENTURER_4">
       {% if printer_status.ADVENTURER_4.status %}
@@ -83,23 +83,26 @@
       {% endif %}
       </span>
     </div>
+    
+    <!-- Printing info -->
     {% if printer_status.ADVENTURER_4.is_printing %}
-    <div class="text-xs text-zinc-400 space-y-2">
+    <div class="text-xs text-zinc-400 space-y-2 mb-3">
       {% if printer_status.ADVENTURER_4.current_file %}
       <p class="truncate text-zinc-300">📄 {{ printer_status.ADVENTURER_4.current_file }}</p>
       {% endif %}
       {% if printer_status.ADVENTURER_4.progress is not none %}
       <div class="flex items-center gap-2">
-        <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-          <div class="h-full bg-emerald-500 transition-all" style="width: {{ printer_status.ADVENTURER_4.progress }}%"></div>
+        <div class="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+          <div class="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all" style="width: {{ printer_status.ADVENTURER_4.progress }}%"></div>
         </div>
-        <span class="text-emerald-300 font-semibold">{{ printer_status.ADVENTURER_4.progress }}%</span>
+        <span class="text-emerald-300 font-semibold min-w-[3rem] text-right">{{ printer_status.ADVENTURER_4.progress }}%</span>
       </div>
       {% endif %}
       {% if printer_status.ADVENTURER_4.current_layer is not none %}
-      <p>Layer: <span class="text-blue-300">{{ printer_status.ADVENTURER_4.current_layer }}/{{ printer_status.ADVENTURER_4.total_layers }}</span></p>
+      <p>Layer: <span class="text-blue-300 font-medium">{{ printer_status.ADVENTURER_4.current_layer }}/{{ printer_status.ADVENTURER_4.total_layers }}</span></p>
       {% endif %}
-      <!-- Current print details -->
+      
+      <!-- Current print job details -->
       {% if printing_by_printer.ADVENTURER_4 %}
       {% set pit = printing_by_printer.ADVENTURER_4 %}
       <div class="mt-2 pt-2 border-t border-zinc-700/50">
@@ -111,31 +114,44 @@
           <span><span class="text-zinc-500">By:</span> {{ pit.requester_first }}</span>
           <span><span class="text-zinc-500">Material:</span> {{ pit.material }}</span>
           {% if pit.smart_eta_display %}
-          <span class="col-span-2"><span class="text-zinc-500">ETA:</span> <span class="text-emerald-300">{{ pit.smart_eta_display }}</span></span>
+          <span class="col-span-2"><span class="text-zinc-500">ETA:</span> <span class="text-emerald-300 font-medium">{{ pit.smart_eta_display }}</span></span>
           {% endif %}
         </div>
       </div>
       {% endif %}
     </div>
     {% endif %}
-    <!-- Live Camera Preview - always show button, disabled if no camera configured -->
-    <div class="mt-3 pt-3 border-t border-zinc-700/50">
+    
+    <!-- Temperature and Camera row -->
+    <div class="flex items-center justify-between text-xs pt-2 border-t border-zinc-700/50">
+      <span class="text-zinc-400">
+        {% if printer_status.ADVENTURER_4.temp %}
+        🌡 <span class="text-zinc-200">{{ printer_status.ADVENTURER_4.temp }}°C</span>
+        {% if printer_status.ADVENTURER_4.target_temp %}
+        <span class="text-zinc-500">/ {{ printer_status.ADVENTURER_4.target_temp }}°C</span>
+        {% endif %}
+        {% else %}
+        <span class="text-zinc-600">—</span>
+        {% endif %}
+      </span>
       {% if printer_status.ADVENTURER_4.camera_url %}
       <button type="button" onclick="toggleCamera('ADVENTURER_4')" id="cam-btn-ADVENTURER_4" 
               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition">
         <span>📷</span> <span class="btn-text">Show Camera</span>
       </button>
       {% endif %}
-      <div id="cam-ADVENTURER_4" class="hidden mt-2">
-        <img id="cam-img-ADVENTURER_4" class="w-full rounded-lg bg-zinc-800 border border-zinc-700" alt="Camera" />
-        <div class="text-xs text-zinc-500 mt-1">Updates every 10 seconds</div>
-      </div>
+    </div>
+    
+    <!-- Camera preview (hidden by default) -->
+    <div id="cam-ADVENTURER_4" class="hidden mt-3">
+      <img id="cam-img-ADVENTURER_4" class="w-full rounded-lg bg-zinc-800 border border-zinc-700" alt="Camera" />
+      <div class="text-xs text-zinc-500 mt-1 text-center">Updates every 10 seconds</div>
     </div>
   </div>
 
   <!-- AD5X -->
   <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
-    <div class="flex items-center justify-between mb-2">
+    <div class="flex items-center justify-between mb-3">
       <span class="font-semibold text-sm">🖨 AD5X</span>
       <span id="printer-status-AD5X">
       {% if printer_status.AD5X.status %}
@@ -151,23 +167,26 @@
       {% endif %}
       </span>
     </div>
+    
+    <!-- Printing info -->
     {% if printer_status.AD5X.is_printing %}
-    <div class="text-xs text-zinc-400 space-y-2">
+    <div class="text-xs text-zinc-400 space-y-2 mb-3">
       {% if printer_status.AD5X.current_file %}
       <p class="truncate text-zinc-300">📄 {{ printer_status.AD5X.current_file }}</p>
       {% endif %}
       {% if printer_status.AD5X.progress is not none %}
       <div class="flex items-center gap-2">
-        <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-          <div class="h-full bg-emerald-500 transition-all" style="width: {{ printer_status.AD5X.progress }}%"></div>
+        <div class="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+          <div class="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all" style="width: {{ printer_status.AD5X.progress }}%"></div>
         </div>
-        <span class="text-emerald-300 font-semibold">{{ printer_status.AD5X.progress }}%</span>
+        <span class="text-emerald-300 font-semibold min-w-[3rem] text-right">{{ printer_status.AD5X.progress }}%</span>
       </div>
       {% endif %}
       {% if printer_status.AD5X.current_layer is not none %}
-      <p>Layer: <span class="text-blue-300">{{ printer_status.AD5X.current_layer }}/{{ printer_status.AD5X.total_layers }}</span></p>
+      <p>Layer: <span class="text-blue-300 font-medium">{{ printer_status.AD5X.current_layer }}/{{ printer_status.AD5X.total_layers }}</span></p>
       {% endif %}
-      <!-- Current print details -->
+      
+      <!-- Current print job details -->
       {% if printing_by_printer.AD5X %}
       {% set pit = printing_by_printer.AD5X %}
       <div class="mt-2 pt-2 border-t border-zinc-700/50">
@@ -179,25 +198,38 @@
           <span><span class="text-zinc-500">By:</span> {{ pit.requester_first }}</span>
           <span><span class="text-zinc-500">Material:</span> {{ pit.material }}</span>
           {% if pit.smart_eta_display %}
-          <span class="col-span-2"><span class="text-zinc-500">ETA:</span> <span class="text-emerald-300">{{ pit.smart_eta_display }}</span></span>
+          <span class="col-span-2"><span class="text-zinc-500">ETA:</span> <span class="text-emerald-300 font-medium">{{ pit.smart_eta_display }}</span></span>
           {% endif %}
         </div>
       </div>
       {% endif %}
     </div>
     {% endif %}
-    <!-- Live Camera Preview - always show button, disabled if no camera configured -->
-    <div class="mt-3 pt-3 border-t border-zinc-700/50">
+    
+    <!-- Temperature and Camera row -->
+    <div class="flex items-center justify-between text-xs pt-2 border-t border-zinc-700/50">
+      <span class="text-zinc-400">
+        {% if printer_status.AD5X.temp %}
+        🌡 <span class="text-zinc-200">{{ printer_status.AD5X.temp }}°C</span>
+        {% if printer_status.AD5X.target_temp %}
+        <span class="text-zinc-500">/ {{ printer_status.AD5X.target_temp }}°C</span>
+        {% endif %}
+        {% else %}
+        <span class="text-zinc-600">—</span>
+        {% endif %}
+      </span>
       {% if printer_status.AD5X.camera_url %}
       <button type="button" onclick="toggleCamera('AD5X')" id="cam-btn-AD5X" 
               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition">
         <span>📷</span> <span class="btn-text">Show Camera</span>
       </button>
       {% endif %}
-      <div id="cam-AD5X" class="hidden mt-2">
-        <img id="cam-img-AD5X" class="w-full rounded-lg bg-zinc-800 border border-zinc-700" alt="Camera" />
-        <div class="text-xs text-zinc-500 mt-1">Updates every 10 seconds</div>
-      </div>
+    </div>
+    
+    <!-- Camera preview (hidden by default) -->
+    <div id="cam-AD5X" class="hidden mt-3">
+      <img id="cam-img-AD5X" class="w-full rounded-lg bg-zinc-800 border border-zinc-700" alt="Camera" />
+      <div class="text-xs text-zinc-500 mt-1 text-center">Updates every 10 seconds</div>
     </div>
   </div>
 </div>

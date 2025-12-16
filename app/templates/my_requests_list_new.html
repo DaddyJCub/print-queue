@@ -226,6 +226,7 @@
   'NEEDS_INFO': 'bg-orange-500/20 border-orange-500/50 text-orange-300',
   'APPROVED': 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300',
   'PRINTING': 'bg-amber-500/20 border-amber-500/50 text-amber-300',
+  'IN_PROGRESS': 'bg-amber-500/20 border-amber-500/50 text-amber-300',
   'DONE': 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300',
   'PICKED_UP': 'bg-purple-500/20 border-purple-500/50 text-purple-300',
   'REJECTED': 'bg-red-500/20 border-red-500/50 text-red-300',
@@ -237,6 +238,7 @@
   'NEEDS_INFO': '❓',
   'APPROVED': '✓',
   'PRINTING': '🖨️',
+  'IN_PROGRESS': '🖨️',
   'DONE': '✅',
   'PICKED_UP': '📦',
   'REJECTED': '❌',
@@ -278,8 +280,8 @@
   </div>
   {% endif %}
 
-  <!-- Currently printing -->
-  {% set printing_requests = requests_list | selectattr('status', 'equalto', 'PRINTING') | list %}
+  <!-- Currently printing (includes both PRINTING and IN_PROGRESS with active builds) -->
+  {% set printing_requests = requests_list | selectattr('status', 'in', ['PRINTING', 'IN_PROGRESS']) | list %}
   {% if printing_requests %}
   <div class="mb-6">
     <h2 class="font-semibold text-indigo-400 mb-3 flex items-center gap-2">
@@ -292,7 +294,14 @@
         {% if req.printer_status %}
         <div class="bg-indigo-950/40 border-b border-indigo-500/30 p-3">
           <div class="flex items-center justify-between text-sm mb-2">
-            <span class="font-medium">{{ req.printer }}</span>
+            <div class="flex items-center gap-2">
+              <span class="font-medium">{{ req.active_printer or req.printer }}</span>
+              {% if req.total_builds and req.total_builds > 1 %}
+              <span class="text-xs px-1.5 py-0.5 bg-amber-500/20 border border-amber-500/50 text-amber-300 rounded">
+                Build {{ (req.completed_builds or 0) + 1 }}/{{ req.total_builds }}
+              </span>
+              {% endif %}
+            </div>
             <span class="text-emerald-300">{{ req.printer_status.progress or 0 }}%</span>
           </div>
           {% if req.printer_status.progress is not none %}
@@ -303,6 +312,9 @@
           {% if req.smart_eta_display %}
           <p class="text-xs text-zinc-400 mt-2">ETA: {{ req.smart_eta_display }}</p>
           {% endif %}
+          {% if req.printer_status.current_layer and req.printer_status.total_layers %}
+          <p class="text-xs text-zinc-500 mt-1">Layer: {{ req.printer_status.current_layer }}/{{ req.printer_status.total_layers }}</p>
+          {% endif %}
         </div>
         {% endif %}
         <div class="p-4">
@@ -311,7 +323,9 @@
               <h3 class="font-semibold">{{ req.print_name or 'Untitled' }}</h3>
               <p class="text-xs text-zinc-500">#{{ req.id[:8] }}</p>
             </div>
-            <span class="px-2 py-1 rounded-lg text-xs font-medium bg-indigo-600/25 border border-indigo-500/50 text-indigo-300">PRINTING</span>
+            <span class="px-2 py-1 rounded-lg text-xs font-medium bg-indigo-600/25 border border-indigo-500/50 text-indigo-300">
+              {% if req.status == 'IN_PROGRESS' %}PRINTING{% else %}{{ req.status }}{% endif %}
+            </span>
           </div>
         </div>
       </a>
@@ -321,7 +335,7 @@
   {% endif %}
 
   <!-- Other requests -->
-  {% set other_requests = requests_list | rejectattr('status', 'in', ['DONE', 'PRINTING']) | list %}
+  {% set other_requests = requests_list | rejectattr('status', 'in', ['DONE', 'PRINTING', 'IN_PROGRESS']) | list %}
   {% if other_requests %}
   <div class="mb-6">
     {% if done_requests or printing_requests %}
