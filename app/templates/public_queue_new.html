@@ -66,23 +66,39 @@
 <!-- Printer Status Cards -->
 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
   <!-- Adventurer 4 -->
-  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+  <div class="bg-zinc-900/60 border {% if printer_status.ADVENTURER_4.is_offline and printer_status.ADVENTURER_4.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-xl p-4">
     <div class="flex items-center justify-between mb-3">
       <span class="font-semibold text-sm">🖨 Adventurer 4</span>
       <span id="printer-status-ADVENTURER_4">
       {% if printer_status.ADVENTURER_4.status %}
         <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium
-          {% if printer_status.ADVENTURER_4.is_printing %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
+          {% if printer_status.ADVENTURER_4.is_offline %}bg-amber-600/20 text-amber-300 border border-amber-500/50
+          {% elif printer_status.ADVENTURER_4.is_printing %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
           {% elif printer_status.ADVENTURER_4.status == 'READY' %}bg-green-500/20 text-green-300 border border-green-500/50
           {% else %}bg-amber-500/20 text-amber-300 border border-amber-500/50{% endif %}">
+          {% if printer_status.ADVENTURER_4.is_offline %}
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+          {% else %}
           <span class="w-1.5 h-1.5 rounded-full animate-pulse {% if printer_status.ADVENTURER_4.is_printing %}bg-emerald-400{% elif printer_status.ADVENTURER_4.status == 'READY' %}bg-green-400{% else %}bg-amber-400{% endif %}"></span>
-          {{ printer_status.ADVENTURER_4.status }}
+          {% endif %}
+          {% if printer_status.ADVENTURER_4.is_offline %}Offline{% else %}{{ printer_status.ADVENTURER_4.status }}{% endif %}
         </span>
       {% else %}
         <span class="px-2 py-1 rounded-lg text-xs bg-zinc-800 text-zinc-500">Offline</span>
       {% endif %}
       </span>
     </div>
+    
+    <!-- Last seen indicator for offline printers with cached data -->
+    {% if printer_status.ADVENTURER_4.is_offline and printer_status.ADVENTURER_4.is_cached %}
+    <div class="mb-2 px-2 py-1.5 bg-amber-900/20 border border-amber-700/30 rounded-lg text-xs text-amber-300">
+      <span class="font-medium">📡 Connection lost</span>
+      <span class="text-amber-400/80">• Last status: {{ printer_status.ADVENTURER_4.status or 'Unknown' }}</span>
+      {% if printer_status.ADVENTURER_4.last_seen %}
+      <span class="text-amber-400/60">• Last seen: {{ printer_status.ADVENTURER_4.last_seen[:19].replace('T', ' ') }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
     
     <!-- Printing info -->
     {% if printer_status.ADVENTURER_4.is_printing %}
@@ -162,23 +178,39 @@
   </div>
 
   <!-- AD5X -->
-  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+  <div class="bg-zinc-900/60 border {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-xl p-4">
     <div class="flex items-center justify-between mb-3">
       <span class="font-semibold text-sm">🖨 AD5X</span>
       <span id="printer-status-AD5X">
       {% if printer_status.AD5X.status %}
         <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium
-          {% if printer_status.AD5X.is_printing %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
+          {% if printer_status.AD5X.is_offline %}bg-amber-600/20 text-amber-300 border border-amber-500/50
+          {% elif printer_status.AD5X.is_printing %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
           {% elif printer_status.AD5X.status == 'READY' %}bg-green-500/20 text-green-300 border border-green-500/50
           {% else %}bg-amber-500/20 text-amber-300 border border-amber-500/50{% endif %}">
+          {% if printer_status.AD5X.is_offline %}
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+          {% else %}
           <span class="w-1.5 h-1.5 rounded-full animate-pulse {% if printer_status.AD5X.is_printing %}bg-emerald-400{% elif printer_status.AD5X.status == 'READY' %}bg-green-400{% else %}bg-amber-400{% endif %}"></span>
-          {{ printer_status.AD5X.status }}
+          {% endif %}
+          {% if printer_status.AD5X.is_offline %}Offline{% else %}{{ printer_status.AD5X.status }}{% endif %}
         </span>
       {% else %}
         <span class="px-2 py-1 rounded-lg text-xs bg-zinc-800 text-zinc-500">Offline</span>
       {% endif %}
       </span>
     </div>
+    
+    <!-- Last seen indicator for offline printers with cached data -->
+    {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}
+    <div class="mb-2 px-2 py-1.5 bg-amber-900/20 border border-amber-700/30 rounded-lg text-xs text-amber-300">
+      <span class="font-medium">📡 Connection lost</span>
+      <span class="text-amber-400/80">• Last status: {{ printer_status.AD5X.status or 'Unknown' }}</span>
+      {% if printer_status.AD5X.last_seen %}
+      <span class="text-amber-400/60">• Last seen: {{ printer_status.AD5X.last_seen[:19].replace('T', ' ') }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
     
     <!-- Printing info -->
     {% if printer_status.AD5X.is_printing %}

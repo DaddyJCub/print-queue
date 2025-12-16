@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from app.demo_data import DEMO_MODE, seed_demo_data, reset_demo_data, get_demo_status
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.8"
+APP_VERSION = "1.8.9"
 # Changelog:
 # 1.8.7 - Added logging system, fixed database connection errors in requester portal
 # 1.8.6 - Build state fixes for IN_PROGRESS status in My Requests
@@ -400,6 +400,7 @@ Traceback:
 # Stores last successful status and failure count per printer
 _printer_status_cache: Dict[str, Dict[str, Any]] = {}
 _printer_failure_count: Dict[str, int] = {}
+_printer_last_seen: Dict[str, str] = {}  # Timestamp of last successful poll
 
 # Debug log storage for polling diagnostics (circular buffer of last 100 entries)
 _poll_debug_log: List[Dict[str, Any]] = []
@@ -422,9 +423,14 @@ def get_cached_printer_status(printer_code: str) -> Optional[Dict[str, Any]]:
     """Get cached printer status (used during retry period)"""
     return _printer_status_cache.get(printer_code)
 
+def get_printer_last_seen(printer_code: str) -> Optional[str]:
+    """Get timestamp when printer was last successfully polled"""
+    return _printer_last_seen.get(printer_code)
+
 def update_printer_status_cache(printer_code: str, status: Dict[str, Any]):
     """Update cached printer status on successful poll"""
     _printer_status_cache[printer_code] = status
+    _printer_last_seen[printer_code] = now_iso()
     _printer_failure_count[printer_code] = 0  # Reset failure count on success
 
 def record_printer_failure(printer_code: str) -> int:
@@ -435,6 +441,101 @@ def record_printer_failure(printer_code: str) -> int:
 def get_printer_failure_count(printer_code: str) -> int:
     """Get current failure count for a printer"""
     return _printer_failure_count.get(printer_code, 0)
+
+
+async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.0) -> Dict[str, Any]:
+    """
+    Fetch printer status with cache fallback and timeout.
+    Returns status dict with 'is_cached' flag if using cached data.
+    Always includes camera_url even if offline.
+    """
+    camera_url = get_camera_url(printer_code)
+    
+    # Try live API first with short timeout
+    try:
+        printer_api = get_printer_api(printer_code)
+        if printer_api:
+            # Use asyncio.wait_for for timeout
+            status = await asyncio.wait_for(printer_api.get_status(), timeout=timeout)
+            
+            if status:
+                # Success - fetch additional data with timeouts
+                progress = None
+                temp_data = None
+                extended = None
+                
+                try:
+                    progress = await asyncio.wait_for(printer_api.get_percent_complete(), timeout=timeout)
+                except:
+                    pass
+                    
+                try:
+                    temp_data = await asyncio.wait_for(printer_api.get_temperature(), timeout=timeout)
+                except:
+                    pass
+                    
+                try:
+                    extended = await asyncio.wait_for(printer_api.get_extended_status(), timeout=timeout)
+                except:
+                    pass
+                
+                machine_status = status.get("MachineStatus", "UNKNOWN")
+                result = {
+                    "status": machine_status.replace("_FROM_SD", ""),
+                    "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
+                    "target_temp": temp_data.get("TargetTemperature") if temp_data else None,
+                    "progress": progress,
+                    "healthy": machine_status in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD", "BUILD_COMPLETE", "BUILD_COMPLETE_FROM_SD"],
+                    "is_printing": machine_status in ["BUILDING", "BUILDING_FROM_SD"],
+                    "current_file": extended.get("current_file") if extended else None,
+                    "current_layer": extended.get("current_layer") if extended else None,
+                    "total_layers": extended.get("total_layers") if extended else None,
+                    "camera_url": camera_url,
+                    "is_cached": False,
+                    "last_seen": now_iso(),
+                }
+                
+                # Update cache on success
+                update_printer_status_cache(printer_code, result)
+                return result
+                
+    except asyncio.TimeoutError:
+        logger.warning(f"[PRINTER] Timeout fetching status for {printer_code}")
+        record_printer_failure(printer_code)
+    except Exception as e:
+        logger.warning(f"[PRINTER] Error fetching status for {printer_code}: {e}")
+        record_printer_failure(printer_code)
+    
+    # API failed - try to use cached status
+    cached = get_cached_printer_status(printer_code)
+    last_seen = get_printer_last_seen(printer_code)
+    
+    if cached:
+        # Return cached status with offline indicator
+        return {
+            **cached,
+            "camera_url": camera_url,  # Always include camera
+            "is_cached": True,
+            "is_offline": True,
+            "last_seen": last_seen,
+        }
+    
+    # No cache available - return minimal offline status
+    return {
+        "status": None,
+        "temp": None,
+        "target_temp": None,
+        "progress": None,
+        "healthy": None,
+        "is_printing": False,
+        "current_file": None,
+        "current_layer": None,
+        "total_layers": None,
+        "camera_url": camera_url,
+        "is_cached": False,
+        "is_offline": True,
+        "last_seen": None,
+    }
 
 # Status flow for admin actions (request-level)
 STATUS_FLOW = ["NEW", "NEEDS_INFO", "APPROVED", "IN_PROGRESS", "PRINTING", "BLOCKED", "DONE", "PICKED_UP", "REJECTED", "CANCELLED"]
@@ -3129,12 +3230,24 @@ async def poll_printer_status_worker():
                     admin_email_on_status = get_bool_setting("admin_email_on_status", True)
                     requester_email_on_status = get_bool_setting("requester_email_on_status", True)
 
+                    # Parse user notification preferences
+                    user_prefs = {"email": True, "push": False}
+                    if req_row and req_row.get("notification_prefs"):
+                        try:
+                            user_prefs = json.loads(req_row["notification_prefs"])
+                        except:
+                            pass
+                    user_wants_email = user_prefs.get("email", True)
+                    user_wants_push = user_prefs.get("push", False)
+
                     # Build email rows with completion data
                     email_rows = [("Request ID", rid[:8]), ("Status", "DONE")]
                     if final_temp:
                         email_rows.append(("Final Temp", final_temp))
 
-                    if requester_email_on_status and req_row:
+                    print_label = req_row["print_name"] if req_row else f"Request {rid[:8]}"
+
+                    if requester_email_on_status and req_row and user_wants_email:
                         subject = f"[{APP_TITLE}] Print Complete! ({rid[:8]})"
                         text = f"Your print is done and ready for pickup!\n\nRequest ID: {rid[:8]}\n\nView queue: {BASE_URL}/queue?mine={rid[:8]}\n"
                         snapshot_to_send = completion_snapshot if get_bool_setting("enable_camera_snapshot", False) else None
@@ -3147,6 +3260,16 @@ async def poll_printer_status_worker():
                             image_base64=snapshot_to_send,
                         )
                         send_email([req_row["requester_email"]], subject, text, html, image_base64=snapshot_to_send)
+                    
+                    # Send push notification if user wants push
+                    if user_wants_push and req_row and req_row.get("requester_email"):
+                        print(f"[POLL] Sending push notification for completed print {rid[:8]}")
+                        send_push_notification(
+                            email=req_row["requester_email"],
+                            title="✅ Print Complete!",
+                            body=f"'{print_label}' is ready for pickup!",
+                            url=f"/my/{rid}?token={req_row.get('access_token', '')}"
+                        )
 
                     if admin_email_on_status and admin_emails and req_row:
                         admin_rows = [("Request ID", rid[:8]), ("Printer", req["printer"]), ("Status", "DONE")]
@@ -4209,49 +4332,11 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     items = []
     printing_idx = None
     
-    # Fetch current printer status for health indicators
+    # Fetch current printer status using cache with timeout
+    # This prevents slow page loads when printers are offline
     printer_status = {}
     for printer_code in ["ADVENTURER_4", "AD5X"]:
-        # Always include camera_url even if printer API fails
-        camera_url = get_camera_url(printer_code)
-        try:
-            printer_api = get_printer_api(printer_code)
-            if printer_api:
-                status = await printer_api.get_status()
-                progress = await printer_api.get_percent_complete()
-                extended = await printer_api.get_extended_status()
-                temp_data = await printer_api.get_temperature()
-                if status:
-                    machine_status = status.get("MachineStatus", "UNKNOWN")
-                    printer_status[printer_code] = {
-                        "status": machine_status.replace("_FROM_SD", ""),
-                        "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
-                        "target_temp": temp_data.get("TargetTemperature") if temp_data else None,
-                        "progress": progress,
-                        "healthy": machine_status in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD"],
-                        "is_printing": machine_status in ["BUILDING", "BUILDING_FROM_SD"],
-                        "current_file": extended.get("current_file") if extended else None,
-                        "current_layer": extended.get("current_layer") if extended else None,
-                        "total_layers": extended.get("total_layers") if extended else None,
-                        "camera_url": camera_url,
-                    }
-                    continue
-        except Exception as e:
-            print(f"[PUBLIC_QUEUE] Error fetching printer {printer_code} status: {e}")
-        
-        # Fallback: set minimal status with camera_url so camera button still works
-        printer_status[printer_code] = {
-            "status": None,
-            "temp": None,
-            "target_temp": None,
-            "progress": None,
-            "healthy": None,
-            "is_printing": False,
-            "current_file": None,
-            "current_layer": None,
-            "total_layers": None,
-            "camera_url": camera_url,
-        }
+        printer_status[printer_code] = await fetch_printer_status_with_cache(printer_code, timeout=3.0)
     
     # First pass: build items and find printing index, fetch real progress for PRINTING
     for idx, r in enumerate(rows):
@@ -4290,19 +4375,12 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                 conn_fix.commit()
                 conn_fix.close()
             
-            printer_api = get_printer_api(active_printer)
-            current_layer = None
-            total_layers = None
-            if printer_api:
-                try:
-                    printer_progress = await printer_api.get_percent_complete()
-                    # Get layer info for more accurate ETA
-                    extended = await printer_api.get_extended_status()
-                    if extended:
-                        current_layer = extended.get("current_layer")
-                        total_layers = extended.get("total_layers")
-                except Exception:
-                    pass  # Fall back to time-based estimate if API fails
+            # Use cached printer status data (already fetched above)
+            cached_status = printer_status.get(active_printer, {})
+            if cached_status and not cached_status.get("is_offline"):
+                printer_progress = cached_status.get("progress")
+                current_layer = cached_status.get("current_layer")
+                total_layers = cached_status.get("total_layers")
             
             # Calculate smart ETA based on layers (preferred) or progress
             eta_dt = get_smart_eta(
@@ -4609,42 +4687,23 @@ async def requester_portal(request: Request, rid: str, token: str):
                 if active_build["started_at"]:
                     printing_started_at = active_build["started_at"]
         
-        printer_api = get_printer_api(active_printer)
-        if printer_api:
-            try:
-                status = await printer_api.get_status()
-                progress = await printer_api.get_percent_complete()
-                extended = await printer_api.get_extended_status()
-                temp_data = await printer_api.get_temperature()
-                if status:
-                    machine_status = status.get("MachineStatus", "UNKNOWN")
-                    current_layer = extended.get("current_layer") if extended else None
-                    total_layers = extended.get("total_layers") if extended else None
-                    printer_status = {
-                        "status": machine_status.replace("_FROM_SD", ""),
-                        "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
-                        "target_temp": temp_data.get("TargetTemperature") if temp_data else None,
-                        "progress": progress,
-                        "is_printing": machine_status in ["BUILDING", "BUILDING_FROM_SD"],
-                        "current_layer": current_layer,
-                        "total_layers": total_layers,
-                        "camera_url": get_camera_url(active_printer),
-                    }
-                    logger.debug(f"[REQUESTER_PORTAL] Printer status for {active_printer}: {machine_status}, {progress}%")
-                    
-                    # Calculate smart ETA
-                    eta_dt = get_smart_eta(
-                        printer=active_printer,
-                        material=req["material"],
-                        current_percent=progress or 0,
-                        printing_started_at=printing_started_at or now_iso(),
-                        current_layer=current_layer or 0,
-                        total_layers=total_layers or 0
-                    )
-                    if eta_dt:
-                        smart_eta_display = format_eta_display(eta_dt)
-            except Exception as e:
-                logger.error(f"[REQUESTER_PORTAL] Error fetching printer status for {active_printer}: {e}", exc_info=True)
+        # Use cached printer status fetch for consistency and performance
+        if active_printer:
+            printer_status = await fetch_printer_status_with_cache(active_printer, timeout=3.0)
+            logger.debug(f"[REQUESTER_PORTAL] Printer status for {active_printer}: {printer_status.get('status')}, {printer_status.get('progress')}%")
+            
+            # Calculate smart ETA if we have status
+            if printer_status and not printer_status.get("is_offline"):
+                eta_dt = get_smart_eta(
+                    printer=active_printer,
+                    material=req["material"],
+                    current_percent=printer_status.get("progress") or 0,
+                    printing_started_at=printing_started_at or now_iso(),
+                    current_layer=printer_status.get("current_layer") or 0,
+                    total_layers=printer_status.get("total_layers") or 0
+                )
+                if eta_dt:
+                    smart_eta_display = format_eta_display(eta_dt)
     
     conn.close()
     
@@ -5081,37 +5140,14 @@ async def my_requests_view(request: Request, token: str):
             req_dict["active_printer"] = printer_code  # Track which printer is active
             
             if printer_code:
-                # Cache printer status to avoid multiple calls
+                # Use cached printer status fetch for consistency and performance
                 if printer_code not in printer_status_cache:
-                    try:
-                        printer_api = get_printer_api(printer_code)
-                        if printer_api:
-                            status = await printer_api.get_status()
-                            progress = await printer_api.get_progress()
-                            extended = await printer_api.get_extended_status()
-                            temp_data = await printer_api.get_temperature()
-                            
-                            if status:
-                                machine_status = status.get("MachineStatus", "UNKNOWN")
-                                is_printing = machine_status in ["BUILDING", "BUILDING_FROM_SD"]
-                                
-                                printer_status_cache[printer_code] = {
-                                    "status": machine_status.replace("_FROM_SD", ""),
-                                    "is_printing": is_printing,
-                                    "progress": progress.get("PercentageCompleted") if progress else None,
-                                    "current_file": extended.get("current_file") if extended else None,
-                                    "current_layer": extended.get("current_layer") if extended else None,
-                                    "total_layers": extended.get("total_layers") if extended else None,
-                                    "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
-                                    "camera_url": get_camera_url(printer_code),
-                                }
-                    except Exception as e:
-                        print(f"[MY-REQUESTS] Error fetching printer status: {e}")
+                    printer_status_cache[printer_code] = await fetch_printer_status_with_cache(printer_code, timeout=3.0)
                 
                 req_dict["printer_status"] = printer_status_cache.get(printer_code)
                 
-                # Calculate smart ETA
-                if req_dict.get("printer_status"):
+                # Calculate smart ETA if not offline
+                if req_dict.get("printer_status") and not req_dict["printer_status"].get("is_offline"):
                     eta_dt = get_smart_eta(
                         printer=printer_code,
                         material=req["material"],
@@ -5375,26 +5411,10 @@ async def queue_data_api(mine: Optional[str] = None):
 
     items = []
     
-    # Fetch current printer status
+    # Fetch current printer status using cache with timeout
     printer_status = {}
     for printer_code in ["ADVENTURER_4", "AD5X", "P1S"]:
-        try:
-            printer_api = get_printer_api(printer_code)
-            if printer_api:
-                status = await printer_api.get_status()
-                progress = await printer_api.get_percent_complete()
-                extended = await printer_api.get_extended_status()
-                if status:
-                    machine_status = status.get("MachineStatus", "UNKNOWN")
-                    printer_status[printer_code] = {
-                        "status": machine_status.replace("_FROM_SD", ""),
-                        "progress": progress,
-                        "is_printing": machine_status in ["BUILDING", "BUILDING_FROM_SD", "RUNNING", "PRINTING"],
-                        "current_file": extended.get("current_file") if extended else None,
-                        "eta_display": None,  # Will be calculated below
-                    }
-        except Exception:
-            pass
+        printer_status[printer_code] = await fetch_printer_status_with_cache(printer_code, timeout=3.0)
     
     # Build items list
     for idx, r in enumerate(rows):
@@ -5403,18 +5423,15 @@ async def queue_data_api(mine: Optional[str] = None):
         smart_eta_display = None
         
         if r["status"] == "PRINTING":
-            printer_api = get_printer_api(r["printer"])
+            # Use cached printer status
+            cached_status = printer_status.get(r["printer"], {})
             current_layer = None
             total_layers = None
-            if printer_api:
-                try:
-                    printer_progress = await printer_api.get_percent_complete()
-                    extended = await printer_api.get_extended_status()
-                    if extended:
-                        current_layer = extended.get("current_layer")
-                        total_layers = extended.get("total_layers")
-                except Exception:
-                    pass
+            
+            if cached_status and not cached_status.get("is_offline"):
+                printer_progress = cached_status.get("progress")
+                current_layer = cached_status.get("current_layer")
+                total_layers = cached_status.get("total_layers")
             
             # Calculate smart ETA
             printing_started_at = r["printing_started_at"] if "printing_started_at" in r.keys() else None
@@ -5744,17 +5761,12 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
                 if active_build["started_at"]:
                     printing_started_at = active_build["started_at"]
         
-        printer_api = get_printer_api(active_printer)
-        if printer_api:
-            try:
-                printer_progress = await printer_api.get_percent_complete()
-                # Get layer info for more accurate ETA
-                extended = await printer_api.get_extended_status()
-                if extended:
-                    current_layer = extended.get("current_layer")
-                    total_layers = extended.get("total_layers")
-            except Exception:
-                pass
+        # Use cached printer status for consistency
+        cached_status = await fetch_printer_status_with_cache(active_printer, timeout=3.0)
+        if cached_status and not cached_status.get("is_offline"):
+            printer_progress = cached_status.get("progress")
+            current_layer = cached_status.get("current_layer")
+            total_layers = cached_status.get("total_layers")
         
         # If printing_started_at is missing, set it now (for legacy requests)
         if not printing_started_at and r["status"] in ["PRINTING", "IN_PROGRESS"]:
@@ -5795,36 +5807,10 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
     ).fetchall()
     conn.close()
 
-    # Fetch printer status with extended info
+    # Fetch printer status using cache with timeout
     printer_status = {}
     for printer_code in ["ADVENTURER_4", "AD5X"]:
-        try:
-            printer_api = get_printer_api(printer_code)
-            if printer_api:
-                status = await printer_api.get_status()
-                progress = await printer_api.get_progress()
-                extended = await printer_api.get_extended_status()
-                temp_data = await printer_api.get_temperature()
-                
-                if status:
-                    machine_status = status.get("MachineStatus", "UNKNOWN")
-                    is_printing = machine_status in ["BUILDING", "BUILDING_FROM_SD"]
-                    
-                    printer_status[printer_code] = {
-                        "status": machine_status.replace("_FROM_SD", ""),
-                        "raw_status": machine_status,
-                        "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
-                        "target_temp": temp_data.get("TargetTemperature") if temp_data else None,
-                        "healthy": machine_status in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD"],
-                        "is_printing": is_printing,
-                        "progress": progress.get("PercentageCompleted") if progress else None,
-                        "current_file": extended.get("current_file") if extended else None,
-                        "current_layer": extended.get("current_layer") if extended else None,
-                        "total_layers": extended.get("total_layers") if extended else None,
-                        "camera_url": get_camera_url(printer_code),
-                    }
-        except Exception as e:
-            print(f"[ADMIN] Error fetching printer {printer_code} status: {e}")
+        printer_status[printer_code] = await fetch_printer_status_with_cache(printer_code, timeout=3.0)
 
     # Get print match suggestions
     print_match_suggestions = get_print_match_suggestions()

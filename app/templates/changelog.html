@@ -36,12 +36,97 @@
     <!-- Changelog Entries -->
     <div class="space-y-6">
       
-      <!-- v1.8.6 -->
+      <!-- v1.8.9 -->
       <div class="bg-zinc-900/50 border border-indigo-500/50 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg">v1.8.9</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50">Latest</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Printer Offline Handling & Push Notifications</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Printer status caching</strong> - When printers go offline, last known status is preserved and displayed with "Last seen" timestamp</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>"Connection lost" indicator</strong> - Printer cards show amber border and connection status when printer is unreachable</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Faster page loads</strong> - 3-second timeouts on printer API calls prevent slow queue page loads when printers are offline</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Push notifications on completion</strong> - Fixed push notifications for single-build prints when auto-completed by polling</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.8.8 -->
+      <div class="bg-zinc-900/50 border border-zinc-700/50 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg">v1.8.8</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Enhanced Printer Cards & Build Info</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Prominent job info</strong> - Printer cards now show job name, requester, and queue position in a highlighted colored box</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>"Likely Printing" detection</strong> - When printer shows BUILDING but no request is marked PRINTING, shows "Likely Printing" with the probable request</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Build info badges</strong> - Multi-build requests show "2/3 builds" badge in printer cards and active queue</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Material & ETA display</strong> - Printer cards show material badge and estimated completion time prominently</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.8.7 -->
+      <div class="bg-zinc-900/50 border border-zinc-700/50 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg">v1.8.7</span>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Comprehensive Logging & Debug Tools</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Application logs API</strong> - New /api/logs endpoint with level/search/limit filtering for debugging</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Admin logs viewer</strong> - Application Logs section in admin debug page with live filtering and download</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Comprehensive log capture</strong> - Captures all print() statements, uvicorn logs, unhandled exceptions with tracebacks</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>File logging</strong> - Rotating file logs at /data/printellect.log (10MB, 5 backups) for persistent debugging</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Database connection fix</strong> - Fixed premature connection close error in requester portal view</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.8.6 -->
+      <div class="bg-zinc-900/50 border border-zinc-700/50 rounded-xl p-6">
         <div class="flex items-center gap-3 mb-4">
           <span class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg">v1.8.6</span>
           <span class="text-zinc-400 text-sm">December 2024</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50">Latest</span>
         </div>
         <h3 class="text-lg font-semibold mb-3">File Preview, PWA & Upload Improvements</h3>
         <ul class="space-y-2 text-sm text-zinc-300">

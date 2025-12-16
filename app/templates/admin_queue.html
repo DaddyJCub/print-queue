@@ -302,13 +302,18 @@
     <!-- Printer Status Cards -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="printer-status-cards">
       <!-- Adventurer 4 -->
-      <div id="card-adv4" class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
+      <div id="card-adv4" class="bg-zinc-900/50 border {% if printer_status.ADVENTURER_4.is_offline and printer_status.ADVENTURER_4.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-xl p-4">
         <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold flex items-center gap-2">
             <span>🖨</span>
             <span>FlashForge Adventurer 4</span>
           </h3>
-          {% if printer_status.ADVENTURER_4.status %}
+          {% if printer_status.ADVENTURER_4.is_offline %}
+            <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-amber-600/20 text-amber-300 border border-amber-500/50">
+              <span class="status-dot inline-block w-2 h-2 rounded-full bg-amber-400"></span>
+              Offline
+            </span>
+          {% elif printer_status.ADVENTURER_4.status %}
             <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium
               {% if printer_status.ADVENTURER_4.is_printing %}
                 bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
@@ -326,10 +331,18 @@
           {% else %}
             <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-zinc-600/20 text-zinc-300 border border-zinc-600/50">
               <span class="status-dot inline-block w-2 h-2 rounded-full bg-zinc-400"></span>
-              Offline
+              Unknown
             </span>
           {% endif %}
         </div>
+        
+        <!-- Offline indicator with last seen -->
+        {% if printer_status.ADVENTURER_4.is_offline and printer_status.ADVENTURER_4.is_cached %}
+        <div class="mb-3 px-2 py-1.5 bg-amber-950/30 border border-amber-800/30 rounded-lg flex items-center gap-2 text-xs text-amber-400">
+          <span>⚠️</span>
+          <span>Connection lost{% if printer_status.ADVENTURER_4.last_seen %} · Last seen {{ printer_status.ADVENTURER_4.last_seen }}{% endif %}</span>
+        </div>
+        {% endif %}
         
         <!-- Currently printing info -->
         <div class="print-info bg-zinc-950/60 rounded-lg p-3 mb-3 {% if not printer_status.ADVENTURER_4.is_printing %}hidden{% endif %}">
@@ -381,13 +394,18 @@
       </div>
       
       <!-- AD5X -->
-      <div id="card-ad5x" class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
+      <div id="card-ad5x" class="bg-zinc-900/50 border {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-xl p-4">
         <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold flex items-center gap-2">
             <span>🖨</span>
             <span>FlashForge AD5X</span>
           </h3>
-          {% if printer_status.AD5X.status %}
+          {% if printer_status.AD5X.is_offline %}
+            <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-amber-600/20 text-amber-300 border border-amber-500/50">
+              <span class="status-dot inline-block w-2 h-2 rounded-full bg-amber-400"></span>
+              Offline
+            </span>
+          {% elif printer_status.AD5X.status %}
             <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium
               {% if printer_status.AD5X.is_printing %}
                 bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
@@ -405,10 +423,18 @@
           {% else %}
             <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-zinc-600/20 text-zinc-300 border border-zinc-600/50">
               <span class="status-dot inline-block w-2 h-2 rounded-full bg-zinc-400"></span>
-              Offline
+              Unknown
             </span>
           {% endif %}
         </div>
+        
+        <!-- Offline indicator with last seen -->
+        {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}
+        <div class="mb-3 px-2 py-1.5 bg-amber-950/30 border border-amber-800/30 rounded-lg flex items-center gap-2 text-xs text-amber-400">
+          <span>⚠️</span>
+          <span>Connection lost{% if printer_status.AD5X.last_seen %} · Last seen {{ printer_status.AD5X.last_seen }}{% endif %}</span>
+        </div>
+        {% endif %}
         
         <!-- Currently printing info -->
         <div class="print-info bg-zinc-950/60 rounded-lg p-3 mb-3 {% if not printer_status.AD5X.is_printing %}hidden{% endif %}">

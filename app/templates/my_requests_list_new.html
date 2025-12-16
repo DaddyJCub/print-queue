@@ -290,26 +290,32 @@
     <div class="space-y-3">
       {% for req in printing_requests %}
       <a href="/my/{{ req.id }}?token={{ req.access_token }}" 
-         class="block bg-zinc-900/60 border border-indigo-500/50 rounded-xl overflow-hidden card-interactive">
+         class="block bg-zinc-900/60 border {% if req.printer_status and req.printer_status.is_offline %}border-amber-500/50{% else %}border-indigo-500/50{% endif %} rounded-xl overflow-hidden card-interactive">
         {% if req.printer_status %}
-        <div class="bg-indigo-950/40 border-b border-indigo-500/30 p-3">
+        <div class="{% if req.printer_status.is_offline %}bg-amber-950/40 border-b border-amber-500/30{% else %}bg-indigo-950/40 border-b border-indigo-500/30{% endif %} p-3">
           <div class="flex items-center justify-between text-sm mb-2">
             <div class="flex items-center gap-2">
               <span class="font-medium">{{ req.active_printer or req.printer }}</span>
-              {% if req.total_builds and req.total_builds > 1 %}
+              {% if req.printer_status.is_offline %}
+              <span class="text-xs px-1.5 py-0.5 bg-amber-500/20 border border-amber-500/50 text-amber-300 rounded">
+                Offline
+              </span>
+              {% elif req.total_builds and req.total_builds > 1 %}
               <span class="text-xs px-1.5 py-0.5 bg-amber-500/20 border border-amber-500/50 text-amber-300 rounded">
                 Build {{ (req.completed_builds or 0) + 1 }}/{{ req.total_builds }}
               </span>
               {% endif %}
             </div>
-            <span class="text-emerald-300">{{ req.printer_status.progress or 0 }}%</span>
+            <span class="{% if req.printer_status.is_offline %}text-amber-300{% else %}text-emerald-300{% endif %}">{{ req.printer_status.progress or 0 }}%</span>
           </div>
           {% if req.printer_status.progress is not none %}
           <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-            <div class="h-full bg-emerald-500 transition-all" style="width: {{ req.printer_status.progress }}%"></div>
+            <div class="h-full {% if req.printer_status.is_offline %}bg-amber-500{% else %}bg-emerald-500{% endif %} transition-all" style="width: {{ req.printer_status.progress }}%"></div>
           </div>
           {% endif %}
-          {% if req.smart_eta_display %}
+          {% if req.printer_status.is_offline and req.printer_status.last_seen %}
+          <p class="text-xs text-amber-400/80 mt-2">⚠️ Connection lost · Last seen: {{ req.printer_status.last_seen }}</p>
+          {% elif req.smart_eta_display %}
           <p class="text-xs text-zinc-400 mt-2">ETA: {{ req.smart_eta_display }}</p>
           {% endif %}
           {% if req.printer_status.current_layer and req.printer_status.total_layers %}
