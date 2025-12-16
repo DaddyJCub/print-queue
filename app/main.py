@@ -3734,6 +3734,8 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     # Fetch current printer status for health indicators
     printer_status = {}
     for printer_code in ["ADVENTURER_4", "AD5X"]:
+        # Always include camera_url even if printer API fails
+        camera_url = get_camera_url(printer_code)
         try:
             printer_api = get_printer_api(printer_code)
             if printer_api:
@@ -3751,10 +3753,23 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                         "current_file": extended.get("current_file") if extended else None,
                         "current_layer": extended.get("current_layer") if extended else None,
                         "total_layers": extended.get("total_layers") if extended else None,
-                        "camera_url": get_camera_url(printer_code),
+                        "camera_url": camera_url,
                     }
+                    continue
         except Exception:
             pass
+        # Fallback: set minimal status with camera_url so camera button still works
+        printer_status[printer_code] = {
+            "status": None,
+            "temp": None,
+            "progress": None,
+            "healthy": None,
+            "is_printing": False,
+            "current_file": None,
+            "current_layer": None,
+            "total_layers": None,
+            "camera_url": camera_url,
+        }
     
     # First pass: build items and find printing index, fetch real progress for PRINTING
     for idx, r in enumerate(rows):
