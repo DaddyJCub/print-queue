@@ -349,9 +349,6 @@
                 {% endif %}
               </div>
             </div>
-            {% if printer_status.ADVENTURER_4.camera_url %}
-              <a href="/admin/printer-settings" class="text-xs text-indigo-400 hover:underline">📷 View</a>
-            {% endif %}
           </div>
           <div class="mt-2 h-2 bg-zinc-800 rounded-full overflow-hidden">
             <div class="progress-bar h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500" 
@@ -359,7 +356,7 @@
           </div>
         </div>
         
-        <div class="flex items-center gap-4 text-xs text-zinc-400">
+        <div class="flex items-center justify-between text-xs text-zinc-400">
           <span class="temp-text">
             {% if printer_status.ADVENTURER_4.temp %}
               🌡 Nozzle: <span class="text-zinc-200">{{ printer_status.ADVENTURER_4.temp }}°C</span>
@@ -368,7 +365,19 @@
               {% endif %}
             {% endif %}
           </span>
+          {% if printer_status.ADVENTURER_4.camera_url %}
+          <button type="button" onclick="toggleAdminCamera('ADVENTURER_4')" id="admin-cam-btn-ADVENTURER_4" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition">
+            <span>📷</span> <span class="btn-text">Show Camera</span>
+          </button>
+          {% endif %}
         </div>
+        <!-- Camera preview -->
+        {% if printer_status.ADVENTURER_4.camera_url %}
+        <div id="admin-cam-ADVENTURER_4" class="hidden mt-3">
+          <img id="admin-cam-img-ADVENTURER_4" class="w-full rounded-lg bg-zinc-800 border border-zinc-700" alt="Camera" />
+          <div class="text-xs text-zinc-500 mt-1">Updates every 10 seconds</div>
+        </div>
+        {% endif %}
       </div>
       
       <!-- AD5X -->
@@ -419,9 +428,6 @@
                 {% endif %}
               </div>
             </div>
-            {% if printer_status.AD5X.camera_url %}
-              <a href="/admin/printer-settings" class="text-xs text-indigo-400 hover:underline">📷 View</a>
-            {% endif %}
           </div>
           <div class="mt-2 h-2 bg-zinc-800 rounded-full overflow-hidden">
             <div class="progress-bar h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500" 
@@ -429,7 +435,7 @@
           </div>
         </div>
         
-        <div class="flex items-center gap-4 text-xs text-zinc-400">
+        <div class="flex items-center justify-between text-xs text-zinc-400">
           <span class="temp-text">
             {% if printer_status.AD5X.temp %}
               🌡 Nozzle: <span class="text-zinc-200">{{ printer_status.AD5X.temp }}°C</span>
@@ -438,7 +444,19 @@
               {% endif %}
             {% endif %}
           </span>
+          {% if printer_status.AD5X.camera_url %}
+          <button type="button" onclick="toggleAdminCamera('AD5X')" id="admin-cam-btn-AD5X" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition">
+            <span>📷</span> <span class="btn-text">Show Camera</span>
+          </button>
+          {% endif %}
         </div>
+        <!-- Camera preview -->
+        {% if printer_status.AD5X.camera_url %}
+        <div id="admin-cam-AD5X" class="hidden mt-3">
+          <img id="admin-cam-img-AD5X" class="w-full rounded-lg bg-zinc-800 border border-zinc-700" alt="Camera" />
+          <div class="text-xs text-zinc-500 mt-1">Updates every 10 seconds</div>
+        </div>
+        {% endif %}
       </div>
     </div>
 
@@ -452,6 +470,61 @@
     </div>
 
     <script>
+      // Camera toggle for admin
+      const adminCamIntervals = {};
+      
+      function toggleAdminCamera(printer) {
+        const div = document.getElementById(`admin-cam-${printer}`);
+        const btn = document.getElementById(`admin-cam-btn-${printer}`);
+        const img = document.getElementById(`admin-cam-img-${printer}`);
+        
+        console.log('[Admin Camera] toggleAdminCamera called for:', printer, { div: !!div, btn: !!btn, img: !!img });
+        
+        if (!div || !btn || !img) {
+          console.warn('[Admin Camera] Missing elements for', printer);
+          return;
+        }
+        
+        const btnText = btn.querySelector('.btn-text');
+        
+        if (div.classList.contains('hidden')) {
+          // Show camera
+          div.classList.remove('hidden');
+          if (btnText) btnText.textContent = 'Hide Camera';
+          
+          // Load camera image
+          img.alt = 'Loading camera...';
+          img.src = `/api/camera/${printer}/snapshot?t=${Date.now()}`;
+          console.log('[Admin Camera] Loading:', img.src);
+          
+          img.onerror = function() {
+            console.error('[Admin Camera] Load error for', printer);
+            img.alt = 'Camera unavailable';
+            if (btnText) btnText.textContent = 'Camera Error';
+            clearInterval(adminCamIntervals[printer]);
+          };
+          img.onload = function() {
+            console.log('[Admin Camera] Loaded successfully for', printer);
+            img.alt = 'Camera feed';
+          };
+          
+          // Auto-refresh every 10 seconds
+          adminCamIntervals[printer] = setInterval(() => {
+            const newImg = new Image();
+            newImg.onload = function() {
+              img.src = this.src;
+            };
+            newImg.src = `/api/camera/${printer}/snapshot?t=${Date.now()}`;
+          }, 10000);
+        } else {
+          // Hide camera
+          div.classList.add('hidden');
+          if (btnText) btnText.textContent = 'Show Camera';
+          clearInterval(adminCamIntervals[printer]);
+          console.log('[Admin Camera] Hidden for', printer);
+        }
+      }
+      
       // AJAX-based printer status refresh
       let refreshInterval = null;
       const autoRefreshCheckbox = document.getElementById('auto-refresh');

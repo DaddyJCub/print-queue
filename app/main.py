@@ -3751,6 +3751,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                         "current_file": extended.get("current_file") if extended else None,
                         "current_layer": extended.get("current_layer") if extended else None,
                         "total_layers": extended.get("total_layers") if extended else None,
+                        "camera_url": get_camera_url(printer_code),
                     }
         except Exception:
             pass
