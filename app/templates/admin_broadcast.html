@@ -1,0 +1,210 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Broadcast Notifications | Printellect</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-4xl mx-auto p-6">
+    <!-- Navigation -->
+    {% set active_page = 'broadcast' %}
+    {% include 'admin_nav.html' %}
+    
+    <!-- Page Header -->
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold">📢 Broadcast Notifications</h1>
+      <p class="text-zinc-400 mt-1">Send push notifications to all subscribed users.</p>
+    </div>
+
+    <!-- Success/Error Messages -->
+    {% if request.query_params.get('sent') == '1' %}
+      <div class="mb-6 bg-emerald-900/20 border border-emerald-800 text-emerald-200 rounded-2xl p-4">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">✅</span>
+          <div>
+            <p class="font-semibold">Broadcast sent!</p>
+            <p class="text-sm text-emerald-300/80">
+              📲 Sent to {{ request.query_params.get('total', 0) }} push subscriber(s)
+              {% if request.query_params.get('failed', '0') != '0' %}
+                ({{ request.query_params.get('failed') }} failed)
+              {% endif %}
+              {% if request.query_params.get('emails', '0') != '0' %}
+                <br>📧 Sent {{ request.query_params.get('emails') }} email(s)
+              {% endif %}
+            </p>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Subscriber Stats -->
+    <div class="mb-6 bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+      <div class="flex items-center gap-3">
+        <span class="text-3xl">👥</span>
+        <div>
+          <p class="text-2xl font-bold text-indigo-400">{{ subscriber_count }}</p>
+          <p class="text-sm text-zinc-400">Push notification subscribers</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Send Custom Broadcast -->
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">✏️ Send Custom Broadcast</h2>
+      
+      <form method="POST" action="/admin/broadcast/send" class="space-y-4">
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1">Title</label>
+          <input type="text" name="title" required
+                 class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3"
+                 placeholder="🎉 Exciting News!" />
+        </div>
+        
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1">Message</label>
+          <textarea name="body" required rows="3"
+                    class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3"
+                    placeholder="We have some exciting updates to share..."></textarea>
+        </div>
+        
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1">Click URL (optional)</label>
+          <input type="text" name="url"
+                 class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3"
+                 placeholder="/changelog or https://example.com" />
+          <p class="text-xs text-zinc-500 mt-1">Where users go when they tap the notification. Leave blank for homepage.</p>
+        </div>
+        
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1">Type</label>
+          <select name="broadcast_type" 
+                  class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3">
+            <option value="custom">📝 Custom Announcement</option>
+            <option value="announcement">📣 General Announcement</option>
+            <option value="maintenance">🔧 Maintenance Notice</option>
+            <option value="app_update">🚀 App Update</option>
+          </select>
+        </div>
+        
+        <!-- Delivery Options -->
+        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
+          <p class="text-sm text-zinc-300 font-medium mb-3">📬 Delivery Methods</p>
+          <div class="space-y-2">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" checked disabled class="scale-110 rounded">
+              <span class="text-sm">📲 Push Notifications <span class="text-zinc-500">(always sent)</span></span>
+            </label>
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" name="send_email" value="1" class="scale-110 rounded">
+              <span class="text-sm">📧 Email <span class="text-zinc-500">(optional)</span></span>
+            </label>
+          </div>
+        </div>
+        
+        <button type="submit" 
+                class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-3 font-semibold"
+                onclick="return confirm('Send this notification to all {{ subscriber_count }} subscribers?')">
+          📤 Send Broadcast
+        </button>
+      </form>
+    </section>
+
+    <!-- Quick App Update Notification -->
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">🚀 App Update Notification</h2>
+      <p class="text-sm text-zinc-400 mb-4">
+        Quickly notify all subscribers about a new app version. Links directly to that version in the changelog.
+      </p>
+      
+      <div id="update-preview" class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 mb-4">
+        <p class="text-sm text-zinc-500 mb-1">Preview:</p>
+        <p class="font-semibold">🎉 New Update Available!</p>
+        <p class="text-zinc-300">Printellect v<span id="preview-version">{{ version }}</span> is here with new features and improvements. Tap to see what's new!</p>
+        <p class="text-xs text-zinc-500 mt-2">→ Links to: <code class="bg-zinc-800 px-1 rounded">/changelog#v<span id="preview-anchor">{{ version }}</span></code></p>
+      </div>
+      
+      <form method="POST" action="/api/admin/broadcast/app-update" class="space-y-3">
+        <div>
+          <label class="block text-sm text-zinc-400 mb-1">Version Number</label>
+          <input type="text" name="version" id="version-input" value="{{ version }}" 
+                 oninput="updateVersionPreview(this.value)"
+                 class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3"
+                 placeholder="e.g., 1.8.14" />
+        </div>
+        
+        <!-- Delivery Options -->
+        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
+          <p class="text-sm text-zinc-300 font-medium mb-3">📬 Delivery Methods</p>
+          <div class="space-y-2">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" checked disabled class="scale-110 rounded">
+              <span class="text-sm">📲 Push Notifications <span class="text-zinc-500">(always sent)</span></span>
+            </label>
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" name="send_email" value="1" class="scale-110 rounded">
+              <span class="text-sm">📧 Email <span class="text-zinc-500">(optional)</span></span>
+            </label>
+          </div>
+        </div>
+        
+        <button type="submit" 
+                class="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-6 py-3 font-semibold"
+                onclick="return confirm('Send app update notification to all {{ subscriber_count }} subscribers?')">
+          🚀 Send Update Alert
+        </button>
+      </form>
+      
+      <script>
+        function updateVersionPreview(version) {
+          document.getElementById('preview-version').textContent = version || '{{ version }}';
+          document.getElementById('preview-anchor').textContent = version || '{{ version }}';
+        }
+      </script>
+    </section>
+
+    <!-- Broadcast History -->
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+      <h2 class="text-lg font-semibold mb-4">📜 Recent Broadcasts</h2>
+      
+      {% if history %}
+        <div class="space-y-3">
+          {% for item in history %}
+            <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
+              <div class="flex justify-between items-start gap-3">
+                <div class="flex-1 min-w-0">
+                  <p class="font-semibold truncate">{{ item.title }}</p>
+                  <p class="text-sm text-zinc-400 truncate">{{ item.body }}</p>
+                </div>
+                <div class="text-right text-sm shrink-0">
+                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs
+                    {% if item.broadcast_type == 'app_update' %}bg-emerald-900/40 text-emerald-300
+                    {% elif item.broadcast_type == 'maintenance' %}bg-amber-900/40 text-amber-300
+                    {% else %}bg-indigo-900/40 text-indigo-300{% endif %}">
+                    {{ item.broadcast_type }}
+                  </span>
+                </div>
+              </div>
+              <div class="mt-2 flex justify-between text-xs text-zinc-500">
+                <span>{{ item.sent_at[:16].replace('T', ' ') }}</span>
+                <span>✅ {{ item.total_sent }} sent {% if item.total_failed > 0 %}· ❌ {{ item.total_failed }} failed{% endif %}</span>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="text-center py-8 text-zinc-500">
+          <p class="text-4xl mb-2">📭</p>
+          <p>No broadcasts sent yet</p>
+        </div>
+      {% endif %}
+    </section>
+    
+    <!-- Footer with version -->
+    <div class="mt-8 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
+      <a href="/changelog" class="hover:text-indigo-400 transition">Printellect v{{ version }}</a>
+    </div>
+  </div>
+</body>
+</html>

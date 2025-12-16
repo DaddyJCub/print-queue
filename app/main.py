@@ -21,8 +21,9 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.14"
+APP_VERSION = "1.8.15"
 # Changelog:
+# 1.8.15 - Progress notifications at milestones (25/50/75/90%), broadcast system for app updates, admin broadcast page
 # 1.8.14 - Multi-build UX: clearer status labels (Queued/Done vs READY/COMPLETED), tooltips, queue build progress
 # 1.8.13 - Push notification robustness: safe body parsing, JSON API contract, /api/push/health endpoint
 # 1.8.12 - Per-build photos gallery, push notification fixes (JSONDecodeError), diagnostics panel
@@ -859,6 +860,36 @@ def init_db():
         );
     """)
 
+    # Build progress milestones - tracks which progress notifications have been sent per build
+    # This prevents duplicate notifications when progress is re-polled
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS build_progress_milestones (
+            id TEXT PRIMARY KEY,
+            build_id TEXT NOT NULL,
+            milestone_percent INTEGER NOT NULL,
+            notified_at TEXT NOT NULL,
+            notification_type TEXT DEFAULT 'push',
+            FOREIGN KEY(build_id) REFERENCES builds(id),
+            UNIQUE(build_id, milestone_percent)
+        );
+    """)
+
+    # Broadcast notifications - history of system-wide notifications sent to all subscribers
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS broadcast_notifications (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL,
+            url TEXT,
+            broadcast_type TEXT DEFAULT 'custom',
+            sent_at TEXT NOT NULL,
+            sent_by TEXT,
+            total_sent INTEGER DEFAULT 0,
+            total_failed INTEGER DEFAULT 0,
+            metadata TEXT
+        );
+    """)
+
     conn.commit()
     conn.close()
 
@@ -1176,6 +1207,9 @@ def start_build(build_id: str, printer: str, comment: Optional[str] = None) -> D
     conn.commit()
     conn.close()
     
+    # Clear any previously sent progress milestones when build starts (fresh start)
+    clear_progress_milestones(build_id)
+    
     # Sync parent request status
     sync_request_status_from_builds(build["request_id"])
     
@@ -1286,6 +1320,9 @@ def retry_build(build_id: str, comment: Optional[str] = None) -> bool:
     
     conn.commit()
     conn.close()
+    
+    # Clear progress milestones so notifications can fire again on retry
+    clear_progress_milestones(build_id)
     
     # Sync parent request status
     sync_request_status_from_builds(build["request_id"])
@@ -1806,6 +1843,12 @@ DEFAULT_SETTINGS: Dict[str, str] = {
     "notify_admin_picked_up": "1",
     "notify_admin_rejected": "1",
     "notify_admin_cancelled": "1",
+    
+    # Progress notification settings
+    # Comma-separated percentages to notify at (e.g., "50,75")
+    "progress_notification_thresholds": "50,75",
+    # Enable progress notifications (push primarily, email at 50% only)
+    "enable_progress_notifications": "1",
 }
 
 
@@ -2749,6 +2792,196 @@ def send_request_complete_notification(request: Dict, snapshot_b64: Optional[str
         )
 
 
+def get_progress_notification_thresholds() -> List[int]:
+    """Get the configured progress notification thresholds as a sorted list of percentages."""
+    raw = get_setting("progress_notification_thresholds", "50,75")
+    thresholds = []
+    for p in raw.split(","):
+        p = p.strip()
+        if p.isdigit():
+            pct = int(p)
+            if 0 < pct < 100:  # Only valid percentages between 1 and 99
+                thresholds.append(pct)
+    return sorted(set(thresholds))
+
+
+def get_sent_progress_milestones(build_id: str) -> List[int]:
+    """Get list of progress percentages that have already been notified for a build."""
+    conn = db()
+    rows = conn.execute(
+        "SELECT milestone_percent FROM build_progress_milestones WHERE build_id = ?",
+        (build_id,)
+    ).fetchall()
+    conn.close()
+    return [row["milestone_percent"] for row in rows]
+
+
+def record_progress_milestone(build_id: str, milestone_percent: int, notification_type: str = "push"):
+    """Record that a progress milestone notification was sent."""
+    conn = db()
+    try:
+        conn.execute(
+            """INSERT INTO build_progress_milestones (id, build_id, milestone_percent, notified_at, notification_type)
+               VALUES (?, ?, ?, ?, ?)""",
+            (str(uuid.uuid4()), build_id, milestone_percent, now_iso(), notification_type)
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        # Already recorded (unique constraint on build_id + milestone_percent)
+        pass
+    conn.close()
+
+
+def clear_progress_milestones(build_id: str):
+    """Clear all progress milestones for a build (used on retry/restart)."""
+    conn = db()
+    conn.execute("DELETE FROM build_progress_milestones WHERE build_id = ?", (build_id,))
+    conn.commit()
+    conn.close()
+
+
+def send_progress_notification(build: Dict, request: Dict, current_percent: int):
+    """
+    Send progress notification for a build at a specific percentage.
+    
+    Rules:
+    - PUSH notifications are sent for all configured thresholds (if user has push enabled)
+    - EMAIL is sent ONLY at 50% threshold (if user has email enabled)
+    - Message format: "Hey your print is XX% — check it out! (Build X of Y)"
+    - Push notifications include a snapshot image URL when camera is available
+    """
+    build_id = build["id"]
+    build_num = build.get("build_number", 1)
+    total_builds = request.get("total_builds") or 1
+    request_id = request["id"]
+    printer_code = build.get("printer")
+    
+    # Check global setting
+    if not get_bool_setting("enable_progress_notifications", True):
+        return
+    
+    # Get configured thresholds
+    thresholds = get_progress_notification_thresholds()
+    if not thresholds:
+        return
+    
+    # Get already-sent milestones
+    sent_milestones = get_sent_progress_milestones(build_id)
+    
+    # Determine which milestones to fire (handles jumps like 49->80 firing both 50 and 75)
+    milestones_to_send = []
+    for threshold in thresholds:
+        if threshold <= current_percent and threshold not in sent_milestones:
+            milestones_to_send.append(threshold)
+    
+    if not milestones_to_send:
+        return
+    
+    # Parse user notification preferences
+    user_prefs = {"email": True, "push": False}
+    if request.get("notification_prefs"):
+        try:
+            user_prefs = json.loads(request["notification_prefs"])
+        except:
+            pass
+    
+    user_wants_email = user_prefs.get("email", True)
+    user_wants_push = user_prefs.get("push", False)
+    
+    requester_email = request.get("requester_email")
+    print_label = request.get("print_name") or f"Request {request_id[:8]}"
+    access_token = request.get("access_token", "")
+    
+    # Build position context
+    if total_builds > 1:
+        build_context = f" (Build {build_num} of {total_builds})"
+    else:
+        build_context = ""
+    
+    # URL with anchor to specific build
+    view_url = f"/my/{request_id}?token={access_token}&build_id={build_id}#build-{build_id}"
+    
+    # Try to get a camera snapshot URL for the notification image (best effort)
+    # Only include if camera is configured for this printer
+    image_url = None
+    if printer_code and printer_code in ["ADVENTURER_4", "AD5X"]:
+        camera_url = get_camera_url(printer_code)
+        if camera_url:
+            # Use the public snapshot endpoint (with timestamp to avoid caching)
+            image_url = f"{BASE_URL}/api/camera/{printer_code}/snapshot"
+            print(f"[PROGRESS-NOTIFY] Including camera snapshot URL: {image_url}")
+    
+    for milestone in milestones_to_send:
+        print(f"[PROGRESS-NOTIFY] Sending {milestone}% notification for build {build_id[:8]}")
+        
+        # Cheerful milestone-specific messages
+        milestone_messages = {
+            25: ("🚀 Great start!", f"'{print_label}' is 25% done — off to a great start!{build_context}"),
+            50: ("🎉 Halfway there!", f"'{print_label}' is 50% done — check it out!{build_context}"),
+            75: ("🔥 Almost done!", f"'{print_label}' is 75% complete — looking great!{build_context}"),
+            90: ("✨ Nearly there!", f"'{print_label}' is 90% done — almost ready!{build_context}"),
+        }
+        
+        # Default fallback for custom thresholds
+        default_title = f"📊 {milestone}% Complete"
+        default_body = f"'{print_label}' is {milestone}% done — check it out!{build_context}"
+        
+        notification_title, notification_body = milestone_messages.get(milestone, (default_title, default_body))
+        
+        # Tag for this specific build's progress (allows replacing previous progress notification)
+        notification_tag = f"progress-{build_id[:8]}"
+        
+        # Send PUSH notification (always, if user enabled)
+        if user_wants_push and requester_email:
+            send_push_notification(
+                email=requester_email,
+                title=notification_title,
+                body=notification_body,
+                url=view_url,
+                image_url=image_url,  # Include snapshot image if available
+                tag=notification_tag   # Use tag to replace previous progress notifications for this build
+            )
+            record_progress_milestone(build_id, milestone, "push")
+        
+        # Send EMAIL only at 50% threshold
+        if milestone == 50 and user_wants_email and requester_email:
+            subject = f"[{APP_TITLE}] Print update - {print_label}"
+            
+            email_rows = [
+                ("Print Name", print_label),
+                ("Progress", f"{milestone}%"),
+            ]
+            if total_builds > 1:
+                email_rows.append(("Build", f"{build_num} of {total_builds}"))
+            
+            text = (
+                f"Hey your print is {milestone}% — check it out!{build_context}\n\n"
+                f"Print: {print_label}\n"
+                f"\nView progress: {BASE_URL}{view_url}\n"
+            )
+            
+            # Generate my-requests link
+            my_requests_token = get_or_create_my_requests_token(requester_email)
+            my_requests_url = f"{BASE_URL}/my-requests/view?token={my_requests_token}"
+            
+            html = build_email_html(
+                title=notification_title,
+                subtitle=notification_body,
+                rows=email_rows,
+                cta_url=f"{BASE_URL}{view_url}",
+                cta_label="View Progress",
+                header_color="#8b5cf6",  # Purple for progress updates
+                secondary_cta_url=my_requests_url,
+                secondary_cta_label="All My Requests",
+            )
+            send_email([requester_email], subject, text, html)
+            record_progress_milestone(build_id, milestone, "email")
+        
+        # Record milestone even if no notifications sent (prevents re-check)
+        if not user_wants_push and not (milestone == 50 and user_wants_email):
+            record_progress_milestone(build_id, milestone, "none")
+
+
 def get_build_snapshots(build_id: str) -> List[Dict]:
     """Get all snapshots for a build."""
     conn = db()
@@ -3619,6 +3852,25 @@ async def poll_builds_status_worker():
                 # Auto-complete build if printer reports complete
                 should_complete = is_complete or ((not is_printing) and (percent_complete == 100))
                 
+                # Check for progress notifications BEFORE completion check
+                # Only send progress notifications for builds that are still printing and not complete
+                if not should_complete and percent_complete is not None and percent_complete > 0 and percent_complete < 100:
+                    try:
+                        # Build request dict for notification function
+                        request_dict = {
+                            "id": request_id,
+                            "requester_email": build.get("requester_email"),
+                            "requester_name": build.get("requester_name"),
+                            "access_token": build.get("access_token"),
+                            "notification_prefs": build.get("notification_prefs"),
+                            "total_builds": total_builds,
+                            "print_name": build.get("request_print_name"),
+                        }
+                        build_dict = dict(build)
+                        send_progress_notification(build_dict, request_dict, percent_complete)
+                    except Exception as e:
+                        print(f"[BUILD-POLL] Error sending progress notification: {e}")
+                
                 if should_complete:
                     print(f"[BUILD-POLL] Build {build_num}/{total_builds} complete for request {request_id[:8]}")
                     
@@ -4001,10 +4253,18 @@ def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Opt
 
 
 # ─────────────────────────── PUSH NOTIFICATIONS ───────────────────────────
-def send_push_notification(email: str, title: str, body: str, url: str = None) -> dict:
+def send_push_notification(email: str, title: str, body: str, url: str = None, image_url: str = None, tag: str = None) -> dict:
     """
     Send push notification to all subscriptions for a user (by email).
     Returns a dict with status and details for debugging.
+    
+    Args:
+        email: User's email address
+        title: Notification title
+        body: Notification body text
+        url: Click-through URL (default: /my-requests/view)
+        image_url: Optional image URL to display in notification (for progress updates)
+        tag: Optional tag for notification grouping (allows replacing existing notifications)
     """
     result = {"email": email, "sent": 0, "failed": 0, "errors": []}
     
@@ -4039,12 +4299,23 @@ def send_push_notification(email: str, title: str, body: str, url: str = None) -
         
     print(f"[PUSH] Found {len(subs)} subscription(s) for {email}")
     
-    payload = json.dumps({
+    # Build notification payload with optional image support
+    payload_data = {
         "title": title,
         "body": body,
         "url": url or "/my-requests/view",
         "icon": "/static/icons/icon-192.png",
-    })
+    }
+    
+    # Add optional image URL for rich notifications (progress updates, etc.)
+    if image_url:
+        payload_data["image"] = image_url
+    
+    # Add tag for notification grouping (allows replacing instead of stacking)
+    if tag:
+        payload_data["tag"] = tag
+    
+    payload = json.dumps(payload_data)
     
     for sub in subs:
         endpoint = sub["endpoint"]
@@ -4089,7 +4360,7 @@ def send_push_notification(email: str, title: str, body: str, url: str = None) -
                 vapid_claims=vapid_claims,
                 ttl=43200,  # 12 hours - matches our exp
             )
-            print(f"[PUSH] ✓ Sent notification for {email}")
+            print(f"[PUSH] OK: Sent notification for {email}")
             result["sent"] += 1
         except WebPushException as e:
             error_msg = f"WebPush error: {e}"
@@ -4117,6 +4388,138 @@ def send_push_notification(email: str, title: str, body: str, url: str = None) -
             result["errors"].append(error_msg)
     
     return result
+
+
+def send_broadcast_notification(title: str, body: str, url: str = None, 
+                                broadcast_type: str = "custom", sent_by: str = None,
+                                metadata: dict = None, also_email: bool = False) -> dict:
+    """
+    Send a push notification to ALL subscribed users.
+    Used for system announcements, app updates, etc.
+    
+    Args:
+        title: Notification title
+        body: Notification body text
+        url: Click-through URL (default: /changelog for updates, / for others)
+        broadcast_type: Type of broadcast ('custom', 'app_update', 'announcement', 'maintenance')
+        sent_by: Admin email or identifier who sent this
+        metadata: Optional dict of additional metadata (e.g., version number)
+        also_email: If True, also send email to all subscribed users
+    
+    Returns:
+        dict with total_sent, total_failed, and details
+    """
+    result = {
+        "broadcast_type": broadcast_type,
+        "total_sent": 0,
+        "total_failed": 0,
+        "unique_emails": 0,
+        "emails_sent": 0,
+        "errors": []
+    }
+    
+    # Get all unique emails with push subscriptions
+    conn = db()
+    emails = conn.execute(
+        "SELECT DISTINCT email FROM push_subscriptions"
+    ).fetchall()
+    conn.close()
+    
+    result["unique_emails"] = len(emails)
+    
+    # Determine default URL based on broadcast type
+    if not url:
+        if broadcast_type == "app_update":
+            url = "/changelog"
+        else:
+            url = "/"
+    
+    full_url = f"{BASE_URL}{url}" if url.startswith("/") else url
+    
+    # Send PUSH notifications (if VAPID is configured)
+    if VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY:
+        if emails:
+            print(f"[BROADCAST] Sending '{broadcast_type}' push to {len(emails)} subscribers")
+            for row in emails:
+                email = row["email"]
+                push_result = send_push_notification(
+                    email=email,
+                    title=title,
+                    body=body,
+                    url=url,
+                    tag=f"broadcast-{broadcast_type}"  # Group by type, replaces previous same-type broadcasts
+                )
+                result["total_sent"] += push_result.get("sent", 0)
+                result["total_failed"] += push_result.get("failed", 0)
+                if push_result.get("errors"):
+                    result["errors"].extend(push_result["errors"])
+        else:
+            result["errors"].append("No push subscriptions found")
+    else:
+        result["errors"].append("VAPID keys not configured - push skipped")
+    
+    # Send EMAIL if requested
+    if also_email and emails:
+        print(f"[BROADCAST] Sending '{broadcast_type}' email to {len(emails)} subscribers")
+        email_list = [row["email"] for row in emails]
+        
+        # Build broadcast email
+        subject = f"[{APP_TITLE}] {title}"
+        text_body = f"{body}\n\nView: {full_url}"
+        html_body = build_email_html(
+            title=title,
+            subtitle=body,
+            rows=[],
+            cta_url=full_url,
+            cta_label="View Details",
+            header_color="#6366f1",  # Indigo for broadcasts
+        )
+        
+        try:
+            send_email(email_list, subject, text_body, html_body)
+            result["emails_sent"] = len(email_list)
+            print(f"[BROADCAST] Sent email to {len(email_list)} recipients")
+        except Exception as e:
+            result["errors"].append(f"Email error: {str(e)}")
+            print(f"[BROADCAST] Email error: {e}")
+    
+    # Record the broadcast in history (include email count in metadata)
+    broadcast_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    
+    # Merge emails_sent into metadata
+    full_metadata = metadata.copy() if metadata else {}
+    if result["emails_sent"] > 0:
+        full_metadata["emails_sent"] = result["emails_sent"]
+    metadata_json = json.dumps(full_metadata) if full_metadata else None
+    
+    conn = db()
+    conn.execute("""
+        INSERT INTO broadcast_notifications 
+        (id, title, body, url, broadcast_type, sent_at, sent_by, total_sent, total_failed, metadata)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (broadcast_id, title, body, url, broadcast_type, now, sent_by, 
+          result["total_sent"], result["total_failed"], metadata_json))
+    conn.commit()
+    conn.close()
+    
+    result["broadcast_id"] = broadcast_id
+    email_info = f", {result['emails_sent']} emails" if result['emails_sent'] > 0 else ""
+    print(f"[BROADCAST] Completed: {result['total_sent']} push sent, {result['total_failed']} failed{email_info}")
+    
+    return result
+
+
+def get_broadcast_history(limit: int = 20) -> List[Dict]:
+    """Get recent broadcast notification history."""
+    conn = db()
+    rows = conn.execute("""
+        SELECT * FROM broadcast_notifications 
+        ORDER BY sent_at DESC 
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 
 def safe_ext(filename: str) -> str:
@@ -6357,6 +6760,104 @@ def admin_debug(request: Request, _=Depends(require_admin)):
         "failure_counts": _printer_failure_count,
         "version": APP_VERSION,
     })
+
+
+# ─────────────────────────── BROADCAST NOTIFICATIONS ───────────────────────────
+
+@app.get("/admin/broadcast", response_class=HTMLResponse)
+def admin_broadcast_page(request: Request, _=Depends(require_admin)):
+    """Admin page for sending broadcast notifications to all subscribers"""
+    # Get subscriber count
+    conn = db()
+    subscriber_count = conn.execute(
+        "SELECT COUNT(DISTINCT email) as c FROM push_subscriptions"
+    ).fetchone()["c"]
+    conn.close()
+    
+    # Get broadcast history
+    history = get_broadcast_history(limit=10)
+    
+    return templates.TemplateResponse("admin_broadcast.html", {
+        "request": request,
+        "subscriber_count": subscriber_count,
+        "history": history,
+        "version": APP_VERSION,
+    })
+
+
+@app.post("/admin/broadcast/send")
+def admin_broadcast_send(
+    request: Request,
+    title: str = Form(...),
+    body: str = Form(...),
+    url: str = Form(""),
+    broadcast_type: str = Form("custom"),
+    send_email: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """Send a broadcast notification to all subscribers"""
+    # Don't access session directly - just log as 'admin'
+    admin_user = "admin"
+    
+    result = send_broadcast_notification(
+        title=title,
+        body=body,
+        url=url if url.strip() else None,
+        broadcast_type=broadcast_type,
+        sent_by=admin_user,
+        also_email=bool(send_email)
+    )
+    
+    return RedirectResponse(
+        url=f"/admin/broadcast?sent=1&total={result['total_sent']}&failed={result['total_failed']}&emails={result.get('emails_sent', 0)}",
+        status_code=303
+    )
+
+
+@app.post("/api/admin/broadcast/app-update")
+def api_broadcast_app_update(
+    request: Request,
+    version: str = Form(None),
+    send_email: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """
+    Send an app update notification to all subscribers.
+    Uses the current APP_VERSION if no version is specified.
+    Links to the specific version section in the changelog.
+    """
+    version = version or APP_VERSION
+    
+    # Link to specific version anchor in changelog
+    changelog_url = f"/changelog#v{version}"
+    
+    result = send_broadcast_notification(
+        title="🎉 New Update Available!",
+        body=f"Printellect v{version} is here with new features and improvements. Tap to see what's new!",
+        url=changelog_url,
+        broadcast_type="app_update",
+        sent_by="admin",
+        metadata={"version": version},
+        also_email=bool(send_email)
+    )
+    
+    # Check if request wants JSON (API call) or redirect (form submission)
+    accept = request.headers.get("accept", "")
+    if "application/json" in accept:
+        return {
+            "success": result["total_sent"] > 0,
+            "version": version,
+            "total_sent": result["total_sent"],
+            "total_failed": result["total_failed"],
+            "unique_emails": result["unique_emails"],
+            "emails_sent": result.get("emails_sent", 0)
+        }
+    
+    # Form submission - redirect back to broadcast page
+    return RedirectResponse(
+        url=f"/admin/broadcast?sent=1&total={result['total_sent']}&failed={result['total_failed']}&emails={result.get('emails_sent', 0)}",
+        status_code=303
+    )
 
 
 # ─────────────────────────── ERROR TESTING ENDPOINTS ───────────────────────────
@@ -9179,16 +9680,15 @@ async def update_global_email_notify(token: str = Form(...), email_enabled: str 
     user_email = token_row["email"]
     enabled = email_enabled == "1"
     
-    # Update all requests for this user
-    prefs_json = json.dumps({"email": enabled, "push": False})
+    # Update all requests for this user - preserve existing push setting
     conn.execute(
         """UPDATE requests 
            SET notification_prefs = json_set(
                COALESCE(notification_prefs, '{"email": true, "push": false}'), 
                '$.email', 
-               ?
+               json(?)
            )
-           WHERE requester_email = ?""",
+           WHERE LOWER(requester_email) = LOWER(?)""",
         (enabled, user_email)
     )
     conn.commit()

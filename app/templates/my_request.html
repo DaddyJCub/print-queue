@@ -558,11 +558,11 @@
       </div>
     {% endif %}
     
-    <!-- Detailed Build Progress (for multi-build requests) -->
-    {% if builds_with_snapshots|length > 1 %}
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+    <!-- Detailed Build Progress (for multi-build requests OR single build with active printing) -->
+    {% if builds_with_snapshots|length > 1 or (builds_with_snapshots|length == 1 and builds_with_snapshots[0].status == 'PRINTING') %}
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6" id="build-details">
         <h2 class="font-semibold mb-4">🔧 Build Details</h2>
-        <div class="space-y-2">
+        <div class="space-y-3">
           {% for b in builds_with_snapshots %}
             {% set status_colors = {
               'PENDING': 'bg-zinc-700 text-zinc-300',
@@ -588,34 +588,108 @@
               'FAILED': 'Failed',
               'SKIPPED': 'Skipped'
             } %}
-            <div class="flex items-center justify-between bg-zinc-950/50 rounded-xl p-3 {% if b.status == 'PRINTING' %}ring-1 ring-amber-500/50{% endif %}">
-              <div class="flex items-center gap-3 min-w-0">
-                <div class="w-8 h-8 rounded-full flex items-center justify-center {{ status_colors.get(b.status, 'bg-zinc-700') }} text-sm flex-shrink-0">
-                  {{ status_icons.get(b.status, '•') }}
+            <div id="build-{{ b.id }}" class="bg-zinc-950/50 rounded-xl p-4 {% if b.status == 'PRINTING' %}ring-1 ring-amber-500/50{% endif %} scroll-mt-20 target:ring-2 target:ring-indigo-500 target:bg-indigo-950/30 transition-all duration-300">
+              <!-- Build header row -->
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="w-8 h-8 rounded-full flex items-center justify-center {{ status_colors.get(b.status, 'bg-zinc-700') }} text-sm flex-shrink-0">
+                    {{ status_icons.get(b.status, '•') }}
+                  </div>
+                  <div class="min-w-0">
+                    <p class="font-medium text-sm truncate">{{ b.print_name or ('Build ' ~ b.build_number) }}</p>
+                    <p class="text-xs text-zinc-500">
+                      {% if b.printer and b.printer != 'ANY' %}{{ b.printer }}{% endif %}
+                    </p>
+                  </div>
                 </div>
-                <div class="min-w-0">
-                  <p class="font-medium text-sm truncate">{{ b.print_name or ('Build ' ~ b.build_number) }}</p>
-                  <p class="text-xs text-zinc-500">
-                    {% if b.printer and b.printer != 'ANY' %}{{ b.printer }}{% endif %}
-                    {% if b.progress and b.status == 'PRINTING' %} • {{ b.progress }}%{% endif %}
-                  </p>
-                </div>
-              </div>
-              <div class="flex items-center gap-2">
-                {% if b.snapshot_data %}
-                  <img src="data:image/jpeg;base64,{{ b.snapshot_data }}" 
-                       alt="Build {{ b.build_number }}"
-                       class="w-10 h-10 rounded-lg object-cover border border-zinc-700 cursor-pointer hover:opacity-80 transition"
-                       onclick="showSnapshot(this.src)" />
-                {% endif %}
-                <span class="text-xs {{ status_colors.get(b.status, 'bg-zinc-700') }} px-2 py-1 rounded-lg">
+                <span class="text-xs {{ status_colors.get(b.status, 'bg-zinc-700') }} px-2 py-1 rounded-lg flex-shrink-0">
                   {{ status_labels.get(b.status, b.status) }}
                 </span>
               </div>
+              
+              <!-- Progress bar for printing builds -->
+              {% if b.status == 'PRINTING' and b.progress is not none %}
+                <div class="mb-3">
+                  <div class="flex items-center justify-between text-xs mb-1">
+                    <span class="text-zinc-400">Progress</span>
+                    <span class="text-amber-400 font-semibold">{{ b.progress }}%</span>
+                  </div>
+                  <div class="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                    <div class="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full transition-all duration-500"
+                         style="width: {{ b.progress }}%"></div>
+                  </div>
+                </div>
+                
+                <!-- View Live button for printing builds with camera -->
+                {% if b.printer and b.printer in ['ADVENTURER_4', 'AD5X'] %}
+                  <div class="flex justify-end mb-2">
+                    <button type="button" onclick="toggleBuildCamera('{{ b.id }}', '{{ b.printer }}')" 
+                            class="text-xs px-2 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-zinc-300 transition flex items-center gap-1">
+                      <span>📷</span>
+                      <span class="build-camera-btn-text" data-build-id="{{ b.id }}">View Live</span>
+                    </button>
+                  </div>
+                  <div id="build-camera-{{ b.id }}" class="hidden mt-2">
+                    <img id="build-camera-img-{{ b.id }}" src="" alt="Live camera" 
+                         class="w-full rounded-lg border border-zinc-700 bg-zinc-800" 
+                         onerror="this.src=''; this.alt='Camera unavailable'"/>
+                    <div class="text-xs text-zinc-500 mt-1">Updates every 10 seconds</div>
+                  </div>
+                {% endif %}
+              {% endif %}
+              
+              <!-- Snapshot thumbnail for completed builds -->
+              {% if b.snapshot_data %}
+                <div class="mt-2">
+                  <div class="flex items-center gap-2 text-xs text-zinc-500 mb-1">
+                    <span>📸</span>
+                    <span>Completion snapshot</span>
+                    {% if b.completed_at %}
+                      <span class="text-zinc-600">• {{ b.completed_at|localtime('%b %d, %I:%M %p') }}</span>
+                    {% endif %}
+                  </div>
+                  <img src="data:image/jpeg;base64,{{ b.snapshot_data }}" 
+                       alt="Build {{ b.build_number }} completion"
+                       class="w-full max-h-48 object-contain rounded-lg border border-zinc-700 cursor-pointer hover:opacity-90 transition bg-zinc-900"
+                       onclick="showSnapshot(this.src)" />
+                </div>
+              {% endif %}
             </div>
           {% endfor %}
         </div>
       </div>
+      
+      <script>
+        // Per-build camera toggle and refresh
+        const buildCameraIntervals = {};
+        
+        function toggleBuildCamera(buildId, printerCode) {
+          const container = document.getElementById('build-camera-' + buildId);
+          const btnText = document.querySelector('.build-camera-btn-text[data-build-id="' + buildId + '"]');
+          
+          if (container.classList.contains('hidden')) {
+            container.classList.remove('hidden');
+            btnText.textContent = 'Hide Live';
+            refreshBuildCamera(buildId, printerCode);
+            // Auto-refresh every 10 seconds
+            buildCameraIntervals[buildId] = setInterval(() => refreshBuildCamera(buildId, printerCode), 10000);
+          } else {
+            container.classList.add('hidden');
+            btnText.textContent = 'View Live';
+            if (buildCameraIntervals[buildId]) {
+              clearInterval(buildCameraIntervals[buildId]);
+              delete buildCameraIntervals[buildId];
+            }
+          }
+        }
+        
+        function refreshBuildCamera(buildId, printerCode) {
+          const img = document.getElementById('build-camera-img-' + buildId);
+          if (img) {
+            img.src = '/api/camera/' + printerCode + '/snapshot?t=' + Date.now();
+          }
+        }
+      </script>
     {% endif %}
     
     <!-- Request Details -->
@@ -1176,6 +1250,35 @@
       btn.disabled = false;
       btn.textContent = 'Test Push';
     }
+    
+    // Handle build_id query param for scrolling to specific build from notifications
+    (function() {
+      const params = new URLSearchParams(window.location.search);
+      const buildId = params.get('build_id');
+      
+      if (buildId) {
+        // Small delay to ensure page is fully rendered
+        setTimeout(() => {
+          const buildEl = document.getElementById('build-' + buildId);
+          if (buildEl) {
+            buildEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Add a brief highlight animation
+            buildEl.classList.add('animate-pulse');
+            setTimeout(() => buildEl.classList.remove('animate-pulse'), 2000);
+          }
+        }, 300);
+      }
+      
+      // Also handle hash-based navigation (e.g., #build-123)
+      if (window.location.hash && window.location.hash.startsWith('#build-')) {
+        setTimeout(() => {
+          const hashEl = document.querySelector(window.location.hash);
+          if (hashEl) {
+            hashEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 300);
+      }
+    })();
   </script>
 </body>
 </html>
