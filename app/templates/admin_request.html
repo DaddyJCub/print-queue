@@ -422,43 +422,109 @@
           
           {% if builds and builds|length > 0 %}
             <div class="border-t border-zinc-800 pt-4 mt-4">
-              <h3 class="text-sm font-medium text-zinc-300 mb-3">Build Details</h3>
-              <div class="space-y-3 max-h-64 overflow-y-auto">
-                {% for b in builds %}
-                  <div class="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700">
-                    <div class="flex items-center justify-between mb-2">
-                      <span class="text-sm font-medium">Build {{ b.build_number }}</span>
-                      <span class="text-xs px-2 py-0.5 rounded-full 
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-medium text-zinc-300">Build Details</h3>
+                <button type="button" onclick="toggleReorderMode()" 
+                        class="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 transition">
+                  ↕️ Reorder
+                </button>
+              </div>
+              
+              <!-- Reorder Form (hidden by default) -->
+              <form id="reorder-form" method="POST" action="/admin/request/{{ req['id'] }}/reorder-builds" 
+                    class="hidden mb-4 p-3 rounded-lg bg-indigo-900/20 border border-indigo-700/50">
+                <p class="text-xs text-indigo-300 mb-2">Drag to reorder, then save:</p>
+                <div id="reorder-list" class="space-y-1 mb-3">
+                  {% for b in builds %}
+                    <div class="reorder-item flex items-center gap-2 p-2 rounded bg-zinc-800 cursor-move" data-id="{{ b.id }}">
+                      <span class="text-zinc-500">☰</span>
+                      <span class="text-sm">Build {{ b.build_number }}{% if b.print_name %}: {{ b.print_name }}{% endif %}</span>
+                      <span class="ml-auto text-xs px-1.5 py-0.5 rounded 
                         {% if b.status == 'COMPLETED' %}bg-emerald-500/20 text-emerald-300
                         {% elif b.status == 'PRINTING' %}bg-amber-500/20 text-amber-300
-                        {% elif b.status == 'FAILED' %}bg-red-500/20 text-red-300
                         {% elif b.status == 'READY' %}bg-blue-500/20 text-blue-300
-                        {% elif b.status == 'SKIPPED' %}bg-zinc-600/20 text-zinc-400
-                        {% else %}bg-zinc-700/50 text-zinc-400{% endif %}">
-                        {{ b.status }}
-                      </span>
+                        {% else %}bg-zinc-700/50 text-zinc-400{% endif %}">{{ b.status }}</span>
                     </div>
-                    <form method="POST" action="/admin/build/{{ b.id }}/update" class="space-y-2">
-                      <input type="text" name="print_name" value="{{ b.print_name or '' }}" 
-                             placeholder="Part name (e.g., 'Left arm', 'Base')"
-                             class="w-full rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs" />
-                      <div class="flex gap-2">
-                        <input type="number" name="print_time_minutes" value="{{ b.print_time_minutes or '' }}" 
-                               placeholder="Est. minutes"
-                               class="w-24 rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs" />
-                        <select name="material" class="flex-1 rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs">
-                          <option value="">Same as request</option>
-                          {% for code, label in materials %}
-                            <option value="{{ code }}" {% if code == b.material %}selected{% endif %}>{{ label }}</option>
-                          {% endfor %}
-                        </select>
+                  {% endfor %}
+                </div>
+                <input type="hidden" name="build_order" id="build-order-input" />
+                <div class="flex gap-2">
+                  <button type="submit" class="flex-1 rounded bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-xs font-medium">
+                    Save Order
+                  </button>
+                  <button type="button" onclick="toggleReorderMode()" class="rounded bg-zinc-700 hover:bg-zinc-600 px-3 py-1.5 text-xs">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+              
+              <div id="build-details-list" class="space-y-3 max-h-96 overflow-y-auto">
+                {% for b in builds %}
+                  <div class="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700 {% if b.status == 'PRINTING' %}ring-2 ring-amber-500/50{% endif %}">
+                    <div class="flex items-center justify-between mb-2">
+                      <div class="flex items-center gap-2">
+                        <span class="text-sm font-medium">Build {{ b.build_number }}</span>
+                        {% if b.print_name %}<span class="text-xs text-zinc-400">{{ b.print_name }}</span>{% endif %}
                       </div>
-                      <textarea name="notes" rows="1" placeholder="Build notes..."
-                                class="w-full rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs">{{ b.notes or '' }}</textarea>
-                      <button type="submit" class="w-full rounded-md bg-zinc-700 hover:bg-zinc-600 transition px-2 py-1 text-xs">
-                        Save Build {{ b.build_number }}
-                      </button>
-                    </form>
+                      <div class="flex items-center gap-2">
+                        <span class="text-xs px-2 py-0.5 rounded-full 
+                          {% if b.status == 'COMPLETED' %}bg-emerald-500/20 text-emerald-300
+                          {% elif b.status == 'PRINTING' %}bg-amber-500/20 text-amber-300
+                          {% elif b.status == 'FAILED' %}bg-red-500/20 text-red-300
+                          {% elif b.status == 'READY' %}bg-blue-500/20 text-blue-300
+                          {% elif b.status == 'SKIPPED' %}bg-zinc-600/20 text-zinc-400
+                          {% else %}bg-zinc-700/50 text-zinc-400{% endif %}">
+                          {{ b.status }}
+                        </span>
+                        {% if b.status in ['PENDING', 'READY'] %}
+                          <!-- Start This Build button -->
+                          <button type="button" onclick="showStartBuildModal('{{ b.id }}', {{ b.build_number }})"
+                                  class="text-xs px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 transition">
+                            ▶ Start
+                          </button>
+                        {% endif %}
+                      </div>
+                    </div>
+                    
+                    <!-- Collapsible edit form -->
+                    <details class="group">
+                      <summary class="text-xs text-zinc-500 cursor-pointer hover:text-zinc-300 mb-2">
+                        Edit details ▾
+                      </summary>
+                      <form method="POST" action="/admin/build/{{ b.id }}/update" class="space-y-2 mt-2">
+                        <input type="text" name="print_name" value="{{ b.print_name or '' }}" 
+                               placeholder="Part name (e.g., 'Left arm', 'Base')"
+                               class="w-full rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs" />
+                        <div class="flex gap-2">
+                          <input type="number" name="print_time_minutes" value="{{ b.print_time_minutes or '' }}" 
+                                 placeholder="Est. minutes"
+                                 class="w-20 rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs" />
+                          <select name="material" class="flex-1 rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs">
+                            <option value="">Same as request</option>
+                            {% for code, label in materials %}
+                              <option value="{{ code }}" {% if code == b.material %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                          </select>
+                        </div>
+                        <input type="text" name="colors" value="{{ b.colors or '' }}" 
+                               placeholder="Colors (e.g., 'Black', 'Red/White')"
+                               class="w-full rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs" />
+                        <textarea name="notes" rows="1" placeholder="Build notes..."
+                                  class="w-full rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs">{{ b.notes or '' }}</textarea>
+                        <button type="submit" class="w-full rounded-md bg-zinc-700 hover:bg-zinc-600 transition px-2 py-1 text-xs">
+                          Save Build {{ b.build_number }}
+                        </button>
+                      </form>
+                    </details>
+                    
+                    {% if b.colors or b.material or b.print_time_minutes or b.notes %}
+                      <div class="flex flex-wrap gap-2 mt-2 text-xs text-zinc-400">
+                        {% if b.colors %}<span class="px-1.5 py-0.5 bg-zinc-700/50 rounded">🎨 {{ b.colors }}</span>{% endif %}
+                        {% if b.material %}<span class="px-1.5 py-0.5 bg-zinc-700/50 rounded">🧪 {{ b.material }}</span>{% endif %}
+                        {% if b.print_time_minutes %}<span class="px-1.5 py-0.5 bg-zinc-700/50 rounded">⏱️ {{ b.print_time_minutes }}m</span>{% endif %}
+                        {% if b.notes %}<span class="px-1.5 py-0.5 bg-zinc-700/50 rounded truncate max-w-[150px]">📝 {{ b.notes }}</span>{% endif %}
+                      </div>
+                    {% endif %}
                   </div>
                 {% endfor %}
               </div>
@@ -468,6 +534,36 @@
               Builds will be created when this request is approved.
             </p>
           {% endif %}
+        </div>
+
+        <!-- Start Specific Build Modal -->
+        <div id="start-build-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div class="bg-zinc-900 border border-zinc-700 rounded-xl p-6 w-full max-w-sm">
+            <h3 class="text-lg font-semibold mb-4">▶️ Start Build <span id="start-build-number"></span></h3>
+            <form id="start-build-form" method="POST" action="" class="space-y-4">
+              <div>
+                <label class="text-sm text-zinc-400">Printer</label>
+                <select name="printer" required class="w-full mt-1 rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm">
+                  {% for code, label in printers %}
+                    <option value="{{ code }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label class="text-sm text-zinc-400">Comment (optional)</label>
+                <input type="text" name="comment" placeholder="Started manually..." 
+                       class="w-full mt-1 rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm" />
+              </div>
+              <div class="flex gap-2">
+                <button type="submit" class="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+                  Start Build
+                </button>
+                <button type="button" onclick="closeStartBuildModal()" class="rounded-lg bg-zinc-700 hover:bg-zinc-600 transition px-4 py-2 text-sm">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
 
         <!-- Work Notes (Admin Private) -->
@@ -592,6 +688,13 @@
                           </button>
                         </form>
                       {% elif b.status == 'PRINTING' %}
+                        <form action="/admin/build/{{ b.id }}/complete" method="POST" class="inline">
+                          <input type="hidden" name="capture_snapshot" value="1" />
+                          <button type="submit" class="text-xs px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white"
+                                  onclick="return confirm('Mark this build as complete?')">
+                            ✓ Complete
+                          </button>
+                        </form>
                         <form action="/admin/build/{{ b.id }}/fail" method="POST" class="inline">
                           <button type="submit" class="text-xs px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white"
                                   onclick="return confirm('Mark this build as failed?')">
@@ -916,8 +1019,97 @@
         if (e.key === 'Escape') {
           hideAddToStoreModal();
           hidePrintStartModal();
+          closeStartBuildModal();
         }
       });
+      
+      // Start specific build modal
+      function showStartBuildModal(buildId, buildNumber) {
+        const modal = document.getElementById('start-build-modal');
+        const form = document.getElementById('start-build-form');
+        document.getElementById('start-build-number').textContent = buildNumber;
+        form.action = '/admin/build/' + buildId + '/start';
+        modal.classList.remove('hidden');
+      }
+      
+      function closeStartBuildModal() {
+        document.getElementById('start-build-modal').classList.add('hidden');
+      }
+      
+      document.getElementById('start-build-modal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'start-build-modal') closeStartBuildModal();
+      });
+      
+      // Reorder builds
+      function toggleReorderMode() {
+        const reorderForm = document.getElementById('reorder-form');
+        const detailsList = document.getElementById('build-details-list');
+        reorderForm.classList.toggle('hidden');
+        detailsList.classList.toggle('hidden');
+        
+        // Update the hidden input with current order when showing
+        if (!reorderForm.classList.contains('hidden')) {
+          updateBuildOrder();
+        }
+      }
+      
+      function updateBuildOrder() {
+        const items = document.querySelectorAll('#reorder-list .reorder-item');
+        const order = Array.from(items).map(item => item.dataset.id);
+        document.getElementById('build-order-input').value = order.join(',');
+      }
+      
+      // Simple drag and drop for reordering
+      (function() {
+        const list = document.getElementById('reorder-list');
+        if (!list) return;
+        
+        let draggedItem = null;
+        
+        list.addEventListener('dragstart', (e) => {
+          if (e.target.classList.contains('reorder-item')) {
+            draggedItem = e.target;
+            e.target.style.opacity = '0.5';
+          }
+        });
+        
+        list.addEventListener('dragend', (e) => {
+          if (e.target.classList.contains('reorder-item')) {
+            e.target.style.opacity = '1';
+            draggedItem = null;
+            updateBuildOrder();
+          }
+        });
+        
+        list.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          const afterElement = getDragAfterElement(list, e.clientY);
+          if (draggedItem) {
+            if (afterElement == null) {
+              list.appendChild(draggedItem);
+            } else {
+              list.insertBefore(draggedItem, afterElement);
+            }
+          }
+        });
+        
+        function getDragAfterElement(container, y) {
+          const items = [...container.querySelectorAll('.reorder-item:not([style*="opacity: 0.5"])')];
+          return items.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+            if (offset < 0 && offset > closest.offset) {
+              return { offset: offset, element: child };
+            }
+            return closest;
+          }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+        
+        // Make items draggable
+        list.querySelectorAll('.reorder-item').forEach(item => {
+          item.draggable = true;
+        });
+      })();
     </script>
     
     <!-- Footer with version -->

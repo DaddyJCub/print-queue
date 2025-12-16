@@ -404,6 +404,7 @@ def init_db():
             file_name TEXT,
             total_layers INTEGER,
             notes TEXT,
+            colors TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY(request_id) REFERENCES requests(id)
@@ -555,6 +556,8 @@ def ensure_migrations():
     builds_cols = {row[1] for row in cur.fetchall()}
     if builds_cols and "notes" not in builds_cols:
         cur.execute("ALTER TABLE builds ADD COLUMN notes TEXT")
+    if builds_cols and "colors" not in builds_cols:
+        cur.execute("ALTER TABLE builds ADD COLUMN colors TEXT")
 
     # Migrate existing approved/printing/done requests that don't have builds yet
     existing_without_builds = cur.execute("""
@@ -629,10 +632,14 @@ def derive_request_status_from_builds(request_id: str) -> str:
     return "IN_PROGRESS"
 
 
-def sync_request_status_from_builds(request_id: str) -> str:
+def sync_request_status_from_builds(request_id: str, skip_done_notification: bool = False) -> str:
     """
     Update the parent request's status and counters based on its builds.
     Returns the new status.
+    
+    Args:
+        request_id: The request ID to sync
+        skip_done_notification: If True, don't send DONE notification (caller will handle it)
     """
     conn = db()
     builds = conn.execute(
@@ -646,6 +653,10 @@ def sync_request_status_from_builds(request_id: str) -> str:
     completed = sum(1 for b in builds if b["status"] == "COMPLETED")
     failed = sum(1 for b in builds if b["status"] == "FAILED")
     total = len(builds)
+    
+    # Get old status to detect transition to DONE
+    old_request = conn.execute("SELECT status FROM requests WHERE id = ?", (request_id,)).fetchone()
+    old_status = old_request["status"] if old_request else None
     
     new_status = derive_request_status_from_builds(request_id)
     
@@ -666,7 +677,20 @@ def sync_request_status_from_builds(request_id: str) -> str:
         WHERE id = ?
     """, (new_status, completed, failed, active_build_id, now_iso(), request_id))
     conn.commit()
-    conn.close()
+    
+    # If transitioning to DONE, send completion notification (unless caller handles it)
+    if new_status == "DONE" and old_status != "DONE" and total > 1 and not skip_done_notification:
+        try:
+            request = conn.execute("SELECT * FROM requests WHERE id = ?", (request_id,)).fetchone()
+            conn.close()
+            if request:
+                print(f"[SYNC-STATUS] Request {request_id[:8]} transitioned to DONE, sending completion notification")
+                send_request_complete_notification(dict(request))
+        except Exception as e:
+            print(f"[SYNC-STATUS] Failed to send DONE notification: {e}")
+            conn.close()
+    else:
+        conn.close()
     
     return new_status
 
@@ -749,6 +773,7 @@ def fail_build(build_id: str, comment: Optional[str] = None) -> bool:
         return False
     
     now = now_iso()
+    request_id = build["request_id"]
     
     conn.execute("""
         UPDATE builds SET 
@@ -766,14 +791,24 @@ def fail_build(build_id: str, comment: Optional[str] = None) -> bool:
     # Clear active_build_id from parent request
     conn.execute(
         "UPDATE requests SET active_build_id = NULL, updated_at = ? WHERE id = ?",
-        (now, build["request_id"])
+        (now, request_id)
     )
     
     conn.commit()
+    
+    # Get request for notification
+    request = conn.execute("SELECT * FROM requests WHERE id = ?", (request_id,)).fetchone()
     conn.close()
     
     # Sync parent request status (will set to BLOCKED)
-    sync_request_status_from_builds(build["request_id"])
+    sync_request_status_from_builds(request_id)
+    
+    # Send failure notification
+    if request:
+        try:
+            send_build_fail_notification(dict(build), dict(request), comment)
+        except Exception as e:
+            print(f"[BUILD-FAIL] Failed to send notification: {e}")
     
     return True
 
@@ -857,6 +892,67 @@ def skip_build(build_id: str, comment: Optional[str] = None) -> bool:
     
     # Sync parent request status
     sync_request_status_from_builds(build["request_id"])
+    
+    return True
+
+
+def complete_build(build_id: str, comment: Optional[str] = None, snapshot_b64: Optional[str] = None) -> bool:
+    """
+    Manually mark a build as COMPLETED.
+    Can complete a PRINTING build (manually confirm completion).
+    Returns True if successful.
+    """
+    conn = db()
+    build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
+    
+    if not build:
+        conn.close()
+        return False
+    
+    if build["status"] != "PRINTING":
+        conn.close()
+        return False
+    
+    now = now_iso()
+    request_id = build["request_id"]
+    
+    conn.execute("""
+        UPDATE builds SET 
+            status = 'COMPLETED',
+            completed_at = ?,
+            updated_at = ?
+        WHERE id = ?
+    """, (now, now, build_id))
+    
+    conn.execute(
+        "INSERT INTO build_status_events (id, build_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), build_id, now, "PRINTING", "COMPLETED", comment or "Manually completed by admin")
+    )
+    
+    # Save snapshot if provided
+    if snapshot_b64:
+        conn.execute(
+            "INSERT INTO build_snapshots (id, build_id, created_at, snapshot_data, snapshot_type) VALUES (?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), build_id, now, snapshot_b64, "completion")
+        )
+    
+    conn.commit()
+    
+    # Get request for notification
+    request = conn.execute("SELECT * FROM requests WHERE id = ?", (request_id,)).fetchone()
+    conn.close()
+    
+    # Sync parent request status (skip DONE notification - we'll handle it below)
+    sync_request_status_from_builds(request_id, skip_done_notification=True)
+    
+    # Send build completion notification (or request completion if final build)
+    if request:
+        try:
+            build_dict = dict(build)
+            build_dict["status"] = "COMPLETED"  # Update status in dict
+            send_build_complete_notification(build_dict, dict(request), snapshot_b64)
+        except Exception as e:
+            print(f"[BUILD-COMPLETE] Failed to send notification: {e}")
     
     return True
 
@@ -1944,10 +2040,94 @@ def send_build_complete_notification(build: Dict, request: Dict, snapshot_b64: O
         )
 
 
+def send_build_fail_notification(build: Dict, request: Dict, reason: Optional[str] = None):
+    """
+    Send notification when a build fails.
+    Lets requester know there's an issue but the admin is handling it.
+    """
+    build_num = build.get("build_number", 1)
+    total_builds = request.get("total_builds") or 1
+    request_id = request["id"]
+    
+    # Skip notification for single-build requests (handled by legacy system)
+    if total_builds <= 1:
+        return
+    
+    print(f"[BUILD-NOTIFY] Sending build FAIL notification: Build {build_num}/{total_builds}")
+    
+    # Check notification settings
+    requester_email_on_status = get_bool_setting("requester_email_on_status", True)
+    
+    if not requester_email_on_status:
+        return
+    
+    # Parse user notification preferences
+    user_prefs = {"email": True, "push": False}
+    if request.get("notification_prefs"):
+        try:
+            user_prefs = json.loads(request["notification_prefs"])
+        except:
+            pass
+    
+    user_wants_email = user_prefs.get("email", True)
+    user_wants_push = user_prefs.get("push", False)
+    
+    print_label = request.get("print_name") or f"Request {request_id[:8]}"
+    build_label = build.get("print_name") or f"Build {build_num}"
+    
+    if user_wants_email and request.get("requester_email"):
+        subject = f"[{APP_TITLE}] ⚠️ Build Issue - {print_label}"
+        
+        email_rows = [
+            ("Print Name", print_label),
+            ("Build", f"{build_num} of {total_builds}"),
+            ("Status", "Issue Detected"),
+        ]
+        
+        if reason:
+            email_rows.append(("Details", reason))
+        
+        text = (
+            f"There was an issue with build {build_num} of your print.\n\n"
+            f"Print: {print_label}\n"
+            f"Build: {build_label}\n"
+            f"\nDon't worry - our team is aware and will handle it.\n"
+            f"This may involve a reprint of this build. We'll notify you when progress resumes.\n"
+            f"\nView progress: {BASE_URL}/my/{request_id}?token={request.get('access_token', '')}\n"
+        )
+        
+        # Generate my-requests link
+        my_requests_token = get_or_create_my_requests_token(request["requester_email"])
+        my_requests_url = f"{BASE_URL}/my-requests/view?token={my_requests_token}"
+        
+        html = build_email_html(
+            title=f"⚠️ Build Issue",
+            subtitle=f"'{print_label}' - Build {build_num} needs attention",
+            rows=email_rows,
+            cta_url=f"{BASE_URL}/my/{request_id}?token={request.get('access_token', '')}",
+            cta_label="View Progress",
+            header_color="#f59e0b",  # Amber for warning
+            footer_note="Our team is handling this issue. No action needed from you.",
+            secondary_cta_url=my_requests_url,
+            secondary_cta_label="All My Requests",
+        )
+        send_email([request["requester_email"]], subject, text, html)
+    
+    # Send push notification
+    if user_wants_push and request.get("requester_email"):
+        send_push_notification(
+            email=request["requester_email"],
+            title=f"⚠️ Build Issue",
+            body=f"'{print_label}' - Build {build_num} needs attention. We're handling it.",
+            url=f"/my/{request_id}?token={request.get('access_token', '')}"
+        )
+
+
 def send_request_complete_notification(request: Dict, snapshot_b64: Optional[str] = None):
     """
     Send notification when ALL builds are complete (request is fully done).
     This is the authoritative 'ready for pickup' notification.
+    Style matches the standard single-print completion notification.
     """
     request_id = request["id"]
     total_builds = request.get("total_builds") or 1
@@ -1975,7 +2155,8 @@ def send_request_complete_notification(request: Dict, snapshot_b64: Optional[str
     print_label = request.get("print_name") or f"Request {request_id[:8]}"
     
     if user_wants_email and request.get("requester_email"):
-        subject = f"[{APP_TITLE}] 🎉 All Prints Complete! - {print_label}"
+        # Simple subject like the legacy notification
+        subject = f"[{APP_TITLE}] Print Complete! - {print_label}"
         
         email_rows = [
             ("Print Name", print_label),
@@ -1983,16 +2164,18 @@ def send_request_complete_notification(request: Dict, snapshot_b64: Optional[str
             ("Status", "READY FOR PICKUP"),
         ]
         
+        # Only mention builds if there were multiple
         if total_builds > 1:
-            email_rows.insert(2, ("Builds Completed", f"All {total_builds} builds"))
+            email_rows.insert(2, ("Builds", f"All {total_builds} finished"))
         
         text = (
-            f"Great news! All your prints are complete and ready for pickup!\n\n"
+            f"Your print is complete and ready for pickup!\n\n"
             f"Print: {print_label}\n"
             f"Request ID: {request_id[:8]}\n"
-            f"Builds: {total_builds} total\n"
-            f"\nView: {BASE_URL}/my/{request_id}?token={request.get('access_token', '')}\n"
         )
+        if total_builds > 1:
+            text += f"All {total_builds} builds finished.\n"
+        text += f"\nView: {BASE_URL}/my/{request_id}?token={request.get('access_token', '')}\n"
         
         # Generate my-requests link
         my_requests_token = get_or_create_my_requests_token(request["requester_email"])
@@ -2002,7 +2185,7 @@ def send_request_complete_notification(request: Dict, snapshot_b64: Optional[str
         snapshot_to_send = snapshot_b64 if get_bool_setting("enable_camera_snapshot", False) else None
         
         html = build_email_html(
-            title="🎉 All Prints Complete!",
+            title="Print Complete!",
             subtitle=f"'{print_label}' is ready for pickup",
             rows=email_rows,
             cta_url=f"{BASE_URL}/my/{request_id}?token={request.get('access_token', '')}",
@@ -2016,10 +2199,14 @@ def send_request_complete_notification(request: Dict, snapshot_b64: Optional[str
     
     # Send push notification
     if user_wants_push and request.get("requester_email"):
+        body = f"'{print_label}' is ready for pickup!"
+        if total_builds > 1:
+            body = f"'{print_label}' is ready for pickup! All {total_builds} builds finished."
+        
         send_push_notification(
             email=request["requester_email"],
-            title="🎉 All Prints Complete!",
-            body=f"'{print_label}' is ready for pickup!",
+            title="Print Complete!",
+            body=body,
             url=f"/my/{request_id}?token={request.get('access_token', '')}"
         )
 
@@ -2817,7 +3004,8 @@ async def poll_builds_status_worker():
             # Find all builds that are actively PRINTING
             printing_builds = conn.execute("""
                 SELECT b.*, r.requester_email, r.requester_name, r.access_token, r.notification_prefs,
-                       r.total_builds, r.completed_builds, r.print_name as request_print_name
+                       r.total_builds, r.completed_builds, r.print_name as request_print_name,
+                       r.material as request_material, r.colors as request_colors, r.printer as request_printer
                 FROM builds b
                 JOIN requests r ON b.request_id = r.id
                 WHERE b.status = 'PRINTING'
@@ -2909,8 +3097,8 @@ async def poll_builds_status_worker():
                         except Exception as e:
                             print(f"[BUILD-POLL] Failed to capture snapshot: {e}")
                     
-                    # Sync parent request status
-                    new_request_status = sync_request_status_from_builds(request_id)
+                    # Sync parent request status (skip DONE notification - we'll send it with snapshot below)
+                    new_request_status = sync_request_status_from_builds(request_id, skip_done_notification=True)
                     
                     # Send build completion notification (or request completion if final build)
                     try:
@@ -2948,6 +3136,11 @@ async def poll_builds_status_worker():
                             completed_dt = datetime.utcnow()
                             duration_minutes = int((completed_dt - started_dt).total_seconds() / 60)
                             
+                            # Use build values with fallback to request values
+                            effective_printer = build["printer"] or build.get("request_printer") or ""
+                            effective_material = build["material"] or build.get("request_material") or ""
+                            effective_print_name = build["print_name"] or build.get("request_print_name") or f"Build {build_num}"
+                            
                             conn = db()
                             conn.execute("""
                                 INSERT INTO print_history 
@@ -2957,9 +3150,9 @@ async def poll_builds_status_worker():
                             """, (
                                 str(uuid.uuid4()),
                                 request_id,
-                                build["printer"] or "",
-                                build["material"] or "",
-                                build["print_name"] or f"Build {build_num}",
+                                effective_printer,
+                                effective_material,
+                                effective_print_name,
                                 build["started_at"],
                                 now_iso(),
                                 duration_minutes,
@@ -3734,8 +3927,6 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     # Fetch current printer status for health indicators
     printer_status = {}
     for printer_code in ["ADVENTURER_4", "AD5X"]:
-        # Always include camera_url even if printer API fails
-        camera_url = get_camera_url(printer_code)
         try:
             printer_api = get_printer_api(printer_code)
             if printer_api:
@@ -3753,23 +3944,9 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                         "current_file": extended.get("current_file") if extended else None,
                         "current_layer": extended.get("current_layer") if extended else None,
                         "total_layers": extended.get("total_layers") if extended else None,
-                        "camera_url": camera_url,
                     }
-                    continue
         except Exception:
             pass
-        # Fallback: set minimal status with camera_url so camera button still works
-        printer_status[printer_code] = {
-            "status": None,
-            "temp": None,
-            "progress": None,
-            "healthy": None,
-            "is_printing": False,
-            "current_file": None,
-            "current_layer": None,
-            "total_layers": None,
-            "camera_url": camera_url,
-        }
     
     # First pass: build items and find printing index, fetch real progress for PRINTING
     for idx, r in enumerate(rows):
@@ -6285,12 +6462,11 @@ def admin_set_status(
     conn.commit()
     conn.close()
 
-    # When approving a request, set up builds for multi-file requests
+    # When approving a request, set up builds (always at least 1)
     if to_status == "APPROVED" and from_status != "APPROVED":
         build_count = setup_builds_for_request(rid)
-        if build_count > 1:
-            # Mark all builds as READY since request is approved
-            mark_builds_ready(rid)
+        # Mark all builds as READY since request is approved
+        mark_builds_ready(rid)
     
     # When starting print, start the first READY build
     if to_status == "PRINTING" and from_status != "PRINTING":
@@ -6735,6 +6911,42 @@ def admin_skip_build(
     return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
 
 
+@app.post("/admin/build/{build_id}/complete")
+async def admin_complete_build(
+    request: Request,
+    build_id: str,
+    comment: Optional[str] = Form(None),
+    capture_snapshot: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """Manually mark a build as completed (with optional snapshot capture)."""
+    conn = db()
+    build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
+    conn.close()
+    
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found")
+    
+    if build["status"] != "PRINTING":
+        raise HTTPException(status_code=400, detail="Can only complete a PRINTING build")
+    
+    # Optionally capture snapshot
+    snapshot_b64 = None
+    if capture_snapshot == "1" and get_bool_setting("enable_camera_snapshot", False):
+        try:
+            snapshot_data = await capture_camera_snapshot(build["printer"])
+            if snapshot_data:
+                snapshot_b64 = base64.b64encode(snapshot_data).decode("utf-8")
+        except Exception as e:
+            print(f"[BUILD-COMPLETE] Failed to capture snapshot: {e}")
+    
+    success = complete_build(build_id, comment or "Manually completed by admin", snapshot_b64)
+    if not success:
+        raise HTTPException(status_code=400, detail="Cannot complete build - invalid state")
+    
+    return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
+
+
 @app.post("/admin/request/{rid}/configure-builds")
 def admin_configure_builds(
     request: Request,
@@ -6818,6 +7030,7 @@ def admin_update_build(
     material: Optional[str] = Form(None),
     print_time_minutes: Optional[int] = Form(None),
     notes: Optional[str] = Form(None),
+    colors: Optional[str] = Form(None),
     _=Depends(require_admin)
 ):
     """Update details for a specific build."""
@@ -6842,6 +7055,9 @@ def admin_update_build(
     if notes is not None:
         updates.append("notes = ?")
         values.append(notes.strip() if notes else None)
+    if colors is not None:
+        updates.append("colors = ?")
+        values.append(colors.strip() if colors else None)
     
     values.append(build_id)
     conn.execute(f"UPDATE builds SET {', '.join(updates)} WHERE id = ?", values)
@@ -6873,6 +7089,81 @@ def admin_start_next_build(
     success = start_build(next_build["id"], printer, comment)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to start build")
+    
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@app.post("/admin/build/{build_id}/start")
+def admin_start_specific_build(
+    request: Request,
+    build_id: str,
+    printer: str = Form(...),
+    comment: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """Start a specific build by ID (allows out-of-order printing)."""
+    conn = db()
+    build = conn.execute("SELECT id, request_id, status FROM builds WHERE id = ?", (build_id,)).fetchone()
+    conn.close()
+    
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found")
+    
+    if build["status"] not in ["PENDING", "READY"]:
+        raise HTTPException(status_code=400, detail=f"Cannot start build in {build['status']} status")
+    
+    success = start_build(build_id, printer, comment)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to start build")
+    
+    return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
+
+
+@app.post("/admin/request/{rid}/reorder-builds")
+def admin_reorder_builds(
+    request: Request,
+    rid: str,
+    build_order: str = Form(...),  # Comma-separated build IDs in new order
+    _=Depends(require_admin)
+):
+    """Reorder builds by providing build IDs in desired order."""
+    conn = db()
+    
+    # Get current builds
+    builds = conn.execute(
+        "SELECT id, status FROM builds WHERE request_id = ? ORDER BY build_number", 
+        (rid,)
+    ).fetchall()
+    
+    if not builds:
+        conn.close()
+        raise HTTPException(status_code=404, detail="No builds found for this request")
+    
+    # Parse new order
+    new_order = [bid.strip() for bid in build_order.split(",") if bid.strip()]
+    
+    # Validate that all build IDs are present
+    existing_ids = {b["id"] for b in builds}
+    if set(new_order) != existing_ids:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Build order must include all build IDs exactly once")
+    
+    # Only allow reordering if no builds are currently PRINTING
+    for b in builds:
+        if b["status"] == "PRINTING":
+            conn.close()
+            raise HTTPException(status_code=400, detail="Cannot reorder while a build is printing")
+    
+    # Update build numbers
+    now = now_iso()
+    for new_number, build_id in enumerate(new_order, start=1):
+        conn.execute(
+            "UPDATE builds SET build_number = ?, updated_at = ? WHERE id = ?",
+            (new_number, now, build_id)
+        )
+    
+    conn.commit()
+    conn.close()
     
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
