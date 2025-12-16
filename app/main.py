@@ -3913,10 +3913,12 @@ async def submit(
 async def public_queue(request: Request, mine: Optional[str] = None):
     conn = db()
     rows = conn.execute(
-        "SELECT id, requester_name, print_name, printer, material, colors, status, special_notes, print_time_minutes, turnaround_minutes, printing_started_at "
-        "FROM requests "
-        "WHERE status NOT IN (?, ?, ?) "
-        "ORDER BY created_at ASC",
+        """SELECT id, requester_name, print_name, printer, material, colors, status, special_notes, 
+                  print_time_minutes, turnaround_minutes, printing_started_at, 
+                  active_build_id, total_builds, completed_builds
+           FROM requests 
+           WHERE status NOT IN (?, ?, ?) 
+           ORDER BY created_at ASC""",
         ("PICKED_UP", "REJECTED", "CANCELLED")
     ).fetchall()
     conn.close()
@@ -3959,8 +3961,22 @@ async def public_queue(request: Request, mine: Optional[str] = None):
         current_layer = None
         total_layers = None
         printing_started_at = r["printing_started_at"] if "printing_started_at" in r.keys() else None
+        active_printer = r["printer"]  # Default to request printer
         
-        if r["status"] == "PRINTING":
+        # Handle IN_PROGRESS (multi-build) - get active build's printer
+        if r["status"] == "IN_PROGRESS" and r.get("active_build_id"):
+            conn_build = db()
+            active_build = conn_build.execute(
+                "SELECT printer, started_at FROM builds WHERE id = ?", 
+                (r["active_build_id"],)
+            ).fetchone()
+            conn_build.close()
+            if active_build and active_build["printer"]:
+                active_printer = active_build["printer"]
+                if active_build["started_at"]:
+                    printing_started_at = active_build["started_at"]
+        
+        if r["status"] in ["PRINTING", "IN_PROGRESS"]:
             # Fix missing printing_started_at for legacy requests
             if not printing_started_at:
                 printing_started_at = now_iso()
@@ -3970,7 +3986,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                 conn_fix.commit()
                 conn_fix.close()
             
-            printer_api = get_printer_api(r["printer"])
+            printer_api = get_printer_api(active_printer)
             current_layer = None
             total_layers = None
             if printer_api:
@@ -3986,7 +4002,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             
             # Calculate smart ETA based on layers (preferred) or progress
             eta_dt = get_smart_eta(
-                printer=r["printer"],
+                printer=active_printer,
                 material=r["material"],
                 current_percent=printer_progress,
                 printing_started_at=printing_started_at,
@@ -3998,14 +4014,14 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                 smart_eta_display = format_eta_display(eta_dt)
         
         # Get printer health status
-        printer_health = printer_status.get(r["printer"], {}).get("healthy", None)
+        printer_health = printer_status.get(active_printer, {}).get("healthy", None)
         
         items.append({
             "pos": idx + 1,
             "short_id": short_id,
             "requester_first": first_name_only(r["requester_name"]),
             "print_name": r["print_name"],
-            "printer": r["printer"],
+            "printer": active_printer,  # Use active build's printer for display
             "material": r["material"],
             "colors": r["colors"],
             "status": r["status"],
@@ -4021,10 +4037,13 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             "printing_started_at": printing_started_at,
             "current_layer": current_layer,  # Current layer number
             "total_layers": total_layers,  # Total layers in print
+            "total_builds": r.get("total_builds") or 1,  # Multi-build support
+            "completed_builds": r.get("completed_builds") or 0,  # Multi-build support
         })
     
     # Separate items by status for display
-    printing_items = [it for it in items if it["status"] == "PRINTING"]
+    # Include IN_PROGRESS for multi-build requests that have active builds
+    printing_items = [it for it in items if it["status"] in ["PRINTING", "IN_PROGRESS"]]
     approved_items = [it for it in items if it["status"] == "APPROVED"]
     done_items = [it for it in items if it["status"] == "DONE"]
     pending_items = [it for it in items if it["status"] in ["NEW", "NEEDS_INFO"]]
@@ -4141,7 +4160,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                 my_pos = it["queue_pos"]
                 break
 
-    counts = {"NEW": 0, "NEEDS_INFO": 0, "APPROVED": 0, "PRINTING": 0, "DONE": 0}
+    counts = {"NEW": 0, "NEEDS_INFO": 0, "APPROVED": 0, "PRINTING": 0, "IN_PROGRESS": 0, "DONE": 0}
     for it in items:
         if it["status"] in counts:
             counts[it["status"]] += 1
@@ -4657,8 +4676,11 @@ async def my_requests_view(request: Request, token: str):
     
     if not token_row:
         conn.close()
-        # Redirect to clean URL instead of rendering at /my-requests/view
-        return RedirectResponse(url="/my-requests?error=expired", status_code=302)
+        return templates.TemplateResponse("my_requests_lookup_new.html", {
+            "request": request,
+            "error": "expired",
+            "version": APP_VERSION,
+        })
     
     # Check expiry
     expiry = datetime.fromisoformat(token_row["expires_at"].replace("Z", "+00:00"))
@@ -4667,8 +4689,11 @@ async def my_requests_view(request: Request, token: str):
         conn.execute("DELETE FROM email_lookup_tokens WHERE token = ?", (token,))
         conn.commit()
         conn.close()
-        # Redirect to clean URL instead of rendering at /my-requests/view
-        return RedirectResponse(url="/my-requests?error=expired", status_code=302)
+        return templates.TemplateResponse("my_requests_lookup_new.html", {
+            "request": request,
+            "error": "expired",
+            "version": APP_VERSION,
+        })
     
     email = token_row["email"]
     
@@ -5332,7 +5357,8 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
     # Fetch NEW and NEEDS_INFO together for "needs attention" section
     new_reqs = _fetch_requests_by_status(["NEW", "NEEDS_INFO"])
     queued = _fetch_requests_by_status("APPROVED")
-    printing_raw = _fetch_requests_by_status("PRINTING", include_eta_fields=True)
+    # Include IN_PROGRESS for multi-build requests that have active builds
+    printing_raw = _fetch_requests_by_status(["PRINTING", "IN_PROGRESS"], include_eta_fields=True)
     done = _fetch_requests_by_status("DONE")
     
     # Enrich printing requests with smart ETA
@@ -5342,7 +5368,25 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
         printer_progress = None
         current_layer = None
         total_layers = None
-        printer_api = get_printer_api(r["printer"])
+        active_printer = r["printer"]  # Default to request printer
+        printing_started_at = r["printing_started_at"] if "printing_started_at" in r.keys() else None
+        
+        # Handle IN_PROGRESS (multi-build) - get active build's printer
+        if r["status"] == "IN_PROGRESS":
+            conn_build = db()
+            active_build = conn_build.execute(
+                """SELECT b.printer, b.started_at FROM builds b 
+                   WHERE b.request_id = ? AND b.status = 'PRINTING' 
+                   LIMIT 1""", 
+                (r["id"],)
+            ).fetchone()
+            conn_build.close()
+            if active_build and active_build["printer"]:
+                active_printer = active_build["printer"]
+                if active_build["started_at"]:
+                    printing_started_at = active_build["started_at"]
+        
+        printer_api = get_printer_api(active_printer)
         if printer_api:
             try:
                 printer_progress = await printer_api.get_percent_complete()
@@ -5355,8 +5399,7 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
                 pass
         
         # If printing_started_at is missing, set it now (for legacy requests)
-        printing_started_at = r["printing_started_at"] if "printing_started_at" in r.keys() else None
-        if not printing_started_at and r["status"] == "PRINTING":
+        if not printing_started_at and r["status"] in ["PRINTING", "IN_PROGRESS"]:
             printing_started_at = now_iso()
             conn_fix = db()
             conn_fix.execute("UPDATE requests SET printing_started_at = ? WHERE id = ? AND printing_started_at IS NULL", 
@@ -5366,7 +5409,7 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
         
         # Calculate smart ETA based on layers (preferred) or progress
         eta_dt = get_smart_eta(
-            printer=r["printer"],
+            printer=active_printer,
             material=r["material"],
             current_percent=printer_progress,
             printing_started_at=printing_started_at,
@@ -5379,6 +5422,7 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
         row_dict["smart_eta"] = eta_dt.isoformat() if eta_dt else None
         row_dict["smart_eta_display"] = format_eta_display(eta_dt) if eta_dt else None
         row_dict["printer_progress"] = printer_progress
+        row_dict["active_printer"] = active_printer  # For display
         printing.append(row_dict)
 
     conn = db()
@@ -6415,13 +6459,10 @@ def admin_set_status(
         raise HTTPException(status_code=400, detail="Invalid status")
 
     conn = db()
-    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
-    if not req_row:
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
         conn.close()
         raise HTTPException(status_code=404, detail="Not found")
-    
-    # Convert sqlite3.Row to dict for .get() access
-    req = dict(req_row)
 
     from_status = req["status"]
     

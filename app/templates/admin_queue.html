@@ -800,9 +800,12 @@
                           {{ r.completed_builds or 0 }}/{{ r.total_builds }} builds
                         </span>
                       {% endif %}
+                      {% if r.status == 'IN_PROGRESS' %}
+                        <span class="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">Multi-Build</span>
+                      {% endif %}
                     </div>
                     <div class="text-xs text-zinc-400 mt-0.5 truncate">
-                      {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }} {% if r["colors"] %}• {{ r["colors"] }}{% endif %}
+                      {{ r.get("active_printer") or r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }} {% if r["colors"] %}• {{ r["colors"] }}{% endif %}
                     </div>
                     {% if r.get("printer_progress") is not none %}
                       <div class="flex items-center gap-2 mt-1.5">

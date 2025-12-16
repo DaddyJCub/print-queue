@@ -19,7 +19,7 @@
     <div class="text-xs text-indigo-400">Queued</div>
   </div>
   <div class="bg-emerald-900/30 border border-emerald-700/50 rounded-xl p-3 text-center">
-    <div class="text-xl font-bold text-emerald-300">{{ counts["PRINTING"] }}</div>
+    <div class="text-xl font-bold text-emerald-300">{{ (counts["PRINTING"] or 0) + (counts["IN_PROGRESS"] or 0) }}</div>
     <div class="text-xs text-emerald-400">Printing</div>
   </div>
   <div class="bg-amber-900/30 border border-amber-700/50 rounded-xl p-3 text-center">
@@ -219,21 +219,21 @@
   <div id="queue-mobile" class="sm:hidden space-y-3">
   {% if active_queue %}
     {% for r in active_queue %}
-    <div class="bg-zinc-900/60 border {% if r.is_mine %}border-indigo-500/50 bg-indigo-900/20{% elif r.status == 'PRINTING' %}border-emerald-500/50 bg-emerald-900/10{% else %}border-zinc-800{% endif %} rounded-xl p-4 card-interactive">
+    <div class="bg-zinc-900/60 border {% if r.is_mine %}border-indigo-500/50 bg-indigo-900/20{% elif r.status in ['PRINTING', 'IN_PROGRESS'] %}border-emerald-500/50 bg-emerald-900/10{% else %}border-zinc-800{% endif %} rounded-xl p-4 card-interactive">
       <div class="flex items-start justify-between mb-2">
         <div class="flex items-center gap-2">
           <span class="text-lg font-bold text-zinc-500">#{{ r.queue_pos }}</span>
           <div>
             <p class="font-semibold text-zinc-200">{{ r.print_name or r.short_id }}</p>
-            <p class="text-xs text-zinc-500">{{ r.requester_first }}</p>
+            <p class="text-xs text-zinc-500">{{ r.requester_first }}{% if r.total_builds > 1 %} • {{ r.completed_builds }}/{{ r.total_builds }} builds{% endif %}</p>
           </div>
         </div>
         <span class="px-2 py-1 rounded-lg text-xs font-medium
-          {% if r.status == 'PRINTING' %}bg-amber-500/20 border border-amber-500/50 text-amber-300
+          {% if r.status in ['PRINTING', 'IN_PROGRESS'] %}bg-amber-500/20 border border-amber-500/50 text-amber-300
           {% elif r.status == 'APPROVED' %}bg-emerald-500/20 border border-emerald-500/50 text-emerald-300
           {% elif r.status == 'NEEDS_INFO' %}bg-orange-500/20 border border-orange-500/50 text-orange-300
           {% else %}bg-zinc-800 text-zinc-400{% endif %}">
-          {% if r.status == 'NEEDS_INFO' %}WAITING{% else %}{{ r.status }}{% endif %}
+          {% if r.status == 'NEEDS_INFO' %}WAITING{% elif r.status == 'IN_PROGRESS' %}PRINTING{% else %}{{ r.status }}{% endif %}
         </span>
       </div>
       <div class="flex items-center gap-3 text-xs text-zinc-400">
@@ -243,7 +243,7 @@
         <span>•</span>
         <span>{{ r.colors }}</span>
       </div>
-      {% if r.status == 'PRINTING' and r.printer_progress is not none %}
+      {% if r.status in ['PRINTING', 'IN_PROGRESS'] and r.printer_progress is not none %}
       <div class="mt-2 flex items-center gap-2">
         <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
           <div class="h-full bg-emerald-500" style="width: {{ r.printer_progress }}%"></div>
@@ -292,26 +292,27 @@
       <tbody>
       {% if active_queue %}
         {% for r in active_queue %}
-        <tr class="border-b border-zinc-800 {% if r.is_mine %}bg-indigo-900/20{% elif r.status == 'PRINTING' %}bg-emerald-900/10{% else %}hover:bg-zinc-950/40{% endif %} transition">
+        <tr class="border-b border-zinc-800 {% if r.is_mine %}bg-indigo-900/20{% elif r.status in ['PRINTING', 'IN_PROGRESS'] %}bg-emerald-900/10{% else %}hover:bg-zinc-950/40{% endif %} transition">
           <td class="p-3 text-zinc-500 font-semibold">{{ r.queue_pos }}</td>
           <td class="p-3">
             <span class="font-medium text-zinc-200">{{ r.print_name or r.short_id }}</span>
             {% if r.print_name %}<span class="block text-xs text-zinc-500 font-mono">{{ r.short_id }}</span>{% endif %}
+            {% if r.total_builds > 1 %}<span class="block text-xs text-amber-400">{{ r.completed_builds }}/{{ r.total_builds }} builds</span>{% endif %}
           </td>
           <td class="p-3 text-zinc-400">{{ r.requester_first }}</td>
           <td class="p-3 text-zinc-400">{{ r.printer }}</td>
           <td class="p-3 text-zinc-400">{{ r.material }}</td>
           <td class="p-3">
             <span class="px-2 py-1 rounded-lg text-xs font-medium
-              {% if r.status == 'PRINTING' %}bg-amber-500/20 border border-amber-500/50 text-amber-300
+              {% if r.status in ['PRINTING', 'IN_PROGRESS'] %}bg-amber-500/20 border border-amber-500/50 text-amber-300
               {% elif r.status == 'APPROVED' %}bg-emerald-500/20 border border-emerald-500/50 text-emerald-300
               {% elif r.status == 'NEEDS_INFO' %}bg-orange-500/20 border border-orange-500/50 text-orange-300
               {% else %}bg-zinc-800 text-zinc-400{% endif %}">
-              {% if r.status == 'NEEDS_INFO' %}WAITING{% else %}{{ r.status }}{% endif %}
+              {% if r.status == 'NEEDS_INFO' %}WAITING{% elif r.status == 'IN_PROGRESS' %}PRINTING{% else %}{{ r.status }}{% endif %}
             </span>
           </td>
           <td class="p-3">
-            {% if r.status == 'PRINTING' and r.printer_progress is not none %}
+            {% if r.status in ['PRINTING', 'IN_PROGRESS'] and r.printer_progress is not none %}
             <div class="flex items-center gap-2">
               <div class="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                 <div class="h-full bg-emerald-500" style="width: {{ r.printer_progress }}%"></div>
