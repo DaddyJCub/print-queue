@@ -146,7 +146,7 @@ self.addEventListener('push', (event) => {
   const options = {
     body: data.body || 'New notification',
     icon: data.icon || '/static/icons/icon-192.png',
-    badge: '/static/icons/icon-192.png',
+    badge: '/static/icons/badge-96.png',  // Monochrome icon for Android status bar
     vibrate: [100, 50, 100],
     tag: data.tag || 'printellect-notification',
     renotify: true,
