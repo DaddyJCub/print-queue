@@ -354,7 +354,6 @@
 <script>
   // Camera toggle
   const camIntervals = {};
-  let touchHandled = {};
   
   function toggleCamera(printer) {
     const div = document.getElementById(`cam-${printer}`);
@@ -404,30 +403,12 @@
     document.querySelectorAll('.camera-toggle').forEach(btn => {
       const printer = btn.dataset.printer;
       
-      // Use a single handler that works for both touch and click
-      // touchstart sets a flag, click checks the flag
-      btn.addEventListener('touchstart', function(e) {
-        touchHandled[printer] = true;
-      }, {passive: true});
-      
+      // Simple click handler - works on both desktop and mobile
+      // Mobile browsers synthesize click from touch, so this works everywhere
       btn.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
-        // If touch just happened, skip the click (touchend will handle it)
-        if (touchHandled[printer]) {
-          touchHandled[printer] = false;
-          return;
-        }
         toggleCamera(printer);
-      });
-      
-      btn.addEventListener('touchend', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (touchHandled[printer]) {
-          touchHandled[printer] = false;
-          toggleCamera(printer);
-        }
       });
     });
   });
