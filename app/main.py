@@ -160,8 +160,21 @@ def get_printer_failure_count(printer_code: str) -> int:
     """Get current failure count for a printer"""
     return _printer_failure_count.get(printer_code, 0)
 
-# Status flow for admin actions
-STATUS_FLOW = ["NEW", "NEEDS_INFO", "APPROVED", "PRINTING", "DONE", "PICKED_UP", "REJECTED", "CANCELLED"]
+# Status flow for admin actions (request-level)
+STATUS_FLOW = ["NEW", "NEEDS_INFO", "APPROVED", "IN_PROGRESS", "PRINTING", "BLOCKED", "DONE", "PICKED_UP", "REJECTED", "CANCELLED"]
+
+# Build-level status flow (for multi-build requests)
+BUILD_STATUS_FLOW = ["PENDING", "READY", "PRINTING", "COMPLETED", "FAILED", "SKIPPED"]
+
+# Valid build state transitions
+BUILD_TRANSITIONS = {
+    "PENDING": ["READY", "SKIPPED"],
+    "READY": ["PRINTING", "SKIPPED"],
+    "PRINTING": ["COMPLETED", "FAILED"],
+    "COMPLETED": [],  # Terminal state
+    "FAILED": ["PENDING", "SKIPPED"],  # Can retry (back to PENDING) or skip
+    "SKIPPED": [],  # Terminal state
+}
 
 # Dropdown options (Any is the default)
 PRINTERS = [
@@ -372,6 +385,55 @@ def init_db():
         );
     """)
 
+    # Builds table - individual builds within a multi-build request
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS builds (
+            id TEXT PRIMARY KEY,
+            request_id TEXT NOT NULL,
+            build_number INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            printer TEXT,
+            material TEXT,
+            print_name TEXT,
+            print_time_minutes INTEGER,
+            slicer_estimate_minutes INTEGER,
+            started_at TEXT,
+            completed_at TEXT,
+            progress INTEGER,
+            final_temperature TEXT,
+            file_name TEXT,
+            total_layers INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(request_id) REFERENCES requests(id)
+        );
+    """)
+
+    # Build status events - history of build state changes
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS build_status_events (
+            id TEXT PRIMARY KEY,
+            build_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            from_status TEXT,
+            to_status TEXT NOT NULL,
+            comment TEXT,
+            FOREIGN KEY(build_id) REFERENCES builds(id)
+        );
+    """)
+
+    # Build snapshots - completion photos per build
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS build_snapshots (
+            id TEXT PRIMARY KEY,
+            build_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            snapshot_data TEXT NOT NULL,
+            snapshot_type TEXT DEFAULT 'completion',
+            FOREIGN KEY(build_id) REFERENCES builds(id)
+        );
+    """)
+
     conn.commit()
     conn.close()
 
@@ -473,12 +535,402 @@ def ensure_migrations():
     if "notification_prefs" not in cols:
         cur.execute("ALTER TABLE requests ADD COLUMN notification_prefs TEXT DEFAULT '{\"email\": true, \"push\": false}'")
 
+    # Multi-build support columns
+    if "total_builds" not in cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN total_builds INTEGER DEFAULT 1")
+    if "completed_builds" not in cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN completed_builds INTEGER DEFAULT 0")
+    if "failed_builds" not in cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN failed_builds INTEGER DEFAULT 0")
+    if "active_build_id" not in cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN active_build_id TEXT")
+
+    # Add build_id to files table to associate files with specific builds
+    if files_cols and "build_id" not in files_cols:
+        cur.execute("ALTER TABLE files ADD COLUMN build_id TEXT")
+
+    # Migrate existing approved/printing/done requests that don't have builds yet
+    existing_without_builds = cur.execute("""
+        SELECT r.id FROM requests r 
+        LEFT JOIN builds b ON r.id = b.request_id 
+        WHERE r.status IN ('APPROVED', 'PRINTING', 'IN_PROGRESS', 'DONE', 'PICKED_UP')
+        AND b.id IS NULL
+    """).fetchall()
+    
+    for row in existing_without_builds:
+        request_id = row[0]
+        # Get file count for this request
+        file_count = cur.execute("SELECT COUNT(*) FROM files WHERE request_id = ?", (request_id,)).fetchone()[0]
+        build_count = max(1, file_count)
+        now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        
+        for i in range(build_count):
+            build_id = str(uuid.uuid4())
+            cur.execute("""
+                INSERT INTO builds (id, request_id, build_number, status, created_at, updated_at)
+                VALUES (?, ?, ?, 'READY', ?, ?)
+            """, (build_id, request_id, i + 1, now, now))
+        
+        # Update request with total_builds count
+        cur.execute("UPDATE requests SET total_builds = ? WHERE id = ?", (build_count, request_id))
+
     conn.commit()
     conn.close()
 
 
 def now_iso():
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
+# ─────────────────────────── BUILD LIFECYCLE HELPERS ───────────────────────────
+
+def derive_request_status_from_builds(request_id: str) -> str:
+    """
+    Derive the parent request status from its builds.
+    Returns: NEW, APPROVED, IN_PROGRESS, BLOCKED, or DONE
+    """
+    conn = db()
+    builds = conn.execute(
+        "SELECT status FROM builds WHERE request_id = ?", (request_id,)
+    ).fetchall()
+    conn.close()
+    
+    if not builds:
+        return "APPROVED"  # No builds = single-build legacy mode
+    
+    statuses = [b["status"] for b in builds]
+    
+    # If any build is FAILED and none are PRINTING, request is BLOCKED
+    if "FAILED" in statuses and "PRINTING" not in statuses:
+        return "BLOCKED"
+    
+    # If any build is PRINTING, request is IN_PROGRESS (or PRINTING for legacy compat)
+    if "PRINTING" in statuses:
+        return "IN_PROGRESS"
+    
+    # If all builds are COMPLETED or SKIPPED, request is DONE
+    terminal = {"COMPLETED", "SKIPPED"}
+    if all(s in terminal for s in statuses):
+        return "DONE"
+    
+    # If some builds are READY or PENDING, request is IN_PROGRESS
+    if "READY" in statuses or "PENDING" in statuses:
+        if "COMPLETED" in statuses:
+            return "IN_PROGRESS"  # Some done, some pending
+        return "APPROVED"  # All pending/ready, none started
+    
+    return "IN_PROGRESS"
+
+
+def sync_request_status_from_builds(request_id: str) -> str:
+    """
+    Update the parent request's status and counters based on its builds.
+    Returns the new status.
+    """
+    conn = db()
+    builds = conn.execute(
+        "SELECT * FROM builds WHERE request_id = ?", (request_id,)
+    ).fetchall()
+    
+    if not builds:
+        conn.close()
+        return "APPROVED"
+    
+    completed = sum(1 for b in builds if b["status"] == "COMPLETED")
+    failed = sum(1 for b in builds if b["status"] == "FAILED")
+    total = len(builds)
+    
+    new_status = derive_request_status_from_builds(request_id)
+    
+    # Find active build (currently PRINTING)
+    active_build_id = None
+    for b in builds:
+        if b["status"] == "PRINTING":
+            active_build_id = b["id"]
+            break
+    
+    conn.execute("""
+        UPDATE requests SET 
+            status = ?,
+            completed_builds = ?,
+            failed_builds = ?,
+            active_build_id = ?,
+            updated_at = ?
+        WHERE id = ?
+    """, (new_status, completed, failed, active_build_id, now_iso(), request_id))
+    conn.commit()
+    conn.close()
+    
+    return new_status
+
+
+def start_build(build_id: str, printer: str, comment: Optional[str] = None) -> bool:
+    """
+    Start a build (transition from READY/PENDING to PRINTING).
+    Assigns the printer and records the start time.
+    Returns True if successful.
+    """
+    conn = db()
+    build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
+    
+    if not build:
+        conn.close()
+        return False
+    
+    if build["status"] not in ("PENDING", "READY"):
+        conn.close()
+        return False
+    
+    now = now_iso()
+    old_status = build["status"]
+    
+    conn.execute("""
+        UPDATE builds SET 
+            status = 'PRINTING',
+            printer = ?,
+            started_at = ?,
+            updated_at = ?
+        WHERE id = ?
+    """, (printer, now, now, build_id))
+    
+    conn.execute(
+        "INSERT INTO build_status_events (id, build_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), build_id, now, old_status, "PRINTING", comment or f"Started on {printer}")
+    )
+    
+    # Update the parent request's active_build_id
+    conn.execute(
+        "UPDATE requests SET active_build_id = ?, updated_at = ? WHERE id = ?",
+        (build_id, now, build["request_id"])
+    )
+    
+    conn.commit()
+    conn.close()
+    
+    # Sync parent request status
+    sync_request_status_from_builds(build["request_id"])
+    
+    # Send build start notification (for multi-build requests)
+    try:
+        conn = db()
+        request = conn.execute("SELECT * FROM requests WHERE id = ?", (build["request_id"],)).fetchone()
+        updated_build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
+        conn.close()
+        
+        if request and updated_build:
+            send_build_start_notification(dict(updated_build), dict(request))
+    except Exception as e:
+        print(f"[BUILD-START] Failed to send start notification: {e}")
+    
+    return True
+
+
+def fail_build(build_id: str, comment: Optional[str] = None) -> bool:
+    """
+    Mark a build as FAILED.
+    Returns True if successful.
+    """
+    conn = db()
+    build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
+    
+    if not build:
+        conn.close()
+        return False
+    
+    if build["status"] != "PRINTING":
+        conn.close()
+        return False
+    
+    now = now_iso()
+    
+    conn.execute("""
+        UPDATE builds SET 
+            status = 'FAILED',
+            completed_at = ?,
+            updated_at = ?
+        WHERE id = ?
+    """, (now, now, build_id))
+    
+    conn.execute(
+        "INSERT INTO build_status_events (id, build_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), build_id, now, "PRINTING", "FAILED", comment or "Build failed")
+    )
+    
+    # Clear active_build_id from parent request
+    conn.execute(
+        "UPDATE requests SET active_build_id = NULL, updated_at = ? WHERE id = ?",
+        (now, build["request_id"])
+    )
+    
+    conn.commit()
+    conn.close()
+    
+    # Sync parent request status (will set to BLOCKED)
+    sync_request_status_from_builds(build["request_id"])
+    
+    return True
+
+
+def retry_build(build_id: str, comment: Optional[str] = None) -> bool:
+    """
+    Reset a FAILED build back to PENDING for retry.
+    Returns True if successful.
+    """
+    conn = db()
+    build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
+    
+    if not build:
+        conn.close()
+        return False
+    
+    if build["status"] != "FAILED":
+        conn.close()
+        return False
+    
+    now = now_iso()
+    
+    conn.execute("""
+        UPDATE builds SET 
+            status = 'PENDING',
+            started_at = NULL,
+            completed_at = NULL,
+            progress = NULL,
+            updated_at = ?
+        WHERE id = ?
+    """, (now, build_id))
+    
+    conn.execute(
+        "INSERT INTO build_status_events (id, build_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), build_id, now, "FAILED", "PENDING", comment or "Retrying build")
+    )
+    
+    conn.commit()
+    conn.close()
+    
+    # Sync parent request status
+    sync_request_status_from_builds(build["request_id"])
+    
+    return True
+
+
+def skip_build(build_id: str, comment: Optional[str] = None) -> bool:
+    """
+    Skip a build (mark as SKIPPED). Can skip PENDING, READY, or FAILED builds.
+    Returns True if successful.
+    """
+    conn = db()
+    build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
+    
+    if not build:
+        conn.close()
+        return False
+    
+    if build["status"] not in ("PENDING", "READY", "FAILED"):
+        conn.close()
+        return False
+    
+    now = now_iso()
+    old_status = build["status"]
+    
+    conn.execute("""
+        UPDATE builds SET 
+            status = 'SKIPPED',
+            completed_at = ?,
+            updated_at = ?
+        WHERE id = ?
+    """, (now, now, build_id))
+    
+    conn.execute(
+        "INSERT INTO build_status_events (id, build_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), build_id, now, old_status, "SKIPPED", comment or "Build skipped")
+    )
+    
+    conn.commit()
+    conn.close()
+    
+    # Sync parent request status
+    sync_request_status_from_builds(build["request_id"])
+    
+    return True
+
+
+def setup_builds_for_request(request_id: str, build_count: int = None) -> int:
+    """
+    Create build records for a request based on its files.
+    If build_count is specified, creates that many builds.
+    Otherwise, creates one build per file.
+    Returns the number of builds created.
+    """
+    conn = db()
+    
+    # Check if builds already exist
+    existing = conn.execute(
+        "SELECT COUNT(*) as cnt FROM builds WHERE request_id = ?", (request_id,)
+    ).fetchone()
+    
+    if existing["cnt"] > 0:
+        conn.close()
+        return 0  # Builds already exist
+    
+    # Get file count if build_count not specified
+    if build_count is None:
+        files = conn.execute(
+            "SELECT COUNT(*) as cnt FROM files WHERE request_id = ?", (request_id,)
+        ).fetchone()
+        build_count = max(1, files["cnt"])
+    
+    now = now_iso()
+    
+    # Create builds
+    for i in range(build_count):
+        build_id = str(uuid.uuid4())
+        conn.execute("""
+            INSERT INTO builds (id, request_id, build_number, status, created_at, updated_at)
+            VALUES (?, ?, ?, 'PENDING', ?, ?)
+        """, (build_id, request_id, i + 1, now, now))
+    
+    # Update request with total_builds
+    conn.execute(
+        "UPDATE requests SET total_builds = ?, updated_at = ? WHERE id = ?",
+        (build_count, now, request_id)
+    )
+    
+    conn.commit()
+    conn.close()
+    
+    return build_count
+
+
+def mark_builds_ready(request_id: str) -> int:
+    """
+    Mark all PENDING builds as READY (approved for printing).
+    Returns the number of builds marked ready.
+    """
+    conn = db()
+    
+    builds = conn.execute(
+        "SELECT id FROM builds WHERE request_id = ? AND status = 'PENDING'",
+        (request_id,)
+    ).fetchall()
+    
+    now = now_iso()
+    count = 0
+    
+    for b in builds:
+        conn.execute(
+            "UPDATE builds SET status = 'READY', updated_at = ? WHERE id = ?",
+            (now, b["id"])
+        )
+        conn.execute(
+            "INSERT INTO build_status_events (id, build_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), b["id"], now, "PENDING", "READY", "Approved for printing")
+        )
+        count += 1
+    
+    conn.commit()
+    conn.close()
+    
+    return count
 
 
 # ─────────────────────────── 3D FILE PARSING ───────────────────────────
@@ -1160,6 +1612,434 @@ def format_eta_display(eta_dt: Optional[datetime]) -> str:
         return f"Tomorrow at {format_time(eta_dt)}"
     else:
         return f"{eta_dt.strftime('%b %d')}, {format_time(eta_dt)}"
+
+
+def get_request_eta_info(request_id: str, req: Dict = None) -> Dict[str, Any]:
+    """
+    Get comprehensive ETA info for a request with multi-build support.
+    Returns:
+      - current_build_eta: ETA for the currently printing build
+      - request_eta: ETA for the entire request (all builds)
+      - build_progress: Current build X of Y
+      - builds_info: List of build status summaries
+    """
+    conn = db()
+    
+    # Get request if not provided
+    if req is None:
+        req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (request_id,)).fetchone()
+        if not req_row:
+            conn.close()
+            return {"error": "Request not found"}
+        req = dict(req_row)
+    
+    total_builds = req.get("total_builds") or 1
+    completed_builds = req.get("completed_builds") or 0
+    
+    # For single-build requests, use existing logic
+    if total_builds <= 1:
+        conn.close()
+        return {
+            "is_multi_build": False,
+            "total_builds": 1,
+            "completed_builds": completed_builds,
+            "current_build_num": 1 if req.get("status") == "PRINTING" else None,
+            "current_build_eta": None,
+            "request_eta": None,
+            "builds_info": [],
+        }
+    
+    # Get all builds for this request
+    builds = conn.execute("""
+        SELECT * FROM builds WHERE request_id = ? ORDER BY build_number
+    """, (request_id,)).fetchall()
+    conn.close()
+    
+    builds_list = [dict(b) for b in builds]
+    
+    # Find the currently printing build
+    current_build = None
+    for b in builds_list:
+        if b["status"] == "PRINTING":
+            current_build = b
+            break
+    
+    # Calculate ETA for current build if printing
+    current_build_eta_dt = None
+    current_build_eta_display = None
+    
+    if current_build and current_build.get("printer"):
+        # Use get_smart_eta for the current build
+        current_build_eta_dt = get_smart_eta(
+            printer=current_build.get("printer"),
+            material=current_build.get("material") or req.get("material"),
+            current_percent=current_build.get("progress"),
+            printing_started_at=current_build.get("started_at"),
+            current_layer=None,
+            total_layers=None
+        )
+        if current_build_eta_dt:
+            current_build_eta_display = format_eta_display(current_build_eta_dt)
+    
+    # Calculate total request ETA (current build + remaining builds)
+    request_eta_dt = None
+    request_eta_display = None
+    remaining_builds = total_builds - completed_builds - (1 if current_build else 0)
+    
+    if current_build_eta_dt and remaining_builds >= 0:
+        # Estimate time for remaining builds using average of completed builds or estimates
+        avg_build_time_minutes = 0
+        
+        # Check completed builds for actual duration
+        completed_durations = []
+        for b in builds_list:
+            if b["status"] == "COMPLETED" and b.get("started_at") and b.get("completed_at"):
+                try:
+                    started = datetime.fromisoformat(b["started_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+                    completed = datetime.fromisoformat(b["completed_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+                    completed_durations.append((completed - started).total_seconds() / 60)
+                except:
+                    pass
+        
+        if completed_durations:
+            avg_build_time_minutes = sum(completed_durations) / len(completed_durations)
+        elif req.get("print_time_minutes"):
+            # Fall back to slicer estimate divided by builds
+            avg_build_time_minutes = req["print_time_minutes"] / total_builds
+        
+        # Total ETA = current build ETA + (remaining builds * avg time)
+        remaining_minutes = remaining_builds * avg_build_time_minutes
+        request_eta_dt = current_build_eta_dt + __import__('datetime').timedelta(minutes=remaining_minutes)
+        request_eta_display = format_eta_display(request_eta_dt)
+    
+    # Build summary info
+    builds_info = []
+    for b in builds_list:
+        builds_info.append({
+            "id": b["id"],
+            "build_number": b["build_number"],
+            "status": b["status"],
+            "print_name": b.get("print_name") or f"Build {b['build_number']}",
+            "printer": b.get("printer"),
+            "progress": b.get("progress"),
+            "is_current": b["id"] == current_build["id"] if current_build else False,
+        })
+    
+    return {
+        "is_multi_build": True,
+        "total_builds": total_builds,
+        "completed_builds": completed_builds,
+        "current_build_num": current_build["build_number"] if current_build else None,
+        "current_build_eta": current_build_eta_display,
+        "current_build_eta_dt": current_build_eta_dt.isoformat() if current_build_eta_dt else None,
+        "request_eta": request_eta_display,
+        "request_eta_dt": request_eta_dt.isoformat() if request_eta_dt else None,
+        "remaining_builds": remaining_builds,
+        "builds_info": builds_info,
+    }
+
+
+# ─────────────────────────── BUILD-LEVEL NOTIFICATIONS ───────────────────────────
+
+def send_build_start_notification(build: Dict, request: Dict):
+    """
+    Send notification when a build starts printing.
+    Clearly indicates this is a build, not final completion.
+    """
+    build_num = build["build_number"]
+    total_builds = request.get("total_builds") or 1
+    request_id = request["id"]
+    
+    # Skip notification for single-build requests (handled by legacy system)
+    if total_builds <= 1:
+        return
+    
+    print(f"[BUILD-NOTIFY] Sending build start notification: Build {build_num}/{total_builds}")
+    
+    # Check notification settings
+    requester_email_on_status = get_bool_setting("requester_email_on_status", True)
+    should_notify = get_bool_setting("notify_requester_printing", True)
+    
+    if not requester_email_on_status or not should_notify:
+        return
+    
+    # Parse user notification preferences
+    user_prefs = {"email": True, "push": False}
+    if request.get("notification_prefs"):
+        try:
+            user_prefs = json.loads(request["notification_prefs"])
+        except:
+            pass
+    
+    user_wants_email = user_prefs.get("email", True)
+    user_wants_push = user_prefs.get("push", False)
+    
+    print_label = request.get("print_name") or f"Request {request_id[:8]}"
+    build_label = build.get("print_name") or f"Build {build_num}"
+    
+    # Build position string
+    position_str = f"Build {build_num} of {total_builds}"
+    remaining = total_builds - build_num
+    
+    if user_wants_email and request.get("requester_email"):
+        subject = f"[{APP_TITLE}] {position_str} Started - {print_label}"
+        
+        email_rows = [
+            ("Print Name", print_label),
+            ("Build", position_str),
+            ("Status", "PRINTING"),
+            ("Printer", _human_printer(build.get("printer") or request.get("printer") or "") or "—"),
+            ("Material", _human_material(build.get("material") or request.get("material") or "") or "—"),
+        ]
+        
+        if remaining > 0:
+            email_rows.append(("Remaining", f"{remaining} build(s) after this one"))
+        
+        text = (
+            f"{position_str} has started printing!\n\n"
+            f"Print: {print_label}\n"
+            f"Build: {build_label}\n"
+            f"Request ID: {request_id[:8]}\n"
+            f"\n⚠️ This is NOT the final completion - {remaining} build(s) remain after this one.\n"
+            f"\nView progress: {BASE_URL}/my/{request_id}?token={request.get('access_token', '')}\n"
+        )
+        
+        # Generate my-requests link
+        my_requests_token = get_or_create_my_requests_token(request["requester_email"])
+        my_requests_url = f"{BASE_URL}/my-requests/view?token={my_requests_token}"
+        
+        html = build_email_html(
+            title=f"🖨️ {position_str} Started",
+            subtitle=f"'{print_label}' - {build_label} is now printing",
+            rows=email_rows,
+            cta_url=f"{BASE_URL}/my/{request_id}?token={request.get('access_token', '')}",
+            cta_label="View Progress",
+            header_color="#f59e0b",  # Amber for in-progress
+            footer_note=f"This is build {build_num} of {total_builds}. You will receive another notification when all builds are complete.",
+            secondary_cta_url=my_requests_url,
+            secondary_cta_label="All My Requests",
+        )
+        send_email([request["requester_email"]], subject, text, html)
+    
+    # Send push notification
+    if user_wants_push and request.get("requester_email"):
+        send_push_notification(
+            email=request["requester_email"],
+            title=f"🖨️ {position_str} Started",
+            body=f"'{print_label}' - {build_label} is now printing ({remaining} more after this)",
+            url=f"/my/{request_id}?token={request.get('access_token', '')}"
+        )
+
+
+def send_build_complete_notification(build: Dict, request: Dict, snapshot_b64: Optional[str] = None):
+    """
+    Send notification when a build completes.
+    Clearly indicates this is a build completion, not final request completion.
+    """
+    build_num = build["build_number"]
+    total_builds = request.get("total_builds") or 1
+    request_id = request["id"]
+    completed_builds = request.get("completed_builds", 0) + 1  # +1 because this build just completed
+    
+    # Skip notification for single-build requests (handled by legacy system)
+    if total_builds <= 1:
+        return
+    
+    # Check if this is the FINAL build
+    is_final = (completed_builds >= total_builds)
+    
+    if is_final:
+        # Final build - send request completion notification instead
+        send_request_complete_notification(request, snapshot_b64)
+        return
+    
+    print(f"[BUILD-NOTIFY] Sending build complete notification: Build {build_num}/{total_builds}")
+    
+    # Check notification settings
+    requester_email_on_status = get_bool_setting("requester_email_on_status", True)
+    should_notify = get_bool_setting("notify_requester_done", True)
+    
+    if not requester_email_on_status or not should_notify:
+        return
+    
+    # Parse user notification preferences
+    user_prefs = {"email": True, "push": False}
+    if request.get("notification_prefs"):
+        try:
+            user_prefs = json.loads(request["notification_prefs"])
+        except:
+            pass
+    
+    user_wants_email = user_prefs.get("email", True)
+    user_wants_push = user_prefs.get("push", False)
+    
+    print_label = request.get("print_name") or f"Request {request_id[:8]}"
+    build_label = build.get("print_name") or f"Build {build_num}"
+    
+    # Build position string
+    position_str = f"Build {build_num} of {total_builds}"
+    remaining = total_builds - completed_builds
+    
+    if user_wants_email and request.get("requester_email"):
+        subject = f"[{APP_TITLE}] {position_str} Complete - {print_label}"
+        
+        email_rows = [
+            ("Print Name", print_label),
+            ("Build Completed", position_str),
+            ("Progress", f"{completed_builds}/{total_builds} builds done"),
+            ("Status", "IN PROGRESS" if remaining > 0 else "DONE"),
+        ]
+        
+        if build.get("final_temperature"):
+            email_rows.append(("Final Temp", build["final_temperature"]))
+        
+        if remaining > 0:
+            email_rows.append(("Remaining", f"{remaining} build(s) still to go"))
+        
+        text = (
+            f"{position_str} has completed!\n\n"
+            f"Print: {print_label}\n"
+            f"Build: {build_label}\n"
+            f"Progress: {completed_builds}/{total_builds} builds done\n"
+            f"\n⚠️ This is NOT the final completion - {remaining} build(s) remaining.\n"
+            f"You will be notified when all builds are complete and ready for pickup.\n"
+            f"\nView progress: {BASE_URL}/my/{request_id}?token={request.get('access_token', '')}\n"
+        )
+        
+        # Generate my-requests link
+        my_requests_token = get_or_create_my_requests_token(request["requester_email"])
+        my_requests_url = f"{BASE_URL}/my-requests/view?token={my_requests_token}"
+        
+        # Include snapshot if available
+        snapshot_to_send = snapshot_b64 if get_bool_setting("enable_camera_snapshot", False) else None
+        
+        html = build_email_html(
+            title=f"✓ {position_str} Complete",
+            subtitle=f"'{print_label}' - {build_label} finished successfully",
+            rows=email_rows,
+            cta_url=f"{BASE_URL}/my/{request_id}?token={request.get('access_token', '')}",
+            cta_label="View Progress",
+            header_color="#10b981",  # Green for complete
+            footer_note=f"This is build {build_num} of {total_builds}. {remaining} build(s) remaining. You will receive a final notification when everything is ready for pickup.",
+            image_base64=snapshot_to_send,
+            secondary_cta_url=my_requests_url,
+            secondary_cta_label="All My Requests",
+        )
+        send_email([request["requester_email"]], subject, text, html, image_base64=snapshot_to_send)
+    
+    # Send push notification
+    if user_wants_push and request.get("requester_email"):
+        send_push_notification(
+            email=request["requester_email"],
+            title=f"✓ {position_str} Complete",
+            body=f"'{print_label}' - {completed_builds}/{total_builds} builds done, {remaining} remaining",
+            url=f"/my/{request_id}?token={request.get('access_token', '')}"
+        )
+
+
+def send_request_complete_notification(request: Dict, snapshot_b64: Optional[str] = None):
+    """
+    Send notification when ALL builds are complete (request is fully done).
+    This is the authoritative 'ready for pickup' notification.
+    """
+    request_id = request["id"]
+    total_builds = request.get("total_builds") or 1
+    
+    print(f"[BUILD-NOTIFY] Sending REQUEST COMPLETE notification for {request_id[:8]} ({total_builds} builds)")
+    
+    # Check notification settings
+    requester_email_on_status = get_bool_setting("requester_email_on_status", True)
+    should_notify = get_bool_setting("notify_requester_done", True)
+    
+    if not requester_email_on_status or not should_notify:
+        return
+    
+    # Parse user notification preferences
+    user_prefs = {"email": True, "push": False}
+    if request.get("notification_prefs"):
+        try:
+            user_prefs = json.loads(request["notification_prefs"])
+        except:
+            pass
+    
+    user_wants_email = user_prefs.get("email", True)
+    user_wants_push = user_prefs.get("push", False)
+    
+    print_label = request.get("print_name") or f"Request {request_id[:8]}"
+    
+    if user_wants_email and request.get("requester_email"):
+        subject = f"[{APP_TITLE}] 🎉 All Prints Complete! - {print_label}"
+        
+        email_rows = [
+            ("Print Name", print_label),
+            ("Request ID", request_id[:8]),
+            ("Status", "READY FOR PICKUP"),
+        ]
+        
+        if total_builds > 1:
+            email_rows.insert(2, ("Builds Completed", f"All {total_builds} builds"))
+        
+        text = (
+            f"Great news! All your prints are complete and ready for pickup!\n\n"
+            f"Print: {print_label}\n"
+            f"Request ID: {request_id[:8]}\n"
+            f"Builds: {total_builds} total\n"
+            f"\nView: {BASE_URL}/my/{request_id}?token={request.get('access_token', '')}\n"
+        )
+        
+        # Generate my-requests link
+        my_requests_token = get_or_create_my_requests_token(request["requester_email"])
+        my_requests_url = f"{BASE_URL}/my-requests/view?token={my_requests_token}"
+        
+        # Include snapshot if available
+        snapshot_to_send = snapshot_b64 if get_bool_setting("enable_camera_snapshot", False) else None
+        
+        html = build_email_html(
+            title="🎉 All Prints Complete!",
+            subtitle=f"'{print_label}' is ready for pickup",
+            rows=email_rows,
+            cta_url=f"{BASE_URL}/my/{request_id}?token={request.get('access_token', '')}",
+            cta_label="View Request",
+            header_color="#06b6d4",  # Cyan for done
+            image_base64=snapshot_to_send,
+            secondary_cta_url=my_requests_url,
+            secondary_cta_label="All My Requests",
+        )
+        send_email([request["requester_email"]], subject, text, html, image_base64=snapshot_to_send)
+    
+    # Send push notification
+    if user_wants_push and request.get("requester_email"):
+        send_push_notification(
+            email=request["requester_email"],
+            title="🎉 All Prints Complete!",
+            body=f"'{print_label}' is ready for pickup!",
+            url=f"/my/{request_id}?token={request.get('access_token', '')}"
+        )
+
+
+def get_build_snapshots(build_id: str) -> List[Dict]:
+    """Get all snapshots for a build."""
+    conn = db()
+    snapshots = conn.execute(
+        "SELECT * FROM build_snapshots WHERE build_id = ? ORDER BY created_at DESC",
+        (build_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(s) for s in snapshots]
+
+
+def get_request_build_snapshots(request_id: str) -> List[Dict]:
+    """Get all snapshots for all builds of a request, with build info."""
+    conn = db()
+    snapshots = conn.execute("""
+        SELECT bs.*, b.build_number, b.print_name as build_name
+        FROM build_snapshots bs
+        JOIN builds b ON bs.build_id = b.id
+        WHERE b.request_id = ?
+        ORDER BY b.build_number, bs.created_at DESC
+    """, (request_id,)).fetchall()
+    conn.close()
+    return [dict(s) for s in snapshots]
 
 
 # ------------------------
@@ -1912,12 +2792,198 @@ async def poll_printer_status_worker():
             await asyncio.sleep(30)
 
 
+async def poll_builds_status_worker():
+    """
+    Background worker that polls builds in PRINTING status.
+    Works at the build level for multi-build requests.
+    Auto-updates build PRINTING -> COMPLETED when printer reports 100% complete.
+    Then syncs the parent request status.
+    """
+    print("[BUILD-POLL] Background build polling started")
+    while True:
+        try:
+            if not get_bool_setting("enable_printer_polling", True):
+                await asyncio.sleep(30)
+                continue
+            
+            conn = db()
+            # Find all builds that are actively PRINTING
+            printing_builds = conn.execute("""
+                SELECT b.*, r.requester_email, r.requester_name, r.access_token, r.notification_prefs,
+                       r.total_builds, r.completed_builds, r.print_name as request_print_name
+                FROM builds b
+                JOIN requests r ON b.request_id = r.id
+                WHERE b.status = 'PRINTING'
+            """).fetchall()
+            conn.close()
+            
+            if not printing_builds:
+                await asyncio.sleep(30)
+                continue
+            
+            print(f"[BUILD-POLL] Checking {len(printing_builds)} PRINTING builds...")
+            
+            for build in printing_builds:
+                printer_api = get_printer_api(build["printer"])
+                if not printer_api:
+                    continue
+                
+                # Check printer status
+                is_printing = await printer_api.is_printing()
+                is_complete = await printer_api.is_complete()
+                percent_complete = await printer_api.get_percent_complete()
+                
+                build_id = build["id"]
+                request_id = build["request_id"]
+                build_num = build["build_number"]
+                total_builds = build["total_builds"] or 1
+                
+                # Auto-complete build if printer reports complete
+                should_complete = is_complete or ((not is_printing) and (percent_complete == 100))
+                
+                if should_complete:
+                    print(f"[BUILD-POLL] Build {build_num}/{total_builds} complete for request {request_id[:8]}")
+                    
+                    # Capture completion data
+                    extended_info = None
+                    final_temp = None
+                    
+                    try:
+                        extended_info = await printer_api.get_extended_status()
+                        temp_data = await printer_api.get_temperature()
+                        if temp_data:
+                            final_temp = f"{temp_data.get('Temperature', '?')}°C"
+                    except Exception as e:
+                        print(f"[BUILD-POLL] Error getting completion data: {e}")
+                    
+                    # Update build with completion data
+                    conn = db()
+                    conn.execute("""
+                        UPDATE builds SET 
+                            status = 'COMPLETED',
+                            completed_at = ?,
+                            final_temperature = ?,
+                            total_layers = ?,
+                            file_name = ?,
+                            updated_at = ?
+                        WHERE id = ?
+                    """, (
+                        now_iso(),
+                        final_temp,
+                        extended_info.get("total_layers") if extended_info else None,
+                        extended_info.get("current_file") if extended_info else None,
+                        now_iso(),
+                        build_id
+                    ))
+                    
+                    # Record build status event
+                    conn.execute(
+                        "INSERT INTO build_status_events (id, build_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+                        (str(uuid.uuid4()), build_id, now_iso(), "PRINTING", "COMPLETED", "Auto-completed by printer polling")
+                    )
+                    conn.commit()
+                    conn.close()
+                    
+                    # Capture snapshot for this build
+                    snapshot_b64 = None
+                    if get_bool_setting("enable_camera_snapshot", False):
+                        try:
+                            snapshot_data = await capture_camera_snapshot(build["printer"])
+                            if snapshot_data:
+                                snapshot_b64 = base64.b64encode(snapshot_data).decode("utf-8")
+                                conn = db()
+                                conn.execute(
+                                    "INSERT INTO build_snapshots (id, build_id, created_at, snapshot_data, snapshot_type) VALUES (?, ?, ?, ?, ?)",
+                                    (str(uuid.uuid4()), build_id, now_iso(), snapshot_b64, "completion")
+                                )
+                                conn.commit()
+                                conn.close()
+                                print(f"[BUILD-POLL] Captured completion snapshot for build {build_id[:8]}")
+                        except Exception as e:
+                            print(f"[BUILD-POLL] Failed to capture snapshot: {e}")
+                    
+                    # Sync parent request status
+                    new_request_status = sync_request_status_from_builds(request_id)
+                    
+                    # Send build completion notification (or request completion if final build)
+                    try:
+                        conn = db()
+                        request_for_notify = conn.execute(
+                            "SELECT * FROM requests WHERE id = ?", (request_id,)
+                        ).fetchone()
+                        conn.close()
+                        
+                        if request_for_notify:
+                            build_for_notify = dict(build)
+                            build_for_notify["final_temperature"] = final_temp
+                            send_build_complete_notification(
+                                build_for_notify,
+                                dict(request_for_notify),
+                                snapshot_b64
+                            )
+                    except Exception as e:
+                        print(f"[BUILD-POLL] Failed to send build notification: {e}")
+                    
+                    add_poll_debug_log({
+                        "type": "build_complete",
+                        "build_id": build_id[:8],
+                        "request_id": request_id[:8],
+                        "build_number": build_num,
+                        "total_builds": total_builds,
+                        "new_request_status": new_request_status,
+                        "message": f"Build {build_num}/{total_builds} completed"
+                    })
+                    
+                    # Record to print history
+                    if build["started_at"]:
+                        try:
+                            started_dt = datetime.fromisoformat(build["started_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+                            completed_dt = datetime.utcnow()
+                            duration_minutes = int((completed_dt - started_dt).total_seconds() / 60)
+                            
+                            conn = db()
+                            conn.execute("""
+                                INSERT INTO print_history 
+                                (id, request_id, printer, material, print_name, started_at, completed_at, 
+                                 duration_minutes, estimated_minutes, total_layers, file_name, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                str(uuid.uuid4()),
+                                request_id,
+                                build["printer"] or "",
+                                build["material"] or "",
+                                build["print_name"] or f"Build {build_num}",
+                                build["started_at"],
+                                now_iso(),
+                                duration_minutes,
+                                build["slicer_estimate_minutes"] or build["print_time_minutes"],
+                                extended_info.get("total_layers") if extended_info else None,
+                                extended_info.get("current_file") if extended_info else None,
+                                now_iso()
+                            ))
+                            conn.commit()
+                            conn.close()
+                        except Exception as e:
+                            print(f"[BUILD-POLL] Failed to record print history: {e}")
+            
+            await asyncio.sleep(30)
+        except Exception as e:
+            import traceback
+            print(f"[BUILD-POLL] Error: {e}")
+            print(f"[BUILD-POLL] Traceback: {traceback.format_exc()}")
+            await asyncio.sleep(30)
+
+
 def start_printer_polling():
     """Start background printer polling in a thread (runs once at startup)"""
     def run_async():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(poll_printer_status_worker())
+        # Run both legacy request-level polling and new build-level polling
+        loop.run_until_complete(asyncio.gather(
+            poll_printer_status_worker(),
+            poll_builds_status_worker()
+        ))
 
     thread = threading.Thread(target=run_async, daemon=True)
     thread.start()
@@ -3034,6 +4100,7 @@ async def requester_portal(request: Request, rid: str, token: str):
         "version": APP_VERSION,
         "printer_status": printer_status,
         "smart_eta_display": smart_eta_display,
+        "build_eta_info": get_request_eta_info(rid, dict(req)),
     })
 
 
@@ -4017,9 +5084,7 @@ def admin_login_post(password: str = Form(...), next: Optional[str] = Form(None)
     # Redirect to next URL if provided, otherwise admin dashboard
     redirect_to = next if next and next.startswith("/admin") else "/admin"
     resp = RedirectResponse(url=redirect_to, status_code=303)
-    # Only set secure=True if using HTTPS (production)
-    is_https = BASE_URL.startswith("https://")
-    resp.set_cookie("admin_pw", password, httponly=True, samesite="lax", secure=is_https, max_age=604800)  # 7 days
+    resp.set_cookie("admin_pw", password, httponly=True, samesite="lax", secure=True, max_age=604800)  # 7 days, HTTPS only
     return resp
 
 
@@ -4042,7 +5107,7 @@ def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
         rows = conn.execute(
             f"""SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors, 
                       r.link_url, r.status, r.priority, r.special_notes, r.printing_started_at,
-                      r.print_name,
+                      r.print_name, r.total_builds, r.completed_builds, r.failed_builds,
                       (SELECT COUNT(*) FROM files f WHERE f.request_id = r.id) as file_count,
                       (SELECT GROUP_CONCAT(f.original_filename, ', ') FROM files f WHERE f.request_id = r.id) as file_names,
                       (SELECT COUNT(*) FROM request_messages m WHERE m.request_id = r.id AND m.sender_type = 'requester' AND m.is_read = 0) as unread_replies
@@ -4055,7 +5120,7 @@ def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
         rows = conn.execute(
             f"""SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors, 
                       r.link_url, r.status, r.priority, r.special_notes,
-                      r.print_name,
+                      r.print_name, r.total_builds, r.completed_builds, r.failed_builds,
                       (SELECT COUNT(*) FROM files f WHERE f.request_id = r.id) as file_count,
                       (SELECT GROUP_CONCAT(f.original_filename, ', ') FROM files f WHERE f.request_id = r.id) as file_names,
                       (SELECT COUNT(*) FROM request_messages m WHERE m.request_id = r.id AND m.sender_type = 'requester' AND m.is_read = 0) as unread_replies
@@ -4918,6 +5983,10 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
     # Mark all requester messages as read when admin views the request
     conn.execute("UPDATE request_messages SET is_read = 1 WHERE request_id = ? AND sender_type = 'requester' AND is_read = 0", (rid,))
     conn.commit()
+    
+    # Get builds for this request
+    builds = conn.execute("SELECT * FROM builds WHERE request_id = ? ORDER BY build_number", (rid,)).fetchall()
+    builds_list = [dict(b) for b in builds]
     conn.close()
     
     # Get camera URL for the printer if configured
@@ -4926,12 +5995,17 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
     # Get slicer accuracy info for this printer/material combo
     accuracy_info = get_slicer_accuracy_factor(req["printer"], req["material"])
     
+    # Get multi-build ETA info
+    build_eta_info = get_request_eta_info(rid, dict(req))
+    
     return templates.TemplateResponse("admin_request.html", {
         "request": request,
         "req": req,
         "files": enriched_files,
         "events": events,
         "messages": messages,
+        "builds": builds_list,
+        "build_eta_info": build_eta_info,
         "status_flow": STATUS_FLOW,
         "printers": PRINTERS,
         "materials": MATERIALS,
@@ -5187,6 +6261,27 @@ def admin_set_status(
     )
     conn.commit()
     conn.close()
+
+    # When approving a request, set up builds for multi-file requests
+    if to_status == "APPROVED" and from_status != "APPROVED":
+        build_count = setup_builds_for_request(rid)
+        if build_count > 1:
+            # Mark all builds as READY since request is approved
+            mark_builds_ready(rid)
+    
+    # When starting print, start the first READY build
+    if to_status == "PRINTING" and from_status != "PRINTING":
+        conn2 = db()
+        # Find the first READY build for this request
+        first_ready = conn2.execute("""
+            SELECT id FROM builds WHERE request_id = ? AND status = 'READY' 
+            ORDER BY build_number LIMIT 1
+        """, (rid,)).fetchone()
+        conn2.close()
+        
+        if first_ready:
+            # Start the first build with the selected printer
+            start_build(first_ready["id"], printer or req["printer"], comment)
 
     # Settings-driven emails
     admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))
@@ -5522,6 +6617,123 @@ def admin_send_message(
             header_color="#6366f1",
         )
         send_email([req["requester_email"]], subject, text, html)
+    
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+# ─────────────────────────── BUILD MANAGEMENT ENDPOINTS ───────────────────────────
+
+@app.post("/admin/build/{build_id}/start")
+def admin_start_build(
+    request: Request,
+    build_id: str,
+    printer: str = Form(...),
+    comment: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """Start printing a specific build."""
+    conn = db()
+    build = conn.execute("SELECT request_id FROM builds WHERE id = ?", (build_id,)).fetchone()
+    conn.close()
+    
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found")
+    
+    success = start_build(build_id, printer, comment)
+    if not success:
+        raise HTTPException(status_code=400, detail="Cannot start build - invalid state")
+    
+    return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
+
+
+@app.post("/admin/build/{build_id}/fail")
+def admin_fail_build(
+    request: Request,
+    build_id: str,
+    comment: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """Mark a build as failed."""
+    conn = db()
+    build = conn.execute("SELECT request_id FROM builds WHERE id = ?", (build_id,)).fetchone()
+    conn.close()
+    
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found")
+    
+    success = fail_build(build_id, comment or "Marked failed by admin")
+    if not success:
+        raise HTTPException(status_code=400, detail="Cannot fail build - invalid state")
+    
+    return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
+
+
+@app.post("/admin/build/{build_id}/retry")
+def admin_retry_build(
+    request: Request,
+    build_id: str,
+    comment: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """Retry a failed build."""
+    conn = db()
+    build = conn.execute("SELECT request_id FROM builds WHERE id = ?", (build_id,)).fetchone()
+    conn.close()
+    
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found")
+    
+    success = retry_build(build_id, comment or "Retried by admin")
+    if not success:
+        raise HTTPException(status_code=400, detail="Cannot retry build - invalid state")
+    
+    return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
+
+
+@app.post("/admin/build/{build_id}/skip")
+def admin_skip_build(
+    request: Request,
+    build_id: str,
+    comment: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """Skip a build (mark as skipped)."""
+    conn = db()
+    build = conn.execute("SELECT request_id FROM builds WHERE id = ?", (build_id,)).fetchone()
+    conn.close()
+    
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found")
+    
+    success = skip_build(build_id, comment or "Skipped by admin")
+    if not success:
+        raise HTTPException(status_code=400, detail="Cannot skip build - invalid state")
+    
+    return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
+
+
+@app.post("/admin/request/{rid}/start-next-build")
+def admin_start_next_build(
+    request: Request,
+    rid: str,
+    printer: str = Form(...),
+    comment: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """Start the next READY build for a request."""
+    conn = db()
+    next_build = conn.execute("""
+        SELECT id FROM builds WHERE request_id = ? AND status = 'READY' 
+        ORDER BY build_number LIMIT 1
+    """, (rid,)).fetchone()
+    conn.close()
+    
+    if not next_build:
+        raise HTTPException(status_code=400, detail="No READY builds available")
+    
+    success = start_build(next_build["id"], printer, comment)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to start build")
     
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
@@ -6046,34 +7258,12 @@ def get_vapid_public_key():
 # Test push notification endpoint
 @app.post("/api/push/test")
 async def test_push_notification(request: Request):
-    """Test push notification for a user - handles both token (FormData) and email (JSON)"""
+    """Test push notification for a user (by email) - returns detailed results"""
     try:
-        content_type = request.headers.get("content-type", "")
-        email = None
-        
-        # Handle FormData (from frontend with token)
-        if "form" in content_type or "multipart" in content_type:
-            form = await request.form()
-            token = form.get("token")
-            if token:
-                # Look up email from token
-                conn = db()
-                token_row = conn.execute(
-                    "SELECT email FROM email_lookup_tokens WHERE token = ?", (token,)
-                ).fetchone()
-                conn.close()
-                if token_row:
-                    email = token_row["email"]
-        else:
-            # Handle JSON (legacy)
-            try:
-                data = await request.json()
-                email = data.get("email")
-            except:
-                pass
-        
+        data = await request.json()
+        email = data.get("email")
         if not email:
-            return {"success": False, "error": "Could not determine email from token", "status": "error"}
+            return {"error": "Missing email", "status": "error"}
         
         print(f"[PUSH TEST] Testing push for email: {email}")
         result = send_push_notification(
@@ -6084,16 +7274,14 @@ async def test_push_notification(request: Request):
         )
         
         if result["sent"] > 0:
-            return {"success": True, "status": "sent", "details": result}
-        elif result.get("errors"):
-            return {"success": False, "status": "error", "error": "Failed to send", "details": result}
+            return {"status": "sent", "details": result}
+        elif result["errors"]:
+            return {"status": "error", "details": result}
         else:
-            return {"success": False, "status": "no_subscriptions", "error": "No push subscriptions found for your account"}
+            return {"status": "no_subscriptions", "details": result}
     except Exception as e:
         print(f"[PUSH TEST] Exception: {e}")
-        import traceback
-        traceback.print_exc()
-        return {"success": False, "error": str(e), "status": "exception"}
+        return {"error": str(e), "status": "exception"}
 
 
 @app.post("/api/push/subscribe")
@@ -6209,6 +7397,23 @@ def sw_debug_info():
         "base_url": BASE_URL,
         "app_version": APP_VERSION
     }
+
+
+@app.post("/api/push/test")
+async def api_test_push_notification(request: Request):
+    """Test push notification sending - returns detailed diagnostics"""
+    data = await request.json()
+    email = data.get("email")
+    if not email:
+        return {"error": "Missing email"}
+    
+    result = send_push_notification(
+        email=email,
+        title="Test Notification",
+        body="If you see this, push notifications are working!",
+        url="/my-requests/view"
+    )
+    return result
 
 
 @app.post("/api/push/unsubscribe")

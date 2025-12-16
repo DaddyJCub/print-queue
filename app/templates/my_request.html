@@ -261,7 +261,9 @@
       'NEW': 'bg-blue-500/20 border-blue-500/50 text-blue-300',
       'NEEDS_INFO': 'bg-orange-500/20 border-orange-500/50 text-orange-300',
       'APPROVED': 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300',
+      'IN_PROGRESS': 'bg-amber-500/20 border-amber-500/50 text-amber-300',
       'PRINTING': 'bg-amber-500/20 border-amber-500/50 text-amber-300',
+      'BLOCKED': 'bg-red-500/20 border-red-500/50 text-red-300',
       'DONE': 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300',
       'PICKED_UP': 'bg-purple-500/20 border-purple-500/50 text-purple-300',
       'REJECTED': 'bg-red-500/20 border-red-500/50 text-red-300',
@@ -271,7 +273,9 @@
       'NEW': '📋 Your request is awaiting review',
       'NEEDS_INFO': '❓ We need more information from you - please respond below',
       'APPROVED': '✓ Approved and in queue',
+      'IN_PROGRESS': '🖨️ Printing in progress (multiple builds)',
       'PRINTING': '🖨️ Currently printing!',
+      'BLOCKED': '⚠️ A build failed - awaiting admin action',
       'DONE': '✅ Print complete - ready for pickup',
       'PICKED_UP': '📦 Picked up',
       'REJECTED': '❌ Request was rejected',
@@ -284,6 +288,38 @@
         <p class="text-sm mt-2 opacity-80">Please scroll down to send a reply or upload additional files.</p>
       {% endif %}
     </div>
+    
+    <!-- Multi-Build Progress Summary (for IN_PROGRESS or multi-build requests not actively printing) -->
+    {% if build_eta_info and build_eta_info.is_multi_build and req.status not in ['PRINTING', 'DONE', 'PICKED_UP', 'CANCELLED', 'REJECTED'] %}
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 mb-6">
+        <h3 class="font-medium mb-3 flex items-center gap-2">
+          📦 Build Progress
+        </h3>
+        <div class="flex items-center justify-between text-sm mb-2">
+          <span class="text-zinc-400">Builds</span>
+          <span class="font-semibold">
+            {{ build_eta_info.completed_builds }} / {{ build_eta_info.total_builds }} completed
+          </span>
+        </div>
+        <!-- Build progress dots -->
+        <div class="flex gap-1.5">
+          {% for b in build_eta_info.builds_info %}
+            <div class="flex-1 h-2 rounded-full 
+              {% if b.status == 'COMPLETED' %}bg-emerald-500
+              {% elif b.status == 'PRINTING' %}bg-amber-500 animate-pulse
+              {% elif b.status == 'FAILED' %}bg-red-500
+              {% elif b.status == 'READY' %}bg-blue-500
+              {% else %}bg-zinc-700{% endif %}"
+              title="Build {{ b.build_number }}: {{ b.status }}"></div>
+          {% endfor %}
+        </div>
+        {% if build_eta_info.remaining_builds > 0 %}
+          <p class="text-xs text-zinc-500 mt-2">
+            {{ build_eta_info.remaining_builds }} build(s) remaining
+          </p>
+        {% endif %}
+      </div>
+    {% endif %}
     
     <!-- PWA Install Tip (shown if not installed) -->
     <div id="pwa-install-tip" class="hidden bg-gradient-to-r from-indigo-900/40 to-purple-900/30 border border-indigo-500/30 rounded-2xl p-4 mb-6">
@@ -996,16 +1032,46 @@
       document.addEventListener('DOMContentLoaded', initNotifications);
     </script>
 
-    <!-- Live Printer View (when PRINTING) -->
-    {% if req.status == 'PRINTING' and printer_status %}
+    <!-- Live Printer View (when PRINTING or IN_PROGRESS with active build) -->
+    {% if (req.status == 'PRINTING' or req.status == 'IN_PROGRESS') and printer_status %}
       <div class="bg-gradient-to-br from-indigo-900/30 to-purple-900/20 border border-indigo-500/30 rounded-2xl p-5 mb-6">
         <div class="flex items-center justify-between mb-4">
           <h2 class="font-semibold flex items-center gap-2">
             <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             Live Print Progress
           </h2>
-          <span class="text-xs text-zinc-400">{{ req.printer }}</span>
+          <div class="flex items-center gap-2">
+            {% if build_eta_info and build_eta_info.is_multi_build %}
+              <span class="text-xs bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">
+                Build {{ build_eta_info.current_build_number }}/{{ build_eta_info.total_builds }}
+              </span>
+            {% endif %}
+            <span class="text-xs text-zinc-400">{{ req.printer }}</span>
+          </div>
         </div>
+        
+        <!-- Build Progress (multi-build only) -->
+        {% if build_eta_info and build_eta_info.is_multi_build %}
+          <div class="mb-4 p-3 bg-zinc-900/50 rounded-xl">
+            <div class="flex items-center justify-between text-sm mb-2">
+              <span class="text-zinc-400">Overall Progress</span>
+              <span class="font-semibold">
+                {{ build_eta_info.completed_builds }}/{{ build_eta_info.total_builds }} builds done
+              </span>
+            </div>
+            <div class="flex gap-1.5">
+              {% for b in build_eta_info.builds_info %}
+                <div class="flex-1 h-2 rounded-full 
+                  {% if b.status == 'COMPLETED' %}bg-emerald-500
+                  {% elif b.status == 'PRINTING' %}bg-amber-500 animate-pulse
+                  {% elif b.status == 'FAILED' %}bg-red-500
+                  {% elif b.status == 'READY' %}bg-blue-500
+                  {% else %}bg-zinc-700{% endif %}"
+                  title="Build {{ b.build_number }}: {{ b.status }}"></div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
         
         <!-- Camera Preview -->
         <div class="mb-4">
@@ -1024,7 +1090,7 @@
         {% if printer_status.progress is not none %}
           <div class="mb-4">
             <div class="flex justify-between text-sm mb-1">
-              <span class="text-zinc-400">Progress</span>
+              <span class="text-zinc-400">Current Build Progress</span>
               <span class="font-semibold text-indigo-300">{{ printer_status.progress }}%</span>
             </div>
             <div class="h-3 bg-zinc-800 rounded-full overflow-hidden">
@@ -1042,12 +1108,28 @@
               <p class="font-semibold">{{ printer_status.current_layer }} / {{ printer_status.total_layers }}</p>
             </div>
           {% endif %}
-          {% if smart_eta_display %}
+          
+          <!-- Dual ETA for multi-build -->
+          {% if build_eta_info and build_eta_info.is_multi_build %}
+            {% if build_eta_info.current_build_eta %}
+              <div class="bg-zinc-900/50 rounded-xl p-3">
+                <span class="text-zinc-500 text-xs">This Build Done</span>
+                <p class="font-semibold text-amber-300">{{ build_eta_info.current_build_eta }}</p>
+              </div>
+            {% endif %}
+            {% if build_eta_info.total_eta %}
+              <div class="bg-zinc-900/50 rounded-xl p-3">
+                <span class="text-zinc-500 text-xs">All Builds Done</span>
+                <p class="font-semibold text-emerald-300">{{ build_eta_info.total_eta }}</p>
+              </div>
+            {% endif %}
+          {% elif smart_eta_display %}
             <div class="bg-zinc-900/50 rounded-xl p-3">
               <span class="text-zinc-500 text-xs">Est. Completion</span>
               <p class="font-semibold text-emerald-300">{{ smart_eta_display }}</p>
             </div>
           {% endif %}
+          
           {% if printer_status.temp %}
             <div class="bg-zinc-900/50 rounded-xl p-3">
               <span class="text-zinc-500 text-xs">Temperature</span>
