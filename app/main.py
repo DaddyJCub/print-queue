@@ -3167,8 +3167,10 @@ async def poll_printer_status_worker():
                         user_wants_email = user_prefs.get("email", True)
                         user_wants_push = user_prefs.get("push", False)
                         
+                        # Define print_label before conditional blocks
+                        print_label = req["print_name"] or f"Request {rid[:8]}"
+                        
                         if requester_email_on_status and should_notify_requester and req["requester_email"] and user_wants_email:
-                            print_label = req["print_name"] or f"Request {rid[:8]}"
                             subject = f"[{APP_TITLE}] Now Printing - {print_label}"
                             
                             # Build email rows with live printer data

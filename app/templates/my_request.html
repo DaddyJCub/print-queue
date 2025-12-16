@@ -386,10 +386,11 @@
         
         <!-- Camera Preview -->
         <div class="mb-4">
-          <button onclick="toggleCamera()" id="camera-toggle" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 mb-2">
-            📷 Show Live View
+          <button type="button" onclick="toggleCamera()" id="camera-toggle" 
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition mb-2">
+            <span>📷</span> <span class="btn-text">Show Camera</span>
           </button>
-          <div id="camera-preview" class="hidden">
+          <div id="camera-preview" class="hidden mt-2">
             <img id="camera-img" src="" alt="Camera preview" 
                  class="w-full rounded-lg border border-zinc-700 bg-zinc-800" 
                  onerror="this.src=''; this.alt='Camera unavailable'"/>
@@ -461,15 +462,16 @@
         function toggleCamera() {
           const preview = document.getElementById('camera-preview');
           const toggle = document.getElementById('camera-toggle');
+          const btnText = toggle.querySelector('.btn-text');
           
           if (preview.classList.contains('hidden')) {
             preview.classList.remove('hidden');
-            toggle.innerHTML = '📷 Hide Live View';
+            if (btnText) btnText.textContent = 'Hide Camera';
             refreshCamera();
             cameraInterval = setInterval(refreshCamera, 10000);
           } else {
             preview.classList.add('hidden');
-            toggle.innerHTML = '📷 Show Live View';
+            if (btnText) btnText.textContent = 'Show Camera';
             if (cameraInterval) {
               clearInterval(cameraInterval);
               cameraInterval = null;

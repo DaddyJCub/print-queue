@@ -274,8 +274,9 @@
             {% endif %}
             <!-- Live Camera Preview -->
             <div class="mt-3">
-              <button onclick="toggleCameraPreview('ADVENTURER_4')" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
-                <span id="camera-toggle-ADVENTURER_4">📷 Show Live View</span>
+              <button type="button" onclick="toggleCameraPreview('ADVENTURER_4')" 
+                      class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition">
+                <span>📷</span> <span id="camera-toggle-ADVENTURER_4" class="btn-text">Show Camera</span>
               </button>
               <div id="camera-preview-ADVENTURER_4" class="hidden mt-2">
                 <img id="camera-img-ADVENTURER_4" src="" alt="Camera preview" 
@@ -362,8 +363,9 @@
             {% endif %}
             <!-- Live Camera Preview -->
             <div class="mt-3">
-              <button onclick="toggleCameraPreview('AD5X')" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
-                <span id="camera-toggle-AD5X">📷 Show Live View</span>
+              <button type="button" onclick="toggleCameraPreview('AD5X')" 
+                      class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition">
+                <span>📷</span> <span id="camera-toggle-AD5X" class="btn-text">Show Camera</span>
               </button>
               <div id="camera-preview-AD5X" class="hidden mt-2">
                 <img id="camera-img-AD5X" src="" alt="Camera preview" 
@@ -639,7 +641,7 @@
         if (preview.classList.contains('hidden')) {
           // Show preview
           preview.classList.remove('hidden');
-          toggle.textContent = '📷 Hide Live View';
+          toggle.textContent = 'Hide Camera';
           
           // Load initial snapshot
           refreshCameraSnapshot(printerCode);
@@ -651,7 +653,7 @@
         } else {
           // Hide preview
           preview.classList.add('hidden');
-          toggle.textContent = '📷 Show Live View';
+          toggle.textContent = 'Show Camera';
           
           // Clear refresh interval
           if (cameraIntervals[printerCode]) {
