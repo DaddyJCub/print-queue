@@ -439,11 +439,12 @@
                     <div class="reorder-item flex items-center gap-2 p-2 rounded bg-zinc-800 cursor-move" data-id="{{ b.id }}">
                       <span class="text-zinc-500">☰</span>
                       <span class="text-sm">Build {{ b.build_number }}{% if b.print_name %}: {{ b.print_name }}{% endif %}</span>
+                      {% set reorder_labels = {'COMPLETED': 'DONE', 'READY': 'QUEUED', 'PENDING': 'PENDING', 'PRINTING': 'PRINTING'} %}
                       <span class="ml-auto text-xs px-1.5 py-0.5 rounded 
                         {% if b.status == 'COMPLETED' %}bg-emerald-500/20 text-emerald-300
                         {% elif b.status == 'PRINTING' %}bg-amber-500/20 text-amber-300
                         {% elif b.status == 'READY' %}bg-blue-500/20 text-blue-300
-                        {% else %}bg-zinc-700/50 text-zinc-400{% endif %}">{{ b.status }}</span>
+                        {% else %}bg-zinc-700/50 text-zinc-400{% endif %}">{{ reorder_labels.get(b.status, b.status) }}</span>
                     </div>
                   {% endfor %}
                 </div>
@@ -460,6 +461,7 @@
               
               <div id="build-details-list" class="space-y-3 max-h-96 overflow-y-auto">
                 {% for b in builds %}
+                  {% set detail_labels = {'COMPLETED': 'DONE', 'READY': 'QUEUED', 'PENDING': 'PENDING', 'PRINTING': 'PRINTING', 'FAILED': 'FAILED', 'SKIPPED': 'SKIPPED'} %}
                   <div class="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700 {% if b.status == 'PRINTING' %}ring-2 ring-amber-500/50{% endif %}">
                     <div class="flex items-center justify-between mb-2">
                       <div class="flex items-center gap-2">
@@ -475,7 +477,7 @@
                           {% elif b.status == 'READY' %}bg-blue-500/20 text-blue-300
                           {% elif b.status == 'SKIPPED' %}bg-zinc-600/20 text-zinc-400
                           {% else %}bg-zinc-700/50 text-zinc-400{% endif %}">
-                          {{ b.status }}
+                          {{ detail_labels.get(b.status, b.status) }}
                         </span>
                         {% if b.status in ['PENDING', 'READY'] %}
                           <!-- Start This Build button -->
@@ -492,6 +494,34 @@
                       <summary class="text-xs text-zinc-500 cursor-pointer hover:text-zinc-300 mb-2">
                         Edit details ▾
                       </summary>
+                      
+                      <!-- Status Change (only for non-terminal, non-printing builds) -->
+                      {% if b.status not in ['COMPLETED', 'SKIPPED', 'PRINTING'] %}
+                      <form method="POST" action="/admin/build/{{ b.id }}/set-status" class="mb-3 p-2 bg-zinc-900/50 rounded-lg border border-zinc-700">
+                        <label class="text-xs text-zinc-400 block mb-1">Change Status</label>
+                        <div class="flex gap-2">
+                          <select name="status" class="flex-1 rounded-md bg-zinc-950 border border-zinc-700 p-1.5 text-xs">
+                            {% if b.status == 'PENDING' %}
+                              <option value="PENDING" selected>⏳ Pending</option>
+                              <option value="READY">✓ Queued (Ready)</option>
+                              <option value="SKIPPED">⏭ Skip</option>
+                            {% elif b.status == 'READY' %}
+                              <option value="PENDING">⏳ Pending (demote)</option>
+                              <option value="READY" selected>✓ Queued (Ready)</option>
+                              <option value="SKIPPED">⏭ Skip</option>
+                            {% elif b.status == 'FAILED' %}
+                              <option value="FAILED" selected>❌ Failed</option>
+                              <option value="PENDING">⏳ Retry (Pending)</option>
+                              <option value="SKIPPED">⏭ Skip</option>
+                            {% endif %}
+                          </select>
+                          <button type="submit" class="px-3 py-1 rounded-md bg-indigo-600 hover:bg-indigo-500 text-xs font-medium transition">
+                            Set
+                          </button>
+                        </div>
+                      </form>
+                      {% endif %}
+                      
                       <form method="POST" action="/admin/build/{{ b.id }}/update" class="space-y-2 mt-2">
                         <input type="text" name="print_name" value="{{ b.print_name or '' }}" 
                                placeholder="Part name (e.g., 'Left arm', 'Base')"
@@ -667,27 +697,44 @@
               </div>
               <div class="flex gap-1">
                 {% for b in builds %}
-                  <div class="flex-1 h-2 rounded-full 
+                  {% set status_tip = {
+                    'COMPLETED': 'Completed',
+                    'PRINTING': 'Printing now',
+                    'FAILED': 'Failed - needs attention',
+                    'READY': 'Queued - ready to print',
+                    'SKIPPED': 'Skipped',
+                    'PENDING': 'Waiting for approval'
+                  } %}
+                  <div class="flex-1 h-2 rounded-full cursor-help
                     {% if b.status == 'COMPLETED' %}bg-emerald-500
                     {% elif b.status == 'PRINTING' %}bg-amber-500 animate-pulse
                     {% elif b.status == 'FAILED' %}bg-red-500
                     {% elif b.status == 'READY' %}bg-blue-500
                     {% elif b.status == 'SKIPPED' %}bg-zinc-600
                     {% else %}bg-zinc-700{% endif %}"
-                    title="Build {{ b.build_number }}: {{ b.status }}"></div>
+                    title="Build {{ b.build_number }}: {{ status_tip.get(b.status, b.status) }}{% if b.print_name %} ({{ b.print_name }}){% endif %}{% if b.printer %} on {{ b.printer }}{% endif %}"></div>
                 {% endfor %}
               </div>
-              <div class="flex gap-2 mt-2 text-xs text-zinc-500">
-                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Done</span>
-                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-500"></span> Printing</span>
-                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-500"></span> Ready</span>
-                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500"></span> Failed</span>
+              <div class="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-zinc-500">
+                <span class="flex items-center gap-1" title="Build completed successfully"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Done</span>
+                <span class="flex items-center gap-1" title="Build currently printing"><span class="w-2 h-2 rounded-full bg-amber-500"></span> Printing</span>
+                <span class="flex items-center gap-1" title="Queued and ready to start"><span class="w-2 h-2 rounded-full bg-blue-500"></span> Queued</span>
+                <span class="flex items-center gap-1" title="Waiting for request approval"><span class="w-2 h-2 rounded-full bg-zinc-700"></span> Pending</span>
+                <span class="flex items-center gap-1" title="Build failed - needs retry or skip"><span class="w-2 h-2 rounded-full bg-red-500"></span> Failed</span>
               </div>
             </div>
             
             <!-- Build list -->
             <div class="space-y-2 max-h-64 overflow-y-auto">
               {% for b in builds %}
+                {% set status_labels = {
+                  'PENDING': 'PENDING',
+                  'READY': 'QUEUED',
+                  'PRINTING': 'PRINTING',
+                  'COMPLETED': 'DONE',
+                  'FAILED': 'FAILED',
+                  'SKIPPED': 'SKIPPED'
+                } %}
                 <div class="p-3 rounded-lg border 
                   {% if b.status == 'COMPLETED' %}bg-emerald-900/20 border-emerald-700/50
                   {% elif b.status == 'PRINTING' %}bg-amber-900/20 border-amber-700/50
@@ -698,6 +745,7 @@
                   <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2">
                       <span class="text-sm font-medium">Build {{ b.build_number }}</span>
+                      {% if b.print_name %}<span class="text-xs text-zinc-500 truncate max-w-[100px]">{{ b.print_name }}</span>{% endif %}
                       <span class="text-xs px-2 py-0.5 rounded-full 
                         {% if b.status == 'COMPLETED' %}bg-emerald-500/20 text-emerald-300
                         {% elif b.status == 'PRINTING' %}bg-amber-500/20 text-amber-300
@@ -705,7 +753,7 @@
                         {% elif b.status == 'READY' %}bg-blue-500/20 text-blue-300
                         {% elif b.status == 'SKIPPED' %}bg-zinc-600/20 text-zinc-400
                         {% else %}bg-zinc-700/50 text-zinc-400{% endif %}">
-                        {{ b.status }}
+                        {{ status_labels.get(b.status, b.status) }}
                       </span>
                     </div>
                     {% if b.printer %}
@@ -718,6 +766,8 @@
                         <div class="h-full bg-amber-500" style="width: {{ b.progress }}%"></div>
                       </div>
                       <span class="text-xs text-zinc-500">{{ b.progress }}%</span>
+                    </div>
+                  {% endif %}
                     </div>
                   {% endif %}
                   

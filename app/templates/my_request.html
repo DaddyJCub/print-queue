@@ -303,14 +303,15 @@
         </div>
         <!-- Build progress dots -->
         <div class="flex gap-1.5">
+          {% set build_status_tips = {'COMPLETED': 'Done', 'PRINTING': 'Printing now', 'FAILED': 'Failed', 'READY': 'Queued', 'PENDING': 'Waiting', 'SKIPPED': 'Skipped'} %}
           {% for b in build_eta_info.builds_info %}
-            <div class="flex-1 h-2 rounded-full 
+            <div class="flex-1 h-2 rounded-full cursor-help
               {% if b.status == 'COMPLETED' %}bg-emerald-500
               {% elif b.status == 'PRINTING' %}bg-amber-500 animate-pulse
               {% elif b.status == 'FAILED' %}bg-red-500
               {% elif b.status == 'READY' %}bg-blue-500
               {% else %}bg-zinc-700{% endif %}"
-              title="Build {{ b.build_number }}: {{ b.status }}"></div>
+              title="Build {{ b.build_number }}: {{ build_status_tips.get(b.status, b.status) }}{% if b.print_name %} ({{ b.print_name }}){% endif %}"></div>
           {% endfor %}
         </div>
         {% if build_eta_info.remaining_builds > 0 %}
@@ -369,14 +370,15 @@
               </span>
             </div>
             <div class="flex gap-1.5">
+              {% set live_status_tips = {'COMPLETED': 'Done', 'PRINTING': 'Printing now', 'FAILED': 'Failed', 'READY': 'Queued', 'PENDING': 'Waiting', 'SKIPPED': 'Skipped'} %}
               {% for b in build_eta_info.builds_info %}
-                <div class="flex-1 h-2 rounded-full 
+                <div class="flex-1 h-2 rounded-full cursor-help
                   {% if b.status == 'COMPLETED' %}bg-emerald-500
                   {% elif b.status == 'PRINTING' %}bg-amber-500 animate-pulse
                   {% elif b.status == 'FAILED' %}bg-red-500
                   {% elif b.status == 'READY' %}bg-blue-500
                   {% else %}bg-zinc-700{% endif %}"
-                  title="Build {{ b.build_number }}: {{ b.status }}"></div>
+                  title="Build {{ b.build_number }}: {{ live_status_tips.get(b.status, b.status) }}{% if b.print_name %} ({{ b.print_name }}){% endif %}"></div>
               {% endfor %}
             </div>
           </div>
@@ -576,6 +578,14 @@
               'FAILED': '❌',
               'SKIPPED': '⏭️'
             } %}
+            {% set status_labels = {
+              'PENDING': 'Waiting',
+              'READY': 'Queued',
+              'PRINTING': 'Printing',
+              'COMPLETED': 'Done',
+              'FAILED': 'Failed',
+              'SKIPPED': 'Skipped'
+            } %}
             <div class="flex items-center justify-between bg-zinc-950/50 rounded-xl p-3 {% if b.status == 'PRINTING' %}ring-1 ring-amber-500/50{% endif %}">
               <div class="flex items-center gap-3 min-w-0">
                 <div class="w-8 h-8 rounded-full flex items-center justify-center {{ status_colors.get(b.status, 'bg-zinc-700') }} text-sm flex-shrink-0">
@@ -597,7 +607,7 @@
                        onclick="showSnapshot(this.src)" />
                 {% endif %}
                 <span class="text-xs {{ status_colors.get(b.status, 'bg-zinc-700') }} px-2 py-1 rounded-lg">
-                  {{ b.status }}
+                  {{ status_labels.get(b.status, b.status) }}
                 </span>
               </div>
             </div>

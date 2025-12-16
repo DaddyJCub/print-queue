@@ -21,8 +21,9 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.13"
+APP_VERSION = "1.8.14"
 # Changelog:
+# 1.8.14 - Multi-build UX: clearer status labels (Queued/Done vs READY/COMPLETED), tooltips, queue build progress
 # 1.8.13 - Push notification robustness: safe body parsing, JSON API contract, /api/push/health endpoint
 # 1.8.12 - Per-build photos gallery, push notification fixes (JSONDecodeError), diagnostics panel
 # 1.8.11 - Build management: edit/delete builds, strict printer validation, robust form handling
@@ -5774,19 +5775,28 @@ async def feedback_submit(
 
 
 @app.get("/admin/feedback", response_class=HTMLResponse)
-def admin_feedback_list(request: Request, status: Optional[str] = None, _=Depends(require_admin)):
+def admin_feedback_list(request: Request, status: Optional[str] = None, type: Optional[str] = None, _=Depends(require_admin)):
     """Admin view of all feedback"""
     conn = db()
     
+    # Build query with optional filters
+    where_clauses = []
+    params = []
+    
     if status and status in ("new", "reviewed", "resolved", "dismissed"):
-        feedback = conn.execute(
-            "SELECT * FROM feedback WHERE status = ? ORDER BY created_at DESC",
-            (status,)
-        ).fetchall()
-    else:
-        feedback = conn.execute(
-            "SELECT * FROM feedback ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'reviewed' THEN 1 ELSE 2 END, created_at DESC"
-        ).fetchall()
+        where_clauses.append("status = ?")
+        params.append(status)
+    
+    if type and type in ("bug", "suggestion"):
+        where_clauses.append("type = ?")
+        params.append(type)
+    
+    where_sql = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+    
+    feedback = conn.execute(
+        f"SELECT * FROM feedback{where_sql} ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'reviewed' THEN 1 ELSE 2 END, created_at DESC",
+        params
+    ).fetchall()
     
     # Count by status
     counts = conn.execute("""
@@ -5800,6 +5810,7 @@ def admin_feedback_list(request: Request, status: Optional[str] = None, _=Depend
         "request": request,
         "feedback": feedback,
         "status_filter": status,
+        "type_filter": type,
         "status_counts": status_counts,
         "version": APP_VERSION,
     })
@@ -5829,6 +5840,22 @@ def admin_feedback_update(
         "UPDATE feedback SET status = ?, admin_notes = ?, resolved_at = ? WHERE id = ?",
         (status, admin_notes, resolved_at, fid)
     )
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url="/admin/feedback", status_code=303)
+
+
+@app.post("/admin/feedback/{fid}/delete")
+def admin_feedback_delete(fid: str, _=Depends(require_admin)):
+    """Permanently delete feedback"""
+    conn = db()
+    feedback = conn.execute("SELECT * FROM feedback WHERE id = ?", (fid,)).fetchone()
+    if not feedback:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Feedback not found")
+    
+    conn.execute("DELETE FROM feedback WHERE id = ?", (fid,))
     conn.commit()
     conn.close()
     
@@ -7924,6 +7951,81 @@ def admin_update_build(
     conn.execute(f"UPDATE builds SET {', '.join(updates)} WHERE id = ?", values)
     conn.commit()
     conn.close()
+    
+    return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
+
+
+@app.post("/admin/build/{build_id}/set-status")
+def admin_set_build_status(
+    request: Request,
+    build_id: str,
+    status: str = Form(...),
+    _=Depends(require_admin)
+):
+    """
+    Manually change a build's status. Respects valid transitions:
+    - PENDING -> READY, SKIPPED
+    - READY -> PENDING (demote), SKIPPED  
+    - FAILED -> PENDING (retry), SKIPPED
+    - COMPLETED/SKIPPED are terminal (no changes allowed)
+    - PRINTING cannot be changed manually (use complete/fail actions)
+    """
+    conn = db()
+    build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
+    if not build:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Build not found")
+    
+    current_status = build["status"]
+    new_status = status.upper().strip()
+    
+    # Validate the new status is a known status
+    if new_status not in BUILD_STATUS_FLOW:
+        conn.close()
+        raise HTTPException(status_code=400, detail=f"Invalid status: {new_status}")
+    
+    # Don't allow changes from terminal states
+    if current_status in ["COMPLETED", "SKIPPED"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail=f"Cannot change status from {current_status} (terminal state)")
+    
+    # Don't allow manual changes to/from PRINTING (use complete/fail endpoints)
+    if current_status == "PRINTING" or new_status == "PRINTING":
+        conn.close()
+        raise HTTPException(status_code=400, detail="Use Complete/Fail actions for PRINTING builds")
+    
+    # Allow transitions based on BUILD_TRANSITIONS, plus READY -> PENDING (demote)
+    allowed = BUILD_TRANSITIONS.get(current_status, [])
+    if new_status not in allowed and not (current_status == "READY" and new_status == "PENDING"):
+        conn.close()
+        raise HTTPException(status_code=400, detail=f"Cannot change from {current_status} to {new_status}")
+    
+    # No change needed
+    if current_status == new_status:
+        conn.close()
+        return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
+    
+    now = now_iso()
+    
+    # Update the build status
+    conn.execute(
+        "UPDATE builds SET status = ?, updated_at = ? WHERE id = ?",
+        (new_status, now, build_id)
+    )
+    
+    # Record status event
+    conn.execute(
+        "INSERT INTO build_status_events (id, build_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), build_id, now, current_status, new_status, f"Manual status change by admin")
+    )
+    
+    conn.commit()
+    conn.close()
+    
+    # Sync parent request status
+    sync_request_status_from_builds(build["request_id"])
+    
+    print(f"[BUILD-STATUS] Changed build {build_id[:8]} from {current_status} to {new_status}")
     
     return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
 

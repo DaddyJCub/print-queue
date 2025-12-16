@@ -172,6 +172,18 @@
   <script>
     // Capture referrer URL
     document.getElementById('page_url_input').value = document.referrer || window.location.href;
+    
+    // Prevent duplicate submissions
+    document.querySelector('form')?.addEventListener('submit', function(e) {
+      const btn = this.querySelector('button[type="submit"]');
+      if (btn.disabled) {
+        e.preventDefault();
+        return false;
+      }
+      btn.disabled = true;
+      btn.innerHTML = '<span class="animate-pulse">Submitting...</span>';
+      btn.classList.add('opacity-70', 'cursor-not-allowed');
+    });
   </script>
 </body>
 </html>
