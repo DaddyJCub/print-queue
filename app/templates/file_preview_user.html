@@ -174,11 +174,15 @@
     }
 
     function loadModel() {
+      if (fileExt === '3mf') {
+        // Custom 3MF loader that handles OrcaSlicer/PrusaSlicer project files
+        load3MFCustom(fileUrl);
+        return;
+      }
+      
       let loader;
       if (fileExt === 'stl') {
         loader = new THREE.STLLoader();
-      } else if (fileExt === '3mf') {
-        loader = new THREE.ThreeMFLoader();
       } else {
         loader = new THREE.OBJLoader();
       }
@@ -187,13 +191,6 @@
         fileUrl,
         function(result) {
           document.getElementById('loading').classList.add('hidden');
-          
-          // Handle different loader results
-          if (fileExt === '3mf') {
-            // 3MF loader returns a Group with meshes
-            handle3MFResult(result);
-            return;
-          }
           
           let finalGeometry;
           if (fileExt === 'stl') {
@@ -282,6 +279,157 @@
       
       // Fit camera to model
       fitCameraToObject(group);
+      
+      // Store initial camera state for reset
+      initialCameraPosition = camera.position.clone();
+      initialControlsTarget = controls.target.clone();
+    }
+
+    async function load3MFCustom(url) {
+      // Custom loader for OrcaSlicer/PrusaSlicer 3MF project files
+      // These files are ZIP archives containing model data in various formats
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to fetch file');
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const zip = await JSZip.loadAsync(arrayBuffer);
+        
+        // Look for model files in the 3MF archive
+        // OrcaSlicer stores models in: 3D/Objects/*.model or Metadata/model_settings.config
+        // Also check for embedded STL files
+        
+        let modelData = null;
+        let modelType = null;
+        
+        // Priority 1: Look for STL files (easiest to parse)
+        for (const filename of Object.keys(zip.files)) {
+          if (filename.toLowerCase().endsWith('.stl')) {
+            console.log('Found STL in 3MF:', filename);
+            modelData = await zip.files[filename].async('arraybuffer');
+            modelType = 'stl';
+            break;
+          }
+        }
+        
+        // Priority 2: Look for .model files (3MF standard)
+        if (!modelData) {
+          for (const filename of Object.keys(zip.files)) {
+            if (filename.toLowerCase().endsWith('.model')) {
+              console.log('Found .model in 3MF:', filename);
+              const xmlString = await zip.files[filename].async('string');
+              modelData = xmlString;
+              modelType = 'model';
+              break;
+            }
+          }
+        }
+        
+        if (!modelData) {
+          // List what we found for debugging
+          console.log('3MF contents:', Object.keys(zip.files));
+          throw new Error('No supported model data found in 3MF file. This may be a sliced project file without embedded mesh data.');
+        }
+        
+        document.getElementById('loading').classList.add('hidden');
+        
+        if (modelType === 'stl') {
+          // Parse STL directly
+          const stlLoader = new THREE.STLLoader();
+          const geometry = stlLoader.parse(modelData);
+          handleSTLGeometry(geometry);
+        } else if (modelType === 'model') {
+          // Parse the 3MF model XML
+          parse3MFModel(modelData);
+        }
+        
+      } catch (error) {
+        console.error('Error loading 3MF:', error);
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('error').classList.remove('hidden');
+        document.getElementById('error-message').textContent = error.message || 'Unknown error loading 3MF';
+      }
+    }
+    
+    function parse3MFModel(xmlString) {
+      // Parse 3MF XML model format
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlString, 'text/xml');
+      
+      // Find all vertices
+      const vertices = [];
+      const triangles = [];
+      
+      // Get all vertex elements
+      const vertexElements = xmlDoc.querySelectorAll('vertex');
+      vertexElements.forEach(v => {
+        vertices.push(
+          parseFloat(v.getAttribute('x') || 0),
+          parseFloat(v.getAttribute('y') || 0),
+          parseFloat(v.getAttribute('z') || 0)
+        );
+      });
+      
+      // Get all triangle elements
+      const triangleElements = xmlDoc.querySelectorAll('triangle');
+      triangleElements.forEach(t => {
+        triangles.push(
+          parseInt(t.getAttribute('v1') || 0),
+          parseInt(t.getAttribute('v2') || 0),
+          parseInt(t.getAttribute('v3') || 0)
+        );
+      });
+      
+      if (vertices.length === 0) {
+        throw new Error('No vertex data found in 3MF model');
+      }
+      
+      // Create geometry
+      const geometry = new THREE.BufferGeometry();
+      
+      // Build position array from indexed vertices
+      const positions = [];
+      for (let i = 0; i < triangles.length; i += 3) {
+        const v1 = triangles[i] * 3;
+        const v2 = triangles[i + 1] * 3;
+        const v3 = triangles[i + 2] * 3;
+        
+        positions.push(vertices[v1], vertices[v1 + 1], vertices[v1 + 2]);
+        positions.push(vertices[v2], vertices[v2 + 1], vertices[v2 + 2]);
+        positions.push(vertices[v3], vertices[v3 + 1], vertices[v3 + 2]);
+      }
+      
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geometry.computeVertexNormals();
+      
+      handleSTLGeometry(geometry);
+    }
+    
+    function handleSTLGeometry(geometry) {
+      // Center the geometry
+      geometry.computeBoundingBox();
+      const center = new THREE.Vector3();
+      geometry.boundingBox.getCenter(center);
+      geometry.translate(-center.x, -center.y, -center.z);
+      
+      // Move to sit on grid (Y = 0 at bottom)
+      geometry.computeBoundingBox();
+      const minY = geometry.boundingBox.min.y;
+      geometry.translate(0, -minY, 0);
+      
+      // Material
+      const material = new THREE.MeshPhongMaterial({
+        color: 0x6366f1,
+        specular: 0x111111,
+        shininess: 30,
+        flatShading: false
+      });
+      
+      mesh = new THREE.Mesh(geometry, material);
+      scene.add(mesh);
+      
+      // Fit camera to model
+      fitCameraToObject(mesh);
       
       // Store initial camera state for reset
       initialCameraPosition = camera.position.clone();

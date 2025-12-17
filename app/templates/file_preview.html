@@ -149,11 +149,15 @@
     }
 
     function loadModel() {
+      if (fileExt === '3mf') {
+        // Custom 3MF loader that handles OrcaSlicer/PrusaSlicer project files
+        load3MFCustom(fileUrl);
+        return;
+      }
+      
       let loader;
       if (fileExt === 'stl') {
         loader = new THREE.STLLoader();
-      } else if (fileExt === '3mf') {
-        loader = new THREE.ThreeMFLoader();
       } else {
         loader = new THREE.OBJLoader();
       }
@@ -162,13 +166,6 @@
         fileUrl,
         function(result) {
           document.getElementById('loading').classList.add('hidden');
-          
-          // Handle different loader results
-          if (fileExt === '3mf') {
-            // 3MF loader returns a Group with meshes
-            handle3MFResult(result);
-            return;
-          }
           
           let finalGeometry;
           if (fileExt === 'stl') {
@@ -259,6 +256,129 @@
       fitCameraToObject(group);
       
       // Store initial camera state for reset
+      initialCameraPosition = camera.position.clone();
+      initialControlsTarget = controls.target.clone();
+    }
+
+    async function load3MFCustom(url) {
+      // Custom loader for OrcaSlicer/PrusaSlicer 3MF project files
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to fetch file');
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const zip = await JSZip.loadAsync(arrayBuffer);
+        
+        let modelData = null;
+        let modelType = null;
+        
+        // Priority 1: Look for STL files
+        for (const filename of Object.keys(zip.files)) {
+          if (filename.toLowerCase().endsWith('.stl')) {
+            modelData = await zip.files[filename].async('arraybuffer');
+            modelType = 'stl';
+            break;
+          }
+        }
+        
+        // Priority 2: Look for .model files (3MF standard)
+        if (!modelData) {
+          for (const filename of Object.keys(zip.files)) {
+            if (filename.toLowerCase().endsWith('.model')) {
+              modelData = await zip.files[filename].async('string');
+              modelType = 'model';
+              break;
+            }
+          }
+        }
+        
+        if (!modelData) {
+          throw new Error('No supported model data found in 3MF file');
+        }
+        
+        document.getElementById('loading').classList.add('hidden');
+        
+        if (modelType === 'stl') {
+          const stlLoader = new THREE.STLLoader();
+          const geometry = stlLoader.parse(modelData);
+          handleSTLGeometry(geometry);
+        } else if (modelType === 'model') {
+          parse3MFModel(modelData);
+        }
+        
+      } catch (error) {
+        console.error('Error loading 3MF:', error);
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('error').classList.remove('hidden');
+        document.getElementById('error-message').textContent = error.message;
+      }
+    }
+    
+    function parse3MFModel(xmlString) {
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlString, 'text/xml');
+      
+      const vertices = [];
+      const triangles = [];
+      
+      const vertexElements = xmlDoc.querySelectorAll('vertex');
+      vertexElements.forEach(v => {
+        vertices.push(
+          parseFloat(v.getAttribute('x') || 0),
+          parseFloat(v.getAttribute('y') || 0),
+          parseFloat(v.getAttribute('z') || 0)
+        );
+      });
+      
+      const triangleElements = xmlDoc.querySelectorAll('triangle');
+      triangleElements.forEach(t => {
+        triangles.push(
+          parseInt(t.getAttribute('v1') || 0),
+          parseInt(t.getAttribute('v2') || 0),
+          parseInt(t.getAttribute('v3') || 0)
+        );
+      });
+      
+      if (vertices.length === 0) {
+        throw new Error('No vertex data found in 3MF model');
+      }
+      
+      const geometry = new THREE.BufferGeometry();
+      const positions = [];
+      for (let i = 0; i < triangles.length; i += 3) {
+        const v1 = triangles[i] * 3;
+        const v2 = triangles[i + 1] * 3;
+        const v3 = triangles[i + 2] * 3;
+        positions.push(vertices[v1], vertices[v1 + 1], vertices[v1 + 2]);
+        positions.push(vertices[v2], vertices[v2 + 1], vertices[v2 + 2]);
+        positions.push(vertices[v3], vertices[v3 + 1], vertices[v3 + 2]);
+      }
+      
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geometry.computeVertexNormals();
+      handleSTLGeometry(geometry);
+    }
+    
+    function handleSTLGeometry(geometry) {
+      geometry.computeBoundingBox();
+      const center = new THREE.Vector3();
+      geometry.boundingBox.getCenter(center);
+      geometry.translate(-center.x, -center.y, -center.z);
+      
+      geometry.computeBoundingBox();
+      const minY = geometry.boundingBox.min.y;
+      geometry.translate(0, -minY, 0);
+      
+      const material = new THREE.MeshPhongMaterial({
+        color: 0x6366f1,
+        specular: 0x111111,
+        shininess: 30,
+        flatShading: false
+      });
+      
+      mesh = new THREE.Mesh(geometry, material);
+      scene.add(mesh);
+      fitCameraToObject(mesh);
       initialCameraPosition = camera.position.clone();
       initialControlsTarget = controls.target.clone();
     }
