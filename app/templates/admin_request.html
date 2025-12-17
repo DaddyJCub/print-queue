@@ -884,7 +884,7 @@
                       <div class="text-xs text-zinc-500">{{ (f["size_bytes"] / 1024) | round(1) }} KB • Uploaded {{ f["created_at"]|localtime('%b %d, %Y at %I:%M %p') }}</div>
                     </div>
                     {% set file_ext = f["original_filename"].lower().split('.')[-1] if '.' in f["original_filename"] else '' %}
-                    {% if file_ext in ['stl', 'obj'] %}
+                    {% if file_ext in ['stl', 'obj', '3mf'] %}
                       <a href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/preview" 
                          class="text-xs px-2 py-1 rounded bg-indigo-600/30 hover:bg-indigo-500/40 text-indigo-300 transition"
                          title="Preview 3D model">

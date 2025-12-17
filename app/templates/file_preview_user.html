@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>3D Preview - {{ file.original_filename }}</title>
+  <link rel="manifest" href="/static/manifest.json" />
+  <meta name="theme-color" content="#6366f1" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -22,16 +24,15 @@
   <div class="overlay top-0 left-0 right-0 bg-zinc-900/90 backdrop-blur border-b border-zinc-800 p-4">
     <div class="flex items-center justify-between max-w-7xl mx-auto">
       <div class="flex items-center gap-4">
-        <a href="/admin/request/{{ req_id }}" class="text-zinc-400 hover:text-white transition">
+        <a href="/my/{{ req_id }}?token={{ token }}" class="text-zinc-400 hover:text-white transition">
           ← Back
         </a>
         <div>
-          <h1 class="font-semibold truncate max-w-md">{{ file.original_filename }}</h1>
+          <h1 class="font-semibold truncate max-w-[200px] sm:max-w-md">{{ file.original_filename }}</h1>
           {% if metadata and metadata.dimensions_mm %}
           <p class="text-xs text-zinc-400">
             📐 {{ metadata.dimensions_mm.x }} × {{ metadata.dimensions_mm.y }} × {{ metadata.dimensions_mm.z }} mm
             {% if metadata.volume_cm3 %}• {{ metadata.volume_cm3 }} cm³{% endif %}
-            {% if metadata.triangle_count %}• {{ "{:,}".format(metadata.triangle_count) }} triangles{% endif %}
           </p>
           {% endif %}
         </div>
@@ -47,28 +48,34 @@
   <!-- 3D Viewer -->
   <div id="viewer"></div>
 
-  <!-- Controls Overlay -->
-  <div class="overlay bottom-4 left-4 bg-zinc-900/90 backdrop-blur border border-zinc-700 rounded-lg p-4">
-    <h3 class="text-sm font-medium mb-2">Controls</h3>
-    <ul class="text-xs text-zinc-400 space-y-1">
-      <li>🖱️ Left drag: Rotate</li>
-      <li>🖱️ Right drag: Pan</li>
-      <li>🖱️ Scroll: Zoom</li>
-    </ul>
-    <div class="mt-3 pt-3 border-t border-zinc-700">
-      <label class="text-xs text-zinc-400 block mb-1">Model Color</label>
-      <input type="color" id="model-color" value="#6366f1" class="w-full h-8 rounded cursor-pointer">
-    </div>
-    <div class="mt-2">
-      <label class="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
-        <input type="checkbox" id="wireframe" class="rounded">
-        Wireframe
-      </label>
-    </div>
-    <div class="mt-2">
-      <button id="reset-camera" class="w-full px-3 py-1.5 rounded bg-zinc-700 hover:bg-zinc-600 text-xs transition">
-        Reset Camera
-      </button>
+  <!-- Controls Overlay (collapsible on mobile) -->
+  <div class="overlay bottom-4 left-4 right-4 sm:right-auto bg-zinc-900/90 backdrop-blur border border-zinc-700 rounded-lg">
+    <button onclick="toggleControls()" class="sm:hidden w-full p-3 flex items-center justify-between text-sm font-medium">
+      <span>⚙️ Controls</span>
+      <span id="controls-arrow">▼</span>
+    </button>
+    <div id="controls-panel" class="hidden sm:block p-4 pt-0 sm:pt-4">
+      <h3 class="text-sm font-medium mb-2 hidden sm:block">Controls</h3>
+      <ul class="text-xs text-zinc-400 space-y-1">
+        <li>🖱️ Left drag: Rotate</li>
+        <li>🖱️ Right drag: Pan</li>
+        <li>🖱️ Scroll: Zoom</li>
+      </ul>
+      <div class="mt-3 pt-3 border-t border-zinc-700">
+        <label class="text-xs text-zinc-400 block mb-1">Model Color</label>
+        <input type="color" id="model-color" value="#6366f1" class="w-full h-8 rounded cursor-pointer">
+      </div>
+      <div class="mt-2">
+        <label class="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+          <input type="checkbox" id="wireframe" class="rounded">
+          Wireframe
+        </label>
+      </div>
+      <div class="mt-2">
+        <button id="reset-camera" class="w-full px-3 py-1.5 rounded bg-zinc-700 hover:bg-zinc-600 text-xs transition">
+          Reset Camera
+        </button>
+      </div>
     </div>
   </div>
 
@@ -82,11 +89,11 @@
 
   <!-- Error Overlay -->
   <div id="error" class="hidden fixed inset-0 bg-zinc-900 flex items-center justify-center z-50">
-    <div class="text-center">
+    <div class="text-center p-6">
       <div class="text-4xl mb-4">⚠️</div>
       <p class="text-red-400 mb-2">Failed to load 3D model</p>
       <p id="error-message" class="text-xs text-zinc-500 mb-4"></p>
-      <a href="/admin/request/{{ req_id }}" class="px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-sm transition">
+      <a href="/my/{{ req_id }}?token={{ token }}" class="px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-sm transition inline-block">
         Go Back
       </a>
     </div>
@@ -99,6 +106,18 @@
     
     let scene, camera, renderer, controls, mesh;
     let initialCameraPosition, initialControlsTarget;
+
+    function toggleControls() {
+      const panel = document.getElementById('controls-panel');
+      const arrow = document.getElementById('controls-arrow');
+      if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
+        arrow.textContent = '▲';
+      } else {
+        panel.classList.add('hidden');
+        arrow.textContent = '▼';
+      }
+    }
 
     function init() {
       // Scene setup
@@ -119,6 +138,12 @@
       controls = new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.dampingFactor = 0.05;
+      
+      // Touch support
+      controls.touches = {
+        ONE: THREE.TOUCH.ROTATE,
+        TWO: THREE.TOUCH.DOLLY_PAN
+      };
 
       // Lights
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);

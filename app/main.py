@@ -5596,6 +5596,82 @@ def requester_edit(
     return RedirectResponse(url=f"/my/{rid}?token={token}", status_code=303)
 
 
+@app.get("/my/{rid}/file/{file_id}")
+async def requester_download_file(rid: str, file_id: str, token: str):
+    """Requester downloads their own file."""
+    conn = db()
+    req = conn.execute("SELECT access_token FROM requests WHERE id = ?", (rid,)).fetchone()
+    
+    if not req or req["access_token"] != token:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Invalid access")
+    
+    file_info = conn.execute(
+        "SELECT stored_filename, original_filename FROM files WHERE id = ? AND request_id = ?",
+        (file_id, rid)
+    ).fetchone()
+    conn.close()
+    
+    if not file_info:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    file_path = os.path.join(UPLOAD_DIR, file_info["stored_filename"])
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    
+    return FileResponse(
+        path=file_path,
+        filename=file_info["original_filename"],
+        media_type="application/octet-stream"
+    )
+
+
+@app.get("/my/{rid}/file/{file_id}/preview", response_class=HTMLResponse)
+async def requester_preview_file(request: Request, rid: str, file_id: str, token: str):
+    """Requester previews their 3D file in the viewer."""
+    conn = db()
+    req = conn.execute("SELECT access_token FROM requests WHERE id = ?", (rid,)).fetchone()
+    
+    if not req or req["access_token"] != token:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Invalid access")
+    
+    file_info = conn.execute(
+        "SELECT id, stored_filename, original_filename, file_metadata FROM files WHERE id = ? AND request_id = ?",
+        (file_id, rid)
+    ).fetchone()
+    conn.close()
+    
+    if not file_info:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Check if it's a supported 3D file
+    ext = os.path.splitext(file_info["original_filename"].lower())[1]
+    if ext not in [".stl", ".obj"]:
+        raise HTTPException(status_code=400, detail="Preview only available for STL and OBJ files")
+    
+    file_path = os.path.join(UPLOAD_DIR, file_info["stored_filename"])
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    
+    # Parse metadata
+    metadata = None
+    if file_info["file_metadata"]:
+        try:
+            metadata = json.loads(file_info["file_metadata"])
+        except:
+            pass
+    
+    return templates.TemplateResponse("file_preview_user.html", {
+        "request": request,
+        "req_id": rid,
+        "token": token,
+        "file": dict(file_info),
+        "metadata": metadata,
+        "file_url": f"/my/{rid}/file/{file_id}?token={token}",
+    })
+
+
 @app.post("/my/{rid}/cancel")
 def requester_cancel(request: Request, rid: str, token: str):
     """Requester cancels their own request"""
