@@ -360,11 +360,16 @@
     }
     
     function handleSTLGeometry(geometry) {
+      // Compute bounding box first
       geometry.computeBoundingBox();
+      const box = geometry.boundingBox;
       const center = new THREE.Vector3();
-      geometry.boundingBox.getCenter(center);
-      geometry.translate(-center.x, -center.y, -center.z);
+      box.getCenter(center);
       
+      // Center only on X and Z, keep original relative positioning
+      geometry.translate(-center.x, 0, -center.z);
+      
+      // Move to sit on grid (Y = 0 at bottom)
       geometry.computeBoundingBox();
       const minY = geometry.boundingBox.min.y;
       geometry.translate(0, -minY, 0);
