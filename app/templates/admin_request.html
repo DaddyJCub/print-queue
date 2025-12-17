@@ -248,6 +248,111 @@
         </div>
         {% endif %}
 
+        <!-- Currently Printing Build Info Card (shows when any build is PRINTING) -->
+        {% set printing_builds = builds|selectattr('status', 'equalto', 'PRINTING')|list %}
+        {% if printing_builds %}
+          {% for b in printing_builds %}
+        <div class="bg-gradient-to-br from-amber-900/20 to-zinc-900/50 border border-amber-500/30 rounded-xl p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold flex items-center gap-2">
+              <span class="text-amber-400">🔥</span> Currently Printing
+            </h2>
+            <span class="text-xs px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 animate-pulse">
+              BUILD #{{ b.build_number }}
+            </span>
+          </div>
+          
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            {% if b.print_name %}
+            <div>
+              <p class="text-xs text-zinc-500 uppercase mb-1">Part Name</p>
+              <p class="text-sm font-medium text-zinc-200">{{ b.print_name }}</p>
+            </div>
+            {% endif %}
+            {% if b.colors %}
+            <div>
+              <p class="text-xs text-zinc-500 uppercase mb-1">Colors</p>
+              <p class="text-sm font-medium text-zinc-200">🎨 {{ b.colors }}</p>
+            </div>
+            {% endif %}
+            {% if b.material %}
+            <div>
+              <p class="text-xs text-zinc-500 uppercase mb-1">Material</p>
+              <p class="text-sm font-medium text-zinc-200">🧪 {{ b.material }}</p>
+            </div>
+            {% endif %}
+            {% if b.print_time_minutes %}
+            <div>
+              <p class="text-xs text-zinc-500 uppercase mb-1">Est. Time</p>
+              <p class="text-sm font-medium text-zinc-200">⏱️ {{ (b.print_time_minutes // 60) }}h {{ (b.print_time_minutes % 60) }}m</p>
+            </div>
+            {% endif %}
+          </div>
+          
+          {# Find associated file - either from assigned_files OR by matching file_name to request files #}
+          {% set ns = namespace(current_file=none) %}
+          {% if b.assigned_files %}
+            {% for af in b.assigned_files %}
+              {% set af_ext = af.original_filename.lower().split('.')[-1] if '.' in af.original_filename else '' %}
+              {% if af_ext in ['stl', 'obj', '3mf'] and not ns.current_file %}
+                {% set ns.current_file = af %}
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+          {# Fallback: match by file_name from build to request files #}
+          {% if not ns.current_file and b.file_name %}
+            {% for f in files %}
+              {% if f.original_filename == b.file_name %}
+                {% set f_ext = f.original_filename.lower().split('.')[-1] if '.' in f.original_filename else '' %}
+                {% if f_ext in ['stl', 'obj', '3mf'] %}
+                  {% set ns.current_file = f %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+          {# Last fallback: if only one 3D file in request, use it #}
+          {% if not ns.current_file %}
+            {% for f in files %}
+              {% set f_ext = f.original_filename.lower().split('.')[-1] if '.' in f.original_filename else '' %}
+              {% if f_ext in ['stl', 'obj', '3mf'] and not ns.current_file %}
+                {% set ns.current_file = f %}
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+          
+          {# Show build file info with 3D preview button #}
+          {% if ns.current_file or b.file_name or b.assigned_files %}
+          <div class="border-t border-amber-500/20 pt-4">
+            <p class="text-xs text-zinc-500 uppercase mb-2">📎 Build File</p>
+            <div class="flex flex-wrap items-center gap-3">
+              {% if b.file_name %}
+                <span class="text-sm text-zinc-300">📄 {{ b.file_name }}</span>
+              {% elif b.assigned_files %}
+                {% for af in b.assigned_files %}
+                  <span class="text-sm text-zinc-300">📄 {{ af.original_filename }}</span>
+                {% endfor %}
+              {% endif %}
+              
+              {% if ns.current_file %}
+                <a href="/admin/request/{{ req['id'] }}/file/{{ ns.current_file.id }}/preview" 
+                   class="inline-flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition shadow-lg shadow-emerald-900/30"
+                   title="View 3D model">
+                  👁️ View 3D Model
+                </a>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+          
+          {% if b.notes %}
+          <div class="mt-3 p-2 bg-zinc-800/30 rounded-lg">
+            <p class="text-xs text-zinc-400">📝 {{ b.notes }}</p>
+          </div>
+          {% endif %}
+        </div>
+          {% endfor %}
+        {% endif %}
+
         <!-- Completion Snapshot Card (shows when DONE/PICKED_UP and has snapshot) -->
         {% if req["status"] in ["DONE", "PICKED_UP"] and req["completion_snapshot"] %}
         <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
@@ -526,10 +631,17 @@
                         <input type="text" name="print_name" value="{{ b.print_name or '' }}" 
                                placeholder="Part name (e.g., 'Left arm', 'Base')"
                                class="w-full rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs" />
-                        <div class="flex gap-2">
-                          <input type="number" name="print_time_minutes" value="{{ b.print_time_minutes or '' }}" 
-                                 placeholder="Est. minutes" min="0"
-                                 class="w-20 rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs" />
+                        <div class="flex gap-2 items-center">
+                          <div class="flex items-center gap-1">
+                            <input type="number" name="est_hours" min="0" max="999" 
+                                   value="{{ (b.print_time_minutes // 60) if b.print_time_minutes else '' }}"
+                                   placeholder="0" class="w-14 rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs text-center" />
+                            <span class="text-xs text-zinc-500">h</span>
+                            <input type="number" name="est_minutes" min="0" max="59"
+                                   value="{{ (b.print_time_minutes % 60) if b.print_time_minutes else '' }}"
+                                   placeholder="0" class="w-14 rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs text-center" />
+                            <span class="text-xs text-zinc-500">m</span>
+                          </div>
                           <select name="material" class="flex-1 rounded-md bg-zinc-900 border border-zinc-700 p-2 text-xs">
                             <option value="">Same as request</option>
                             {% for code, label in materials %}
@@ -576,8 +688,34 @@
                       <div class="flex flex-wrap gap-2 mt-2 text-xs text-zinc-400">
                         {% if b.colors %}<span class="px-1.5 py-0.5 bg-zinc-700/50 rounded">🎨 {{ b.colors }}</span>{% endif %}
                         {% if b.material %}<span class="px-1.5 py-0.5 bg-zinc-700/50 rounded">🧪 {{ b.material }}</span>{% endif %}
-                        {% if b.print_time_minutes %}<span class="px-1.5 py-0.5 bg-zinc-700/50 rounded">⏱️ {{ b.print_time_minutes }}m</span>{% endif %}
+                        {% if b.print_time_minutes %}<span class="px-1.5 py-0.5 bg-zinc-700/50 rounded">⏱️ {{ (b.print_time_minutes // 60) }}h {{ (b.print_time_minutes % 60) }}m</span>{% endif %}
                         {% if b.notes %}<span class="px-1.5 py-0.5 bg-zinc-700/50 rounded truncate max-w-[150px]">📝 {{ b.notes }}</span>{% endif %}
+                      </div>
+                    {% endif %}
+                    
+                    <!-- Assigned files -->
+                    {% if b.assigned_files %}
+                      <div class="mt-2 pt-2 border-t border-zinc-700/50">
+                        <div class="text-xs text-zinc-500 mb-1">📎 Assigned files:</div>
+                        <div class="flex flex-wrap gap-1">
+                          {% for af in b.assigned_files %}
+                            {% set af_ext = af.original_filename.lower().split('.')[-1] if '.' in af.original_filename else '' %}
+                            <span class="flex items-center gap-1">
+                              <a href="/admin/request/{{ req['id'] }}/file/{{ af.id }}" 
+                                 class="text-xs px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded hover:bg-indigo-500/30 transition truncate max-w-[200px]"
+                                 title="{{ af.original_filename }}">
+                                {{ af.original_filename }}
+                              </a>
+                              {% if af_ext in ['stl', 'obj', '3mf'] %}
+                                <a href="/admin/request/{{ req['id'] }}/file/{{ af.id }}/preview" 
+                                   class="text-xs px-1.5 py-0.5 bg-emerald-600/30 hover:bg-emerald-500/40 text-emerald-300 rounded transition"
+                                   title="View 3D model">
+                                  👁️
+                                </a>
+                              {% endif %}
+                            </span>
+                          {% endfor %}
+                        </div>
                       </div>
                     {% endif %}
                   </div>
@@ -840,11 +978,11 @@
           <h2 class="text-lg font-semibold mb-4">📁 Files</h2>
           
           <form class="mb-4" method="POST" action="/admin/request/{{ req['id'] }}/add-file" enctype="multipart/form-data">
-            <p class="text-xs text-zinc-400 mb-2">{{ allowed_exts }} • {{ max_upload_mb }}MB max</p>
+            <p class="text-xs text-zinc-400 mb-2">{{ allowed_exts }} • {{ max_upload_mb }}MB max per file • Multiple files supported</p>
             <div class="flex gap-2">
-              <input type="file" name="upload" class="flex-1 text-sm rounded-lg border border-zinc-700" />
+              <input type="file" name="upload" multiple class="flex-1 text-sm rounded-lg border border-zinc-700" />
               <button class="rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-3 text-sm font-semibold whitespace-nowrap">
-                Add
+                Add Files
               </button>
             </div>
           </form>
@@ -855,8 +993,20 @@
             <ul class="space-y-2">
               {% for f in files %}
                 <li class="bg-zinc-950/60 border border-zinc-700 rounded-lg p-3">
-                  <div class="font-mono text-sm text-zinc-200 truncate">{{ f["original_filename"] }}</div>
-                  <div class="text-xs text-zinc-500">{{ (f["size_bytes"] / 1024) | round(1) }} KB • Uploaded {{ f["created_at"]|localtime('%b %d, %Y at %I:%M %p') }}</div>
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="flex-1 min-w-0">
+                      <div class="font-mono text-sm text-zinc-200 truncate">{{ f["original_filename"] }}</div>
+                      <div class="text-xs text-zinc-500">{{ (f["size_bytes"] / 1024) | round(1) }} KB • Uploaded {{ f["created_at"]|localtime('%b %d, %Y at %I:%M %p') }}</div>
+                    </div>
+                    {% set file_ext = f["original_filename"].lower().split('.')[-1] if '.' in f["original_filename"] else '' %}
+                    {% if file_ext in ['stl', 'obj', '3mf'] %}
+                      <a href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/preview" 
+                         class="text-xs px-2 py-1 rounded bg-indigo-600/30 hover:bg-indigo-500/40 text-indigo-300 transition"
+                         title="Preview 3D model">
+                        👁️ 3D
+                      </a>
+                    {% endif %}
+                  </div>
                   {% if f.metadata and f.metadata.dimensions_mm %}
                     <div class="text-xs text-indigo-400 mt-1 flex items-center gap-1">
                       📐 {{ f.metadata.dimensions_mm.x }} × {{ f.metadata.dimensions_mm.y }} × {{ f.metadata.dimensions_mm.z }} mm
@@ -868,7 +1018,25 @@
                   {% if f.metadata and f.metadata.triangle_count %}
                     <div class="text-xs text-zinc-500">🔺 {{ "{:,}".format(f.metadata.triangle_count) }} triangles</div>
                   {% endif %}
-                  <div class="flex items-center gap-3 mt-1">
+                  
+                  <!-- Build assignment -->
+                  {% if builds|length > 0 %}
+                    <div class="mt-2 pt-2 border-t border-zinc-700/50">
+                      <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/assign-build" class="flex items-center gap-2">
+                        <label class="text-xs text-zinc-500">Assigned to:</label>
+                        <select name="build_id" class="flex-1 text-xs rounded bg-zinc-900 border border-zinc-700 p-1" onchange="this.form.submit()">
+                          <option value="">— No build —</option>
+                          {% for b in builds %}
+                            <option value="{{ b.id }}" {% if f.build_id == b.id %}selected{% endif %}>
+                              Build #{{ b.build_number }}{% if b.print_name %} - {{ b.print_name }}{% endif %}
+                            </option>
+                          {% endfor %}
+                        </select>
+                      </form>
+                    </div>
+                  {% endif %}
+                  
+                  <div class="flex items-center gap-3 mt-2">
                     <a class="text-indigo-400 hover:underline text-xs" href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}">Download</a>
                     <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" onsubmit="return confirm('Delete this file?')">
                       <button type="submit" class="text-red-400 hover:text-red-300 text-xs">Delete</button>

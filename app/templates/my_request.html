@@ -384,6 +384,60 @@
           </div>
         {% endif %}
         
+        <!-- Current Build File Info + 3D Preview - PROMINENT -->
+        {% if current_printing_build %}
+          {# Fallback: find a 3D file if current_printing_file not set #}
+          {% set ns = namespace(preview_file=current_printing_file) %}
+          {% if not ns.preview_file %}
+            {% for f in files %}
+              {% set f_ext = f.original_filename.lower().split('.')[-1] if '.' in f.original_filename else '' %}
+              {% if f_ext in ['stl', 'obj', '3mf'] and not ns.preview_file %}
+                {% set ns.preview_file = f %}
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+          
+          <div class="mb-4 p-4 bg-gradient-to-br from-amber-950/40 to-indigo-950/40 border border-amber-500/40 rounded-xl shadow-lg">
+            <div class="flex items-center gap-2 mb-3">
+              <span class="text-amber-400 text-lg">🔥</span>
+              <h4 class="font-semibold text-amber-200">Currently Printing</h4>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 animate-pulse ml-auto">
+                Build #{{ current_printing_build.build_number }}
+              </span>
+            </div>
+            
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0 flex-1">
+                <p class="text-base font-medium text-zinc-100 truncate mb-1">
+                  {{ current_printing_build.print_name or ('Part ' ~ current_printing_build.build_number) }}
+                </p>
+                {% if ns.preview_file %}
+                  <p class="text-sm text-zinc-400 truncate mb-2">📄 {{ ns.preview_file.original_filename }}</p>
+                {% elif current_printing_build.file_name %}
+                  <p class="text-sm text-zinc-400 truncate mb-2">📄 {{ current_printing_build.file_name }}</p>
+                {% endif %}
+                {% if current_printing_build.material or current_printing_build.colors %}
+                  <div class="flex flex-wrap items-center gap-2 text-xs">
+                    {% if current_printing_build.material %}
+                      <span class="px-2 py-1 bg-zinc-800/50 rounded-lg text-zinc-300">🧵 {{ current_printing_build.material }}</span>
+                    {% endif %}
+                    {% if current_printing_build.colors %}
+                      <span class="px-2 py-1 bg-zinc-800/50 rounded-lg text-zinc-300">🎨 {{ current_printing_build.colors }}</span>
+                    {% endif %}
+                  </div>
+                {% endif %}
+              </div>
+              
+              {% if ns.preview_file %}
+                <a href="/my/{{ req.id }}/file/{{ ns.preview_file.id }}/preview?token={{ token }}" 
+                   class="inline-flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-sm font-semibold text-white transition shadow-lg shadow-emerald-900/40 flex-shrink-0">
+                  <span class="text-lg">🔮</span> View 3D Model
+                </a>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+        
         <!-- Camera Preview -->
         <div class="mb-4">
           <button type="button" onclick="toggleCamera()" id="camera-toggle" 
@@ -607,6 +661,64 @@
                 </span>
               </div>
               
+              <!-- Build details grid -->
+              {% if b.material or b.colors or b.slicer_estimate_minutes or b.print_time_minutes or b.total_layers or b.file_name %}
+                <div class="grid grid-cols-2 gap-2 text-xs mb-3 bg-zinc-900/50 rounded-lg p-2">
+                  {% if b.material %}
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-zinc-500">🧵</span>
+                      <span class="text-zinc-400">Material:</span>
+                      <span class="text-zinc-200">{{ b.material }}</span>
+                    </div>
+                  {% endif %}
+                  {% if b.colors %}
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-zinc-500">🎨</span>
+                      <span class="text-zinc-400">Color:</span>
+                      <span class="text-zinc-200">{{ b.colors }}</span>
+                    </div>
+                  {% endif %}
+                  {% if b.slicer_estimate_minutes or b.print_time_minutes %}
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-zinc-500">⏱️</span>
+                      <span class="text-zinc-400">Est. Time:</span>
+                      {% set est_mins = b.print_time_minutes or b.slicer_estimate_minutes %}
+                      {% if est_mins >= 60 %}
+                        <span class="text-zinc-200">{{ (est_mins // 60)|int }}h {{ (est_mins % 60)|int }}m</span>
+                      {% else %}
+                        <span class="text-zinc-200">{{ est_mins|int }}m</span>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+                  {% if b.total_layers %}
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-zinc-500">📊</span>
+                      <span class="text-zinc-400">Layers:</span>
+                      <span class="text-zinc-200">{{ b.total_layers }}</span>
+                    </div>
+                  {% endif %}
+                  {% if b.file_name %}
+                    <div class="flex items-center gap-1.5 col-span-2">
+                      <span class="text-zinc-500">📄</span>
+                      <span class="text-zinc-400">File:</span>
+                      <span class="text-zinc-200 truncate">{{ b.file_name }}</span>
+                    </div>
+                  {% endif %}
+                </div>
+              {% endif %}
+              
+              <!-- Started/Completed timestamps -->
+              {% if b.started_at or b.completed_at %}
+                <div class="text-xs text-zinc-500 mb-2 space-y-0.5">
+                  {% if b.started_at %}
+                    <p>Started: {{ b.started_at|localtime('%b %d at %I:%M %p') }}</p>
+                  {% endif %}
+                  {% if b.completed_at %}
+                    <p>Completed: {{ b.completed_at|localtime('%b %d at %I:%M %p') }}</p>
+                  {% endif %}
+                </div>
+              {% endif %}
+              
               <!-- Progress bar for printing builds -->
               {% if b.status == 'PRINTING' and b.progress is not none %}
                 <div class="mb-3">
@@ -736,6 +848,8 @@
         <p class="text-xs text-zinc-500 mb-3">.3mf, .fpp, .gcode, .obj, .step, .stl, .stp, .zip • 200MB max</p>
         <div class="space-y-2">
           {% for f in files %}
+            {% set ext = f.original_filename.lower().split('.')[-1] %}
+            {% set is_3d_viewable = ext in ['stl', 'obj', '3mf'] %}
             <div class="bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3 min-w-0 flex-1">
@@ -744,7 +858,32 @@
                 </div>
                 <span class="text-xs text-zinc-500 flex-shrink-0 ml-2">{{ (f.size_bytes / 1024)|round(1) }} KB</span>
               </div>
+              
+              <!-- File metadata (dimensions) -->
+              {% if f.file_metadata %}
+                {% set meta = f.file_metadata|tojson|safe|replace("'", '"')|default('{}', true) %}
+                {% if meta and 'dimensions_mm' in (f.file_metadata or '') %}
+                  <div class="text-xs text-zinc-500 mt-1 ml-7">
+                    📐 Dimensions available in preview
+                  </div>
+                {% endif %}
+              {% endif %}
+              
               <div class="text-xs text-zinc-500 mt-1 ml-7">Uploaded {{ f.created_at|localtime('%b %d, %Y at %I:%M %p') }}</div>
+              
+              <!-- Action buttons -->
+              <div class="flex items-center gap-2 mt-2 ml-7">
+                {% if is_3d_viewable %}
+                  <a href="/my/{{ req.id }}/file/{{ f.id }}/preview?token={{ token }}" 
+                     class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/50 rounded-lg text-xs font-medium text-indigo-200 transition">
+                    <span>🔮</span> View 3D Model
+                  </a>
+                {% endif %}
+                <a href="/my/{{ req.id }}/file/{{ f.id }}?token={{ token }}" download
+                   class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition">
+                  <span>📥</span> Download
+                </a>
+              </div>
             </div>
           {% endfor %}
         </div>

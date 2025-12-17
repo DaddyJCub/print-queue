@@ -8,8 +8,11 @@
   <style>
     .log-error { background-color: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; }
     .log-auto_complete { background-color: rgba(34, 197, 94, 0.1); border-left: 3px solid #22c55e; }
+    .log-auto_match { background-color: rgba(34, 197, 94, 0.1); border-left: 3px solid #22c55e; }
     .log-email_sent { background-color: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; }
     .log-poll_check { background-color: rgba(107, 114, 128, 0.05); border-left: 3px solid #6b7280; }
+    .log-poll_paused { background-color: rgba(245, 158, 11, 0.1); border-left: 3px solid #f59e0b; }
+    .log-match_suggestion { background-color: rgba(139, 92, 246, 0.1); border-left: 3px solid #8b5cf6; }
   </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100">
@@ -42,6 +45,73 @@
         <p class="text-zinc-500 text-sm">No cached printer status available</p>
       {% endif %}
     </div>
+
+    <!-- Polling Control -->
+    <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">⏸️ Polling Control</h2>
+      <p class="text-sm text-zinc-400 mb-4">Pause polling when manually sending files to the printer to prevent connection conflicts.</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% for printer in ['ADVENTURER_4', 'AD5X'] %}
+          <div class="bg-zinc-950 border border-zinc-700 rounded-lg p-4">
+            <h3 class="font-semibold text-indigo-400 mb-3">{{ printer }}</h3>
+            <div class="flex items-center gap-2 mb-3">
+              <span class="text-sm text-zinc-400">Status:</span>
+              {% if polling_status and polling_status[printer] and polling_status[printer].paused %}
+                <span class="text-amber-400 font-semibold">⏸️ Paused</span>
+              {% else %}
+                <span class="text-emerald-400 font-semibold">▶️ Active</span>
+              {% endif %}
+            </div>
+            <div class="flex gap-2">
+              <button onclick="pausePolling('{{ printer }}', 60)" 
+                      class="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded text-sm">
+                Pause 1 min
+              </button>
+              <button onclick="pausePolling('{{ printer }}', 180)" 
+                      class="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 rounded text-sm">
+                Pause 3 min
+              </button>
+              <button onclick="resumePolling('{{ printer }}')" 
+                      class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-sm">
+                Resume
+              </button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    
+    <script>
+    async function pausePolling(printer, duration) {
+      try {
+        const res = await fetch(`/api/admin/pause-polling/${printer}?duration=${duration}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          alert(`Polling paused for ${printer} for ${duration} seconds`);
+          location.reload();
+        } else {
+          alert('Failed to pause polling');
+        }
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+    
+    async function resumePolling(printer) {
+      try {
+        const res = await fetch(`/api/admin/resume-polling/${printer}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          alert(`Polling resumed for ${printer}`);
+          location.reload();
+        } else {
+          alert('Failed to resume polling');
+        }
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+    </script>
 
     <!-- Failure Counts -->
     <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 mb-6">
@@ -77,6 +147,10 @@
                     <span class="text-red-400">❌ ERROR</span>
                   {% elif log.type == 'auto_complete' %}
                     <span class="text-emerald-400">✅ AUTO-COMPLETE</span>
+                  {% elif log.type == 'auto_match' %}
+                    <span class="text-emerald-400">🔗 AUTO-MATCH</span>
+                  {% elif log.type == 'match_suggestion' %}
+                    <span class="text-purple-400">💡 MATCH SUGGESTION</span>
                   {% elif log.type == 'email_sent' %}
                     <span class="text-blue-400">📧 EMAIL SENT</span>
                   {% elif log.type == 'poll_check' %}
@@ -87,6 +161,8 @@
                     <span class="text-zinc-500">📊 FOUND</span>
                   {% elif log.type == 'poll_skip' %}
                     <span class="text-amber-400">⏭️ SKIP</span>
+                  {% elif log.type == 'poll_paused' %}
+                    <span class="text-amber-400">⏸️ PAUSED</span>
                   {% else %}
                     <span class="text-zinc-400">{{ log.type }}</span>
                   {% endif %}

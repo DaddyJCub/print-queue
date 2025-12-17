@@ -21,13 +21,15 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.16"
+APP_VERSION = "1.8.18"
 # Changelog:
-# 1.8.15 - Progress notifications at milestones (25/50/75/90%), broadcast system for app updates, admin broadcast page
-# 1.8.14 - Multi-build UX: clearer status labels (Queued/Done vs READY/COMPLETED), tooltips, queue build progress
-# 1.8.13 - Push notification robustness: safe body parsing, JSON API contract, /api/push/health endpoint
-# 1.8.12 - Per-build photos gallery, push notification fixes (JSONDecodeError), diagnostics panel
-# 1.8.11 - Build management: edit/delete builds, strict printer validation, robust form handling
+# 1.8.18 - Fix printer connection conflicts: added polling pause on print start, connection locking, retry logic, admin polling control
+# 1.8.17 - User 3D model viewer (STL/OBJ/3MF support), enhanced build details, file download from My Request page
+# 1.8.16 - Progress notifications at milestones (25/50/75/90%), broadcast system for app updates, admin broadcast page
+# 1.8.15 - Multi-build UX: clearer status labels (Queued/Done vs READY/COMPLETED), tooltips, queue build progress
+# 1.8.14 - Push notification robustness: safe body parsing, JSON API contract, /api/push/health endpoint
+# 1.8.13 - Per-build photos gallery, push notification fixes (JSONDecodeError), diagnostics panel
+# 1.8.12 - Build management: edit/delete builds, strict printer validation, robust form handling
 # 1.8.10 - Fixed admin session persistence (cookie path/secure), added smoke check endpoint
 # 1.8.7 - Added logging system, fixed database connection errors in requester portal
 # 1.8.6 - Build state fixes for IN_PROGRESS status in My Requests
@@ -137,6 +139,21 @@ sys.stdout = PrintToLogger(logging.getLogger("printellect.stdout"), logging.INFO
 sys.stderr = PrintToLogger(logging.getLogger("printellect.stderr"), logging.ERROR)
 
 logger.info(f"Logging initialized at level {LOG_LEVEL} - capturing all output")
+
+# ─────────────────────────── HELPER FUNCTIONS ───────────────────────────
+def row_get(row, key, default=None):
+    """
+    Safely get a value from a sqlite3.Row or dict.
+    sqlite3.Row doesn't support .get(), so this provides a consistent interface.
+    """
+    if row is None:
+        return default
+    try:
+        # Try bracket notation first (works for both Row and dict)
+        val = row[key]
+        return val if val is not None else default
+    except (KeyError, IndexError):
+        return default
 
 APP_TITLE = "Printellect"
 
@@ -410,6 +427,44 @@ Traceback:
 _printer_status_cache: Dict[str, Dict[str, Any]] = {}
 _printer_failure_count: Dict[str, int] = {}
 _printer_last_seen: Dict[str, str] = {}  # Timestamp of last successful poll
+
+# Printer connection locks - prevents polling during print operations
+# Uses asyncio.Lock for each printer to prevent simultaneous connections
+_printer_locks: Dict[str, asyncio.Lock] = {}
+_polling_paused_until: Dict[str, float] = {}  # Timestamp when to resume polling per printer
+_POLL_PAUSE_DURATION = 30  # Seconds to pause polling after print operation
+
+def get_printer_lock(printer_code: str) -> asyncio.Lock:
+    """Get or create an asyncio lock for a specific printer"""
+    if printer_code not in _printer_locks:
+        _printer_locks[printer_code] = asyncio.Lock()
+    return _printer_locks[printer_code]
+
+def pause_printer_polling(printer_code: str, duration: int = None):
+    """Pause polling for a printer for specified duration (default 30s)"""
+    import time
+    pause_duration = duration if duration is not None else _POLL_PAUSE_DURATION
+    _polling_paused_until[printer_code] = time.time() + pause_duration
+    print(f"[POLL] Pausing polling for {printer_code} for {pause_duration}s")
+    add_poll_debug_log({
+        "type": "poll_paused",
+        "printer": printer_code,
+        "duration": pause_duration,
+        "message": f"Polling paused for {pause_duration}s (print operation in progress)"
+    })
+
+def is_polling_paused(printer_code: str) -> bool:
+    """Check if polling is currently paused for a printer"""
+    import time
+    if printer_code not in _polling_paused_until:
+        return False
+    return time.time() < _polling_paused_until[printer_code]
+
+def resume_printer_polling(printer_code: str):
+    """Resume polling for a printer immediately"""
+    if printer_code in _polling_paused_until:
+        del _polling_paused_until[printer_code]
+        print(f"[POLL] Resumed polling for {printer_code}")
 
 # Debug log storage for polling diagnostics (circular buffer of last 100 entries)
 _poll_debug_log: List[Dict[str, Any]] = []
@@ -1175,6 +1230,10 @@ def start_build(build_id: str, printer: str, comment: Optional[str] = None) -> D
     if printer not in valid_printer_codes:
         return {"success": False, "error": f"Invalid printer: {printer}. Choose from: {', '.join(valid_printer_codes)}"}
     
+    # Pause polling for this printer to prevent connection conflicts
+    # This is important because the admin may be about to send a file to the printer
+    pause_printer_polling(printer, 45)  # 45 seconds to allow file transfer
+    
     conn = db()
     build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
     
@@ -1536,6 +1595,7 @@ def setup_builds_for_request(request_id: str, build_count: int = None) -> int:
     Create build records for a request based on its files.
     If build_count is specified, creates that many builds.
     Otherwise, creates one build per file.
+    Auto-assigns files to builds 1:1 when file count matches build count.
     Returns the number of builds created.
     """
     conn = db()
@@ -1549,22 +1609,42 @@ def setup_builds_for_request(request_id: str, build_count: int = None) -> int:
         conn.close()
         return 0  # Builds already exist
     
+    # Get files for this request
+    files = conn.execute(
+        "SELECT id, original_filename FROM files WHERE request_id = ? ORDER BY created_at ASC",
+        (request_id,)
+    ).fetchall()
+    
     # Get file count if build_count not specified
     if build_count is None:
-        files = conn.execute(
-            "SELECT COUNT(*) as cnt FROM files WHERE request_id = ?", (request_id,)
-        ).fetchone()
-        build_count = max(1, files["cnt"])
+        build_count = max(1, len(files))
     
     now = now_iso()
+    build_ids = []
     
     # Create builds
     for i in range(build_count):
         build_id = str(uuid.uuid4())
+        # Use file name as print_name if we have a matching file
+        print_name = None
+        if i < len(files):
+            # Use filename without extension as print name
+            original = files[i]["original_filename"]
+            print_name = os.path.splitext(original)[0] if original else None
+        
         conn.execute("""
-            INSERT INTO builds (id, request_id, build_number, status, created_at, updated_at)
-            VALUES (?, ?, ?, 'PENDING', ?, ?)
-        """, (build_id, request_id, i + 1, now, now))
+            INSERT INTO builds (id, request_id, build_number, status, print_name, created_at, updated_at)
+            VALUES (?, ?, ?, 'PENDING', ?, ?, ?)
+        """, (build_id, request_id, i + 1, print_name, now, now))
+        build_ids.append(build_id)
+    
+    # Auto-assign files to builds (1:1 mapping)
+    for i, file in enumerate(files):
+        if i < len(build_ids):
+            conn.execute(
+                "UPDATE files SET build_id = ? WHERE id = ?",
+                (build_ids[i], file["id"])
+            )
     
     # Update request with total_builds
     conn.execute(
@@ -1611,6 +1691,27 @@ def mark_builds_ready(request_id: str) -> int:
 
 
 # ─────────────────────────── 3D FILE PARSING ───────────────────────────
+class NumpyEncoder(json.JSONEncoder):
+    """JSON encoder that handles numpy types (float32, int64, etc.)"""
+    def default(self, o):
+        try:
+            import numpy as np
+            if isinstance(o, np.integer):
+                return int(o)
+            if isinstance(o, np.floating):
+                return float(o)
+            if isinstance(o, np.ndarray):
+                return o.tolist()
+        except ImportError:
+            pass
+        return super().default(o)
+
+
+def safe_json_dumps(obj) -> str:
+    """JSON dumps that handles numpy types"""
+    return json.dumps(obj, cls=NumpyEncoder)
+
+
 def parse_3d_file_metadata(file_path: str, original_filename: str) -> Optional[Dict[str, Any]]:
     """
     Parse a 3D file (STL, 3MF, OBJ) and extract metadata like dimensions and volume.
@@ -1644,22 +1745,23 @@ def _parse_stl_file(file_path: str) -> Optional[Dict[str, Any]]:
         min_coords = stl_mesh.min_
         max_coords = stl_mesh.max_
         
+        # Convert numpy types to Python native types to avoid JSON serialization issues
         dimensions = {
-            "x": round(max_coords[0] - min_coords[0], 2),
-            "y": round(max_coords[1] - min_coords[1], 2),
-            "z": round(max_coords[2] - min_coords[2], 2),
+            "x": float(round(max_coords[0] - min_coords[0], 2)),
+            "y": float(round(max_coords[1] - min_coords[1], 2)),
+            "z": float(round(max_coords[2] - min_coords[2], 2)),
         }
         
         # Calculate volume (approximate using signed volume method)
         # This works for closed meshes
         try:
             volume = abs(stl_mesh.get_mass_properties()[0])
-            volume_cm3 = round(volume / 1000, 2)  # Convert mm³ to cm³
+            volume_cm3 = float(round(volume / 1000, 2))  # Convert mm³ to cm³
         except:
             volume_cm3 = None
         
         # Triangle count
-        triangle_count = len(stl_mesh.vectors)
+        triangle_count = int(len(stl_mesh.vectors))
         
         return {
             "type": "stl",
@@ -1720,11 +1822,11 @@ def _parse_3mf_file(file_path: str) -> Optional[Dict[str, Any]]:
                     return {
                         "type": "3mf",
                         "dimensions_mm": {
-                            "x": round(max_x - min_x, 2),
-                            "y": round(max_y - min_y, 2),
-                            "z": round(max_z - min_z, 2),
+                            "x": float(round(max_x - min_x, 2)),
+                            "y": float(round(max_y - min_y, 2)),
+                            "z": float(round(max_z - min_z, 2)),
                         },
-                        "vertex_count": len(vertices),
+                        "vertex_count": int(len(vertices)),
                         "is_valid": True,
                     }
                 
@@ -1761,11 +1863,11 @@ def _parse_obj_file(file_path: str) -> Optional[Dict[str, Any]]:
             return {
                 "type": "obj",
                 "dimensions_mm": {
-                    "x": round(max_x - min_x, 2),
-                    "y": round(max_y - min_y, 2),
-                    "z": round(max_z - min_z, 2),
+                    "x": float(round(max_x - min_x, 2)),
+                    "y": float(round(max_y - min_y, 2)),
+                    "z": float(round(max_z - min_z, 2)),
                 },
-                "vertex_count": len(vertices),
+                "vertex_count": int(len(vertices)),
                 "is_valid": True,
             }
         
@@ -3146,83 +3248,127 @@ class FlashForgeAPI:
         return None
 
     async def get_extended_status(self) -> Optional[Dict[str, Any]]:
-        """Get extended status including current filename and layer info via direct M-codes"""
+        """Get extended status including current filename and layer info via direct M-codes.
+        
+        Uses a printer lock to prevent conflicts with print send operations.
+        Has built-in retry logic with delays to handle transient connection issues.
+        """
         import socket
         result = {}
         
-        try:
-            # M119 gives us CurrentFile and detailed status
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(3)
-            sock.connect((self.printer_ip, 8899))
-            
-            # Control request
-            sock.send(b"~M601 S1\r\n")
-            sock.recv(1024)
-            
-            # M119 for status + current file
-            sock.send(b"~M119\r\n")
-            response = b""
-            try:
-                while True:
-                    chunk = sock.recv(2048)
-                    if not chunk:
-                        break
-                    response += chunk
-                    if b"ok\r\n" in response or b"ok\n" in response:
-                        break
-            except socket.timeout:
-                pass
-            
-            m119_text = response.decode('utf-8', errors='ignore')
-            
-            # Parse M119 response
-            for line in m119_text.split('\n'):
-                line = line.strip()
-                if line.startswith('CurrentFile:'):
-                    result['current_file'] = line.replace('CurrentFile:', '').strip()
-                elif line.startswith('MachineStatus:'):
-                    result['machine_status'] = line.replace('MachineStatus:', '').strip()
-                elif line.startswith('LED:'):
-                    result['led'] = line.replace('LED:', '').strip()
-                elif line.startswith('Status:'):
-                    result['status_flags'] = line.replace('Status:', '').strip()
-            
-            # M27 for layer info
-            sock.send(b"~M27\r\n")
-            response = b""
-            try:
-                while True:
-                    chunk = sock.recv(2048)
-                    if not chunk:
-                        break
-                    response += chunk
-                    if b"ok\r\n" in response or b"ok\n" in response:
-                        break
-            except socket.timeout:
-                pass
-            
-            m27_text = response.decode('utf-8', errors='ignore')
-            
-            # Parse M27 response for layer info
-            for line in m27_text.split('\n'):
-                line = line.strip()
-                if line.startswith('Layer:'):
-                    layer_part = line.replace('Layer:', '').strip()
-                    if '/' in layer_part:
-                        parts = layer_part.split('/')
-                        result['current_layer'] = int(parts[0].strip())
-                        result['total_layers'] = int(parts[1].strip())
-                elif line.startswith('SD printing byte'):
-                    # "SD printing byte 32/100"
-                    pass  # Already have progress from other endpoint
-            
-            sock.close()
-            return result if result else None
-            
-        except Exception as e:
-            print(f"[PRINTER] Error fetching extended status from {self.printer_ip}: {e}")
+        # Get the printer lock to prevent simultaneous connections
+        printer_code = "ADVENTURER_4" if "198" in self.printer_ip else "AD5X"  # Derive from IP
+        lock = get_printer_lock(printer_code)
+        
+        # Check if polling is paused for this printer
+        if is_polling_paused(printer_code):
+            print(f"[PRINTER] Polling paused for {printer_code}, skipping extended status")
             return None
+        
+        max_retries = 2
+        retry_delay = 1.0  # seconds between retries
+        
+        # Try to acquire lock with timeout - do this ONCE before retry loop
+        try:
+            await asyncio.wait_for(lock.acquire(), timeout=5.0)
+        except asyncio.TimeoutError:
+            print(f"[PRINTER] Could not acquire lock for {self.printer_ip}, another operation in progress")
+            return None
+        
+        try:
+            for attempt in range(max_retries + 1):
+                sock = None
+                try:
+                    # M119 gives us CurrentFile and detailed status
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(3)
+                    sock.connect((self.printer_ip, 8899))
+                    
+                    # Control request
+                    sock.send(b"~M601 S1\r\n")
+                    sock.recv(1024)
+                    
+                    # M119 for status + current file
+                    sock.send(b"~M119\r\n")
+                    response = b""
+                    try:
+                        while True:
+                            chunk = sock.recv(2048)
+                            if not chunk:
+                                break
+                            response += chunk
+                            if b"ok\r\n" in response or b"ok\n" in response:
+                                break
+                    except socket.timeout:
+                        pass
+                    
+                    m119_text = response.decode('utf-8', errors='ignore')
+                    
+                    # Parse M119 response
+                    for line in m119_text.split('\n'):
+                        line = line.strip()
+                        if line.startswith('CurrentFile:'):
+                            result['current_file'] = line.replace('CurrentFile:', '').strip()
+                        elif line.startswith('MachineStatus:'):
+                            result['machine_status'] = line.replace('MachineStatus:', '').strip()
+                        elif line.startswith('LED:'):
+                            result['led'] = line.replace('LED:', '').strip()
+                        elif line.startswith('Status:'):
+                            result['status_flags'] = line.replace('Status:', '').strip()
+                    
+                    # M27 for layer info
+                    sock.send(b"~M27\r\n")
+                    response = b""
+                    try:
+                        while True:
+                            chunk = sock.recv(2048)
+                            if not chunk:
+                                break
+                            response += chunk
+                            if b"ok\r\n" in response or b"ok\n" in response:
+                                break
+                    except socket.timeout:
+                        pass
+                    
+                    m27_text = response.decode('utf-8', errors='ignore')
+                    
+                    # Parse M27 response for layer info
+                    for line in m27_text.split('\n'):
+                        line = line.strip()
+                        if line.startswith('Layer:'):
+                            layer_part = line.replace('Layer:', '').strip()
+                            if '/' in layer_part:
+                                parts = layer_part.split('/')
+                                result['current_layer'] = int(parts[0].strip())
+                                result['total_layers'] = int(parts[1].strip())
+                        elif line.startswith('SD printing byte'):
+                            # "SD printing byte 32/100"
+                            pass  # Already have progress from other endpoint
+                    
+                    return result if result else None
+                    
+                except (ConnectionRefusedError, OSError) as e:
+                    if attempt < max_retries:
+                        print(f"[PRINTER] Connection failed to {self.printer_ip} (attempt {attempt + 1}/{max_retries + 1}), retrying in {retry_delay}s: {e}")
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 1.5  # Exponential backoff
+                    else:
+                        print(f"[PRINTER] Error fetching extended status from {self.printer_ip} after {max_retries + 1} attempts: {e}")
+                        return None
+                except Exception as e:
+                    print(f"[PRINTER] Error fetching extended status from {self.printer_ip}: {e}")
+                    return None
+                finally:
+                    if sock:
+                        try:
+                            sock.close()
+                        except:
+                            pass
+            
+            return None
+        finally:
+            # Always release the lock when done (success or failure)
+            lock.release()
 
     async def is_printing(self) -> bool:
         """Check if printer is currently printing"""
@@ -3381,14 +3527,26 @@ async def poll_printer_status_worker():
 
             conn = db()
             printing_reqs = conn.execute(
-                "SELECT id, printer, printing_started_at, printing_email_sent, requester_email, requester_name, print_name, material, access_token, print_time_minutes FROM requests WHERE status = ?",
+                "SELECT id, printer, printing_started_at, printing_email_sent, requester_email, requester_name, print_name, material, access_token, print_time_minutes, notification_prefs FROM requests WHERE status = ?",
                 ("PRINTING",)
             ).fetchall()
             conn.close()
             
             add_poll_debug_log({"type": "poll_found", "message": f"Found {len(printing_reqs)} PRINTING requests"})
 
-            for req in printing_reqs:
+            for req_row in printing_reqs:
+                req = dict(req_row)  # Convert to dict for .get() support
+                
+                # Check if polling is paused for this printer (e.g., during print send)
+                if is_polling_paused(req["printer"]):
+                    add_poll_debug_log({
+                        "type": "poll_skip",
+                        "request_id": req["id"][:8],
+                        "printer": req["printer"],
+                        "message": "Polling paused (print operation in progress)"
+                    })
+                    continue
+                
                 printer_api = get_printer_api(req["printer"])
                 if not printer_api:
                     add_poll_debug_log({
@@ -3646,7 +3804,8 @@ async def poll_printer_status_worker():
 
                     # Auto-update status with completion data
                     conn = db()
-                    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+                    req_row_raw = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+                    req_row = dict(req_row_raw) if req_row_raw else None  # Convert to dict for .get() support
                     
                     # Record to print history for learning ETAs
                     if req_row and req_row["printing_started_at"]:
@@ -3760,6 +3919,10 @@ async def poll_printer_status_worker():
             # Check each printer for current file and try to match to QUEUED requests
             for printer_code in ["ADVENTURER_4", "AD5X"]:
                 try:
+                    # Skip if polling is paused for this printer
+                    if is_polling_paused(printer_code):
+                        continue
+                    
                     printer_api = get_printer_api(printer_code)
                     if not printer_api:
                         continue
@@ -3901,6 +4064,11 @@ async def poll_builds_status_worker():
             print(f"[BUILD-POLL] Checking {len(printing_builds)} PRINTING builds...")
             
             for build in printing_builds:
+                # Check if polling is paused for this printer (e.g., during print send)
+                if is_polling_paused(build["printer"]):
+                    print(f"[BUILD-POLL] Skipping {build['id'][:8]} - polling paused for {build['printer']}")
+                    continue
+                
                 printer_api = get_printer_api(build["printer"])
                 if not printer_api:
                     continue
@@ -3923,14 +4091,15 @@ async def poll_builds_status_worker():
                 if not should_complete and percent_complete is not None and percent_complete > 0 and percent_complete < 100:
                     try:
                         # Build request dict for notification function
+                        # Note: build is a sqlite3.Row, so use [] not .get()
                         request_dict = {
                             "id": request_id,
-                            "requester_email": build.get("requester_email"),
-                            "requester_name": build.get("requester_name"),
-                            "access_token": build.get("access_token"),
-                            "notification_prefs": build.get("notification_prefs"),
+                            "requester_email": build["requester_email"],
+                            "requester_name": build["requester_name"],
+                            "access_token": build["access_token"],
+                            "notification_prefs": build["notification_prefs"],
                             "total_builds": total_builds,
-                            "print_name": build.get("request_print_name"),
+                            "print_name": build["request_print_name"],
                         }
                         build_dict = dict(build)
                         send_progress_notification(build_dict, request_dict, percent_complete)
@@ -4875,7 +5044,7 @@ async def submit(
 
         # Parse 3D file metadata (dimensions, volume, etc.)
         file_metadata = parse_3d_file_metadata(out_path, upload.filename)
-        file_metadata_json = json.dumps(file_metadata) if file_metadata else None
+        file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
 
         conn.execute(
             """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
@@ -5369,6 +5538,41 @@ async def requester_portal(request: Request, rid: str, token: str):
     # Get requester email for push diagnostics
     requester_email = req["requester_email"]
     
+    # Find the currently printing build and its associated file (for 3D preview in print status)
+    current_printing_build = None
+    current_printing_file = None
+    for b in builds_with_snapshots:
+        if b.get("status") == "PRINTING":
+            current_printing_build = b
+            
+            # Method 1: Try to find file by build_id assignment
+            for f in files:
+                f_build_id = f["build_id"] if "build_id" in f.keys() else None
+                if f_build_id and f_build_id == b["id"]:
+                    ext = f["original_filename"].lower().split('.')[-1]
+                    if ext in ['stl', 'obj', '3mf']:
+                        current_printing_file = dict(f)
+                        break
+            
+            # Method 2: Fallback to matching by file_name field on build
+            if not current_printing_file and b.get("file_name"):
+                for f in files:
+                    if f["original_filename"] == b["file_name"]:
+                        ext = f["original_filename"].lower().split('.')[-1]
+                        if ext in ['stl', 'obj', '3mf']:
+                            current_printing_file = dict(f)
+                        break
+            
+            # Method 3: Last resort - use the first 3D file in the request
+            if not current_printing_file:
+                for f in files:
+                    ext = f["original_filename"].lower().split('.')[-1]
+                    if ext in ['stl', 'obj', '3mf']:
+                        current_printing_file = dict(f)
+                        break
+            
+            break
+    
     conn.close()
     
     return templates.TemplateResponse("my_request.html", {
@@ -5385,6 +5589,8 @@ async def requester_portal(request: Request, rid: str, token: str):
         "active_printer": active_printer,
         "builds_with_snapshots": builds_with_snapshots,
         "requester_email": requester_email,
+        "current_printing_build": current_printing_build,
+        "current_printing_file": current_printing_file,
     })
 
 
@@ -5476,7 +5682,7 @@ async def requester_upload(request: Request, rid: str, token: str, files: List[U
         
         # Parse 3D file metadata (dimensions, volume, etc.)
         file_metadata = parse_3d_file_metadata(path, upload.filename)
-        file_metadata_json = json.dumps(file_metadata) if file_metadata else None
+        file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
         
         # Record in database
         file_id = str(uuid.uuid4())
@@ -5554,6 +5760,82 @@ def requester_edit(
     conn.close()
     
     return RedirectResponse(url=f"/my/{rid}?token={token}", status_code=303)
+
+
+@app.get("/my/{rid}/file/{file_id}")
+async def requester_download_file(rid: str, file_id: str, token: str):
+    """Requester downloads their own file."""
+    conn = db()
+    req = conn.execute("SELECT access_token FROM requests WHERE id = ?", (rid,)).fetchone()
+    
+    if not req or req["access_token"] != token:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Invalid access")
+    
+    file_info = conn.execute(
+        "SELECT stored_filename, original_filename FROM files WHERE id = ? AND request_id = ?",
+        (file_id, rid)
+    ).fetchone()
+    conn.close()
+    
+    if not file_info:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    file_path = os.path.join(UPLOAD_DIR, file_info["stored_filename"])
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    
+    return FileResponse(
+        path=file_path,
+        filename=file_info["original_filename"],
+        media_type="application/octet-stream"
+    )
+
+
+@app.get("/my/{rid}/file/{file_id}/preview", response_class=HTMLResponse)
+async def requester_preview_file(request: Request, rid: str, file_id: str, token: str):
+    """Requester previews their 3D file in the viewer."""
+    conn = db()
+    req = conn.execute("SELECT access_token FROM requests WHERE id = ?", (rid,)).fetchone()
+    
+    if not req or req["access_token"] != token:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Invalid access")
+    
+    file_info = conn.execute(
+        "SELECT id, stored_filename, original_filename, file_metadata FROM files WHERE id = ? AND request_id = ?",
+        (file_id, rid)
+    ).fetchone()
+    conn.close()
+    
+    if not file_info:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Check if it's a supported 3D file
+    ext = os.path.splitext(file_info["original_filename"].lower())[1]
+    if ext not in [".stl", ".obj", ".3mf"]:
+        raise HTTPException(status_code=400, detail="Preview only available for STL, OBJ, and 3MF files")
+    
+    file_path = os.path.join(UPLOAD_DIR, file_info["stored_filename"])
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    
+    # Parse metadata
+    metadata = None
+    if file_info["file_metadata"]:
+        try:
+            metadata = json.loads(file_info["file_metadata"])
+        except:
+            pass
+    
+    return templates.TemplateResponse("file_preview_user.html", {
+        "request": request,
+        "req_id": rid,
+        "token": token,
+        "file": dict(file_info),
+        "metadata": metadata,
+        "file_url": f"/my/{rid}/file/{file_id}?token={token}",
+    })
 
 
 @app.post("/my/{rid}/cancel")
@@ -6819,13 +7101,53 @@ def admin_analytics(request: Request, _=Depends(require_admin)):
 def admin_debug(request: Request, _=Depends(require_admin)):
     """Polling debug logs for troubleshooting"""
     logs = get_poll_debug_log()
+    
+    # Get polling pause status for each printer
+    polling_status = {}
+    for printer_code in ["ADVENTURER_4", "AD5X"]:
+        polling_status[printer_code] = {
+            "paused": is_polling_paused(printer_code),
+            "paused_until": _polling_paused_until.get(printer_code)
+        }
+    
     return templates.TemplateResponse("admin_debug.html", {
         "request": request,
         "logs": logs,
         "printer_cache": _printer_status_cache,
         "failure_counts": _printer_failure_count,
+        "polling_status": polling_status,
         "version": APP_VERSION,
     })
+
+
+@app.post("/api/admin/pause-polling/{printer_code}")
+def api_pause_polling(printer_code: str, duration: int = 60, _=Depends(require_admin)):
+    """
+    Pause polling for a specific printer.
+    Useful when manually sending files to the printer.
+    
+    Args:
+        printer_code: ADVENTURER_4 or AD5X
+        duration: Pause duration in seconds (default 60, max 300)
+    """
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    # Cap duration at 5 minutes
+    duration = min(duration, 300)
+    
+    pause_printer_polling(printer_code, duration)
+    return {"success": True, "printer": printer_code, "paused_for": duration}
+
+
+@app.post("/api/admin/resume-polling/{printer_code}")
+def api_resume_polling(printer_code: str, _=Depends(require_admin)):
+    """Resume polling for a specific printer immediately."""
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    resume_printer_polling(printer_code)
+    return {"success": True, "printer": printer_code, "resumed": True}
 
 
 # ─────────────────────────── BROADCAST NOTIFICATIONS ───────────────────────────
@@ -7757,13 +8079,27 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
             f_dict["metadata"] = None
         enriched_files.append(f_dict)
     
+    # Build a map of build_id -> list of files
+    files_by_build = {}
+    for f in enriched_files:
+        bid = f.get("build_id")
+        if bid:
+            if bid not in files_by_build:
+                files_by_build[bid] = []
+            files_by_build[bid].append(f)
+    
     # Mark all requester messages as read when admin views the request
     conn.execute("UPDATE request_messages SET is_read = 1 WHERE request_id = ? AND sender_type = 'requester' AND is_read = 0", (rid,))
     conn.commit()
     
     # Get builds for this request
     builds = conn.execute("SELECT * FROM builds WHERE request_id = ? ORDER BY build_number", (rid,)).fetchall()
-    builds_list = [dict(b) for b in builds]
+    builds_list = []
+    for b in builds:
+        b_dict = dict(b)
+        # Attach files assigned to this build
+        b_dict["assigned_files"] = files_by_build.get(b["id"], [])
+        builds_list.append(b_dict)
     conn.close()
     
     # Get camera URL for the printer if configured
@@ -7998,11 +8334,12 @@ def admin_set_status(
         raise HTTPException(status_code=400, detail="Invalid status")
 
     conn = db()
-    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
-    if not req:
+    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req_row:
         conn.close()
         raise HTTPException(status_code=404, detail="Not found")
-
+    
+    req = dict(req_row)  # Convert to dict for .get() support
     from_status = req["status"]
     
     # Validate printer selection when changing to PRINTING
@@ -8675,7 +9012,8 @@ def admin_update_build(
     build_id: str,
     print_name: Optional[str] = Form(""),
     material: Optional[str] = Form(""),
-    print_time_minutes: Optional[str] = Form(""),  # Accept as string to handle empty
+    est_hours: Optional[str] = Form(""),  # Hours component
+    est_minutes: Optional[str] = Form(""),  # Minutes component
     notes: Optional[str] = Form(""),
     colors: Optional[str] = Form(""),
     printer: Optional[str] = Form(""),  # Allow editing printer assignment
@@ -8701,12 +9039,14 @@ def admin_update_build(
         updates.append("material = ?")
         values.append(material.strip() if material.strip() else None)
     
-    # Handle print_time_minutes - parse string to int, empty/0 clears it
-    if print_time_minutes is not None:
+    # Handle estimated time - combine hours and minutes
+    if est_hours is not None or est_minutes is not None:
         updates.append("print_time_minutes = ?")
         try:
-            parsed_time = int(print_time_minutes) if print_time_minutes.strip() else 0
-            values.append(parsed_time if parsed_time > 0 else None)
+            hours = int(est_hours) if est_hours and est_hours.strip() else 0
+            minutes = int(est_minutes) if est_minutes and est_minutes.strip() else 0
+            total_minutes = (hours * 60) + minutes
+            values.append(total_minutes if total_minutes > 0 else None)
         except (ValueError, TypeError):
             values.append(None)
     
@@ -9101,31 +9441,11 @@ def admin_edit_request(
 async def admin_add_file(
     request: Request,
     rid: str,
-    upload: UploadFile = File(...),
+    upload: List[UploadFile] = File(...),
     _=Depends(require_admin)
 ):
-    if not upload or not upload.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-
-    ext = safe_ext(upload.filename)
-    if ext not in ALLOWED_EXTS:
-        raise HTTPException(status_code=400, detail=f"Only these file types are allowed: {', '.join(sorted(ALLOWED_EXTS))}")
-
-    data = await upload.read()
-    max_bytes = MAX_UPLOAD_MB * 1024 * 1024
-    if len(data) > max_bytes:
-        raise HTTPException(status_code=400, detail=f"File too large. Max size is {MAX_UPLOAD_MB}MB.")
-
-    stored = f"{uuid.uuid4()}{ext}"
-    out_path = os.path.join(UPLOAD_DIR, stored)
-
-    sha = hashlib.sha256(data).hexdigest()
-    with open(out_path, "wb") as f:
-        f.write(data)
-
-    # Parse 3D file metadata (dimensions, volume, etc.)
-    file_metadata = parse_3d_file_metadata(out_path, upload.filename)
-    file_metadata_json = json.dumps(file_metadata) if file_metadata else None
+    if not upload or len(upload) == 0:
+        raise HTTPException(status_code=400, detail="No files provided")
 
     conn = db()
     req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
@@ -9133,17 +9453,51 @@ async def admin_add_file(
         conn.close()
         raise HTTPException(status_code=404, detail="Not found")
 
-    conn.execute(
-        """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (str(uuid.uuid4()), rid, now_iso(), upload.filename, stored, len(data), sha, file_metadata_json)
-    )
-    conn.execute(
-        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
-        (str(uuid.uuid4()), rid, now_iso(), req["status"], req["status"], f"Admin added file: {upload.filename}")
-    )
-    conn.execute("UPDATE requests SET updated_at = ? WHERE id = ?", (now_iso(), rid))
-    conn.commit()
+    max_bytes = MAX_UPLOAD_MB * 1024 * 1024
+    files_added = []
+    errors = []
+
+    for file in upload:
+        if not file or not file.filename:
+            continue
+
+        ext = safe_ext(file.filename)
+        if ext not in ALLOWED_EXTS:
+            errors.append(f"{file.filename}: File type not allowed")
+            continue
+
+        data = await file.read()
+        if len(data) > max_bytes:
+            errors.append(f"{file.filename}: File too large (max {MAX_UPLOAD_MB}MB)")
+            continue
+
+        stored = f"{uuid.uuid4()}{ext}"
+        out_path = os.path.join(UPLOAD_DIR, stored)
+
+        sha = hashlib.sha256(data).hexdigest()
+        with open(out_path, "wb") as f:
+            f.write(data)
+
+        # Parse 3D file metadata (dimensions, volume, etc.)
+        file_metadata = parse_3d_file_metadata(out_path, file.filename)
+        file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
+
+        conn.execute(
+            """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (str(uuid.uuid4()), rid, now_iso(), file.filename, stored, len(data), sha, file_metadata_json)
+        )
+        files_added.append(file.filename)
+
+    if files_added:
+        comment = f"Admin added {len(files_added)} file(s): {', '.join(files_added)}"
+        conn.execute(
+            "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), rid, now_iso(), req["status"], req["status"], comment)
+        )
+        conn.execute("UPDATE requests SET updated_at = ? WHERE id = ?", (now_iso(), rid))
+        conn.commit()
+
     conn.close()
 
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
@@ -9219,6 +9573,105 @@ def admin_delete_file(request: Request, rid: str, file_id: str, _=Depends(requir
             pass  # File couldn't be deleted, but DB record is gone
     
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@app.post("/admin/request/{rid}/file/{file_id}/assign-build")
+def admin_assign_file_to_build(
+    request: Request,
+    rid: str,
+    file_id: str,
+    build_id: str = Form(""),
+    _=Depends(require_admin)
+):
+    """Assign or unassign a file to a specific build."""
+    conn = db()
+    
+    # Verify request exists
+    req = conn.execute("SELECT id FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    # Verify file exists and belongs to this request
+    file_info = conn.execute(
+        "SELECT id, original_filename FROM files WHERE id = ? AND request_id = ?",
+        (file_id, rid)
+    ).fetchone()
+    
+    if not file_info:
+        conn.close()
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # If build_id is empty, unassign the file
+    if not build_id or build_id.strip() == "":
+        conn.execute("UPDATE files SET build_id = NULL WHERE id = ?", (file_id,))
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+    
+    # Verify build exists and belongs to this request
+    build = conn.execute(
+        "SELECT id, build_number FROM builds WHERE id = ? AND request_id = ?",
+        (build_id, rid)
+    ).fetchone()
+    
+    if not build:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Build not found")
+    
+    # Assign file to build
+    conn.execute("UPDATE files SET build_id = ? WHERE id = ?", (build_id, file_id))
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@app.get("/admin/request/{rid}/file/{file_id}/preview")
+async def admin_preview_file(request: Request, rid: str, file_id: str, _=Depends(require_admin)):
+    """Preview a 3D file (STL/OBJ/3MF) using an embedded viewer."""
+    conn = db()
+    
+    # Verify request exists
+    req = conn.execute("SELECT id FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    # Verify file exists and belongs to this request
+    file_info = conn.execute(
+        "SELECT id, stored_filename, original_filename, file_metadata FROM files WHERE id = ? AND request_id = ?",
+        (file_id, rid)
+    ).fetchone()
+    conn.close()
+    
+    if not file_info:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Check if it's a supported 3D file
+    ext = os.path.splitext(file_info["original_filename"].lower())[1]
+    if ext not in [".stl", ".obj", ".3mf"]:
+        raise HTTPException(status_code=400, detail="Preview only available for STL, OBJ, and 3MF files")
+    
+    file_path = os.path.join(UPLOAD_DIR, file_info["stored_filename"])
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    
+    # Parse metadata
+    metadata = None
+    if file_info["file_metadata"]:
+        try:
+            metadata = json.loads(file_info["file_metadata"])
+        except:
+            pass
+    
+    return templates.TemplateResponse("file_preview.html", {
+        "request": request,
+        "req_id": rid,
+        "file": dict(file_info),
+        "metadata": metadata,
+        "file_url": f"/admin/request/{rid}/file/{file_id}",
+    })
 
 
 @app.post("/admin/batch-update")
