@@ -21,8 +21,9 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.17"
+APP_VERSION = "1.8.18"
 # Changelog:
+# 1.8.18 - Fix printer connection conflicts: added polling pause on print start, connection locking, retry logic, admin polling control
 # 1.8.17 - User 3D model viewer (STL/OBJ/3MF support), enhanced build details, file download from My Request page
 # 1.8.16 - Progress notifications at milestones (25/50/75/90%), broadcast system for app updates, admin broadcast page
 # 1.8.15 - Multi-build UX: clearer status labels (Queued/Done vs READY/COMPLETED), tooltips, queue build progress
@@ -426,6 +427,44 @@ Traceback:
 _printer_status_cache: Dict[str, Dict[str, Any]] = {}
 _printer_failure_count: Dict[str, int] = {}
 _printer_last_seen: Dict[str, str] = {}  # Timestamp of last successful poll
+
+# Printer connection locks - prevents polling during print operations
+# Uses asyncio.Lock for each printer to prevent simultaneous connections
+_printer_locks: Dict[str, asyncio.Lock] = {}
+_polling_paused_until: Dict[str, float] = {}  # Timestamp when to resume polling per printer
+_POLL_PAUSE_DURATION = 30  # Seconds to pause polling after print operation
+
+def get_printer_lock(printer_code: str) -> asyncio.Lock:
+    """Get or create an asyncio lock for a specific printer"""
+    if printer_code not in _printer_locks:
+        _printer_locks[printer_code] = asyncio.Lock()
+    return _printer_locks[printer_code]
+
+def pause_printer_polling(printer_code: str, duration: int = None):
+    """Pause polling for a printer for specified duration (default 30s)"""
+    import time
+    pause_duration = duration if duration is not None else _POLL_PAUSE_DURATION
+    _polling_paused_until[printer_code] = time.time() + pause_duration
+    print(f"[POLL] Pausing polling for {printer_code} for {pause_duration}s")
+    add_poll_debug_log({
+        "type": "poll_paused",
+        "printer": printer_code,
+        "duration": pause_duration,
+        "message": f"Polling paused for {pause_duration}s (print operation in progress)"
+    })
+
+def is_polling_paused(printer_code: str) -> bool:
+    """Check if polling is currently paused for a printer"""
+    import time
+    if printer_code not in _polling_paused_until:
+        return False
+    return time.time() < _polling_paused_until[printer_code]
+
+def resume_printer_polling(printer_code: str):
+    """Resume polling for a printer immediately"""
+    if printer_code in _polling_paused_until:
+        del _polling_paused_until[printer_code]
+        print(f"[POLL] Resumed polling for {printer_code}")
 
 # Debug log storage for polling diagnostics (circular buffer of last 100 entries)
 _poll_debug_log: List[Dict[str, Any]] = []
@@ -1190,6 +1229,10 @@ def start_build(build_id: str, printer: str, comment: Optional[str] = None) -> D
     
     if printer not in valid_printer_codes:
         return {"success": False, "error": f"Invalid printer: {printer}. Choose from: {', '.join(valid_printer_codes)}"}
+    
+    # Pause polling for this printer to prevent connection conflicts
+    # This is important because the admin may be about to send a file to the printer
+    pause_printer_polling(printer, 45)  # 45 seconds to allow file transfer
     
     conn = db()
     build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
@@ -3205,83 +3248,127 @@ class FlashForgeAPI:
         return None
 
     async def get_extended_status(self) -> Optional[Dict[str, Any]]:
-        """Get extended status including current filename and layer info via direct M-codes"""
+        """Get extended status including current filename and layer info via direct M-codes.
+        
+        Uses a printer lock to prevent conflicts with print send operations.
+        Has built-in retry logic with delays to handle transient connection issues.
+        """
         import socket
         result = {}
         
-        try:
-            # M119 gives us CurrentFile and detailed status
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(3)
-            sock.connect((self.printer_ip, 8899))
-            
-            # Control request
-            sock.send(b"~M601 S1\r\n")
-            sock.recv(1024)
-            
-            # M119 for status + current file
-            sock.send(b"~M119\r\n")
-            response = b""
-            try:
-                while True:
-                    chunk = sock.recv(2048)
-                    if not chunk:
-                        break
-                    response += chunk
-                    if b"ok\r\n" in response or b"ok\n" in response:
-                        break
-            except socket.timeout:
-                pass
-            
-            m119_text = response.decode('utf-8', errors='ignore')
-            
-            # Parse M119 response
-            for line in m119_text.split('\n'):
-                line = line.strip()
-                if line.startswith('CurrentFile:'):
-                    result['current_file'] = line.replace('CurrentFile:', '').strip()
-                elif line.startswith('MachineStatus:'):
-                    result['machine_status'] = line.replace('MachineStatus:', '').strip()
-                elif line.startswith('LED:'):
-                    result['led'] = line.replace('LED:', '').strip()
-                elif line.startswith('Status:'):
-                    result['status_flags'] = line.replace('Status:', '').strip()
-            
-            # M27 for layer info
-            sock.send(b"~M27\r\n")
-            response = b""
-            try:
-                while True:
-                    chunk = sock.recv(2048)
-                    if not chunk:
-                        break
-                    response += chunk
-                    if b"ok\r\n" in response or b"ok\n" in response:
-                        break
-            except socket.timeout:
-                pass
-            
-            m27_text = response.decode('utf-8', errors='ignore')
-            
-            # Parse M27 response for layer info
-            for line in m27_text.split('\n'):
-                line = line.strip()
-                if line.startswith('Layer:'):
-                    layer_part = line.replace('Layer:', '').strip()
-                    if '/' in layer_part:
-                        parts = layer_part.split('/')
-                        result['current_layer'] = int(parts[0].strip())
-                        result['total_layers'] = int(parts[1].strip())
-                elif line.startswith('SD printing byte'):
-                    # "SD printing byte 32/100"
-                    pass  # Already have progress from other endpoint
-            
-            sock.close()
-            return result if result else None
-            
-        except Exception as e:
-            print(f"[PRINTER] Error fetching extended status from {self.printer_ip}: {e}")
+        # Get the printer lock to prevent simultaneous connections
+        printer_code = "ADVENTURER_4" if "198" in self.printer_ip else "AD5X"  # Derive from IP
+        lock = get_printer_lock(printer_code)
+        
+        # Check if polling is paused for this printer
+        if is_polling_paused(printer_code):
+            print(f"[PRINTER] Polling paused for {printer_code}, skipping extended status")
             return None
+        
+        max_retries = 2
+        retry_delay = 1.0  # seconds between retries
+        
+        # Try to acquire lock with timeout - do this ONCE before retry loop
+        try:
+            await asyncio.wait_for(lock.acquire(), timeout=5.0)
+        except asyncio.TimeoutError:
+            print(f"[PRINTER] Could not acquire lock for {self.printer_ip}, another operation in progress")
+            return None
+        
+        try:
+            for attempt in range(max_retries + 1):
+                sock = None
+                try:
+                    # M119 gives us CurrentFile and detailed status
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(3)
+                    sock.connect((self.printer_ip, 8899))
+                    
+                    # Control request
+                    sock.send(b"~M601 S1\r\n")
+                    sock.recv(1024)
+                    
+                    # M119 for status + current file
+                    sock.send(b"~M119\r\n")
+                    response = b""
+                    try:
+                        while True:
+                            chunk = sock.recv(2048)
+                            if not chunk:
+                                break
+                            response += chunk
+                            if b"ok\r\n" in response or b"ok\n" in response:
+                                break
+                    except socket.timeout:
+                        pass
+                    
+                    m119_text = response.decode('utf-8', errors='ignore')
+                    
+                    # Parse M119 response
+                    for line in m119_text.split('\n'):
+                        line = line.strip()
+                        if line.startswith('CurrentFile:'):
+                            result['current_file'] = line.replace('CurrentFile:', '').strip()
+                        elif line.startswith('MachineStatus:'):
+                            result['machine_status'] = line.replace('MachineStatus:', '').strip()
+                        elif line.startswith('LED:'):
+                            result['led'] = line.replace('LED:', '').strip()
+                        elif line.startswith('Status:'):
+                            result['status_flags'] = line.replace('Status:', '').strip()
+                    
+                    # M27 for layer info
+                    sock.send(b"~M27\r\n")
+                    response = b""
+                    try:
+                        while True:
+                            chunk = sock.recv(2048)
+                            if not chunk:
+                                break
+                            response += chunk
+                            if b"ok\r\n" in response or b"ok\n" in response:
+                                break
+                    except socket.timeout:
+                        pass
+                    
+                    m27_text = response.decode('utf-8', errors='ignore')
+                    
+                    # Parse M27 response for layer info
+                    for line in m27_text.split('\n'):
+                        line = line.strip()
+                        if line.startswith('Layer:'):
+                            layer_part = line.replace('Layer:', '').strip()
+                            if '/' in layer_part:
+                                parts = layer_part.split('/')
+                                result['current_layer'] = int(parts[0].strip())
+                                result['total_layers'] = int(parts[1].strip())
+                        elif line.startswith('SD printing byte'):
+                            # "SD printing byte 32/100"
+                            pass  # Already have progress from other endpoint
+                    
+                    return result if result else None
+                    
+                except (ConnectionRefusedError, OSError) as e:
+                    if attempt < max_retries:
+                        print(f"[PRINTER] Connection failed to {self.printer_ip} (attempt {attempt + 1}/{max_retries + 1}), retrying in {retry_delay}s: {e}")
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 1.5  # Exponential backoff
+                    else:
+                        print(f"[PRINTER] Error fetching extended status from {self.printer_ip} after {max_retries + 1} attempts: {e}")
+                        return None
+                except Exception as e:
+                    print(f"[PRINTER] Error fetching extended status from {self.printer_ip}: {e}")
+                    return None
+                finally:
+                    if sock:
+                        try:
+                            sock.close()
+                        except:
+                            pass
+            
+            return None
+        finally:
+            # Always release the lock when done (success or failure)
+            lock.release()
 
     async def is_printing(self) -> bool:
         """Check if printer is currently printing"""
@@ -3449,6 +3536,17 @@ async def poll_printer_status_worker():
 
             for req_row in printing_reqs:
                 req = dict(req_row)  # Convert to dict for .get() support
+                
+                # Check if polling is paused for this printer (e.g., during print send)
+                if is_polling_paused(req["printer"]):
+                    add_poll_debug_log({
+                        "type": "poll_skip",
+                        "request_id": req["id"][:8],
+                        "printer": req["printer"],
+                        "message": "Polling paused (print operation in progress)"
+                    })
+                    continue
+                
                 printer_api = get_printer_api(req["printer"])
                 if not printer_api:
                     add_poll_debug_log({
@@ -3821,6 +3919,10 @@ async def poll_printer_status_worker():
             # Check each printer for current file and try to match to QUEUED requests
             for printer_code in ["ADVENTURER_4", "AD5X"]:
                 try:
+                    # Skip if polling is paused for this printer
+                    if is_polling_paused(printer_code):
+                        continue
+                    
                     printer_api = get_printer_api(printer_code)
                     if not printer_api:
                         continue
@@ -3962,6 +4064,11 @@ async def poll_builds_status_worker():
             print(f"[BUILD-POLL] Checking {len(printing_builds)} PRINTING builds...")
             
             for build in printing_builds:
+                # Check if polling is paused for this printer (e.g., during print send)
+                if is_polling_paused(build["printer"]):
+                    print(f"[BUILD-POLL] Skipping {build['id'][:8]} - polling paused for {build['printer']}")
+                    continue
+                
                 printer_api = get_printer_api(build["printer"])
                 if not printer_api:
                     continue
@@ -6994,13 +7101,53 @@ def admin_analytics(request: Request, _=Depends(require_admin)):
 def admin_debug(request: Request, _=Depends(require_admin)):
     """Polling debug logs for troubleshooting"""
     logs = get_poll_debug_log()
+    
+    # Get polling pause status for each printer
+    polling_status = {}
+    for printer_code in ["ADVENTURER_4", "AD5X"]:
+        polling_status[printer_code] = {
+            "paused": is_polling_paused(printer_code),
+            "paused_until": _polling_paused_until.get(printer_code)
+        }
+    
     return templates.TemplateResponse("admin_debug.html", {
         "request": request,
         "logs": logs,
         "printer_cache": _printer_status_cache,
         "failure_counts": _printer_failure_count,
+        "polling_status": polling_status,
         "version": APP_VERSION,
     })
+
+
+@app.post("/api/admin/pause-polling/{printer_code}")
+def api_pause_polling(printer_code: str, duration: int = 60, _=Depends(require_admin)):
+    """
+    Pause polling for a specific printer.
+    Useful when manually sending files to the printer.
+    
+    Args:
+        printer_code: ADVENTURER_4 or AD5X
+        duration: Pause duration in seconds (default 60, max 300)
+    """
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    # Cap duration at 5 minutes
+    duration = min(duration, 300)
+    
+    pause_printer_polling(printer_code, duration)
+    return {"success": True, "printer": printer_code, "paused_for": duration}
+
+
+@app.post("/api/admin/resume-polling/{printer_code}")
+def api_resume_polling(printer_code: str, _=Depends(require_admin)):
+    """Resume polling for a specific printer immediately."""
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    resume_printer_polling(printer_code)
+    return {"success": True, "printer": printer_code, "resumed": True}
 
 
 # ─────────────────────────── BROADCAST NOTIFICATIONS ───────────────────────────
