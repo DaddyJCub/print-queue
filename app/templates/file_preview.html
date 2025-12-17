@@ -360,13 +360,17 @@
     }
     
     function handleSTLGeometry(geometry) {
-      // Compute bounding box first
+      // OrcaSlicer/most CAD software uses Z-up, Three.js uses Y-up
+      // Rotate -90 degrees on X axis to convert
+      geometry.rotateX(-Math.PI / 2);
+      
+      // Compute bounding box after rotation
       geometry.computeBoundingBox();
       const box = geometry.boundingBox;
       const center = new THREE.Vector3();
       box.getCenter(center);
       
-      // Center only on X and Z, keep original relative positioning
+      // Center on X and Z
       geometry.translate(-center.x, 0, -center.z);
       
       // Move to sit on grid (Y = 0 at bottom)
