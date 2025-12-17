@@ -248,6 +248,80 @@
         </div>
         {% endif %}
 
+        <!-- Currently Printing Build Info Card (shows when PRINTING) -->
+        {% if req["status"] == "PRINTING" %}
+          {% for b in builds if b.status == "PRINTING" %}
+        <div class="bg-gradient-to-br from-amber-900/20 to-zinc-900/50 border border-amber-500/30 rounded-xl p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold flex items-center gap-2">
+              <span class="text-amber-400">🔥</span> Currently Printing
+            </h2>
+            <span class="text-xs px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 animate-pulse">
+              BUILD #{{ b.build_number }}
+            </span>
+          </div>
+          
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            {% if b.print_name %}
+            <div>
+              <p class="text-xs text-zinc-500 uppercase mb-1">Part Name</p>
+              <p class="text-sm font-medium text-zinc-200">{{ b.print_name }}</p>
+            </div>
+            {% endif %}
+            {% if b.colors %}
+            <div>
+              <p class="text-xs text-zinc-500 uppercase mb-1">Colors</p>
+              <p class="text-sm font-medium text-zinc-200">🎨 {{ b.colors }}</p>
+            </div>
+            {% endif %}
+            {% if b.material %}
+            <div>
+              <p class="text-xs text-zinc-500 uppercase mb-1">Material</p>
+              <p class="text-sm font-medium text-zinc-200">🧪 {{ b.material }}</p>
+            </div>
+            {% endif %}
+            {% if b.print_time_minutes %}
+            <div>
+              <p class="text-xs text-zinc-500 uppercase mb-1">Est. Time</p>
+              <p class="text-sm font-medium text-zinc-200">⏱️ {{ (b.print_time_minutes // 60) }}h {{ (b.print_time_minutes % 60) }}m</p>
+            </div>
+            {% endif %}
+          </div>
+          
+          {% if b.assigned_files %}
+          <div class="border-t border-amber-500/20 pt-4">
+            <p class="text-xs text-zinc-500 uppercase mb-2">📎 Build Files</p>
+            <div class="flex flex-wrap gap-2">
+              {% for af in b.assigned_files %}
+                {% set cb_ext = af.original_filename.lower().split('.')[-1] if '.' in af.original_filename else '' %}
+                <div class="flex items-center gap-2 bg-zinc-800/50 rounded-lg px-3 py-2">
+                  <a href="/admin/request/{{ req['id'] }}/file/{{ af.id }}" 
+                     class="text-sm text-indigo-300 hover:text-indigo-200 truncate max-w-[200px]"
+                     title="{{ af.original_filename }}">
+                    {{ af.original_filename }}
+                  </a>
+                  {% if cb_ext in ['stl', 'obj', '3mf'] %}
+                    <a href="/admin/request/{{ req['id'] }}/file/{{ af.id }}/preview" 
+                       class="flex items-center gap-1 text-sm px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition"
+                       title="View 3D model">
+                      👁️ View 3D
+                    </a>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+          
+          {% if b.notes %}
+          <div class="mt-3 p-2 bg-zinc-800/30 rounded-lg">
+            <p class="text-xs text-zinc-400">📝 {{ b.notes }}</p>
+          </div>
+          {% endif %}
+        </div>
+          {% endfor %}
+        {% endif %}
+
         <!-- Completion Snapshot Card (shows when DONE/PICKED_UP and has snapshot) -->
         {% if req["status"] in ["DONE", "PICKED_UP"] and req["completion_snapshot"] %}
         <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
@@ -594,11 +668,21 @@
                         <div class="text-xs text-zinc-500 mb-1">📎 Assigned files:</div>
                         <div class="flex flex-wrap gap-1">
                           {% for af in b.assigned_files %}
-                            <a href="/admin/request/{{ req['id'] }}/file/{{ af.id }}" 
-                               class="text-xs px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded hover:bg-indigo-500/30 transition truncate max-w-[200px]"
-                               title="{{ af.original_filename }}">
-                              {{ af.original_filename }}
-                            </a>
+                            {% set af_ext = af.original_filename.lower().split('.')[-1] if '.' in af.original_filename else '' %}
+                            <span class="flex items-center gap-1">
+                              <a href="/admin/request/{{ req['id'] }}/file/{{ af.id }}" 
+                                 class="text-xs px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded hover:bg-indigo-500/30 transition truncate max-w-[200px]"
+                                 title="{{ af.original_filename }}">
+                                {{ af.original_filename }}
+                              </a>
+                              {% if af_ext in ['stl', 'obj', '3mf'] %}
+                                <a href="/admin/request/{{ req['id'] }}/file/{{ af.id }}/preview" 
+                                   class="text-xs px-1.5 py-0.5 bg-emerald-600/30 hover:bg-emerald-500/40 text-emerald-300 rounded transition"
+                                   title="View 3D model">
+                                  👁️
+                                </a>
+                              {% endif %}
+                            </span>
                           {% endfor %}
                         </div>
                       </div>
