@@ -384,38 +384,46 @@
           </div>
         {% endif %}
         
-        <!-- Current Build File Info + 3D Preview -->
+        <!-- Current Build File Info + 3D Preview - PROMINENT -->
         {% if current_printing_build %}
-          <div class="mb-4 p-3 bg-indigo-950/30 border border-indigo-500/30 rounded-xl">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2 min-w-0">
-                <span class="text-indigo-400">🔧</span>
-                <div class="min-w-0">
-                  <p class="text-sm font-medium truncate">
-                    {{ current_printing_build.print_name or ('Build ' ~ current_printing_build.build_number) }}
-                  </p>
-                  {% if current_printing_build.file_name %}
-                    <p class="text-xs text-zinc-500 truncate">📄 {{ current_printing_build.file_name }}</p>
-                  {% endif %}
-                </div>
+          <div class="mb-4 p-4 bg-gradient-to-br from-amber-950/40 to-indigo-950/40 border border-amber-500/40 rounded-xl shadow-lg">
+            <div class="flex items-center gap-2 mb-3">
+              <span class="text-amber-400 text-lg">🔥</span>
+              <h4 class="font-semibold text-amber-200">Currently Printing</h4>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 animate-pulse ml-auto">
+                Build #{{ current_printing_build.build_number }}
+              </span>
+            </div>
+            
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0 flex-1">
+                <p class="text-base font-medium text-zinc-100 truncate mb-1">
+                  {{ current_printing_build.print_name or ('Part ' ~ current_printing_build.build_number) }}
+                </p>
+                {% if current_printing_file %}
+                  <p class="text-sm text-zinc-400 truncate mb-2">📄 {{ current_printing_file.original_filename }}</p>
+                {% elif current_printing_build.file_name %}
+                  <p class="text-sm text-zinc-400 truncate mb-2">📄 {{ current_printing_build.file_name }}</p>
+                {% endif %}
+                {% if current_printing_build.material or current_printing_build.colors %}
+                  <div class="flex flex-wrap items-center gap-2 text-xs">
+                    {% if current_printing_build.material %}
+                      <span class="px-2 py-1 bg-zinc-800/50 rounded-lg text-zinc-300">🧵 {{ current_printing_build.material }}</span>
+                    {% endif %}
+                    {% if current_printing_build.colors %}
+                      <span class="px-2 py-1 bg-zinc-800/50 rounded-lg text-zinc-300">🎨 {{ current_printing_build.colors }}</span>
+                    {% endif %}
+                  </div>
+                {% endif %}
               </div>
+              
               {% if current_printing_file %}
                 <a href="/my/{{ req.id }}/file/{{ current_printing_file.id }}/preview?token={{ token }}" 
-                   class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/50 rounded-lg text-xs font-medium text-indigo-200 transition flex-shrink-0">
-                  <span>🔮</span> View 3D
+                   class="inline-flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-sm font-semibold text-white transition shadow-lg shadow-emerald-900/40 flex-shrink-0">
+                  <span class="text-lg">🔮</span> View 3D Model
                 </a>
               {% endif %}
             </div>
-            {% if current_printing_build.material or current_printing_build.colors %}
-              <div class="flex items-center gap-3 mt-2 text-xs text-zinc-400">
-                {% if current_printing_build.material %}
-                  <span>🧵 {{ current_printing_build.material }}</span>
-                {% endif %}
-                {% if current_printing_build.colors %}
-                  <span>🎨 {{ current_printing_build.colors }}</span>
-                {% endif %}
-              </div>
-            {% endif %}
           </div>
         {% endif %}
         

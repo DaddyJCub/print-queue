@@ -5437,15 +5437,32 @@ async def requester_portal(request: Request, rid: str, token: str):
     for b in builds_with_snapshots:
         if b.get("status") == "PRINTING":
             current_printing_build = b
-            # Try to find the associated file by matching file_name
-            if b.get("file_name"):
+            
+            # Method 1: Try to find file by build_id assignment
+            for f in files:
+                if f.get("build_id") == b["id"]:
+                    ext = f["original_filename"].lower().split('.')[-1]
+                    if ext in ['stl', 'obj', '3mf']:
+                        current_printing_file = dict(f)
+                        break
+            
+            # Method 2: Fallback to matching by file_name field on build
+            if not current_printing_file and b.get("file_name"):
                 for f in files:
                     if f["original_filename"] == b["file_name"]:
-                        # Check if it's a 3D viewable file
                         ext = f["original_filename"].lower().split('.')[-1]
                         if ext in ['stl', 'obj', '3mf']:
                             current_printing_file = dict(f)
                         break
+            
+            # Method 3: Last resort - use the first 3D file in the request
+            if not current_printing_file:
+                for f in files:
+                    ext = f["original_filename"].lower().split('.')[-1]
+                    if ext in ['stl', 'obj', '3mf']:
+                        current_printing_file = dict(f)
+                        break
+            
             break
     
     conn.close()

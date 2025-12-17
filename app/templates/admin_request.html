@@ -248,9 +248,10 @@
         </div>
         {% endif %}
 
-        <!-- Currently Printing Build Info Card (shows when PRINTING) -->
-        {% if req["status"] == "PRINTING" %}
-          {% for b in builds if b.status == "PRINTING" %}
+        <!-- Currently Printing Build Info Card (shows when any build is PRINTING) -->
+        {% set printing_builds = builds|selectattr('status', 'equalto', 'PRINTING')|list %}
+        {% if printing_builds %}
+          {% for b in printing_builds %}
         <div class="bg-gradient-to-br from-amber-900/20 to-zinc-900/50 border border-amber-500/30 rounded-xl p-6">
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-semibold flex items-center gap-2">
@@ -288,27 +289,57 @@
             {% endif %}
           </div>
           
+          {# Find associated file - either from assigned_files OR by matching file_name to request files #}
+          {% set ns = namespace(current_file=none) %}
           {% if b.assigned_files %}
+            {% for af in b.assigned_files %}
+              {% set af_ext = af.original_filename.lower().split('.')[-1] if '.' in af.original_filename else '' %}
+              {% if af_ext in ['stl', 'obj', '3mf'] and not ns.current_file %}
+                {% set ns.current_file = af %}
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+          {# Fallback: match by file_name from build to request files #}
+          {% if not ns.current_file and b.file_name %}
+            {% for f in files %}
+              {% if f.original_filename == b.file_name %}
+                {% set f_ext = f.original_filename.lower().split('.')[-1] if '.' in f.original_filename else '' %}
+                {% if f_ext in ['stl', 'obj', '3mf'] %}
+                  {% set ns.current_file = f %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+          {# Last fallback: if only one 3D file in request, use it #}
+          {% if not ns.current_file %}
+            {% for f in files %}
+              {% set f_ext = f.original_filename.lower().split('.')[-1] if '.' in f.original_filename else '' %}
+              {% if f_ext in ['stl', 'obj', '3mf'] and not ns.current_file %}
+                {% set ns.current_file = f %}
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+          
+          {# Show build file info with 3D preview button #}
+          {% if ns.current_file or b.file_name or b.assigned_files %}
           <div class="border-t border-amber-500/20 pt-4">
-            <p class="text-xs text-zinc-500 uppercase mb-2">📎 Build Files</p>
-            <div class="flex flex-wrap gap-2">
-              {% for af in b.assigned_files %}
-                {% set cb_ext = af.original_filename.lower().split('.')[-1] if '.' in af.original_filename else '' %}
-                <div class="flex items-center gap-2 bg-zinc-800/50 rounded-lg px-3 py-2">
-                  <a href="/admin/request/{{ req['id'] }}/file/{{ af.id }}" 
-                     class="text-sm text-indigo-300 hover:text-indigo-200 truncate max-w-[200px]"
-                     title="{{ af.original_filename }}">
-                    {{ af.original_filename }}
-                  </a>
-                  {% if cb_ext in ['stl', 'obj', '3mf'] %}
-                    <a href="/admin/request/{{ req['id'] }}/file/{{ af.id }}/preview" 
-                       class="flex items-center gap-1 text-sm px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition"
-                       title="View 3D model">
-                      👁️ View 3D
-                    </a>
-                  {% endif %}
-                </div>
-              {% endfor %}
+            <p class="text-xs text-zinc-500 uppercase mb-2">📎 Build File</p>
+            <div class="flex flex-wrap items-center gap-3">
+              {% if b.file_name %}
+                <span class="text-sm text-zinc-300">📄 {{ b.file_name }}</span>
+              {% elif b.assigned_files %}
+                {% for af in b.assigned_files %}
+                  <span class="text-sm text-zinc-300">📄 {{ af.original_filename }}</span>
+                {% endfor %}
+              {% endif %}
+              
+              {% if ns.current_file %}
+                <a href="/admin/request/{{ req['id'] }}/file/{{ ns.current_file.id }}/preview" 
+                   class="inline-flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition shadow-lg shadow-emerald-900/30"
+                   title="View 3D model">
+                  👁️ View 3D Model
+                </a>
+              {% endif %}
             </div>
           </div>
           {% endif %}
