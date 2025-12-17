@@ -5431,6 +5431,23 @@ async def requester_portal(request: Request, rid: str, token: str):
     # Get requester email for push diagnostics
     requester_email = req["requester_email"]
     
+    # Find the currently printing build and its associated file (for 3D preview in print status)
+    current_printing_build = None
+    current_printing_file = None
+    for b in builds_with_snapshots:
+        if b.get("status") == "PRINTING":
+            current_printing_build = b
+            # Try to find the associated file by matching file_name
+            if b.get("file_name"):
+                for f in files:
+                    if f["original_filename"] == b["file_name"]:
+                        # Check if it's a 3D viewable file
+                        ext = f["original_filename"].lower().split('.')[-1]
+                        if ext in ['stl', 'obj', '3mf']:
+                            current_printing_file = dict(f)
+                        break
+            break
+    
     conn.close()
     
     return templates.TemplateResponse("my_request.html", {
@@ -5447,6 +5464,8 @@ async def requester_portal(request: Request, rid: str, token: str):
         "active_printer": active_printer,
         "builds_with_snapshots": builds_with_snapshots,
         "requester_email": requester_email,
+        "current_printing_build": current_printing_build,
+        "current_printing_file": current_printing_file,
     })
 
 

@@ -384,6 +384,41 @@
           </div>
         {% endif %}
         
+        <!-- Current Build File Info + 3D Preview -->
+        {% if current_printing_build %}
+          <div class="mb-4 p-3 bg-indigo-950/30 border border-indigo-500/30 rounded-xl">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-indigo-400">🔧</span>
+                <div class="min-w-0">
+                  <p class="text-sm font-medium truncate">
+                    {{ current_printing_build.print_name or ('Build ' ~ current_printing_build.build_number) }}
+                  </p>
+                  {% if current_printing_build.file_name %}
+                    <p class="text-xs text-zinc-500 truncate">📄 {{ current_printing_build.file_name }}</p>
+                  {% endif %}
+                </div>
+              </div>
+              {% if current_printing_file %}
+                <a href="/my/{{ req.id }}/file/{{ current_printing_file.id }}/preview?token={{ token }}" 
+                   class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/50 rounded-lg text-xs font-medium text-indigo-200 transition flex-shrink-0">
+                  <span>🔮</span> View 3D
+                </a>
+              {% endif %}
+            </div>
+            {% if current_printing_build.material or current_printing_build.colors %}
+              <div class="flex items-center gap-3 mt-2 text-xs text-zinc-400">
+                {% if current_printing_build.material %}
+                  <span>🧵 {{ current_printing_build.material }}</span>
+                {% endif %}
+                {% if current_printing_build.colors %}
+                  <span>🎨 {{ current_printing_build.colors }}</span>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+        {% endif %}
+        
         <!-- Camera Preview -->
         <div class="mb-4">
           <button type="button" onclick="toggleCamera()" id="camera-toggle" 
