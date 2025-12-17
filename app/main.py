@@ -21,13 +21,14 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.16"
+APP_VERSION = "1.8.17"
 # Changelog:
-# 1.8.15 - Progress notifications at milestones (25/50/75/90%), broadcast system for app updates, admin broadcast page
-# 1.8.14 - Multi-build UX: clearer status labels (Queued/Done vs READY/COMPLETED), tooltips, queue build progress
-# 1.8.13 - Push notification robustness: safe body parsing, JSON API contract, /api/push/health endpoint
-# 1.8.12 - Per-build photos gallery, push notification fixes (JSONDecodeError), diagnostics panel
-# 1.8.11 - Build management: edit/delete builds, strict printer validation, robust form handling
+# 1.8.17 - User 3D model viewer (STL/OBJ/3MF support), enhanced build details, file download from My Request page
+# 1.8.16 - Progress notifications at milestones (25/50/75/90%), broadcast system for app updates, admin broadcast page
+# 1.8.15 - Multi-build UX: clearer status labels (Queued/Done vs READY/COMPLETED), tooltips, queue build progress
+# 1.8.14 - Push notification robustness: safe body parsing, JSON API contract, /api/push/health endpoint
+# 1.8.13 - Per-build photos gallery, push notification fixes (JSONDecodeError), diagnostics panel
+# 1.8.12 - Build management: edit/delete builds, strict printer validation, robust form handling
 # 1.8.10 - Fixed admin session persistence (cookie path/secure), added smoke check endpoint
 # 1.8.7 - Added logging system, fixed database connection errors in requester portal
 # 1.8.6 - Build state fixes for IN_PROGRESS status in My Requests
@@ -1647,6 +1648,27 @@ def mark_builds_ready(request_id: str) -> int:
 
 
 # ─────────────────────────── 3D FILE PARSING ───────────────────────────
+class NumpyEncoder(json.JSONEncoder):
+    """JSON encoder that handles numpy types (float32, int64, etc.)"""
+    def default(self, obj):
+        try:
+            import numpy as np
+            if isinstance(obj, np.integer):
+                return int(obj)
+            if isinstance(obj, np.floating):
+                return float(obj)
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+        except ImportError:
+            pass
+        return super().default(obj)
+
+
+def safe_json_dumps(obj) -> str:
+    """JSON dumps that handles numpy types"""
+    return json.dumps(obj, cls=NumpyEncoder)
+
+
 def parse_3d_file_metadata(file_path: str, original_filename: str) -> Optional[Dict[str, Any]]:
     """
     Parse a 3D file (STL, 3MF, OBJ) and extract metadata like dimensions and volume.
@@ -1757,11 +1779,11 @@ def _parse_3mf_file(file_path: str) -> Optional[Dict[str, Any]]:
                     return {
                         "type": "3mf",
                         "dimensions_mm": {
-                            "x": round(max_x - min_x, 2),
-                            "y": round(max_y - min_y, 2),
-                            "z": round(max_z - min_z, 2),
+                            "x": float(round(max_x - min_x, 2)),
+                            "y": float(round(max_y - min_y, 2)),
+                            "z": float(round(max_z - min_z, 2)),
                         },
-                        "vertex_count": len(vertices),
+                        "vertex_count": int(len(vertices)),
                         "is_valid": True,
                     }
                 
@@ -1798,11 +1820,11 @@ def _parse_obj_file(file_path: str) -> Optional[Dict[str, Any]]:
             return {
                 "type": "obj",
                 "dimensions_mm": {
-                    "x": round(max_x - min_x, 2),
-                    "y": round(max_y - min_y, 2),
-                    "z": round(max_z - min_z, 2),
+                    "x": float(round(max_x - min_x, 2)),
+                    "y": float(round(max_y - min_y, 2)),
+                    "z": float(round(max_z - min_z, 2)),
                 },
-                "vertex_count": len(vertices),
+                "vertex_count": int(len(vertices)),
                 "is_valid": True,
             }
         
@@ -4915,7 +4937,7 @@ async def submit(
 
         # Parse 3D file metadata (dimensions, volume, etc.)
         file_metadata = parse_3d_file_metadata(out_path, upload.filename)
-        file_metadata_json = json.dumps(file_metadata) if file_metadata else None
+        file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
 
         conn.execute(
             """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
@@ -5516,7 +5538,7 @@ async def requester_upload(request: Request, rid: str, token: str, files: List[U
         
         # Parse 3D file metadata (dimensions, volume, etc.)
         file_metadata = parse_3d_file_metadata(path, upload.filename)
-        file_metadata_json = json.dumps(file_metadata) if file_metadata else None
+        file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
         
         # Record in database
         file_id = str(uuid.uuid4())
@@ -9274,7 +9296,7 @@ async def admin_add_file(
 
         # Parse 3D file metadata (dimensions, volume, etc.)
         file_metadata = parse_3d_file_metadata(out_path, file.filename)
-        file_metadata_json = json.dumps(file_metadata) if file_metadata else None
+        file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
 
         conn.execute(
             """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
