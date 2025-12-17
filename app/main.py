@@ -1650,18 +1650,18 @@ def mark_builds_ready(request_id: str) -> int:
 # ─────────────────────────── 3D FILE PARSING ───────────────────────────
 class NumpyEncoder(json.JSONEncoder):
     """JSON encoder that handles numpy types (float32, int64, etc.)"""
-    def default(self, obj):
+    def default(self, o):
         try:
             import numpy as np
-            if isinstance(obj, np.integer):
-                return int(obj)
-            if isinstance(obj, np.floating):
-                return float(obj)
-            if isinstance(obj, np.ndarray):
-                return obj.tolist()
+            if isinstance(o, np.integer):
+                return int(o)
+            if isinstance(o, np.floating):
+                return float(o)
+            if isinstance(o, np.ndarray):
+                return o.tolist()
         except ImportError:
             pass
-        return super().default(obj)
+        return super().default(o)
 
 
 def safe_json_dumps(obj) -> str:
