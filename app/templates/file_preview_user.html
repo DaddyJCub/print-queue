@@ -204,14 +204,21 @@
             }
           }
           
-          // Center the geometry
+          // OrcaSlicer/most CAD software uses Z-up, Three.js uses Y-up
+          // Rotate -90 degrees on X axis to convert
+          finalGeometry.rotateX(-Math.PI / 2);
+          
+          // Compute bounding box after rotation
           finalGeometry.computeBoundingBox();
           const center = new THREE.Vector3();
           finalGeometry.boundingBox.getCenter(center);
-          finalGeometry.translate(-center.x, -center.y, -center.z);
+          
+          // Center on X and Z
+          finalGeometry.translate(-center.x, 0, -center.z);
           
           // Move to sit on grid (Y = 0 at bottom)
-          const minY = finalGeometry.boundingBox.min.y - center.y;
+          finalGeometry.computeBoundingBox();
+          const minY = finalGeometry.boundingBox.min.y;
           finalGeometry.translate(0, -minY, 0);
           
           // Material
