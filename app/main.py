@@ -5669,8 +5669,8 @@ async def requester_preview_file(request: Request, rid: str, file_id: str, token
     
     # Check if it's a supported 3D file
     ext = os.path.splitext(file_info["original_filename"].lower())[1]
-    if ext not in [".stl", ".obj"]:
-        raise HTTPException(status_code=400, detail="Preview only available for STL and OBJ files")
+    if ext not in [".stl", ".obj", ".3mf"]:
+        raise HTTPException(status_code=400, detail="Preview only available for STL, OBJ, and 3MF files")
     
     file_path = os.path.join(UPLOAD_DIR, file_info["stored_filename"])
     if not os.path.isfile(file_path):
@@ -9445,7 +9445,7 @@ def admin_assign_file_to_build(
 
 @app.get("/admin/request/{rid}/file/{file_id}/preview")
 async def admin_preview_file(request: Request, rid: str, file_id: str, _=Depends(require_admin)):
-    """Preview a 3D file (STL) using an embedded viewer."""
+    """Preview a 3D file (STL/OBJ/3MF) using an embedded viewer."""
     conn = db()
     
     # Verify request exists
@@ -9466,8 +9466,8 @@ async def admin_preview_file(request: Request, rid: str, file_id: str, _=Depends
     
     # Check if it's a supported 3D file
     ext = os.path.splitext(file_info["original_filename"].lower())[1]
-    if ext not in [".stl", ".obj"]:
-        raise HTTPException(status_code=400, detail="Preview only available for STL and OBJ files")
+    if ext not in [".stl", ".obj", ".3mf"]:
+        raise HTTPException(status_code=400, detail="Preview only available for STL, OBJ, and 3MF files")
     
     file_path = os.path.join(UPLOAD_DIR, file_info["stored_filename"])
     if not os.path.isfile(file_path):
