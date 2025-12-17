@@ -5440,7 +5440,8 @@ async def requester_portal(request: Request, rid: str, token: str):
             
             # Method 1: Try to find file by build_id assignment
             for f in files:
-                if f.get("build_id") == b["id"]:
+                f_build_id = f["build_id"] if "build_id" in f.keys() else None
+                if f_build_id and f_build_id == b["id"]:
                     ext = f["original_filename"].lower().split('.')[-1]
                     if ext in ['stl', 'obj', '3mf']:
                         current_printing_file = dict(f)

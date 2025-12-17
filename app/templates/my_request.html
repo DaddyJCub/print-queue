@@ -386,6 +386,17 @@
         
         <!-- Current Build File Info + 3D Preview - PROMINENT -->
         {% if current_printing_build %}
+          {# Fallback: find a 3D file if current_printing_file not set #}
+          {% set ns = namespace(preview_file=current_printing_file) %}
+          {% if not ns.preview_file %}
+            {% for f in files %}
+              {% set f_ext = f.original_filename.lower().split('.')[-1] if '.' in f.original_filename else '' %}
+              {% if f_ext in ['stl', 'obj', '3mf'] and not ns.preview_file %}
+                {% set ns.preview_file = f %}
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+          
           <div class="mb-4 p-4 bg-gradient-to-br from-amber-950/40 to-indigo-950/40 border border-amber-500/40 rounded-xl shadow-lg">
             <div class="flex items-center gap-2 mb-3">
               <span class="text-amber-400 text-lg">🔥</span>
@@ -400,8 +411,8 @@
                 <p class="text-base font-medium text-zinc-100 truncate mb-1">
                   {{ current_printing_build.print_name or ('Part ' ~ current_printing_build.build_number) }}
                 </p>
-                {% if current_printing_file %}
-                  <p class="text-sm text-zinc-400 truncate mb-2">📄 {{ current_printing_file.original_filename }}</p>
+                {% if ns.preview_file %}
+                  <p class="text-sm text-zinc-400 truncate mb-2">📄 {{ ns.preview_file.original_filename }}</p>
                 {% elif current_printing_build.file_name %}
                   <p class="text-sm text-zinc-400 truncate mb-2">📄 {{ current_printing_build.file_name }}</p>
                 {% endif %}
@@ -417,8 +428,8 @@
                 {% endif %}
               </div>
               
-              {% if current_printing_file %}
-                <a href="/my/{{ req.id }}/file/{{ current_printing_file.id }}/preview?token={{ token }}" 
+              {% if ns.preview_file %}
+                <a href="/my/{{ req.id }}/file/{{ ns.preview_file.id }}/preview?token={{ token }}" 
                    class="inline-flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-sm font-semibold text-white transition shadow-lg shadow-emerald-900/40 flex-shrink-0">
                   <span class="text-lg">🔮</span> View 3D Model
                 </a>
