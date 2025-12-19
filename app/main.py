@@ -21,8 +21,13 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.21"
+APP_VERSION = "1.8.24"
 # Changelog:
+# 1.8.24 - Admin PWA tab: shows Admin in bottom nav when logged in, My Prints pagination with collapsible Past Prints
+# 1.8.23 - Admin dashboard pagination: "show more" for long lists, collapsible Recently Closed section
+# 1.8.22 - Admin request page UX: cleaner build configuration section, inline quick actions, collapsible edit forms
+# 1.8.21 - Flexible build reordering: allow reordering queued builds even while other builds are printing
+# 1.8.20 - Multi-build display fixes: "Build X/Y" format, accurate printing count, progress bar fix for current build
 # 1.8.19 - Fix multi-build printer display: show builds printing on both printers simultaneously, fix auto-refresh losing printer cards
 # 1.8.18 - Fix printer connection conflicts: added polling pause on print start, connection locking, retry logic, admin polling control
 # 1.8.17 - User 3D model viewer (STL/OBJ/3MF support), enhanced build details, file download from My Request page
@@ -9392,12 +9397,17 @@ def admin_reorder_builds(
     build_order: str = Form(...),  # Comma-separated build IDs in new order
     _=Depends(require_admin)
 ):
-    """Reorder builds by providing build IDs in desired order."""
+    """Reorder builds by providing build IDs in desired order.
+    
+    Allows reordering even while builds are printing - printing builds will
+    maintain their relative position in the new order. This enables reordering
+    the queue of upcoming builds without affecting in-progress work.
+    """
     conn = db()
     
     # Get current builds
     builds = conn.execute(
-        "SELECT id, status FROM builds WHERE request_id = ? ORDER BY build_number", 
+        "SELECT id, status, build_number FROM builds WHERE request_id = ? ORDER BY build_number", 
         (rid,)
     ).fetchall()
     
@@ -9414,14 +9424,18 @@ def admin_reorder_builds(
         conn.close()
         raise HTTPException(status_code=400, detail="Build order must include all build IDs exactly once")
     
-    # Only allow reordering of builds that aren't currently PRINTING
-    printing_builds = [b for b in builds if b["status"] == "PRINTING"]
-    if printing_builds:
-        conn.close()
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Cannot reorder while {len(printing_builds)} build(s) are printing. Wait for them to finish or mark them as done first."
-        )
+    # Check if any PRINTING builds changed position - that's not allowed
+    # But reordering non-printing builds is fine
+    build_status = {b["id"]: b["status"] for b in builds}
+    old_positions = {b["id"]: b["build_number"] for b in builds}
+    
+    for new_pos, build_id in enumerate(new_order, start=1):
+        if build_status[build_id] == "PRINTING" and old_positions[build_id] != new_pos:
+            conn.close()
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot move build #{old_positions[build_id]} while it's printing. You can reorder other builds around it."
+            )
     
     # Update build numbers
     now = now_iso()
@@ -10064,6 +10078,16 @@ def get_slicer_accuracy_api(printer: str = None, material: str = None, _=Depends
 def get_version():
     """Get application version"""
     return {"version": APP_VERSION, "title": APP_TITLE}
+
+
+@app.get("/api/admin/check")
+def check_admin_status(request: Request):
+    """Check if the current user is authenticated as admin.
+    Returns {is_admin: true/false} - used by PWA to show admin tab.
+    """
+    pw = request.cookies.get("admin_pw", "")
+    is_admin = bool(pw and ADMIN_PASSWORD and pw == ADMIN_PASSWORD)
+    return {"is_admin": is_admin}
 
 
 # ─────────────────────────── PUSH NOTIFICATION API ───────────────────────────

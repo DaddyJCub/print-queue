@@ -217,7 +217,7 @@
 
   <!-- Bottom Navigation (Mobile PWA Style) -->
   <nav class="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-lg border-t border-zinc-800 sm:hidden bottom-nav">
-    <div class="grid grid-cols-4 gap-1 px-2 pt-2">
+    <div id="bottom-nav-grid" class="grid grid-cols-4 gap-1 px-2 pt-2">
       <a href="/" class="nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_home %}{% endblock %}">
         <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
           <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -250,10 +250,53 @@
         </div>
         <span class="text-xs mt-1">My Prints</span>
       </a>
+      <!-- Admin tab - hidden by default, shown via JS if admin -->
+      <a href="/admin" id="admin-nav" class="hidden nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_admin %}{% endblock %}">
+        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </div>
+        <span class="text-xs mt-1">Admin</span>
+      </a>
     </div>
   </nav>
   
   <script>
+    // Check if user is admin (via API check) and show admin tab
+    async function checkAdminStatus() {
+      try {
+        const resp = await fetch('/api/admin/check', { credentials: 'include' });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.is_admin) {
+            // Show admin tab
+            const adminNav = document.getElementById('admin-nav');
+            if (adminNav) {
+              adminNav.classList.remove('hidden');
+              // Change grid to 5 columns
+              const grid = document.getElementById('bottom-nav-grid');
+              if (grid) grid.classList.replace('grid-cols-4', 'grid-cols-5');
+            }
+            // Also add admin link to desktop nav if not present
+            const desktopNav = document.querySelector('header nav');
+            if (desktopNav && !document.getElementById('desktop-admin-link')) {
+              const adminLink = document.createElement('a');
+              adminLink.id = 'desktop-admin-link';
+              adminLink.href = '/admin';
+              adminLink.className = 'px-3 py-2 rounded-lg text-sm font-medium text-amber-400 hover:text-amber-300 hover:bg-zinc-800 transition flex items-center gap-1';
+              adminLink.innerHTML = '⚙️ Admin';
+              desktopNav.appendChild(adminLink);
+            }
+          }
+        }
+      } catch (e) {
+        // Silently fail - user is not admin
+      }
+    }
+    checkAdminStatus();
+    
     // Update My Requests nav link if user has token
     const savedToken = localStorage.getItem('my_requests_token');
     if (savedToken) {
