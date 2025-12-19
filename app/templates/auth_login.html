@@ -128,7 +128,7 @@
   </div>
 
   <!-- Continue Without Account -->
-  <a href="/new{% if next %}?redirect={{ next }}{% endif %}" 
+  <a href="/{% if next %}?redirect={{ next }}{% endif %}" 
      class="block w-full py-3 px-4 bg-zinc-800 hover:bg-zinc-700 text-center text-white rounded-xl transition tap-highlight">
     Continue as Guest
   </a>

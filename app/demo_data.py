@@ -711,6 +711,96 @@ def seed_demo_data(db_func, force: bool = False):
         except Exception as e:
             print(f"[DEMO] Error inserting email token: {e}")
     
+    # ── Seed Demo Users ──
+    # Create sample user accounts for testing the user management features
+    demo_users = [
+        {
+            "id": str(uuid.uuid4()),
+            "email": "demo.user@example.com",
+            "name": "Demo User",
+            "status": "active",
+            "email_verified": 1,
+            "total_requests": 12,
+            "total_prints": 8,
+            "credits": 25,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "email": "new.user@example.com", 
+            "name": "New User",
+            "status": "unverified",
+            "email_verified": 0,
+            "total_requests": 0,
+            "total_prints": 0,
+            "credits": 0,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "email": "frequent.printer@university.edu",
+            "name": "Alex Chen",
+            "status": "active",
+            "email_verified": 1,
+            "total_requests": 45,
+            "total_prints": 42,
+            "credits": 100,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "email": "suspended.user@example.com",
+            "name": "Suspended User",
+            "status": "suspended",
+            "email_verified": 1,
+            "total_requests": 3,
+            "total_prints": 1,
+            "credits": 0,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "email": "regular.customer@gmail.com",
+            "name": "Jordan Smith",
+            "status": "active",
+            "email_verified": 1,
+            "total_requests": 8,
+            "total_prints": 7,
+            "credits": 15,
+        },
+    ]
+    
+    # Link some demo users to demo request emails
+    # This allows testing the migration flow
+    for req in demo_requests[:3]:
+        demo_users.append({
+            "id": str(uuid.uuid4()),
+            "email": req["requester_email"],
+            "name": req["requester_name"],
+            "status": "active",
+            "email_verified": 1,
+            "total_requests": random.randint(1, 5),
+            "total_prints": random.randint(0, 3),
+            "credits": random.randint(0, 20),
+        })
+    
+    user_count = 0
+    for user in demo_users:
+        try:
+            created = (now - timedelta(days=random.randint(1, 90))).isoformat(timespec="seconds") + "Z"
+            cur.execute("""
+                INSERT INTO users (
+                    id, email, name, status, email_verified, 
+                    total_requests, total_prints, credits,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                user["id"], user["email"], user["name"], user["status"],
+                user["email_verified"], user["total_requests"], user["total_prints"],
+                user["credits"], created, now_iso
+            ))
+            user_count += 1
+        except Exception as e:
+            # Skip if user already exists (e.g., duplicate email)
+            if "UNIQUE constraint" not in str(e):
+                print(f"[DEMO] Error inserting user: {e}")
+    
     # ── Seed Request Messages (for two-way communication demo) ──
     # Add some demo messages to the NEEDS_INFO request
     needs_info_req = next((r for r in demo_requests if r["status"] == "NEEDS_INFO"), None)
@@ -748,7 +838,7 @@ def seed_demo_data(db_func, force: bool = False):
     conn.commit()
     conn.close()
     
-    print(f"[DEMO] ✓ Seeded {len(demo_requests)} requests, {len(DEMO_STORE_ITEMS)} store items, {len(DEMO_REQUEST_TEMPLATES)} templates, 20 print history entries")
+    print(f"[DEMO] ✓ Seeded {len(demo_requests)} requests, {len(DEMO_STORE_ITEMS)} store items, {len(DEMO_REQUEST_TEMPLATES)} templates, {user_count} users, 20 print history entries")
 
 
 def reset_demo_data(db_func):
@@ -770,7 +860,8 @@ def reset_demo_data(db_func):
         "build_snapshots", "build_status_events", "builds",
         "status_events", "files", "request_messages", "push_subscriptions",
         "email_lookup_tokens", "store_item_files", "store_items",
-        "print_history", "request_templates", "feedback", "requests", "settings"
+        "print_history", "request_templates", "feedback", "requests", 
+        "user_sessions", "users", "settings"
     ]
     
     for table in tables:

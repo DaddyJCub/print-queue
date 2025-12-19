@@ -6,6 +6,7 @@ These routes handle:
 - User profile management
 - Admin login (new multi-admin system)
 - Admin account management
+- User account management (admin view)
 - Feature flag management
 - Audit log viewing
 """
@@ -13,10 +14,10 @@ These routes handle:
 import os
 import sqlite3
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from urllib.parse import quote, unquote
 
-from fastapi import APIRouter, Request, Form, HTTPException, Depends
+from fastapi import APIRouter, Request, Form, HTTPException, Depends, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
@@ -25,6 +26,7 @@ from app.auth import (
     create_user, get_user_by_email, authenticate_user, get_user_by_session,
     create_magic_link, verify_magic_link, create_user_session, delete_user_session,
     update_user_profile, get_current_user, require_user, optional_user,
+    get_user_by_id, get_all_users, get_user_count, update_user, delete_user, set_user_status,
     
     # Admin auth
     create_admin, get_admin_by_username, authenticate_admin, get_admin_by_session,
@@ -848,3 +850,334 @@ async def api_feature_flags(request: Request):
         result[key] = flag.is_enabled_for_user(user_id, email)
     
     return JSONResponse(result)
+
+
+# ─────────────────────────── USER MANAGEMENT ROUTES ───────────────────────────
+
+@router.get("/admin/users", response_class=HTMLResponse)
+async def admin_users_page(
+    request: Request,
+    page: int = Query(1, ge=1),
+    status: str = Query(None),
+    search: str = Query(None),
+    success: str = Query(None),
+    error: str = Query(None),
+    admin: dict = Depends(require_permission("manage_users"))
+):
+    """User management admin page."""
+    per_page = 25
+    offset = (page - 1) * per_page
+    
+    users = get_all_users(limit=per_page, offset=offset, status=status, search=search)
+    total_count = get_user_count(status=status, search=search)
+    total_pages = (total_count + per_page - 1) // per_page
+    
+    # Get all statuses for filter dropdown
+    all_statuses = [s.value for s in UserStatus]
+    
+    return templates.TemplateResponse("admin_users.html", {
+        "request": request,
+        "users": [u.to_dict() for u in users],
+        "total_count": total_count,
+        "page": page,
+        "total_pages": total_pages,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+        "status_filter": status,
+        "search": search,
+        "all_statuses": all_statuses,
+        "success": success,
+        "error": error,
+    })
+
+
+@router.post("/admin/users/create")
+async def admin_create_user(
+    request: Request,
+    email: str = Form(...),
+    name: str = Form(...),
+    password: str = Form(None),
+    status: str = Form("active"),
+    admin: dict = Depends(require_permission("manage_users"))
+):
+    """Create a new user account (admin)."""
+    try:
+        # Check if user exists
+        existing = get_user_by_email(email)
+        if existing:
+            return RedirectResponse(
+                url=f"/admin/users?error=User with email {email} already exists",
+                status_code=303
+            )
+        
+        # Create user
+        user = create_user(email=email, name=name, password=password)
+        
+        # Set status if not default
+        if status != "unverified":
+            set_user_status(user.id, UserStatus(status))
+        
+        # Audit log
+        log_audit(
+            action=AuditAction.USER_REGISTERED,
+            actor_type="admin",
+            actor_id=getattr(admin, 'id', None),
+            target_type="user",
+            target_id=user.id,
+            details={"email": email, "created_by_admin": True}
+        )
+        
+        return RedirectResponse(
+            url="/admin/users?success=User created successfully",
+            status_code=303
+        )
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/admin/users?error={str(e)}",
+            status_code=303
+        )
+
+
+@router.post("/admin/users/update")
+async def admin_update_user(
+    request: Request,
+    user_id: str = Form(...),
+    name: str = Form(None),
+    email: str = Form(None),
+    status: str = Form(None),
+    credits: int = Form(None),
+    admin: dict = Depends(require_permission("manage_users"))
+):
+    """Update a user account (admin)."""
+    try:
+        updates = {}
+        if name:
+            updates["name"] = name
+        if email:
+            updates["email"] = email
+        if status:
+            updates["status"] = UserStatus(status)
+        if credits is not None:
+            updates["credits"] = credits
+        
+        if updates:
+            update_user(user_id, **updates)
+        
+        # Audit log
+        log_audit(
+            action=AuditAction.USER_UPDATED,
+            actor_type="admin",
+            actor_id=getattr(admin, 'id', None),
+            target_type="user",
+            target_id=user_id,
+            details=updates
+        )
+        
+        return RedirectResponse(
+            url="/admin/users?success=User updated",
+            status_code=303
+        )
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/admin/users?error={str(e)}",
+            status_code=303
+        )
+
+
+@router.post("/admin/users/{user_id}/suspend")
+async def admin_suspend_user(
+    user_id: str,
+    admin: dict = Depends(require_permission("manage_users"))
+):
+    """Suspend a user account."""
+    set_user_status(user_id, UserStatus.SUSPENDED)
+    
+    log_audit(
+        action=AuditAction.USER_SUSPENDED,
+        actor_type="admin",
+        actor_id=getattr(admin, 'id', None),
+        target_type="user",
+        target_id=user_id
+    )
+    
+    return JSONResponse({"success": True})
+
+
+@router.post("/admin/users/{user_id}/activate")
+async def admin_activate_user(
+    user_id: str,
+    admin: dict = Depends(require_permission("manage_users"))
+):
+    """Reactivate a suspended user account."""
+    set_user_status(user_id, UserStatus.ACTIVE)
+    
+    log_audit(
+        action=AuditAction.USER_REACTIVATED,
+        actor_type="admin",
+        actor_id=getattr(admin, 'id', None),
+        target_type="user",
+        target_id=user_id
+    )
+    
+    return JSONResponse({"success": True})
+
+
+@router.delete("/admin/users/{user_id}")
+async def admin_delete_user(
+    user_id: str,
+    admin: dict = Depends(require_permission("manage_users"))
+):
+    """Delete a user account."""
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    delete_user(user_id)
+    
+    log_audit(
+        action=AuditAction.ADMIN_DELETED,  # Using admin deleted for now
+        actor_type="admin",
+        actor_id=getattr(admin, 'id', None),
+        target_type="user",
+        target_id=user_id,
+        details={"email": user.email}
+    )
+    
+    return JSONResponse({"success": True})
+
+
+@router.post("/admin/users/{user_id}/convert-to-admin")
+async def admin_convert_user_to_admin(
+    request: Request,
+    user_id: str,
+    role: str = Form("operator"),
+    password: str = Form(None),
+    admin: dict = Depends(require_permission("manage_admins"))
+):
+    """Convert a user to an admin account."""
+    from app.auth import convert_user_to_admin
+    
+    try:
+        admin_role = AdminRole(role)
+    except ValueError:
+        admin_role = AdminRole.OPERATOR
+    
+    new_admin = convert_user_to_admin(user_id, role=admin_role, password=password)
+    
+    if not new_admin:
+        return RedirectResponse(
+            url="/admin/users?error=Failed to convert user",
+            status_code=303
+        )
+    
+    log_audit(
+        action=AuditAction.ADMIN_CREATED,
+        actor_type="admin",
+        actor_id=getattr(admin, 'id', None),
+        target_type="admin",
+        target_id=new_admin.id,
+        details={"converted_from_user": user_id, "role": role}
+    )
+    
+    return RedirectResponse(
+        url=f"/admin/users?success=User converted to admin ({new_admin.username})",
+        status_code=303
+    )
+
+
+# ─────────────────────────── ACCOUNT MIGRATION API ───────────────────────────
+
+@router.get("/api/user/check-migration")
+async def check_migration_status(request: Request, token: str = Query(None), email: str = Query(None)):
+    """
+    Check if a token-based user should be prompted to create an account.
+    Used by My Prints page to show signup modal.
+    """
+    if not is_feature_enabled("user_accounts"):
+        return JSONResponse({"should_prompt": False, "reason": "feature_disabled"})
+    
+    # If they have a user session cookie, they already have an account
+    user = await get_current_user(request)
+    if user:
+        return JSONResponse({"should_prompt": False, "reason": "already_logged_in", "user": user.to_dict()})
+    
+    # If they have a token but no account, prompt them
+    if token or email:
+        # Check if there's an existing user with this email
+        if email:
+            existing = get_user_by_email(email)
+            if existing:
+                return JSONResponse({
+                    "should_prompt": True, 
+                    "reason": "has_account_not_logged_in",
+                    "email": email
+                })
+        
+        # They have a token but no account - prompt to create one
+        return JSONResponse({
+            "should_prompt": True,
+            "reason": "token_user_no_account",
+            "email": email
+        })
+    
+    return JSONResponse({"should_prompt": False, "reason": "no_token"})
+
+
+@router.post("/api/user/migrate-token")
+async def migrate_token_to_account(
+    request: Request,
+    email: str = Form(...),
+    name: str = Form(...),
+    password: str = Form(None),
+    token: str = Form(None)
+):
+    """
+    Create an account from an existing email lookup token.
+    Links their request history to the new account.
+    """
+    if not is_feature_enabled("user_accounts"):
+        raise HTTPException(status_code=403, detail="User accounts are not enabled")
+    
+    # Check if user already exists
+    existing = get_user_by_email(email)
+    if existing:
+        # Log them in instead
+        session_token = create_user_session(
+            existing.id,
+            device_info=request.headers.get("User-Agent") or "unknown",
+            ip_address=get_client_ip(request)
+        )
+        
+        return JSONResponse({
+            "success": True,
+            "action": "logged_in",
+            "session_token": session_token
+        })
+    
+    # Create new user
+    user = create_user(email=email, name=name, password=password)
+    
+    # Mark email as verified since they had a valid token
+    set_user_status(user.id, UserStatus.ACTIVE)
+    
+    # Create session
+    session_token = create_user_session(
+        user.id,
+        device_info=request.headers.get("User-Agent") or "unknown",
+        ip_address=get_client_ip(request)
+    )
+    
+    log_audit(
+        action=AuditAction.USER_REGISTERED,
+        actor_type="user",
+        actor_id=user.id,
+        details={"migrated_from_token": True, "email": email}
+    )
+    
+    return JSONResponse({
+        "success": True,
+        "action": "created",
+        "session_token": session_token,
+        "user": user.to_dict()
+    })
+

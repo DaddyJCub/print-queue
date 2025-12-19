@@ -4781,6 +4781,51 @@ def send_broadcast_notification(title: str, body: str, url: str = None,
     return result
 
 
+def send_push_notification_to_admins(title: str, body: str, url: str = None, tag: str = None) -> dict:
+    """
+    Send push notification to all admins who have push subscriptions.
+    Uses the admin_notify_emails setting to determine which emails are admins.
+    
+    Args:
+        title: Notification title
+        body: Notification body text  
+        url: Click-through URL (default: /admin)
+        tag: Optional tag for notification grouping
+    
+    Returns:
+        dict with sent/failed counts and any errors
+    """
+    result = {"total_sent": 0, "total_failed": 0, "admin_count": 0, "errors": []}
+    
+    # Get list of admin emails
+    admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))
+    
+    if not admin_emails:
+        print("[ADMIN-PUSH] No admin emails configured")
+        result["errors"].append("No admin emails configured in settings")
+        return result
+    
+    result["admin_count"] = len(admin_emails)
+    print(f"[ADMIN-PUSH] Sending to {len(admin_emails)} admin(s): {title}")
+    
+    # Send push to each admin
+    for admin_email in admin_emails:
+        push_result = send_push_notification(
+            email=admin_email,
+            title=title,
+            body=body,
+            url=url or "/admin",
+            tag=tag
+        )
+        result["total_sent"] += push_result.get("sent", 0)
+        result["total_failed"] += push_result.get("failed", 0)
+        if push_result.get("errors"):
+            result["errors"].extend(push_result["errors"])
+    
+    print(f"[ADMIN-PUSH] Completed: {result['total_sent']} sent, {result['total_failed']} failed")
+    return result
+
+
 def get_broadcast_history(limit: int = 20) -> List[Dict]:
     """Get recent broadcast notification history."""
     conn = db()
@@ -5173,6 +5218,14 @@ async def submit(
             cta_label="Open in admin",
         )
         send_email(admin_emails, subject, text, html)
+        
+        # Also send admin push notification
+        send_push_notification_to_admins(
+            title="📥 New Request",
+            body=f"{requester_name.strip()} - {print_name or rid[:8]}",
+            url=f"/admin/request/{rid}",
+            tag="admin-new-request"
+        )
 
     # Show thanks page with portal link
     return templates.TemplateResponse("thanks_new.html", {
@@ -5770,6 +5823,14 @@ def requester_reply(request: Request, rid: str, token: str, message: str = Form(
             header_color="#6366f1",
         )
         send_email(admin_emails, subject, text, html)
+        
+        # Also send admin push notification for replies
+        send_push_notification_to_admins(
+            title="💬 Reply from Requester",
+            body=f"{req['requester_name']}: {message[:50]}{'...' if len(message) > 50 else ''}",
+            url=f"/admin/request/{rid}",
+            tag="admin-requester-reply"
+        )
     
     return RedirectResponse(url=f"/my/{rid}?token={token}", status_code=303)
 
@@ -6070,11 +6131,15 @@ def my_requests_lookup(request: Request, sent: Optional[str] = None, error: Opti
     if token:
         return RedirectResponse(url=f"/my-requests/view?token={token}", status_code=302)
     
+    # Check if user accounts feature is enabled
+    user_accounts_enabled = is_feature_enabled("user_accounts")
+    
     return templates.TemplateResponse("my_requests_lookup_new.html", {
         "request": request,
         "sent": sent,
         "error": error,
         "version": APP_VERSION,
+        "user_accounts_enabled": user_accounts_enabled,
     })
 
 
@@ -8718,15 +8783,10 @@ def admin_set_status(
     if to_status == "PRINTING":
         should_notify_requester = False  # Will be sent by poll_printer_status_worker
 
-    # Parse user notification preferences
-    user_prefs = {"email": True, "push": False}
-    if req.get("notification_prefs"):
-        try:
-            user_prefs = json.loads(req["notification_prefs"])
-        except:
-            pass
-    user_wants_email = user_prefs.get("email", True)
-    user_wants_push = user_prefs.get("push", False)
+    # Parse user notification preferences - use the proper preferences table
+    user_prefs = get_user_notification_prefs(req.get("requester_email", ""))
+    user_wants_email = user_prefs.get("status_email", True)
+    user_wants_push = user_prefs.get("status_push", True)  # Default to True for push notifications
 
     if requester_email_on_status and should_notify_requester and user_wants_email:
         print_label = req["print_name"] or f"Request {rid[:8]}"
@@ -8885,6 +8945,24 @@ def admin_set_status(
                 header_color=header_color,
             )
             send_email(admin_emails, subject, text, html)
+            
+            # Also send admin push notification for status changes
+            admin_push_titles = {
+                "DONE": "✅ Print Complete",
+                "PICKED_UP": "📦 Picked Up",
+                "REJECTED": "❌ Request Rejected",
+                "CANCELLED": "🚫 Request Cancelled",
+                "APPROVED": "✓ Request Approved",
+                "PRINTING": "🖨️ Now Printing",
+                "NEEDS_INFO": "❓ Info Requested",
+            }
+            admin_push_title = admin_push_titles.get(to_status, f"Status: {to_status}")
+            send_push_notification_to_admins(
+                title=admin_push_title,
+                body=f"{req['requester_name']} - {req['print_name'] or rid[:8]}",
+                url=f"/admin/request/{rid}",
+                tag=f"admin-status-{rid[:8]}"
+            )
 
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 

@@ -185,6 +185,11 @@ class User:
             "created_at": self.created_at,
             "last_login": self.last_login,
         }
+    
+    @property
+    def display_name(self) -> str:
+        """Return name or email prefix as display name."""
+        return self.name or self.email.split('@')[0]
 
 
 @dataclass

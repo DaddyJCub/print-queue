@@ -372,6 +372,160 @@ def delete_user_session(token: str):
     conn.close()
 
 
+# ─────────────────────────── USER MANAGEMENT (ADMIN) ───────────────────────────
+
+def get_all_users(limit: int = 100, offset: int = 0, status: str = None, search: str = None) -> List[User]:
+    """Get all users with optional filtering."""
+    conn = db()
+    
+    query = "SELECT * FROM users WHERE 1=1"
+    params = []
+    
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    
+    if search:
+        query += " AND (LOWER(email) LIKE ? OR LOWER(name) LIKE ?)"
+        search_term = f"%{search.lower()}%"
+        params.extend([search_term, search_term])
+    
+    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    
+    return [_row_to_user(row) for row in rows]
+
+
+def get_user_count(status: str = None, search: str = None) -> int:
+    """Get total count of users with optional filtering."""
+    conn = db()
+    
+    query = "SELECT COUNT(*) as cnt FROM users WHERE 1=1"
+    params = []
+    
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    
+    if search:
+        query += " AND (LOWER(email) LIKE ? OR LOWER(name) LIKE ?)"
+        search_term = f"%{search.lower()}%"
+        params.extend([search_term, search_term])
+    
+    result = conn.execute(query, params).fetchone()
+    conn.close()
+    
+    return result['cnt'] if result else 0
+
+
+def update_user(user_id: str, **kwargs) -> bool:
+    """Update any user field (admin-level access)."""
+    allowed_fields = {
+        "name", "email", "phone", "status", "email_verified",
+        "preferred_printer", "preferred_material", "preferred_colors",
+        "notes_template", "notification_prefs", "credits", "total_requests", "total_prints"
+    }
+    
+    updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+    if not updates:
+        return False
+    
+    # Handle status enum
+    if "status" in updates and isinstance(updates["status"], UserStatus):
+        updates["status"] = updates["status"].value
+    
+    # Serialize notification_prefs if present
+    if "notification_prefs" in updates and isinstance(updates["notification_prefs"], dict):
+        updates["notification_prefs"] = json.dumps(updates["notification_prefs"])
+    
+    set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
+    values = list(updates.values())
+    values.append(datetime.utcnow().isoformat(timespec="seconds") + "Z")
+    values.append(user_id)
+    
+    conn = db()
+    conn.execute(f"UPDATE users SET {set_clause}, updated_at = ? WHERE id = ?", values)
+    conn.commit()
+    conn.close()
+    
+    return True
+
+
+def set_user_status(user_id: str, status: UserStatus) -> bool:
+    """Set user account status (active, suspended, unverified)."""
+    conn = db()
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    conn.execute("""
+        UPDATE users SET status = ?, updated_at = ? WHERE id = ?
+    """, (status.value, now, user_id))
+    conn.commit()
+    conn.close()
+    
+    logger.info(f"User {user_id} status changed to {status.value}")
+    return True
+
+
+def delete_user(user_id: str) -> bool:
+    """Delete a user account."""
+    conn = db()
+    
+    # Delete sessions first
+    conn.execute("DELETE FROM user_sessions WHERE user_id = ?", (user_id,))
+    
+    # Delete user
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    
+    logger.info(f"User {user_id} deleted")
+    return True
+
+
+def convert_user_to_admin(user_id: str, role: AdminRole = AdminRole.OPERATOR, 
+                          username: str = None, password: str = None) -> Optional[Admin]:
+    """Convert a user account to an admin account."""
+    user = get_user_by_id(user_id)
+    if not user:
+        return None
+    
+    # Generate username from email if not provided
+    if not username:
+        username = user.email.split('@')[0].lower()
+        # Ensure uniqueness
+        existing = get_admin_by_username(username)
+        if existing:
+            username = f"{username}_{str(uuid.uuid4())[:4]}"
+    
+    # Create admin account
+    admin = create_admin(
+        username=username,
+        email=user.email,
+        password=password or secrets.token_urlsafe(16),  # Generate random password if not provided
+        role=role,
+        display_name=user.display_name
+    )
+    
+    logger.info(f"User {user.email} converted to admin {username} with role {role.value}")
+    return admin
+
+
+def link_user_to_email_token(email: str, token: str) -> Optional[User]:
+    """
+    Link an existing email lookup token to a user account.
+    Used for migrating token-based users to full accounts.
+    """
+    user = get_user_by_email(email)
+    if user:
+        return user  # Already has account
+    
+    # Check if token matches any requests
+    # This is for migration - creating account from existing token
+    return None
+
+
 # ─────────────────────────── ADMIN AUTHENTICATION ───────────────────────────
 
 def create_admin(username: str, email: str, password: str, role: AdminRole = AdminRole.OPERATOR, 
