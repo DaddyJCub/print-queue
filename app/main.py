@@ -21,8 +21,9 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.18"
+APP_VERSION = "1.8.19"
 # Changelog:
+# 1.8.19 - Fix multi-build printer display: show builds printing on both printers simultaneously, fix auto-refresh losing printer cards
 # 1.8.18 - Fix printer connection conflicts: added polling pause on print start, connection locking, retry logic, admin polling control
 # 1.8.17 - User 3D model viewer (STL/OBJ/3MF support), enhanced build details, file download from My Request page
 # 1.8.16 - Progress notifications at milestones (25/50/75/90%), broadcast system for app updates, admin broadcast page
@@ -5246,12 +5247,83 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     pending_items = [it for it in items if it["status"] in ["NEW", "NEEDS_INFO"]]
     
     # Group printing items by printer (for printer card display)
+    # For multi-build requests, we need to query all PRINTING builds to find which printers are active
     printing_by_printer = {
         "ADVENTURER_4": None,
         "AD5X": None,
     }
+    
+    # First, query all builds that are currently PRINTING to handle multi-printer scenarios
+    conn_builds = db()
+    printing_builds = conn_builds.execute("""
+        SELECT b.*, r.requester_name, r.print_name as request_print_name, r.material as request_material,
+               r.total_builds, r.completed_builds, r.id as request_id
+        FROM builds b
+        JOIN requests r ON b.request_id = r.id
+        WHERE b.status = 'PRINTING'
+    """).fetchall()
+    conn_builds.close()
+    
+    # Map request IDs to items for quick lookup
+    items_by_request_id = {}
+    for it in items:
+        # Match full request ID by short_id prefix
+        for r in rows:
+            if r["id"][:8] == it["short_id"]:
+                items_by_request_id[r["id"]] = it
+                break
+    
+    # Create printer card entries from PRINTING builds
+    for build in printing_builds:
+        build_printer = build["printer"]
+        if build_printer in printing_by_printer and printing_by_printer[build_printer] is None:
+            # Get the parent request item
+            request_id = build["request_id"]
+            parent_item = items_by_request_id.get(request_id)
+            
+            if parent_item:
+                # Create a printer-specific entry for this build
+                # Get progress from cached printer status
+                cached_status = printer_status.get(build_printer, {})
+                build_progress = None
+                build_layer = None
+                build_total_layers = None
+                build_eta_display = None
+                
+                if cached_status and not cached_status.get("is_offline"):
+                    build_progress = cached_status.get("progress")
+                    build_layer = cached_status.get("current_layer")
+                    build_total_layers = cached_status.get("total_layers")
+                    
+                    # Calculate ETA for this specific build
+                    started_at = build["started_at"]
+                    if started_at:
+                        eta_dt = get_smart_eta(
+                            printer=build_printer,
+                            material=build["material"] or parent_item["material"],
+                            current_percent=build_progress,
+                            printing_started_at=started_at,
+                            current_layer=build_layer,
+                            total_layers=build_total_layers
+                        )
+                        if eta_dt:
+                            build_eta_display = format_eta_display(eta_dt)
+                
+                # Create entry for this printer
+                printer_entry = dict(parent_item)
+                printer_entry["printer"] = build_printer
+                printer_entry["printer_progress"] = build_progress
+                printer_entry["current_layer"] = build_layer
+                printer_entry["total_layers"] = build_total_layers
+                printer_entry["smart_eta_display"] = build_eta_display
+                printer_entry["printing_started_at"] = build["started_at"]
+                printer_entry["build_number"] = build["build_number"]
+                printer_entry["build_print_name"] = build["print_name"]
+                printing_by_printer[build_printer] = printer_entry
+    
+    # Fallback for single-build requests or legacy PRINTING status
     for pit in printing_items:
-        if pit["printer"] in printing_by_printer:
+        if pit["printer"] in printing_by_printer and printing_by_printer[pit["printer"]] is None:
             printing_by_printer[pit["printer"]] = pit
     
     # If printer is BUILDING but no PRINTING item exists, show "likely printing" item
@@ -6349,10 +6421,12 @@ async def queue_data_api(mine: Optional[str] = None):
     """JSON API for queue data (used for AJAX refresh)"""
     conn = db()
     rows = conn.execute(
-        "SELECT id, requester_name, print_name, printer, material, colors, status, special_notes, print_time_minutes, turnaround_minutes, printing_started_at "
-        "FROM requests "
-        "WHERE status NOT IN (?, ?, ?) "
-        "ORDER BY created_at ASC",
+        """SELECT id, requester_name, print_name, printer, material, colors, status, special_notes, 
+                  print_time_minutes, turnaround_minutes, printing_started_at,
+                  active_build_id, total_builds, completed_builds
+           FROM requests 
+           WHERE status NOT IN (?, ?, ?) 
+           ORDER BY created_at ASC""",
         ("PICKED_UP", "REJECTED", "CANCELLED")
     ).fetchall()
     conn.close()
@@ -6369,12 +6443,28 @@ async def queue_data_api(mine: Optional[str] = None):
         short_id = r["id"][:8]
         printer_progress = None
         smart_eta_display = None
+        current_layer = None
+        total_layers = None
+        printing_started_at = r["printing_started_at"] if "printing_started_at" in r.keys() else None
+        active_printer = r["printer"]  # Default to request printer
         
-        if r["status"] == "PRINTING":
+        # Handle IN_PROGRESS (multi-build) - get active build's printer
+        active_build_id = r["active_build_id"] if "active_build_id" in r.keys() else None
+        if r["status"] == "IN_PROGRESS" and active_build_id:
+            conn_build = db()
+            active_build = conn_build.execute(
+                "SELECT printer, started_at FROM builds WHERE id = ?", 
+                (active_build_id,)
+            ).fetchone()
+            conn_build.close()
+            if active_build and active_build["printer"]:
+                active_printer = active_build["printer"]
+                if active_build["started_at"]:
+                    printing_started_at = active_build["started_at"]
+        
+        if r["status"] in ["PRINTING", "IN_PROGRESS"]:
             # Use cached printer status
-            cached_status = printer_status.get(r["printer"], {})
-            current_layer = None
-            total_layers = None
+            cached_status = printer_status.get(active_printer, {})
             
             if cached_status and not cached_status.get("is_offline"):
                 printer_progress = cached_status.get("progress")
@@ -6382,10 +6472,9 @@ async def queue_data_api(mine: Optional[str] = None):
                 total_layers = cached_status.get("total_layers")
             
             # Calculate smart ETA
-            printing_started_at = r["printing_started_at"] if "printing_started_at" in r.keys() else None
             if printing_started_at:
                 eta_dt = get_smart_eta(
-                    printer=r["printer"],
+                    printer=active_printer,
                     material=r["material"],
                     current_percent=printer_progress or 0,
                     printing_started_at=printing_started_at,
@@ -6397,19 +6486,24 @@ async def queue_data_api(mine: Optional[str] = None):
         
         items.append({
             "short_id": short_id,
+            "request_id": r["id"],  # Full ID for lookups
             "requester_first": first_name_only(r["requester_name"]),
             "print_name": r["print_name"],
-            "printer": r["printer"],
+            "printer": active_printer,
             "material": r["material"],
             "colors": r["colors"],
             "status": r["status"],
             "is_mine": bool(mine and mine == short_id),
             "printer_progress": printer_progress,
             "smart_eta_display": smart_eta_display,
+            "current_layer": current_layer,
+            "total_layers": total_layers,
+            "total_builds": r["total_builds"] if "total_builds" in r.keys() else 1,
+            "completed_builds": r["completed_builds"] if "completed_builds" in r.keys() else 0,
         })
     
-    # Separate by status
-    printing_items = [it for it in items if it["status"] == "PRINTING"]
+    # Separate by status - include IN_PROGRESS for multi-build requests
+    printing_items = [it for it in items if it["status"] in ["PRINTING", "IN_PROGRESS"]]
     approved_items = [it for it in items if it["status"] == "APPROVED"]
     done_items = [it for it in items if it["status"] == "DONE"]
     
@@ -6417,6 +6511,79 @@ async def queue_data_api(mine: Optional[str] = None):
     active_queue = printing_items + approved_items
     for idx, item in enumerate(active_queue):
         item["queue_pos"] = idx + 1
+    
+    # Group printing items by printer (for printer card display)
+    # For multi-build requests, query all PRINTING builds to find which printers are active
+    printing_by_printer = {
+        "ADVENTURER_4": None,
+        "AD5X": None,
+    }
+    
+    # Query all builds that are currently PRINTING to handle multi-printer scenarios
+    conn_builds = db()
+    printing_builds = conn_builds.execute("""
+        SELECT b.*, r.requester_name, r.print_name as request_print_name, r.material as request_material,
+               r.total_builds, r.completed_builds, r.id as request_id
+        FROM builds b
+        JOIN requests r ON b.request_id = r.id
+        WHERE b.status = 'PRINTING'
+    """).fetchall()
+    conn_builds.close()
+    
+    # Map request IDs to items for quick lookup
+    items_by_request_id = {it["request_id"]: it for it in items}
+    
+    # Create printer card entries from PRINTING builds
+    for build in printing_builds:
+        build_printer = build["printer"]
+        if build_printer in printing_by_printer and printing_by_printer[build_printer] is None:
+            request_id = build["request_id"]
+            parent_item = items_by_request_id.get(request_id)
+            
+            if parent_item:
+                # Get progress from cached printer status
+                cached_status = printer_status.get(build_printer, {})
+                build_progress = None
+                build_layer = None
+                build_total_layers = None
+                build_eta_display = None
+                
+                if cached_status and not cached_status.get("is_offline"):
+                    build_progress = cached_status.get("progress")
+                    build_layer = cached_status.get("current_layer")
+                    build_total_layers = cached_status.get("total_layers")
+                    
+                    # Calculate ETA for this specific build
+                    started_at = build["started_at"]
+                    if started_at:
+                        eta_dt = get_smart_eta(
+                            printer=build_printer,
+                            material=build["material"] or parent_item["material"],
+                            current_percent=build_progress or 0,
+                            printing_started_at=started_at,
+                            current_layer=build_layer or 0,
+                            total_layers=build_total_layers or 0
+                        )
+                        if eta_dt:
+                            build_eta_display = format_eta_display(eta_dt)
+                
+                # Create entry for this printer
+                printer_entry = dict(parent_item)
+                printer_entry["printer"] = build_printer
+                printer_entry["printer_progress"] = build_progress
+                printer_entry["current_layer"] = build_layer
+                printer_entry["total_layers"] = build_total_layers
+                printer_entry["smart_eta_display"] = build_eta_display
+                printer_entry["build_number"] = build["build_number"]
+                printer_entry["build_print_name"] = build["print_name"]
+                # Find queue_pos from parent item
+                printer_entry["queue_pos"] = parent_item.get("queue_pos", 1)
+                printing_by_printer[build_printer] = printer_entry
+    
+    # Fallback for single-build requests or legacy PRINTING status
+    for pit in printing_items:
+        if pit["printer"] in printing_by_printer and printing_by_printer[pit["printer"]] is None:
+            printing_by_printer[pit["printer"]] = pit
     
     # Find user's position
     my_pos = None
@@ -6426,8 +6593,8 @@ async def queue_data_api(mine: Optional[str] = None):
                 my_pos = it["queue_pos"]
                 break
     
-    # Counts
-    counts = {"NEW": 0, "NEEDS_INFO": 0, "APPROVED": 0, "PRINTING": 0, "DONE": 0}
+    # Counts - include IN_PROGRESS in PRINTING count for display
+    counts = {"NEW": 0, "NEEDS_INFO": 0, "APPROVED": 0, "PRINTING": 0, "IN_PROGRESS": 0, "DONE": 0}
     for it in items:
         if it["status"] in counts:
             counts[it["status"]] += 1
@@ -6438,6 +6605,7 @@ async def queue_data_api(mine: Optional[str] = None):
         "counts": counts,
         "my_pos": my_pos,
         "printer_status": printer_status,
+        "printing_by_printer": printing_by_printer,  # Add this for printer card updates
         "timestamp": now_iso(),
     }
 

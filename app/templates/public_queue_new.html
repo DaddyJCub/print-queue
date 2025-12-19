@@ -100,7 +100,8 @@
     </div>
     {% endif %}
     
-    <!-- Printing info -->
+    <!-- Printing info - container with ID for JavaScript updates -->
+    <div id="printing-info-ADVENTURER_4" class="{% if not printer_status.ADVENTURER_4.is_printing %}hidden{% endif %}">
     {% if printer_status.ADVENTURER_4.is_printing %}
     <div class="space-y-3 mb-3">
       <!-- Current print job details - PROMINENT -->
@@ -157,6 +158,7 @@
       </div>
     </div>
     {% endif %}
+    </div><!-- Close printing-info-ADVENTURER_4 -->
     
     <!-- Temperature and Camera row -->
     <div class="flex items-center justify-between text-xs pt-2 border-t border-zinc-700/50">
@@ -220,7 +222,8 @@
     </div>
     {% endif %}
     
-    <!-- Printing info -->
+    <!-- Printing info - container with ID for JavaScript updates -->
+    <div id="printing-info-AD5X" class="{% if not printer_status.AD5X.is_printing %}hidden{% endif %}">
     {% if printer_status.AD5X.is_printing %}
     <div class="space-y-3 mb-3">
       <!-- Current print job details - PROMINENT -->
@@ -277,6 +280,7 @@
       </div>
     </div>
     {% endif %}
+    </div><!-- Close printing-info-AD5X -->
     
     <!-- Temperature and Camera row -->
     <div class="flex items-center justify-between text-xs pt-2 border-t border-zinc-700/50">
@@ -564,14 +568,16 @@
       const response = await fetch(url);
       const data = await response.json();
       
-      // Update stats
-      updateStats(data.counts);
+      // Update stats - combine PRINTING and IN_PROGRESS for display
+      const printingCount = (data.counts.PRINTING || 0) + (data.counts.IN_PROGRESS || 0);
+      const adjustedCounts = {...data.counts, PRINTING: printingCount};
+      updateStats(adjustedCounts);
       
       // Update my position if tracking
       updateMyPosition(data.my_pos);
       
-      // Update printer status cards
-      updatePrinterStatus(data.printer_status);
+      // Update printer status cards with printing_by_printer data
+      updatePrinterStatus(data.printer_status, data.printing_by_printer || {});
       
       // Update queue list
       updateQueueList(data.active_queue, data.done_items);
@@ -615,13 +621,13 @@
     }
   }
   
-  function updatePrinterStatus(printerStatus) {
+  function updatePrinterStatus(printerStatus, printingByPrinter) {
     // Update Adventurer 4 status
-    updateSinglePrinter('ADVENTURER_4', printerStatus.ADVENTURER_4 || {});
-    updateSinglePrinter('AD5X', printerStatus.AD5X || {});
+    updateSinglePrinter('ADVENTURER_4', printerStatus.ADVENTURER_4 || {}, printingByPrinter.ADVENTURER_4);
+    updateSinglePrinter('AD5X', printerStatus.AD5X || {}, printingByPrinter.AD5X);
   }
   
-  function updateSinglePrinter(code, status) {
+  function updateSinglePrinter(code, status, printingItem) {
     const statusEl = document.getElementById(`printer-status-${code}`);
     if (!statusEl) return;
     
@@ -643,24 +649,71 @@
           ${status.status}
         </span>
       `;
-      
-      // Update progress if printing
-      const progressEl = document.getElementById(`printer-progress-${code}`);
-      if (progressEl && status.is_printing && status.progress !== null) {
-        progressEl.innerHTML = `
-          <div class="flex items-center gap-2">
-            <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-              <div class="h-full bg-emerald-500 transition-all" style="width: ${status.progress}%"></div>
-            </div>
-            <span class="text-emerald-300 font-semibold">${status.progress}%</span>
-          </div>
-        `;
-        progressEl.classList.remove('hidden');
-      } else if (progressEl) {
-        progressEl.classList.add('hidden');
-      }
     } else {
       statusEl.innerHTML = `<span class="px-2 py-1 rounded-lg text-xs bg-zinc-800 text-zinc-500">Offline</span>`;
+    }
+    
+    // Update the "Currently Printing" job card
+    const printingInfoEl = document.getElementById(`printing-info-${code}`);
+    if (printingInfoEl) {
+      if (status.is_printing && printingItem) {
+        // Build the printing info card HTML
+        const isLikely = printingItem._likely_printing || false;
+        const bgClass = isLikely ? 'bg-amber-900/30 border border-amber-600/40' : 'bg-emerald-900/30 border border-emerald-600/40';
+        const textClass = isLikely ? 'text-amber-' : 'text-emerald-';
+        
+        let buildsHtml = '';
+        if (printingItem.total_builds > 1) {
+          buildsHtml = `<span class="px-2 py-0.5 rounded bg-amber-700/50 border border-amber-500/50 text-amber-200 font-semibold" title="Multi-part print: ${printingItem.completed_builds} of ${printingItem.total_builds} builds completed">${printingItem.completed_builds}/${printingItem.total_builds} builds</span>`;
+          
+          // Mini build progress bar
+          let progressBars = '';
+          for (let i = 0; i < printingItem.total_builds; i++) {
+            const barClass = i < printingItem.completed_builds ? 'bg-emerald-500' : 
+                            (i === printingItem.completed_builds ? 'bg-amber-500 animate-pulse' : 'bg-zinc-700');
+            progressBars += `<div class="flex-1 h-1 rounded-full ${barClass}"></div>`;
+          }
+          buildsHtml += `<div class="flex gap-0.5 mt-2 w-full" title="Build progress: ${printingItem.completed_builds} completed, ${printingItem.total_builds - printingItem.completed_builds} remaining">${progressBars}</div>`;
+        }
+        
+        printingInfoEl.innerHTML = `
+          <div class="space-y-3 mb-3">
+            <div class="${bgClass} rounded-lg p-3">
+              ${isLikely ? '<p class="text-[10px] text-amber-400 font-semibold mb-1 uppercase tracking-wide">📋 Likely Printing</p>' : ''}
+              <div class="flex items-start justify-between gap-2 mb-2">
+                <div class="min-w-0 flex-1">
+                  <p class="font-bold ${isLikely ? 'text-amber-100' : 'text-emerald-100'} text-base truncate">${printingItem.print_name || printingItem.short_id}</p>
+                  <p class="text-sm ${isLikely ? 'text-amber-200/80' : 'text-emerald-200/80'}">By: ${printingItem.requester_first}</p>
+                </div>
+                <span class="flex-shrink-0 px-2 py-1 rounded-lg text-xs font-bold ${isLikely ? 'bg-amber-500/30 border border-amber-400/50 text-amber-200' : 'bg-emerald-500/30 border border-emerald-400/50 text-emerald-200'}">#${printingItem.queue_pos}</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2 text-xs">
+                <span class="px-2 py-0.5 rounded bg-zinc-800/80 text-zinc-300">${printingItem.material}</span>
+                ${buildsHtml}
+                ${printingItem.smart_eta_display ? `<span class="ml-auto ${isLikely ? 'text-amber-300' : 'text-emerald-300'} font-medium">ETA: ${printingItem.smart_eta_display}</span>` : ''}
+              </div>
+            </div>
+            
+            <!-- File and progress -->
+            <div class="text-xs text-zinc-400 space-y-2">
+              ${status.current_file ? `<p class="truncate text-zinc-500">📄 ${status.current_file}</p>` : ''}
+              ${status.progress !== null && status.progress !== undefined ? `
+              <div class="flex items-center gap-2">
+                <div class="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                  <div class="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all" style="width: ${status.progress}%"></div>
+                </div>
+                <span class="text-emerald-300 font-semibold min-w-[3rem] text-right">${status.progress}%</span>
+              </div>
+              ` : ''}
+              ${status.current_layer !== null && status.current_layer !== undefined ? `<p>Layer: <span class="text-blue-300 font-medium">${status.current_layer}/${status.total_layers || '?'}</span></p>` : ''}
+            </div>
+          </div>
+        `;
+        printingInfoEl.classList.remove('hidden');
+      } else {
+        printingInfoEl.innerHTML = '';
+        printingInfoEl.classList.add('hidden');
+      }
     }
   }
   
@@ -685,9 +738,11 @@
       return;
     }
     
-    // Mobile cards
-    mobileEl.innerHTML = activeQueue.map(r => `
-      <div class="bg-zinc-900/60 border ${r.is_mine ? 'border-indigo-500/50 bg-indigo-900/20' : r.status === 'PRINTING' ? 'border-emerald-500/50 bg-emerald-900/10' : 'border-zinc-800'} rounded-xl p-4 card-interactive">
+    // Mobile cards - treat IN_PROGRESS same as PRINTING
+    mobileEl.innerHTML = activeQueue.map(r => {
+      const isPrinting = r.status === 'PRINTING' || r.status === 'IN_PROGRESS';
+      return `
+      <div class="bg-zinc-900/60 border ${r.is_mine ? 'border-indigo-500/50 bg-indigo-900/20' : isPrinting ? 'border-emerald-500/50 bg-emerald-900/10' : 'border-zinc-800'} rounded-xl p-4 card-interactive">
         <div class="flex items-start justify-between mb-2">
           <div class="flex items-center gap-2">
             <span class="text-lg font-bold text-zinc-500">#${r.queue_pos}</span>
@@ -697,7 +752,7 @@
             </div>
           </div>
           <span class="px-2 py-1 rounded-lg text-xs font-medium ${getStatusClass(r.status)}">
-            ${r.status === 'NEEDS_INFO' ? 'WAITING' : r.status}
+            ${r.status === 'NEEDS_INFO' ? 'WAITING' : (r.status === 'IN_PROGRESS' ? 'PRINTING' : r.status)}
           </span>
         </div>
         <div class="flex items-center gap-3 text-xs text-zinc-400">
@@ -707,7 +762,7 @@
           <span>•</span>
           <span>${r.colors}</span>
         </div>
-        ${r.status === 'PRINTING' && r.printer_progress !== null ? `
+        ${isPrinting && r.printer_progress !== null ? `
         <div class="mt-2 flex items-center gap-2">
           <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
             <div class="h-full bg-emerald-500" style="width: ${r.printer_progress}%"></div>
@@ -715,27 +770,40 @@
           <span class="text-xs text-emerald-300">${r.printer_progress}%</span>
         </div>
         ` : ''}
+        ${r.total_builds > 1 ? `
+        <div class="mt-2 flex items-center gap-2 text-xs">
+          <span class="text-amber-300">${r.completed_builds}/${r.total_builds} builds</span>
+          <div class="flex gap-0.5 flex-1">
+            ${Array(r.total_builds).fill(0).map((_, i) => 
+              `<div class="flex-1 h-1 rounded-full ${i < r.completed_builds ? 'bg-emerald-500' : (i === r.completed_builds ? 'bg-amber-500' : 'bg-zinc-700')}"></div>`
+            ).join('')}
+          </div>
+        </div>
+        ` : ''}
       </div>
-    `).join('');
+    `;}).join('');
     
-    // Desktop table
-    desktopEl.querySelector('tbody').innerHTML = activeQueue.map(r => `
-      <tr class="border-b border-zinc-800 ${r.is_mine ? 'bg-indigo-900/20' : r.status === 'PRINTING' ? 'bg-emerald-900/10' : 'hover:bg-zinc-950/40'} transition">
+    // Desktop table - treat IN_PROGRESS same as PRINTING
+    desktopEl.querySelector('tbody').innerHTML = activeQueue.map(r => {
+      const isPrinting = r.status === 'PRINTING' || r.status === 'IN_PROGRESS';
+      return `
+      <tr class="border-b border-zinc-800 ${r.is_mine ? 'bg-indigo-900/20' : isPrinting ? 'bg-emerald-900/10' : 'hover:bg-zinc-950/40'} transition">
         <td class="p-3 text-zinc-500 font-semibold">${r.queue_pos}</td>
         <td class="p-3">
           <span class="font-medium text-zinc-200">${r.print_name || r.short_id}</span>
           ${r.print_name ? `<span class="block text-xs text-zinc-500 font-mono">${r.short_id}</span>` : ''}
+          ${r.total_builds > 1 ? `<span class="inline-block ml-1 px-1.5 py-0.5 text-[10px] rounded bg-amber-700/50 text-amber-200">${r.completed_builds}/${r.total_builds} builds</span>` : ''}
         </td>
         <td class="p-3 text-zinc-400">${r.requester_first}</td>
         <td class="p-3 text-zinc-400">${r.printer}</td>
         <td class="p-3 text-zinc-400">${r.material}</td>
         <td class="p-3">
           <span class="px-2 py-1 rounded-lg text-xs font-medium ${getStatusClass(r.status)}">
-            ${r.status === 'NEEDS_INFO' ? 'WAITING' : r.status}
+            ${r.status === 'NEEDS_INFO' ? 'WAITING' : (r.status === 'IN_PROGRESS' ? 'PRINTING' : r.status)}
           </span>
         </td>
         <td class="p-3">
-          ${r.status === 'PRINTING' && r.printer_progress !== null ? `
+          ${isPrinting && r.printer_progress !== null ? `
           <div class="flex items-center gap-2">
             <div class="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
               <div class="h-full bg-emerald-500" style="width: ${r.printer_progress}%"></div>
@@ -745,7 +813,7 @@
           ` : '<span class="text-xs text-emerald-300">Up next!</span>'}
         </td>
       </tr>
-    `).join('');
+    `;}).join('');
     
     // Update done items
     const doneEl = document.getElementById('done-items');
@@ -772,7 +840,9 @@
   
   function getStatusClass(status) {
     switch(status) {
-      case 'PRINTING': return 'bg-amber-500/20 border border-amber-500/50 text-amber-300';
+      case 'PRINTING': 
+      case 'IN_PROGRESS':
+        return 'bg-amber-500/20 border border-amber-500/50 text-amber-300';
       case 'APPROVED': return 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-300';
       case 'NEEDS_INFO': return 'bg-orange-500/20 border border-orange-500/50 text-orange-300';
       case 'NEW': return 'bg-blue-500/20 border border-blue-500/50 text-blue-300';
