@@ -21,8 +21,13 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.22"
+APP_VERSION = "1.8.24"
 # Changelog:
+# 1.8.24 - Admin PWA tab: shows Admin in bottom nav when logged in, My Prints pagination with collapsible Past Prints
+# 1.8.23 - Admin dashboard pagination: "show more" for long lists, collapsible Recently Closed section
+# 1.8.22 - Admin request page UX: cleaner build configuration section, inline quick actions, collapsible edit forms
+# 1.8.21 - Flexible build reordering: allow reordering queued builds even while other builds are printing
+# 1.8.20 - Multi-build display fixes: "Build X/Y" format, accurate printing count, progress bar fix for current build
 # 1.8.19 - Fix multi-build printer display: show builds printing on both printers simultaneously, fix auto-refresh losing printer cards
 # 1.8.18 - Fix printer connection conflicts: added polling pause on print start, connection locking, retry logic, admin polling control
 # 1.8.17 - User 3D model viewer (STL/OBJ/3MF support), enhanced build details, file download from My Request page
@@ -10064,6 +10069,16 @@ def get_slicer_accuracy_api(printer: str = None, material: str = None, _=Depends
 def get_version():
     """Get application version"""
     return {"version": APP_VERSION, "title": APP_TITLE}
+
+
+@app.get("/api/admin/check")
+def check_admin_status(request: Request):
+    """Check if the current user is authenticated as admin.
+    Returns {is_admin: true/false} - used by PWA to show admin tab.
+    """
+    pw = request.cookies.get("admin_pw", "")
+    is_admin = bool(pw and ADMIN_PASSWORD and pw == ADMIN_PASSWORD)
+    return {"is_admin": is_admin}
 
 
 # ─────────────────────────── PUSH NOTIFICATION API ───────────────────────────

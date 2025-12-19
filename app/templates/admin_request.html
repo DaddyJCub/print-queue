@@ -108,62 +108,54 @@
       <!-- Main Content (Left) -->
       <div class="lg:col-span-2 space-y-6">
 
-        <!-- Requester Info Card -->
+        <!-- Request Overview Card (Combined Requester + Project) -->
         <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
-          <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-            <span>👤 Requester Information</span>
-          </h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Requester Row -->
+          <div class="flex flex-wrap items-center gap-x-6 gap-y-2 pb-4 border-b border-zinc-800 mb-4">
+            <div class="flex items-center gap-2">
+              <span class="text-zinc-500">👤</span>
+              <span class="font-medium">{{ req["requester_name"] }}</span>
+            </div>
+            <a href="mailto:{{ req['requester_email'] }}" class="text-indigo-400 hover:underline text-sm">{{ req["requester_email"] }}</a>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-800 text-xs">
+              P{{ req["priority"] or 3 }}{% if (req["priority"] or 3) == 1 %} ⚡{% endif %}
+            </span>
+          </div>
+          
+          <!-- Project Grid -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div>
-              <p class="text-xs text-zinc-400 uppercase tracking-wide mb-1">Name</p>
-              <p class="text-base font-medium">{{ req["requester_name"] }}</p>
+              <p class="text-xs text-zinc-500 mb-0.5">Printer</p>
+              <p class="text-sm font-medium">{{ req["printer"] }}</p>
             </div>
             <div>
-              <p class="text-xs text-zinc-400 uppercase tracking-wide mb-1">Email</p>
-              <p class="text-base font-medium"><a href="mailto:{{ req['requester_email'] }}" class="text-indigo-400 hover:underline">{{ req["requester_email"] }}</a></p>
+              <p class="text-xs text-zinc-500 mb-0.5">Material</p>
+              <p class="text-sm font-medium">{{ req["material"] }}</p>
+            </div>
+            <div>
+              <p class="text-xs text-zinc-500 mb-0.5">Colors</p>
+              <p class="text-sm font-medium">{{ req["colors"] or "—" }}</p>
+            </div>
+            <div>
+              <p class="text-xs text-zinc-500 mb-0.5">Est. Time</p>
+              <p class="text-sm font-medium">
+                {% if req["print_time_minutes"] %}{{ (req["print_time_minutes"] // 60) }}h {{ (req["print_time_minutes"] % 60) }}m{% else %}—{% endif %}
+              </p>
             </div>
           </div>
-        </div>
-
-        <!-- Project Details Card -->
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
-          <h2 class="text-lg font-semibold mb-4">🖨 Project Details</h2>
-          {% if req["print_name"] %}
-            <div class="mb-4 pb-4 border-b border-zinc-700">
-              <p class="text-xs text-zinc-400 uppercase tracking-wide mb-1">Print Name</p>
-              <p class="text-xl font-bold text-zinc-100">{{ req["print_name"] }}</p>
-            </div>
-          {% endif %}
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <p class="text-xs text-zinc-400 uppercase tracking-wide mb-1">Printer</p>
-              <p class="text-base font-medium">{{ req["printer"] }}</p>
-            </div>
-            <div>
-              <p class="text-xs text-zinc-400 uppercase tracking-wide mb-1">Material</p>
-              <p class="text-base font-medium">{{ req["material"] }}</p>
-            </div>
-            <div>
-              <p class="text-xs text-zinc-400 uppercase tracking-wide mb-1">Colors</p>
-              <p class="text-base font-medium">{{ req["colors"] or "—" }}</p>
-            </div>
-            <div>
-              <p class="text-xs text-zinc-400 uppercase tracking-wide mb-1">Priority</p>
-              <span class="inline-block px-3 py-1 rounded-lg bg-zinc-800 text-sm font-medium">
-                P{{ req["priority"] or 3 }} {% if (req["priority"] or 3) == 1 %}⚡ URGENT{% endif %}
-              </span>
-            </div>
-          </div>
+          
           {% if req["link_url"] %}
-            <div class="pt-4 border-t border-zinc-800">
-              <p class="text-xs text-zinc-400 uppercase tracking-wide mb-1">Design Link</p>
-              <a href="{{ req['link_url'] }}" target="_blank" class="text-indigo-400 hover:underline break-all text-sm">{{ req["link_url"] }}</a>
+            <div class="mb-3">
+              <a href="{{ req['link_url'] }}" target="_blank" class="inline-flex items-center gap-1 text-indigo-400 hover:underline text-sm">
+                🔗 {{ req["link_url"][:50] }}{% if req["link_url"]|length > 50 %}...{% endif %}
+              </a>
             </div>
           {% endif %}
+          
           {% if req["notes"] %}
-            <div class="pt-4 border-t border-zinc-800">
-              <p class="text-xs text-zinc-400 uppercase tracking-wide mb-1">Requester Notes</p>
-              <p class="text-sm whitespace-pre-wrap">{{ req["notes"] }}</p>
+            <div class="p-3 bg-zinc-950/50 rounded-lg">
+              <p class="text-xs text-zinc-500 mb-1">Requester Notes</p>
+              <p class="text-sm text-zinc-300 whitespace-pre-wrap">{{ req["notes"] }}</p>
             </div>
           {% endif %}
         </div>
@@ -373,134 +365,102 @@
         </div>
         {% endif %}
 
-        <!-- Status Management Card -->
+        <!-- Admin Tools (Status, Print Time, Edit) -->
         <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
-          <h2 class="text-lg font-semibold mb-4">✓ Change Status</h2>
-          <form class="space-y-3" method="POST" action="/admin/request/{{ req['id'] }}/status">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <select name="to_status" class="rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-                {% for s in status_flow %}
-                  <option value="{{ s }}" {% if s == req["status"] %}selected{% endif %}>{{ s }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <textarea name="comment" placeholder="Optional comment or question for requester..."
-                      rows="2" class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"></textarea>
-            <button class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold">
-              Update Status + Notify
-            </button>
-          </form>
-        </div>
-
-        <!-- Print Time Card -->
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
-          <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-            <span>⏱ Print Time Estimate</span>
-            {% if req["slicer_estimate_minutes"] or req["print_time_minutes"] %}
-              <span class="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded-lg">
-                {% set display_mins = req["print_time_minutes"] or req["slicer_estimate_minutes"] or 0 %}
-                {{ (display_mins // 60) }}h {{ (display_mins % 60) }}m
-              </span>
-            {% endif %}
-          </h2>
+          <h2 class="text-lg font-semibold mb-4">⚙️ Admin Tools</h2>
           
-          <!-- Accuracy Info -->
-          {% if accuracy_info and accuracy_info.sample_count >= 2 %}
-            <div class="mb-4 p-3 rounded-lg {% if accuracy_info.factor > 1.1 %}bg-amber-500/10 border border-amber-500/30{% elif accuracy_info.factor < 0.9 %}bg-emerald-500/10 border border-emerald-500/30{% else %}bg-zinc-800/50 border border-zinc-700{% endif %}">
-              <div class="flex items-center gap-2 text-sm">
-                {% if accuracy_info.factor > 1.1 %}
-                  <span class="text-amber-400">📊</span>
-                  <span class="text-amber-300">{{ accuracy_info.message }}</span>
-                {% elif accuracy_info.factor < 0.9 %}
-                  <span class="text-emerald-400">📊</span>
-                  <span class="text-emerald-300">{{ accuracy_info.message }}</span>
-                {% else %}
-                  <span class="text-zinc-400">📊</span>
-                  <span class="text-zinc-300">{{ accuracy_info.message }}</span>
-                {% endif %}
+          <!-- Status Change - Compact -->
+          <div class="mb-4 pb-4 border-b border-zinc-800">
+            <form method="POST" action="/admin/request/{{ req['id'] }}/status" class="flex flex-wrap gap-2 items-end">
+              <div class="flex-1 min-w-[150px]">
+                <label class="text-xs text-zinc-400 block mb-1">Status</label>
+                <select name="to_status" class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-2 text-sm">
+                  {% for s in status_flow %}
+                    <option value="{{ s }}" {% if s == req["status"] %}selected{% endif %}>{{ s }}</option>
+                  {% endfor %}
+                </select>
               </div>
-              <p class="text-xs text-zinc-500 mt-1">Based on {{ accuracy_info.sample_count }} completed prints for this printer</p>
-            </div>
-          {% elif accuracy_info and accuracy_info.sample_count < 2 %}
-            <div class="mb-4 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700">
-              <p class="text-xs text-zinc-500">💡 After a few prints complete, we'll learn how accurate your slicer estimates are and auto-adjust future predictions.</p>
-            </div>
-          {% endif %}
+              <div class="flex-1 min-w-[200px]">
+                <label class="text-xs text-zinc-400 block mb-1">Comment (optional)</label>
+                <input type="text" name="comment" placeholder="Message for requester..."
+                       class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-2 text-sm" />
+              </div>
+              <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold whitespace-nowrap">
+                Update + Notify
+              </button>
+            </form>
+          </div>
           
-          <!-- Time Display -->
-          {% if req["slicer_estimate_minutes"] and req["print_time_minutes"] and req["slicer_estimate_minutes"] != req["print_time_minutes"] %}
-            <div class="grid grid-cols-2 gap-3 mb-4">
-              <div class="bg-zinc-950/50 rounded-lg p-3">
-                <p class="text-xs text-zinc-500 uppercase mb-1">Slicer Says</p>
-                <p class="text-lg font-semibold">{{ (req["slicer_estimate_minutes"] // 60) }}h {{ (req["slicer_estimate_minutes"] % 60) }}m</p>
+          <!-- Print Time - Compact -->
+          <details class="mb-4">
+            <summary class="text-sm text-zinc-300 cursor-pointer hover:text-zinc-100 flex items-center gap-2">
+              ⏱️ Print Time
+              {% if req["print_time_minutes"] %}
+                <span class="text-xs bg-zinc-700 px-2 py-0.5 rounded">{{ (req["print_time_minutes"] // 60) }}h {{ (req["print_time_minutes"] % 60) }}m</span>
+              {% endif %}
+            </summary>
+            <form method="POST" action="/admin/request/{{ req['id'] }}/print-time" class="mt-3 p-3 bg-zinc-800/30 rounded-lg">
+              <div class="flex flex-wrap gap-2 items-end">
+                <div>
+                  <label class="text-xs text-zinc-500 block mb-1">Hours</label>
+                  <input type="number" name="hours" min="0" max="999" value="{{ (req['slicer_estimate_minutes'] or req['print_time_minutes'] or 0) // 60 }}"
+                         class="w-16 rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm text-center" />
+                </div>
+                <div>
+                  <label class="text-xs text-zinc-500 block mb-1">Mins</label>
+                  <input type="number" name="minutes" min="0" max="59" value="{{ (req['slicer_estimate_minutes'] or req['print_time_minutes'] or 0) % 60 }}"
+                         class="w-16 rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm text-center" />
+                </div>
+                <div>
+                  <label class="text-xs text-zinc-500 block mb-1">Buffer</label>
+                  <input type="number" name="turnaround_minutes" min="0" max="1440" value="{{ req['turnaround_minutes'] or 30 }}"
+                         class="w-16 rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm text-center" />
+                </div>
+                <button class="rounded-lg bg-emerald-600 hover:bg-emerald-500 transition px-3 py-2 text-xs font-semibold">Save Time</button>
               </div>
-              <div class="bg-zinc-950/50 rounded-lg p-3 border border-emerald-500/30">
-                <p class="text-xs text-emerald-400 uppercase mb-1">Adjusted Estimate</p>
-                <p class="text-lg font-semibold text-emerald-300">{{ (req["print_time_minutes"] // 60) }}h {{ (req["print_time_minutes"] % 60) }}m</p>
-              </div>
-            </div>
-          {% endif %}
+              {% if accuracy_info and accuracy_info.sample_count >= 2 %}
+                <p class="text-xs text-zinc-500 mt-2">📊 {{ accuracy_info.message }}</p>
+              {% endif %}
+            </form>
+          </details>
           
-          <form class="space-y-3" method="POST" action="/admin/request/{{ req['id'] }}/print-time">
-            <p class="text-xs text-zinc-400 mb-3">Enter the time from your slicer. We'll auto-adjust based on historical accuracy.</p>
-            <div class="grid grid-cols-3 gap-3">
-              <div>
-                <label class="text-xs text-zinc-400 uppercase tracking-wide block mb-2">Slicer Hours</label>
-                <input type="number" name="hours" min="0" max="999" value="{{ (req['slicer_estimate_minutes'] or req['print_time_minutes'] or 0) // 60 }}"
-                       class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm" />
+          <!-- Edit Request - Collapsible -->
+          <details>
+            <summary class="text-sm text-zinc-300 cursor-pointer hover:text-zinc-100">📝 Edit Request Details</summary>
+            <form method="POST" action="/admin/request/{{ req['id'] }}/edit" class="mt-3 p-3 bg-zinc-800/30 rounded-lg space-y-2">
+              <input type="text" name="print_name" value="{{ req['print_name'] or '' }}" placeholder="Print Name"
+                     class="w-full rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm" />
+              <div class="grid grid-cols-2 gap-2">
+                <input type="text" name="requester_name" value="{{ req['requester_name'] }}" placeholder="Name"
+                       class="rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm" />
+                <input type="email" name="requester_email" value="{{ req['requester_email'] }}" placeholder="Email"
+                       class="rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm" />
               </div>
-              <div>
-                <label class="text-xs text-zinc-400 uppercase tracking-wide block mb-2">Slicer Minutes</label>
-                <input type="number" name="minutes" min="0" max="59" value="{{ (req['slicer_estimate_minutes'] or req['print_time_minutes'] or 0) % 60 }}"
-                       class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm" />
+              <div class="grid grid-cols-2 gap-2">
+                <select name="printer" class="rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm">
+                  {% for code, label in printers %}
+                    <option value="{{ code }}" {% if code == req["printer"] %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+                <select name="material" class="rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm">
+                  {% for code, label in materials %}
+                    <option value="{{ code }}" {% if code == req["material"] %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
               </div>
-              <div>
-                <label class="text-xs text-zinc-400 uppercase tracking-wide block mb-2">Turnaround (min)</label>
-                <input type="number" name="turnaround_minutes" min="0" max="1440" value="{{ req['turnaround_minutes'] or 30 }}"
-                       class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm" />
+              <div class="grid grid-cols-2 gap-2">
+                <input type="text" name="colors" value="{{ req['colors'] }}" placeholder="Colors"
+                       class="rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm" />
+                <input type="url" name="link_url" value="{{ req['link_url'] or '' }}" placeholder="Design URL"
+                       class="rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm" />
               </div>
-            </div>
-            <button class="w-full rounded-lg bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
-              Save Print Time
-            </button>
-          </form>
-        </div>
-
-        <!-- Edit Request Card -->
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
-          <h2 class="text-lg font-semibold mb-4">📝 Edit Request</h2>
-          <p class="text-xs text-zinc-400 mb-4">Changes here do NOT notify the requester</p>
-          <form class="space-y-3" method="POST" action="/admin/request/{{ req['id'] }}/edit">
-            <input type="text" name="print_name" value="{{ req['print_name'] or '' }}" placeholder="Print Name (e.g., Dragon Statue)"
-                   class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm" />
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input type="text" name="requester_name" value="{{ req['requester_name'] }}" placeholder="Name"
-                     class="rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm" />
-              <input type="email" name="requester_email" value="{{ req['requester_email'] }}" placeholder="Email"
-                     class="rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm" />
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <select name="printer" class="rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm">
-                {% for code, label in printers %}
-                  <option value="{{ code }}" {% if code == req["printer"] %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-              <select name="material" class="rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm">
-                {% for code, label in materials %}
-                  <option value="{{ code }}" {% if code == req["material"] %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <input type="text" name="colors" value="{{ req['colors'] }}" placeholder="Colors"
-                   class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm" />
-            <input type="url" name="link_url" value="{{ req['link_url'] or '' }}" placeholder="https://..."
-                   class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm" />
-            <textarea name="notes" rows="2" placeholder="Requester notes..." 
-                      class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm">{{ req["notes"] or "" }}</textarea>
-            <button class="w-full rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm font-semibold">
-              Save Changes
-            </button>
-          </form>
+              <textarea name="notes" rows="2" placeholder="Requester notes..." 
+                        class="w-full rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm">{{ req["notes"] or "" }}</textarea>
+              <button class="w-full rounded-lg bg-zinc-700 hover:bg-zinc-600 transition px-3 py-2 text-xs font-semibold">
+                Save Changes
+              </button>
+            </form>
+          </details>
         </div>
 
         <!-- Build Configuration -->
@@ -775,35 +735,32 @@
           </div>
         </div>
 
-        <!-- Work Notes (Admin Private) -->
+        <!-- Notes Card (Combined Work + Special) -->
         <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-semibold">🔒 Work Notes (Private)</h2>
-            <span class="text-xs text-zinc-500">Never shown publicly</span>
-          </div>
-          <form method="POST" action="/admin/request/{{ req['id'] }}/admin-notes">
-            <textarea name="admin_notes" rows="3" 
-              placeholder="Slicer profile, slicing notes, special handling, issues, reprints..."
+          <h2 class="text-lg font-semibold mb-4">📝 Notes</h2>
+          
+          <!-- Work Notes (Private) -->
+          <form method="POST" action="/admin/request/{{ req['id'] }}/admin-notes" class="mb-4">
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-sm text-zinc-300 font-medium">🔒 Work Notes</label>
+              <span class="text-xs text-zinc-500">Private • Admin only</span>
+            </div>
+            <textarea name="admin_notes" rows="2" 
+              placeholder="Slicer profile, slicing notes, special handling, reprints..."
               class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm">{{ req["admin_notes"] or "" }}</textarea>
-            <button class="mt-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm font-semibold">
-              Save Work Notes
-            </button>
+            <button class="mt-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-3 py-1.5 text-xs font-semibold">Save</button>
           </form>
-        </div>
-
-        <!-- Special Notes (Public) -->
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-semibold">📢 Special Notes (Public)</h2>
-            <span class="text-xs text-zinc-500">Shown on public queue if filled</span>
-          </div>
+          
+          <!-- Special Notes (Public) -->
           <form method="POST" action="/admin/request/{{ req['id'] }}/special-notes">
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-sm text-zinc-300 font-medium">📢 Special Notes</label>
+              <span class="text-xs text-zinc-500">Public • Shown on queue</span>
+            </div>
             <textarea name="special_notes" rows="2"
-              placeholder="e.g., 'Waiting on filament delivery' or 'Needs test fit before printing'"
+              placeholder="e.g., 'Waiting on filament delivery' or 'Needs test fit'"
               class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm">{{ req["special_notes"] or "" }}</textarea>
-            <button class="mt-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm font-semibold">
-              Save Special Notes
-            </button>
+            <button class="mt-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-3 py-1.5 text-xs font-semibold">Save</button>
           </form>
         </div>
 

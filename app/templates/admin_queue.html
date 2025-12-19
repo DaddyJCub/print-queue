@@ -649,7 +649,7 @@
 
     <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
 
-      <!-- NEW REQUESTS -->
+      <!-- NEW REQUESTS - Collapsible cards -->
       <section id="new-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
         <div class="flex items-center justify-between">
           <div>
@@ -663,7 +663,7 @@
                 <span class="text-xs text-zinc-500">No new requests</span>
               {% endif %}
             </div>
-            <p class="text-xs text-zinc-500 mt-1">Approve + ask question is the main workflow here.</p>
+            <p class="text-xs text-zinc-500 mt-1">Tap a request to expand actions.</p>
           </div>
           {% if new_reqs|length > 0 %}
             <label class="flex items-center gap-2 text-xs cursor-pointer">
@@ -678,101 +678,134 @@
             🎉 Nothing new right now.
           </div>
         {% else %}
-          <div class="mt-4 space-y-3">
-            {% for r in new_reqs %}
-              <div class="bg-zinc-950/60 border {% if r['status'] == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-2xl p-4">
-                <div class="flex items-start justify-between gap-3">
-                  <div class="flex items-start gap-3 flex-1">
-                    <input type="checkbox" class="mt-1" data-request-id value="{{ r['id'] }}" 
+          <div class="mt-4 space-y-2" id="new-list">
+            {% for r in new_reqs[:3] %}
+              <details class="request-item group bg-zinc-950/60 border {% if r['status'] == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-xl overflow-hidden">
+                <summary class="p-3 cursor-pointer hover:bg-zinc-900/40 list-none">
+                  <div class="flex items-center gap-3">
+                    <input type="checkbox" data-request-id value="{{ r['id'] }}" onclick="event.stopPropagation()"
                            onchange="toggleRequestId(this.value); updateBatchUI('new-section')" />
-                    <a class="hover:underline" href="/admin/request/{{ r['id'] }}">
-                      <div class="font-semibold flex items-center gap-2">
-                        {{ r["print_name"] or 'Untitled Print' }}
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2">
+                        <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
                         {% if r["unread_replies"] and r["unread_replies"] > 0 %}
-                          <span class="px-2 py-0.5 bg-red-600 text-white text-xs rounded-full animate-pulse">{{ r["unread_replies"] }} new</span>
+                          <span class="px-1.5 py-0.5 bg-red-600 text-white text-xs rounded-full animate-pulse">{{ r["unread_replies"] }}</span>
                         {% endif %}
                       </div>
                       <div class="text-xs text-zinc-500">{{ r["id"][:8] }} • {{ r["requester_name"] }}</div>
-                      <div class="text-xs text-zinc-400 mt-1">
-                        {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                      {{ prio_badge(r["priority"]) }}
+                      {{ badge(r["status"]) }}
+                      <svg class="w-4 h-4 text-zinc-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                      </svg>
+                    </div>
+                  </div>
+                </summary>
+                <div class="px-3 pb-3 border-t border-zinc-800/50">
+                  <div class="pt-3 text-xs text-zinc-400">
+                    {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
+                  </div>
+                  <div class="mt-2 flex flex-wrap gap-2 items-center">
+                    {% if r["file_count"] and r["file_count"] > 0 %}
+                      <button type="button" onclick="showFilesModal('{{ r['id'] }}', '{{ r['file_names']|default('')|e }}')"
+                              class="text-xs text-emerald-300 bg-emerald-900/20 border border-emerald-800 px-2 py-1 rounded-lg hover:bg-emerald-900/40">
+                        📁 {{ r["file_count"] }} file{% if r["file_count"] > 1 %}s{% endif %}
+                      </button>
+                    {% endif %}
+                    {% if r["link_url"] %}
+                      <a class="text-xs text-indigo-300 bg-indigo-900/20 border border-indigo-800 px-2 py-1 rounded-lg hover:bg-indigo-900/40" href="{{ r['link_url'] }}" target="_blank">🔗 Link</a>
+                    {% endif %}
+                    {% if r["special_notes"] %}
+                      <span class="text-xs text-amber-200 bg-amber-900/20 border border-amber-800 px-2 py-1 rounded-lg">📝 Notes</span>
+                    {% endif %}
+                    <a href="/admin/request/{{ r['id'] }}" class="text-xs text-zinc-400 hover:text-white">View details →</a>
+                  </div>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <form method="POST" action="/admin/request/{{ r['id'] }}/status" class="flex-1 flex gap-1">
+                      <input type="hidden" name="to_status" value="APPROVED" />
+                      <input name="comment" placeholder="Question (optional)" class="flex-1 min-w-0 rounded-lg bg-zinc-950 border border-zinc-800 px-2 py-1.5 text-xs" />
+                      <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-1.5 text-xs font-semibold whitespace-nowrap">Approve</button>
+                    </form>
+                  </div>
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <form method="POST" action="/admin/request/{{ r['id'] }}/status" class="flex gap-1">
+                      <input type="hidden" name="to_status" value="NEEDS_INFO" />
+                      <input name="comment" placeholder="What info?" class="w-24 rounded-lg bg-zinc-950 border border-orange-800/50 px-2 py-1.5 text-xs" />
+                      <button class="text-xs px-2 py-1.5 rounded-lg bg-orange-900/20 border border-orange-800 hover:bg-orange-900/40 text-orange-200">Need Info</button>
+                    </form>
+                    <form method="POST" action="/admin/request/{{ r['id'] }}/status">
+                      <input type="hidden" name="to_status" value="REJECTED" />
+                      <input type="hidden" name="comment" value="Rejected" />
+                      <button class="text-xs px-2 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:bg-zinc-900">Reject</button>
+                    </form>
+                  </div>
+                </div>
+              </details>
+            {% endfor %}
+            {% for r in new_reqs[3:] %}
+              <details class="request-item hidden group bg-zinc-950/60 border {% if r['status'] == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-xl overflow-hidden">
+                <summary class="p-3 cursor-pointer hover:bg-zinc-900/40 list-none">
+                  <div class="flex items-center gap-3">
+                    <input type="checkbox" data-request-id value="{{ r['id'] }}" onclick="event.stopPropagation()"
+                           onchange="toggleRequestId(this.value); updateBatchUI('new-section')" />
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2">
+                        <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
+                        {% if r["unread_replies"] and r["unread_replies"] > 0 %}
+                          <span class="px-1.5 py-0.5 bg-red-600 text-white text-xs rounded-full animate-pulse">{{ r["unread_replies"] }}</span>
+                        {% endif %}
                       </div>
-                    </a>
+                      <div class="text-xs text-zinc-500">{{ r["id"][:8] }} • {{ r["requester_name"] }}</div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                      {{ prio_badge(r["priority"]) }}
+                      {{ badge(r["status"]) }}
+                      <svg class="w-4 h-4 text-zinc-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                      </svg>
+                    </div>
                   </div>
-                  <div class="flex items-center gap-2">
-                    {{ prio_badge(r["priority"]) }}
-                    {{ badge(r["status"]) }}
+                </summary>
+                <div class="px-3 pb-3 border-t border-zinc-800/50">
+                  <div class="pt-3 text-xs text-zinc-400">{{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}</div>
+                  <div class="mt-2 flex flex-wrap gap-2 items-center">
+                    {% if r["file_count"] and r["file_count"] > 0 %}
+                      <button type="button" onclick="showFilesModal('{{ r['id'] }}', '{{ r['file_names']|default('')|e }}')"
+                              class="text-xs text-emerald-300 bg-emerald-900/20 border border-emerald-800 px-2 py-1 rounded-lg hover:bg-emerald-900/40">📁 {{ r["file_count"] }}</button>
+                    {% endif %}
+                    <a href="/admin/request/{{ r['id'] }}" class="text-xs text-zinc-400 hover:text-white">View details →</a>
+                  </div>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <form method="POST" action="/admin/request/{{ r['id'] }}/status" class="flex-1 flex gap-1">
+                      <input type="hidden" name="to_status" value="APPROVED" />
+                      <input name="comment" placeholder="Question (optional)" class="flex-1 min-w-0 rounded-lg bg-zinc-950 border border-zinc-800 px-2 py-1.5 text-xs" />
+                      <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-1.5 text-xs font-semibold whitespace-nowrap">Approve</button>
+                    </form>
+                  </div>
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <form method="POST" action="/admin/request/{{ r['id'] }}/status">
+                      <input type="hidden" name="to_status" value="NEEDS_INFO" />
+                      <input type="hidden" name="comment" value="Needs more info" />
+                      <button class="text-xs px-2 py-1.5 rounded-lg bg-orange-900/20 border border-orange-800 hover:bg-orange-900/40 text-orange-200">Need Info</button>
+                    </form>
+                    <form method="POST" action="/admin/request/{{ r['id'] }}/status">
+                      <input type="hidden" name="to_status" value="REJECTED" />
+                      <input type="hidden" name="comment" value="Rejected" />
+                      <button class="text-xs px-2 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:bg-zinc-900">Reject</button>
+                    </form>
                   </div>
                 </div>
-
-                <div class="mt-3 flex flex-wrap gap-2 items-center">
-                  {% if r["file_count"] and r["file_count"] > 0 %}
-                    <button type="button" onclick="showFilesModal('{{ r['id'] }}', '{{ r['file_names']|default('')|e }}')"
-                            class="text-xs text-emerald-300 bg-emerald-900/20 border border-emerald-800 px-2 py-1 rounded-lg hover:bg-emerald-900/40 cursor-pointer">
-                      📁 {{ r["file_count"] }} file{% if r["file_count"] > 1 %}s{% endif %}
-                    </button>
-                  {% endif %}
-                  {% if r["link_url"] %}
-                    <a class="text-xs text-indigo-300 bg-indigo-900/20 border border-indigo-800 px-2 py-1 rounded-lg hover:bg-indigo-900/40" href="{{ r['link_url'] }}" target="_blank">🔗 Link</a>
-                  {% endif %}
-                  {% if r["special_notes"] %}
-                    <span class="text-xs text-amber-200 bg-amber-900/20 border border-amber-800 px-2 py-1 rounded-lg">📝 Notes</span>
-                  {% endif %}
-                </div>
-
-                <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-2">
-                  <!-- Approve + ask question -->
-                  <form method="POST" action="/admin/request/{{ r['id'] }}/status" class="md:col-span-2 flex gap-2">
-                    <input type="hidden" name="to_status" value="APPROVED" />
-                    <input name="comment"
-                           placeholder="Question for requester (optional)"
-                           class="flex-1 rounded-xl bg-zinc-950 border border-zinc-800 p-2 text-sm" />
-                    <button class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-3 text-sm font-semibold">
-                      Approve
-                    </button>
-                  </form>
-
-                  <!-- Priority -->
-                  <form method="POST" action="/admin/request/{{ r['id'] }}/priority" class="flex gap-2">
-                    <select name="priority" class="rounded-xl bg-zinc-950 border border-zinc-800 p-2 text-sm">
-                      {% for p in [1,2,3,4,5] %}
-                        <option value="{{ p }}" {% if (r["priority"] or 3) == p %}selected{% endif %}>P{{ p }}</option>
-                      {% endfor %}
-                    </select>
-                    <button class="rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-3 text-sm">
-                      Set
-                    </button>
-                  </form>
-                </div>
-
-                <div class="mt-3 flex flex-wrap gap-2">
-                  <form method="POST" action="/admin/request/{{ r['id'] }}/status" class="flex gap-1">
-                    <input type="hidden" name="to_status" value="NEEDS_INFO" />
-                    <input name="comment" placeholder="What info needed?" 
-                           class="w-32 sm:w-40 rounded-xl bg-zinc-950 border border-orange-800/50 p-2 text-xs" />
-                    <button class="text-xs px-2 sm:px-3 py-2 rounded-xl bg-orange-900/20 border border-orange-800 hover:bg-orange-900/40 text-orange-200 whitespace-nowrap">
-                      Need Info
-                    </button>
-                  </form>
-                  <form method="POST" action="/admin/request/{{ r['id'] }}/status">
-                    <input type="hidden" name="to_status" value="REJECTED" />
-                    <input type="hidden" name="comment" value="Rejected" />
-                    <button class="text-xs px-2 sm:px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 hover:bg-zinc-900 whitespace-nowrap">
-                      Reject
-                    </button>
-                  </form>
-                  <form method="POST" action="/admin/request/{{ r['id'] }}/status">
-                    <input type="hidden" name="to_status" value="CANCELLED" />
-                    <input type="hidden" name="comment" value="Cancelled" />
-                    <button class="text-xs px-2 sm:px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 hover:bg-zinc-900 whitespace-nowrap">
-                      Cancel
-                    </button>
-                  </form>
-                </div>
-
-              </div>
+              </details>
             {% endfor %}
           </div>
-          <div class="mt-4">
+          {% if new_reqs|length > 3 %}
+          <button onclick="toggleShowMore('new-list', this)" class="mt-3 w-full text-center text-xs text-indigo-400 hover:text-indigo-300 py-2 rounded-lg hover:bg-zinc-800/50 transition">
+            Show {{ new_reqs|length - 3 }} more ▼
+          </button>
+          {% endif %}
+          <div class="mt-3">
             <button onclick="showBatchEditModal()" class="w-full rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
               ✏ Batch Edit Selected
             </button>
@@ -811,9 +844,9 @@
             No active prints right now.
           </div>
         {% else %}
-          <div class="mt-4 space-y-2">
-            {% for r in printing %}
-              <div class="bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
+          <div class="mt-4 space-y-2" id="printing-list">
+            {% for r in printing[:3] %}
+              <div class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
                 <div class="flex items-center gap-3">
                   <input type="checkbox" data-request-id value="{{ r['id'] }}" 
                          onchange="toggleRequestId(this.value); updateBatchUI('printing-section')" />
@@ -862,7 +895,55 @@
                 </div>
               </div>
             {% endfor %}
+            {% for r in printing[3:] %}
+              <div class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
+                <div class="flex items-center gap-3">
+                  <input type="checkbox" data-request-id value="{{ r['id'] }}" 
+                         onchange="toggleRequestId(this.value); updateBatchUI('printing-section')" />
+                  <a class="hover:underline flex-1 min-w-0" href="/admin/request/{{ r['id'] }}">
+                    <div class="flex items-center gap-2">
+                      <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
+                      <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
+                      {% if r.total_builds and r.total_builds > 1 %}
+                        <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                          {{ r.completed_builds or 0 }}/{{ r.total_builds }} builds
+                        </span>
+                      {% endif %}
+                    </div>
+                    <div class="text-xs text-zinc-400 mt-0.5 truncate">
+                      {{ r.get("active_printer") or r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }}
+                    </div>
+                    {% if r.get("printer_progress") is not none %}
+                      <div class="flex items-center gap-2 mt-1.5">
+                        <div class="w-20 bg-zinc-800 rounded-full h-1.5">
+                          <div class="bg-emerald-500 h-1.5 rounded-full" style="width: {{ r.printer_progress }}%"></div>
+                        </div>
+                        <span class="text-xs font-semibold text-emerald-300">{{ r.printer_progress }}%</span>
+                      </div>
+                    {% endif %}
+                  </a>
+                  <div class="flex items-center gap-2 shrink-0">
+                    {{ prio_badge(r["priority"]) }}
+                    {{ badge(r["status"]) }}
+                  </div>
+                </div>
+                <div class="mt-2">
+                  <form method="POST" action="/admin/request/{{ r['id'] }}/status">
+                    <input type="hidden" name="to_status" value="DONE" />
+                    <input type="hidden" name="comment" value="Print completed" />
+                    <button class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-1.5 text-xs font-semibold">
+                      ✓ Mark Done + notify
+                    </button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
           </div>
+          {% if printing|length > 3 %}
+          <button onclick="toggleShowMore('printing-list', this)" class="mt-3 w-full text-center text-xs text-indigo-400 hover:text-indigo-300 py-2 rounded-lg hover:bg-zinc-800/50 transition">
+            Show {{ printing|length - 3 }} more ▼
+          </button>
+          {% endif %}
           <div class="mt-3">
             <button onclick="showBatchEditModal()" class="w-full rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
               ✏ Batch Edit Selected
@@ -897,9 +978,9 @@
             Nothing approved yet.
           </div>
         {% else %}
-          <div class="mt-4 space-y-2">
-            {% for r in queued %}
-              <div class="bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
+          <div class="mt-4 space-y-2" id="approved-list">
+            {% for r in queued[:3] %}
+              <div class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
                 <div class="flex items-center gap-3">
                   <input type="checkbox" data-request-id value="{{ r['id'] }}" 
                          onchange="toggleRequestId(this.value); updateBatchUI('approved-section')" />
@@ -945,7 +1026,47 @@
                 </div>
               </div>
             {% endfor %}
+            {% for r in queued[3:] %}
+              <div class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
+                <div class="flex items-center gap-3">
+                  <input type="checkbox" data-request-id value="{{ r['id'] }}" 
+                         onchange="toggleRequestId(this.value); updateBatchUI('approved-section')" />
+                  <a class="hover:underline flex-1 min-w-0" href="/admin/request/{{ r['id'] }}">
+                    <div class="flex items-center gap-2">
+                      <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
+                      <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
+                    </div>
+                    <div class="text-xs text-zinc-400 mt-0.5 truncate">
+                      {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }}
+                    </div>
+                  </a>
+                  <div class="flex items-center gap-2 shrink-0">
+                    {{ prio_badge(r["priority"]) }}
+                    {{ badge(r["status"]) }}
+                  </div>
+                </div>
+                <div class="mt-2 flex items-center gap-2">
+                  <button type="button" onclick="showPrintStartModal('{{ r['id'] }}', '{{ r['printer'] }}', '{{ r['material'] }}', '{{ r['colors'] }}', 'PRINTING')"
+                          class="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition px-3 py-1.5 text-xs font-semibold">
+                    🖨 Start Print
+                  </button>
+                  <form method="POST" action="/admin/request/{{ r['id'] }}/priority" class="flex gap-1">
+                    <select name="priority" class="rounded-lg bg-zinc-950 border border-zinc-800 px-2 py-1.5 text-xs">
+                      {% for p in [1,2,3,4,5] %}
+                        <option value="{{ p }}" {% if (r["priority"] or 3) == p %}selected{% endif %}>P{{ p }}</option>
+                      {% endfor %}
+                    </select>
+                    <button class="rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-2 py-1.5 text-xs">Set</button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
           </div>
+          {% if queued|length > 3 %}
+          <button onclick="toggleShowMore('approved-list', this)" class="mt-3 w-full text-center text-xs text-indigo-400 hover:text-indigo-300 py-2 rounded-lg hover:bg-zinc-800/50 transition">
+            Show {{ queued|length - 3 }} more ▼
+          </button>
+          {% endif %}
           <div class="mt-3">
             <button onclick="showBatchEditModal()" class="w-full rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
               ✏ Batch Edit Selected
@@ -980,9 +1101,9 @@
             Nothing waiting for pickup.
           </div>
         {% else %}
-          <div class="mt-4 space-y-2">
-            {% for r in done %}
-              <div class="bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
+          <div class="mt-4 space-y-2" id="done-list">
+            {% for r in done[:3] %}
+              <div class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
                 <div class="flex items-center gap-3">
                   <input type="checkbox" data-request-id value="{{ r['id'] }}" 
                          onchange="toggleRequestId(this.value); updateBatchUI('done-section')" />
@@ -1012,7 +1133,40 @@
                 </div>
               </div>
             {% endfor %}
+            {% for r in done[3:] %}
+              <div class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
+                <div class="flex items-center gap-3">
+                  <input type="checkbox" data-request-id value="{{ r['id'] }}" 
+                         onchange="toggleRequestId(this.value); updateBatchUI('done-section')" />
+                  <a class="hover:underline flex-1 min-w-0" href="/admin/request/{{ r['id'] }}">
+                    <div class="flex items-center gap-2">
+                      <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
+                      <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
+                    </div>
+                    <div class="text-xs text-zinc-400 mt-0.5 truncate">
+                      {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }}
+                    </div>
+                  </a>
+                  <div class="flex items-center gap-2 shrink-0">
+                    {{ prio_badge(r["priority"]) }}
+                    {{ badge(r["status"]) }}
+                  </div>
+                </div>
+                <div class="mt-2">
+                  <form method="POST" action="/admin/request/{{ r['id'] }}/status">
+                    <input type="hidden" name="to_status" value="PICKED_UP" />
+                    <input type="hidden" name="comment" value="Picked up" />
+                    <button class="w-full rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-3 py-1.5 text-xs">✓ Mark Picked Up</button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
           </div>
+          {% if done|length > 3 %}
+          <button onclick="toggleShowMore('done-list', this)" class="mt-3 w-full text-center text-xs text-indigo-400 hover:text-indigo-300 py-2 rounded-lg hover:bg-zinc-800/50 transition">
+            Show {{ done|length - 3 }} more ▼
+          </button>
+          {% endif %}
           <div class="mt-3">
             <button onclick="showBatchEditModal()" class="w-full rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
               ✏ Batch Edit Selected
@@ -1023,37 +1177,96 @@
 
     </div>
 
-    <!-- Closed / Recent -->
-    <div class="mt-8 bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5">
-      <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold">Recently closed</h2>
-        <span class="text-xs text-zinc-500">Picked up / rejected / cancelled</span>
-      </div>
-
-      {% if closed|length == 0 %}
-        <div class="mt-3 text-sm text-zinc-400">No closed items yet.</div>
-      {% else %}
-        <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-          {% for r in closed %}
-            <a href="/admin/request/{{ r['id'] }}" 
-               class="bg-zinc-950/60 border border-zinc-800 rounded-xl p-3 hover:bg-zinc-900/60 hover:border-zinc-700 transition group">
-              <div class="flex items-start justify-between gap-2">
-                <div class="min-w-0 flex-1">
-                  <div class="font-medium text-sm truncate group-hover:text-indigo-300">
-                    {{ r["print_name"] or ("Request " + r["id"][:8]) }}
-                  </div>
-                  <div class="text-xs text-zinc-500 mt-1 font-mono">{{ r["id"][:8] }}</div>
-                </div>
-                {{ badge(r["status"]) }}
-              </div>
-              <div class="mt-2 text-xs text-zinc-500 truncate">
-                {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }} {% if r["colors"] %}• {{ r["colors"] }}{% endif %}
-              </div>
-            </a>
-          {% endfor %}
+    <!-- Recently Closed - Collapsible -->
+    <details class="mt-8 bg-zinc-900/40 border border-zinc-800 rounded-2xl group">
+      <summary class="p-5 cursor-pointer hover:bg-zinc-900/60 rounded-2xl transition list-none">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <h2 class="text-lg font-semibold">📦 Recently Closed</h2>
+            {% if closed|length > 0 %}
+              <span class="px-2 py-1 rounded-lg bg-zinc-700/50 text-zinc-300 text-xs">{{ closed|length }}</span>
+            {% endif %}
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-xs text-zinc-500">Picked up / rejected / cancelled</span>
+            <svg class="w-5 h-5 text-zinc-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </div>
         </div>
-      {% endif %}
-    </div>
+      </summary>
+
+      <div class="px-5 pb-5">
+        {% if closed|length == 0 %}
+          <div class="text-sm text-zinc-400">No closed items yet.</div>
+        {% else %}
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" id="closed-list">
+            {% for r in closed[:4] %}
+              <a href="/admin/request/{{ r['id'] }}" 
+                 class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3 hover:bg-zinc-900/60 hover:border-zinc-700 transition group/card">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0 flex-1">
+                    <div class="font-medium text-sm truncate group-hover/card:text-indigo-300">
+                      {{ r["print_name"] or ("Request " + r["id"][:8]) }}
+                    </div>
+                    <div class="text-xs text-zinc-500 mt-1 font-mono">{{ r["id"][:8] }}</div>
+                  </div>
+                  {{ badge(r["status"]) }}
+                </div>
+                <div class="mt-2 text-xs text-zinc-500 truncate">
+                  {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }} {% if r["colors"] %}• {{ r["colors"] }}{% endif %}
+                </div>
+              </a>
+            {% endfor %}
+            {% for r in closed[4:] %}
+              <a href="/admin/request/{{ r['id'] }}" 
+                 class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3 hover:bg-zinc-900/60 hover:border-zinc-700 transition group/card">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0 flex-1">
+                    <div class="font-medium text-sm truncate group-hover/card:text-indigo-300">
+                      {{ r["print_name"] or ("Request " + r["id"][:8]) }}
+                    </div>
+                    <div class="text-xs text-zinc-500 mt-1 font-mono">{{ r["id"][:8] }}</div>
+                  </div>
+                  {{ badge(r["status"]) }}
+                </div>
+                <div class="mt-2 text-xs text-zinc-500 truncate">
+                  {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }}
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+          {% if closed|length > 4 %}
+          <button onclick="toggleShowMore('closed-list', this)" class="mt-4 w-full text-center text-xs text-indigo-400 hover:text-indigo-300 py-2 rounded-lg hover:bg-zinc-800/50 transition">
+            Show {{ closed|length - 4 }} more ▼
+          </button>
+          {% endif %}
+        {% endif %}
+      </div>
+    </details>
+
+    <!-- Show More Toggle Script -->
+    <script>
+      function toggleShowMore(listId, btn) {
+        const list = document.getElementById(listId);
+        const hiddenItems = list.querySelectorAll('.request-item.hidden');
+        const visibleItems = list.querySelectorAll('.request-item:not(.hidden)');
+        
+        if (hiddenItems.length > 0) {
+          // Show all
+          hiddenItems.forEach(item => item.classList.remove('hidden'));
+          btn.textContent = 'Show less ▲';
+        } else {
+          // Hide extras - 3 for lists, 4 for grid
+          const keepCount = listId === 'closed-list' ? 4 : 3;
+          const items = list.querySelectorAll('.request-item');
+          items.forEach((item, i) => {
+            if (i >= keepCount) item.classList.add('hidden');
+          });
+          btn.textContent = btn.textContent.replace('Show less ▲', `Show ${items.length - keepCount} more ▼`);
+        }
+      }
+    </script>
 
     <!-- Footer with version -->
     <div class="mt-8 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">

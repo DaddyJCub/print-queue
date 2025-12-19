@@ -55,12 +55,100 @@
     <!-- Changelog Entries -->
     <div class="space-y-6">
       
-      <!-- v1.8.17 -->
-      <div id="v1.8.17" class="bg-zinc-900/50 border border-indigo-500/50 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
+      <!-- v1.8.24 -->
+      <div id="v1.8.24" class="bg-zinc-900/50 border border-indigo-500/50 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
         <div class="flex items-center gap-3 mb-4 flex-wrap">
-          <a href="#v1.8.17" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v1.8.17</a>
+          <a href="#v1.8.24" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v1.8.24</a>
           <span class="text-zinc-400 text-sm">December 2024</span>
           <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50">Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Admin PWA Experience & My Prints Improvements</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Admin tab in PWA</strong> - When logged in as admin, a 5th "Admin" tab appears in the bottom navigation bar</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>My Prints pagination</strong> - All sections now show 3 items by default with "Show more" expansion</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Collapsible Past Prints</strong> - Picked up, rejected, and cancelled requests are now in a collapsible "Past Prints" section</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Better request organization</strong> - Separates "In Queue" (new/approved) from "Past Prints" (closed) for cleaner view</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.8.23 -->
+      <div id="v1.8.23" class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <a href="#v1.8.23" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v1.8.23</a>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+          <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Admin Dashboard Pagination & Organization</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Show more pagination</strong> - Printing, Waiting, and Pickup sections now show 3 items by default with "Show X more" button to expand</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Collapsible Recently Closed</strong> - Closed items section is now collapsible with a nice accordion animation</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Better organization</strong> - Recently Closed shows 8 items by default in a clean grid layout with expand option</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.8.22 -->
+      <div id="v1.8.22" class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <a href="#v1.8.22" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v1.8.22</a>
+          <span class="text-zinc-400 text-sm">December 2024</span>
+          <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">Admin UX Improvements & Multi-Build Fixes</h3>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Cleaner build configuration</strong> - Streamlined admin build list with status-colored cards and inline quick actions (Start, Done, Fail, Retry)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Collapsible edit forms</strong> - Build details and delete buttons now tucked under expandable "Edit build details" section</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Flexible build reordering</strong> - You can now reorder queued builds even while other builds are actively printing</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>"Build X/Y" format</strong> - Changed from "7/11 builds" to clearer "Build 8/11" format throughout the UI</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Accurate printing count</strong> - Stats now show actual number of builds currently printing across all printers</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Progress bar fix</strong> - Fixed issue where completed builds showed as printing in progress bars</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v1.8.17 -->
+      <div id="v1.8.17" class="bg-zinc-900/50 border border-zinc-700 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <a href="#v1.8.17" class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg hover:bg-zinc-600 transition">v1.8.17</a>
+          <span class="text-zinc-400 text-sm">December 2024</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-3">3D Model Viewer for Users & Enhanced Build Details</h3>
@@ -941,10 +1029,12 @@
 
     <!-- Footer -->
     <div class="mt-8 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
-      <div class="flex items-center gap-3">
-        <a href="/feedback?type=bug" class="hover:text-red-400 transition" title="Report a Bug">🐛</a>
-        <a href="/feedback?type=suggestion" class="hover:text-yellow-400 transition" title="Submit a Suggestion">💡</a>
-        <span class="text-indigo-400">v{{ version }}</span>
+      <div class="flex items-center justify-center gap-3">
+        <a href="/feedback?type=bug" class="hover:text-red-400 transition" title="Report a Bug">🐛 Report Bug</a>
+        <span class="text-zinc-600">•</span>
+        <a href="/feedback?type=suggestion" class="hover:text-yellow-400 transition" title="Submit a Suggestion">💡 Suggest Feature</a>
+        <span class="text-zinc-600">•</span>
+        <a href="/" class="hover:text-indigo-400 transition">Printellect v{{ version }}</a>
       </div>
     </div>
 
