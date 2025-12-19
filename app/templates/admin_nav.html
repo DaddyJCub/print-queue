@@ -193,69 +193,45 @@
   
   .admin-dropdown .dropdown-menu.show { display: block; }
   .admin-dropdown .dropdown-arrow.rotate { transform: rotate(180deg); }
-  
-  /* PWA Bottom Nav for Admin */
-  .admin-bottom-nav {
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
-  }
-  .admin-has-bottom-nav {
-    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
-  }
-  .admin-nav-item {
-    -webkit-tap-highlight-color: transparent;
-  }
-  .admin-nav-item:active {
-    transform: scale(0.95);
-  }
-  .admin-nav-item .nav-icon {
-    transition: all 0.15s;
-  }
-  .admin-nav-item.active {
-    color: #818cf8;
-  }
-  .admin-nav-item.active .nav-icon {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    color: white;
-  }
 </style>
 
 <!-- PWA Bottom Navigation for Admin Pages (Mobile only) -->
-<nav class="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-lg border-t border-zinc-800 sm:hidden admin-bottom-nav">
+<nav class="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-lg border-t border-zinc-800 sm:hidden" style="padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);">
   <div class="grid grid-cols-5 gap-1 px-2 pt-2">
-    <a href="/" class="admin-nav-item flex flex-col items-center py-2">
-      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center">
+    <a href="/" class="nav-item flex flex-col items-center py-2 tap-highlight">
+      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
         </svg>
       </div>
       <span class="text-xs mt-1">Submit</span>
     </a>
-    <a href="/queue" class="admin-nav-item flex flex-col items-center py-2">
-      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center">
+    <a href="/queue" class="nav-item flex flex-col items-center py-2 tap-highlight">
+      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
         </svg>
       </div>
       <span class="text-xs mt-1">Queue</span>
     </a>
-    <a href="/store" class="admin-nav-item flex flex-col items-center py-2">
-      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center">
+    <a href="/store" class="nav-item flex flex-col items-center py-2 tap-highlight">
+      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
         </svg>
       </div>
       <span class="text-xs mt-1">Store</span>
     </a>
-    <a href="/my-requests" id="admin-my-requests-nav" class="admin-nav-item flex flex-col items-center py-2">
-      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center">
+    <a href="/my-requests" id="admin-my-requests-nav" class="nav-item flex flex-col items-center py-2 tap-highlight">
+      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
         </svg>
       </div>
       <span class="text-xs mt-1">My Prints</span>
     </a>
-    <a href="/admin" class="admin-nav-item active flex flex-col items-center py-2">
-      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center">
+    <a href="/admin" class="nav-item active flex flex-col items-center py-2 tap-highlight">
+      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -265,6 +241,24 @@
     </a>
   </div>
 </nav>
+
+<style>
+  /* Bottom nav styling - must match pwa_base.html exactly */
+  .nav-item {
+    -webkit-tap-highlight-color: transparent;
+  }
+  .nav-item.active {
+    color: #818cf8;
+  }
+  .nav-item.active .nav-icon {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white;
+    transform: scale(1.05);
+  }
+  .tap-highlight:active {
+    transform: scale(0.97);
+  }
+</style>
 
 <script>
 function toggleDropdown(btn) {
@@ -306,8 +300,11 @@ if (savedToken) {
   if (navLink) navLink.href = '/my-requests/view?token=' + savedToken;
 }
 
-// Add padding to body for bottom nav on mobile
-if (window.innerWidth < 640) {
-  document.body.classList.add('admin-has-bottom-nav');
-}
+// Add bottom padding for mobile to account for fixed bottom nav
+(function() {
+  if (window.innerWidth < 640) {
+    // Add padding to body for the fixed bottom nav
+    document.body.style.paddingBottom = 'calc(80px + env(safe-area-inset-bottom, 0px))';
+  }
+})();
 </script>
