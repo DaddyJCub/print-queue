@@ -21,9 +21,20 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.9.0"
-# Changelog (following Semantic Versioning: MAJOR.MINOR.PATCH):
-# 1.9.0 - [FEATURE] Admin PWA navigation: Admin tab in bottom nav, unified navigation on admin pages, My Prints pagination
+APP_VERSION = "0.9.0"
+#
+# VERSIONING SCHEME (Semantic Versioning - semver.org):
+# We use 0.x.y because this software is in initial development, not yet a stable public release.
+# Per SemVer: "Major version zero (0.y.z) is for initial development."
+# When we reach a stable, production-ready release, we'll bump to 1.0.0.
+#
+# For 0.x.y versions:
+#   - 0.MINOR.0 = New features (what would be MINOR in 1.x.x)
+#   - 0.x.PATCH = Bug fixes only
+#
+# Changelog:
+# 0.9.0 - [FEATURE] Admin PWA navigation: Admin tab in bottom nav, unified navigation on admin pages, My Prints pagination
+# --- Version scheme changed from 1.x.x to 0.x.x (Dec 2025) - all prior versions below are historical ---
 # 1.8.23 - Admin dashboard pagination: "show more" for long lists, collapsible Recently Closed section
 # 1.8.22 - Admin request page UX: cleaner build configuration section, inline quick actions, collapsible edit forms
 # 1.8.21 - Flexible build reordering: allow reordering queued builds even while other builds are printing
