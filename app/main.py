@@ -21,7 +21,7 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.20"
+APP_VERSION = "1.8.21"
 # Changelog:
 # 1.8.19 - Fix multi-build printer display: show builds printing on both printers simultaneously, fix auto-refresh losing printer cards
 # 1.8.18 - Fix printer connection conflicts: added polling pause on print start, connection locking, retry logic, admin polling control
@@ -9414,11 +9414,14 @@ def admin_reorder_builds(
         conn.close()
         raise HTTPException(status_code=400, detail="Build order must include all build IDs exactly once")
     
-    # Only allow reordering if no builds are currently PRINTING
-    for b in builds:
-        if b["status"] == "PRINTING":
-            conn.close()
-            raise HTTPException(status_code=400, detail="Cannot reorder while a build is printing")
+    # Only allow reordering of builds that aren't currently PRINTING
+    printing_builds = [b for b in builds if b["status"] == "PRINTING"]
+    if printing_builds:
+        conn.close()
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot reorder while {len(printing_builds)} build(s) are printing. Wait for them to finish or mark them as done first."
+        )
     
     # Update build numbers
     now = now_iso()

@@ -133,7 +133,7 @@
         <div class="flex gap-0.5 mt-2" title="Build {{ pit.build_number or (pit.completed_builds + 1) }} of {{ pit.total_builds }} printing">
           {% for i in range(pit.total_builds) %}
             {% set current_build = pit.build_number or (pit.completed_builds + 1) %}
-            <div class="flex-1 h-1 rounded-full {% if i < pit.completed_builds %}bg-emerald-500{% elif i + 1 == current_build %}bg-amber-500 animate-pulse{% else %}bg-zinc-700{% endif %}"></div>
+            <div class="flex-1 h-1 rounded-full {% if i + 1 == current_build %}bg-amber-500 animate-pulse{% elif i + 1 < current_build %}bg-emerald-500{% else %}bg-zinc-700{% endif %}"></div>
           {% endfor %}
         </div>
         {% endif %}
@@ -256,7 +256,7 @@
         <div class="flex gap-0.5 mt-2" title="Build {{ pit.build_number or (pit.completed_builds + 1) }} of {{ pit.total_builds }} printing">
           {% for i in range(pit.total_builds) %}
             {% set current_build = pit.build_number or (pit.completed_builds + 1) %}
-            <div class="flex-1 h-1 rounded-full {% if i < pit.completed_builds %}bg-emerald-500{% elif i + 1 == current_build %}bg-amber-500 animate-pulse{% else %}bg-zinc-700{% endif %}"></div>
+            <div class="flex-1 h-1 rounded-full {% if i + 1 == current_build %}bg-amber-500 animate-pulse{% elif i + 1 < current_build %}bg-emerald-500{% else %}bg-zinc-700{% endif %}"></div>
           {% endfor %}
         </div>
         {% endif %}
@@ -670,11 +670,11 @@
         if (printingItem.total_builds > 1) {
           buildsHtml = `<span class="px-2 py-0.5 rounded bg-amber-700/50 border border-amber-500/50 text-amber-200 font-semibold" title="Currently printing build ${currentBuildNum} of ${printingItem.total_builds}">Build ${currentBuildNum}/${printingItem.total_builds}</span>`;
           
-          // Mini build progress bar
+          // Mini build progress bar - check current build first, then position
           let progressBars = '';
           for (let i = 0; i < printingItem.total_builds; i++) {
-            const barClass = i < printingItem.completed_builds ? 'bg-emerald-500' : 
-                            (i + 1 === currentBuildNum ? 'bg-amber-500 animate-pulse' : 'bg-zinc-700');
+            const barClass = (i + 1 === currentBuildNum) ? 'bg-amber-500 animate-pulse' : 
+                            (i + 1 < currentBuildNum ? 'bg-emerald-500' : 'bg-zinc-700');
             progressBars += `<div class="flex-1 h-1 rounded-full ${barClass}"></div>`;
           }
           buildsHtml += `<div class="flex gap-0.5 mt-2 w-full" title="Build ${currentBuildNum} of ${printingItem.total_builds} printing">${progressBars}</div>`;
@@ -780,7 +780,7 @@
           <div class="flex gap-0.5 flex-1">
             ${Array(r.total_builds).fill(0).map((_, i) => {
               const currentBuild = r.build_number || (r.completed_builds + 1);
-              return `<div class="flex-1 h-1 rounded-full ${i < r.completed_builds ? 'bg-emerald-500' : (i + 1 === currentBuild ? 'bg-amber-500' : 'bg-zinc-700')}"></div>`;
+              return `<div class="flex-1 h-1 rounded-full ${(i + 1 === currentBuild) ? 'bg-amber-500' : (i + 1 < currentBuild ? 'bg-emerald-500' : 'bg-zinc-700')}"></div>`;
             }).join('')}
           </div>
         </div>
