@@ -21,7 +21,7 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.19"
+APP_VERSION = "1.8.20"
 # Changelog:
 # 1.8.19 - Fix multi-build printer display: show builds printing on both printers simultaneously, fix auto-refresh losing printer cards
 # 1.8.18 - Fix printer connection conflicts: added polling pause on print start, connection locking, retry logic, admin polling control
@@ -5448,6 +5448,11 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     for it in items:
         if it["status"] in counts:
             counts[it["status"]] += 1
+    
+    # Count actual printing builds (not just requests) for more accurate "Printing" stat
+    # This handles multi-build scenarios where multiple builds print simultaneously
+    printing_builds_count = sum(1 for p in printing_by_printer.values() if p is not None and not p.get("_likely_printing"))
+    counts["PRINTING_BUILDS"] = printing_builds_count
 
     return templates.TemplateResponse("public_queue_new.html", {
         "request": request,
@@ -6598,6 +6603,10 @@ async def queue_data_api(mine: Optional[str] = None):
     for it in items:
         if it["status"] in counts:
             counts[it["status"]] += 1
+    
+    # Count actual printing builds (not just requests) for more accurate "Printing" stat
+    printing_builds_count = sum(1 for p in printing_by_printer.values() if p is not None and not p.get("_likely_printing"))
+    counts["PRINTING_BUILDS"] = printing_builds_count
     
     return {
         "active_queue": active_queue,

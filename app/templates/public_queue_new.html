@@ -19,7 +19,7 @@
     <div class="text-xs text-indigo-400">Queued</div>
   </div>
   <div class="bg-emerald-900/30 border border-emerald-700/50 rounded-xl p-3 text-center">
-    <div class="text-xl font-bold text-emerald-300">{{ (counts["PRINTING"] or 0) + (counts["IN_PROGRESS"] or 0) }}</div>
+    <div class="text-xl font-bold text-emerald-300">{{ counts["PRINTING_BUILDS"] or ((counts["PRINTING"] or 0) + (counts["IN_PROGRESS"] or 0)) }}</div>
     <div class="text-xs text-emerald-400">Printing</div>
   </div>
   <div class="bg-amber-900/30 border border-amber-700/50 rounded-xl p-3 text-center">
@@ -122,7 +122,7 @@
         <div class="flex flex-wrap items-center gap-2 text-xs">
           <span class="px-2 py-0.5 rounded bg-zinc-800/80 text-zinc-300">{{ pit.material }}</span>
           {% if pit.total_builds > 1 %}
-          <span class="px-2 py-0.5 rounded bg-amber-700/50 border border-amber-500/50 text-amber-200 font-semibold" title="Multi-part print: {{ pit.completed_builds }} of {{ pit.total_builds }} builds completed">{{ pit.completed_builds }}/{{ pit.total_builds }} builds</span>
+          <span class="px-2 py-0.5 rounded bg-amber-700/50 border border-amber-500/50 text-amber-200 font-semibold" title="Currently printing build {{ pit.build_number or (pit.completed_builds + 1) }} of {{ pit.total_builds }}">Build {{ pit.build_number or (pit.completed_builds + 1) }}/{{ pit.total_builds }}</span>
           {% endif %}
           {% if pit.smart_eta_display %}
           <span class="ml-auto {% if is_likely %}text-amber-300{% else %}text-emerald-300{% endif %} font-medium">ETA: {{ pit.smart_eta_display }}</span>
@@ -130,9 +130,10 @@
         </div>
         {% if pit.total_builds > 1 %}
         <!-- Mini build progress bar -->
-        <div class="flex gap-0.5 mt-2" title="Build progress: {{ pit.completed_builds }} completed, {{ pit.total_builds - pit.completed_builds }} remaining">
+        <div class="flex gap-0.5 mt-2" title="Build {{ pit.build_number or (pit.completed_builds + 1) }} of {{ pit.total_builds }} printing">
           {% for i in range(pit.total_builds) %}
-            <div class="flex-1 h-1 rounded-full {% if i < pit.completed_builds %}bg-emerald-500{% elif i == pit.completed_builds %}bg-amber-500 animate-pulse{% else %}bg-zinc-700{% endif %}"></div>
+            {% set current_build = pit.build_number or (pit.completed_builds + 1) %}
+            <div class="flex-1 h-1 rounded-full {% if i < pit.completed_builds %}bg-emerald-500{% elif i + 1 == current_build %}bg-amber-500 animate-pulse{% else %}bg-zinc-700{% endif %}"></div>
           {% endfor %}
         </div>
         {% endif %}
@@ -244,7 +245,7 @@
         <div class="flex flex-wrap items-center gap-2 text-xs">
           <span class="px-2 py-0.5 rounded bg-zinc-800/80 text-zinc-300">{{ pit.material }}</span>
           {% if pit.total_builds > 1 %}
-          <span class="px-2 py-0.5 rounded bg-amber-700/50 border border-amber-500/50 text-amber-200 font-semibold" title="Multi-part print: {{ pit.completed_builds }} of {{ pit.total_builds }} builds completed">{{ pit.completed_builds }}/{{ pit.total_builds }} builds</span>
+          <span class="px-2 py-0.5 rounded bg-amber-700/50 border border-amber-500/50 text-amber-200 font-semibold" title="Currently printing build {{ pit.build_number or (pit.completed_builds + 1) }} of {{ pit.total_builds }}">Build {{ pit.build_number or (pit.completed_builds + 1) }}/{{ pit.total_builds }}</span>
           {% endif %}
           {% if pit.smart_eta_display %}
           <span class="ml-auto {% if is_likely %}text-amber-300{% else %}text-emerald-300{% endif %} font-medium">ETA: {{ pit.smart_eta_display }}</span>
@@ -252,9 +253,10 @@
         </div>
         {% if pit.total_builds > 1 %}
         <!-- Mini build progress bar -->
-        <div class="flex gap-0.5 mt-2" title="Build progress: {{ pit.completed_builds }} completed, {{ pit.total_builds - pit.completed_builds }} remaining">
+        <div class="flex gap-0.5 mt-2" title="Build {{ pit.build_number or (pit.completed_builds + 1) }} of {{ pit.total_builds }} printing">
           {% for i in range(pit.total_builds) %}
-            <div class="flex-1 h-1 rounded-full {% if i < pit.completed_builds %}bg-emerald-500{% elif i == pit.completed_builds %}bg-amber-500 animate-pulse{% else %}bg-zinc-700{% endif %}"></div>
+            {% set current_build = pit.build_number or (pit.completed_builds + 1) %}
+            <div class="flex-1 h-1 rounded-full {% if i < pit.completed_builds %}bg-emerald-500{% elif i + 1 == current_build %}bg-amber-500 animate-pulse{% else %}bg-zinc-700{% endif %}"></div>
           {% endfor %}
         </div>
         {% endif %}
@@ -333,7 +335,7 @@
           <span class="text-lg font-bold text-zinc-500">#{{ r.queue_pos }}</span>
           <div>
             <p class="font-semibold text-zinc-200">{{ r.print_name or r.short_id }}</p>
-            <p class="text-xs text-zinc-500">{{ r.requester_first }}{% if r.total_builds > 1 %} • {{ r.completed_builds }}/{{ r.total_builds }} builds{% endif %}</p>
+            <p class="text-xs text-zinc-500">{{ r.requester_first }}{% if r.total_builds > 1 %} • Build {{ r.build_number or (r.completed_builds + 1) }}/{{ r.total_builds }}{% endif %}</p>
           </div>
         </div>
         <span class="px-2 py-1 rounded-lg text-xs font-medium
@@ -405,7 +407,7 @@
           <td class="p-3">
             <span class="font-medium text-zinc-200">{{ r.print_name or r.short_id }}</span>
             {% if r.print_name %}<span class="block text-xs text-zinc-500 font-mono">{{ r.short_id }}</span>{% endif %}
-            {% if r.total_builds > 1 %}<span class="block text-xs text-amber-400">{{ r.completed_builds }}/{{ r.total_builds }} builds</span>{% endif %}
+            {% if r.total_builds > 1 %}<span class="block text-xs text-amber-400">Build {{ r.build_number or (r.completed_builds + 1) }}/{{ r.total_builds }}</span>{% endif %}
           </td>
           <td class="p-3 text-zinc-400">{{ r.requester_first }}</td>
           <td class="p-3 text-zinc-400">{{ r.printer }}</td>
@@ -568,8 +570,9 @@
       const response = await fetch(url);
       const data = await response.json();
       
-      // Update stats - combine PRINTING and IN_PROGRESS for display
-      const printingCount = (data.counts.PRINTING || 0) + (data.counts.IN_PROGRESS || 0);
+      // Update stats - use PRINTING_BUILDS if available (counts actual builds printing)
+      // Otherwise fall back to combining PRINTING and IN_PROGRESS request counts
+      const printingCount = data.counts.PRINTING_BUILDS ?? ((data.counts.PRINTING || 0) + (data.counts.IN_PROGRESS || 0));
       const adjustedCounts = {...data.counts, PRINTING: printingCount};
       updateStats(adjustedCounts);
       
@@ -663,17 +666,18 @@
         const textClass = isLikely ? 'text-amber-' : 'text-emerald-';
         
         let buildsHtml = '';
+        const currentBuildNum = printingItem.build_number || (printingItem.completed_builds + 1);
         if (printingItem.total_builds > 1) {
-          buildsHtml = `<span class="px-2 py-0.5 rounded bg-amber-700/50 border border-amber-500/50 text-amber-200 font-semibold" title="Multi-part print: ${printingItem.completed_builds} of ${printingItem.total_builds} builds completed">${printingItem.completed_builds}/${printingItem.total_builds} builds</span>`;
+          buildsHtml = `<span class="px-2 py-0.5 rounded bg-amber-700/50 border border-amber-500/50 text-amber-200 font-semibold" title="Currently printing build ${currentBuildNum} of ${printingItem.total_builds}">Build ${currentBuildNum}/${printingItem.total_builds}</span>`;
           
           // Mini build progress bar
           let progressBars = '';
           for (let i = 0; i < printingItem.total_builds; i++) {
             const barClass = i < printingItem.completed_builds ? 'bg-emerald-500' : 
-                            (i === printingItem.completed_builds ? 'bg-amber-500 animate-pulse' : 'bg-zinc-700');
+                            (i + 1 === currentBuildNum ? 'bg-amber-500 animate-pulse' : 'bg-zinc-700');
             progressBars += `<div class="flex-1 h-1 rounded-full ${barClass}"></div>`;
           }
-          buildsHtml += `<div class="flex gap-0.5 mt-2 w-full" title="Build progress: ${printingItem.completed_builds} completed, ${printingItem.total_builds - printingItem.completed_builds} remaining">${progressBars}</div>`;
+          buildsHtml += `<div class="flex gap-0.5 mt-2 w-full" title="Build ${currentBuildNum} of ${printingItem.total_builds} printing">${progressBars}</div>`;
         }
         
         printingInfoEl.innerHTML = `
@@ -772,11 +776,12 @@
         ` : ''}
         ${r.total_builds > 1 ? `
         <div class="mt-2 flex items-center gap-2 text-xs">
-          <span class="text-amber-300">${r.completed_builds}/${r.total_builds} builds</span>
+          <span class="text-amber-300">Build ${r.build_number || (r.completed_builds + 1)}/${r.total_builds}</span>
           <div class="flex gap-0.5 flex-1">
-            ${Array(r.total_builds).fill(0).map((_, i) => 
-              `<div class="flex-1 h-1 rounded-full ${i < r.completed_builds ? 'bg-emerald-500' : (i === r.completed_builds ? 'bg-amber-500' : 'bg-zinc-700')}"></div>`
-            ).join('')}
+            ${Array(r.total_builds).fill(0).map((_, i) => {
+              const currentBuild = r.build_number || (r.completed_builds + 1);
+              return `<div class="flex-1 h-1 rounded-full ${i < r.completed_builds ? 'bg-emerald-500' : (i + 1 === currentBuild ? 'bg-amber-500' : 'bg-zinc-700')}"></div>`;
+            }).join('')}
           </div>
         </div>
         ` : ''}
@@ -792,7 +797,7 @@
         <td class="p-3">
           <span class="font-medium text-zinc-200">${r.print_name || r.short_id}</span>
           ${r.print_name ? `<span class="block text-xs text-zinc-500 font-mono">${r.short_id}</span>` : ''}
-          ${r.total_builds > 1 ? `<span class="inline-block ml-1 px-1.5 py-0.5 text-[10px] rounded bg-amber-700/50 text-amber-200">${r.completed_builds}/${r.total_builds} builds</span>` : ''}
+          ${r.total_builds > 1 ? `<span class="inline-block ml-1 px-1.5 py-0.5 text-[10px] rounded bg-amber-700/50 text-amber-200">Build ${r.build_number || (r.completed_builds + 1)}/${r.total_builds}</span>` : ''}
         </td>
         <td class="p-3 text-zinc-400">${r.requester_first}</td>
         <td class="p-3 text-zinc-400">${r.printer}</td>
