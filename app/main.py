@@ -21,7 +21,7 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.19"
+APP_VERSION = "1.8.22"
 # Changelog:
 # 1.8.19 - Fix multi-build printer display: show builds printing on both printers simultaneously, fix auto-refresh losing printer cards
 # 1.8.18 - Fix printer connection conflicts: added polling pause on print start, connection locking, retry logic, admin polling control
@@ -9383,12 +9383,17 @@ def admin_reorder_builds(
     build_order: str = Form(...),  # Comma-separated build IDs in new order
     _=Depends(require_admin)
 ):
-    """Reorder builds by providing build IDs in desired order."""
+    """Reorder builds by providing build IDs in desired order.
+    
+    Allows reordering even while builds are printing - printing builds will
+    maintain their relative position in the new order. This enables reordering
+    the queue of upcoming builds without affecting in-progress work.
+    """
     conn = db()
     
     # Get current builds
     builds = conn.execute(
-        "SELECT id, status FROM builds WHERE request_id = ? ORDER BY build_number", 
+        "SELECT id, status, build_number FROM builds WHERE request_id = ? ORDER BY build_number", 
         (rid,)
     ).fetchall()
     
@@ -9405,11 +9410,18 @@ def admin_reorder_builds(
         conn.close()
         raise HTTPException(status_code=400, detail="Build order must include all build IDs exactly once")
     
-    # Only allow reordering if no builds are currently PRINTING
-    for b in builds:
-        if b["status"] == "PRINTING":
+    # Check if any PRINTING builds changed position - that's not allowed
+    # But reordering non-printing builds is fine
+    build_status = {b["id"]: b["status"] for b in builds}
+    old_positions = {b["id"]: b["build_number"] for b in builds}
+    
+    for new_pos, build_id in enumerate(new_order, start=1):
+        if build_status[build_id] == "PRINTING" and old_positions[build_id] != new_pos:
             conn.close()
-            raise HTTPException(status_code=400, detail="Cannot reorder while a build is printing")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot move build #{old_positions[build_id]} while it's printing. You can reorder other builds around it."
+            )
     
     # Update build numbers
     now = now_iso()
