@@ -1,0 +1,850 @@
+"""
+Authentication and Admin Management Routes for Printellect.
+
+These routes handle:
+- User login/register/logout
+- User profile management
+- Admin login (new multi-admin system)
+- Admin account management
+- Feature flag management
+- Audit log viewing
+"""
+
+import os
+import sqlite3
+from datetime import datetime
+from typing import Optional
+from urllib.parse import quote, unquote
+
+from fastapi import APIRouter, Request, Form, HTTPException, Depends
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
+
+from app.auth import (
+    # User auth
+    create_user, get_user_by_email, authenticate_user, get_user_by_session,
+    create_magic_link, verify_magic_link, create_user_session, delete_user_session,
+    update_user_profile, get_current_user, require_user, optional_user,
+    
+    # Admin auth
+    create_admin, get_admin_by_username, authenticate_admin, get_admin_by_session,
+    logout_admin, get_all_admins, update_admin, change_admin_password, delete_admin,
+    get_current_admin, require_admin, require_permission,
+    check_legacy_admin_password, get_or_create_legacy_admin,
+    
+    # Feature flags
+    get_feature_flag, get_all_feature_flags, update_feature_flag, is_feature_enabled,
+    
+    # Audit
+    log_audit, get_audit_logs,
+    
+    # Init
+    init_auth_tables, init_feature_flags,
+)
+
+from app.models import AdminRole, AuditAction, UserStatus
+
+# ─────────────────────────── SETUP ───────────────────────────
+
+router = APIRouter()
+templates = Jinja2Templates(directory="app/templates")
+
+# Database helper
+def get_db_path():
+    return os.getenv("DB_PATH", "/data/app.db")
+
+def db():
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def get_client_ip(request: Request) -> str:
+    """Get client IP address from request."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+# ─────────────────────────── USER AUTH ROUTES ───────────────────────────
+
+@router.get("/auth/login", response_class=HTMLResponse)
+async def user_login_page(request: Request, next: str = None, error: str = None, success: str = None):
+    """User login page."""
+    # Check if user accounts feature is enabled
+    if not is_feature_enabled("user_accounts"):
+        # Fall back to the existing email lookup system
+        return RedirectResponse(url="/my-prints", status_code=303)
+    
+    # Already logged in?
+    user = await get_current_user(request)
+    if user:
+        return RedirectResponse(url=next or "/auth/profile", status_code=303)
+    
+    return templates.TemplateResponse("auth_login.html", {
+        "request": request,
+        "next": next,
+        "error": error,
+        "success": success,
+    })
+
+
+@router.post("/auth/login")
+async def user_login_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    next: str = Form(None)
+):
+    """Handle user login."""
+    user = authenticate_user(email, password)
+    
+    if not user:
+        return RedirectResponse(
+            url=f"/auth/login?error=Invalid email or password&next={quote(next or '')}",
+            status_code=303
+        )
+    
+    if user.status == UserStatus.SUSPENDED:
+        return RedirectResponse(
+            url=f"/auth/login?error=Your account has been suspended&next={quote(next or '')}",
+            status_code=303
+        )
+    
+    # Create session
+    token = create_user_session(
+        user.id,
+        device_info=request.headers.get("User-Agent"),
+        ip_address=get_client_ip(request)
+    )
+    
+    # Redirect to profile or next URL
+    redirect_url = next if next else "/auth/profile"
+    resp = RedirectResponse(url=redirect_url, status_code=303)
+    resp.set_cookie(
+        "user_session",
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=os.getenv("BASE_URL", "").startswith("https"),
+        path="/",
+        max_age=30 * 24 * 60 * 60  # 30 days
+    )
+    
+    return resp
+
+
+@router.post("/auth/magic-link")
+async def user_magic_link(
+    request: Request,
+    email: str = Form(...),
+    next: str = Form(None)
+):
+    """Send magic link for passwordless login."""
+    token = create_magic_link(email)
+    
+    # Always show success (don't reveal if email exists)
+    # In production, you'd send an email here
+    if token:
+        # TODO: Send email with magic link
+        # link = f"{BASE_URL}/auth/verify?token={token}"
+        pass
+    
+    return RedirectResponse(
+        url=f"/auth/login?success=Check your email for a login link&next={quote(next or '')}",
+        status_code=303
+    )
+
+
+@router.get("/auth/verify")
+async def user_verify_magic_link(request: Request, token: str):
+    """Verify magic link and log user in."""
+    user = verify_magic_link(token)
+    
+    if not user:
+        return RedirectResponse(
+            url="/auth/login?error=Invalid or expired link",
+            status_code=303
+        )
+    
+    # Create session
+    session_token = create_user_session(
+        user.id,
+        device_info=request.headers.get("User-Agent"),
+        ip_address=get_client_ip(request)
+    )
+    
+    resp = RedirectResponse(url="/auth/profile", status_code=303)
+    resp.set_cookie(
+        "user_session",
+        session_token,
+        httponly=True,
+        samesite="lax",
+        secure=os.getenv("BASE_URL", "").startswith("https"),
+        path="/",
+        max_age=30 * 24 * 60 * 60
+    )
+    
+    return resp
+
+
+@router.get("/auth/register", response_class=HTMLResponse)
+async def user_register_page(request: Request, next: str = None, error: str = None):
+    """User registration page."""
+    if not is_feature_enabled("user_accounts"):
+        return RedirectResponse(url="/", status_code=303)
+    
+    if not is_feature_enabled("user_registration"):
+        return RedirectResponse(
+            url="/auth/login?error=Registration is currently disabled",
+            status_code=303
+        )
+    
+    user = await get_current_user(request)
+    if user:
+        return RedirectResponse(url="/auth/profile", status_code=303)
+    
+    return templates.TemplateResponse("auth_register.html", {
+        "request": request,
+        "next": next,
+        "error": error,
+    })
+
+
+@router.post("/auth/register")
+async def user_register_submit(
+    request: Request,
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    password2: str = Form(...),
+    phone: str = Form(None),
+    next: str = Form(None)
+):
+    """Handle user registration."""
+    # Validation
+    if password != password2:
+        return RedirectResponse(
+            url=f"/auth/register?error=Passwords don't match&next={quote(next or '')}",
+            status_code=303
+        )
+    
+    if len(password) < 8:
+        return RedirectResponse(
+            url=f"/auth/register?error=Password must be at least 8 characters&next={quote(next or '')}",
+            status_code=303
+        )
+    
+    # Check if email exists
+    existing = get_user_by_email(email)
+    if existing:
+        return RedirectResponse(
+            url=f"/auth/register?error=Email already registered&next={quote(next or '')}",
+            status_code=303
+        )
+    
+    # Create user
+    try:
+        user = create_user(email, name, password)
+        
+        # Update phone if provided
+        if phone:
+            update_user_profile(user.id, phone=phone)
+        
+        # Create session
+        token = create_user_session(
+            user.id,
+            device_info=request.headers.get("User-Agent"),
+            ip_address=get_client_ip(request)
+        )
+        
+        redirect_url = next if next else "/auth/profile"
+        resp = RedirectResponse(url=redirect_url, status_code=303)
+        resp.set_cookie(
+            "user_session",
+            token,
+            httponly=True,
+            samesite="lax",
+            secure=os.getenv("BASE_URL", "").startswith("https"),
+            path="/",
+            max_age=30 * 24 * 60 * 60
+        )
+        
+        return resp
+        
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/auth/register?error=Registration failed: {str(e)}&next={quote(next or '')}",
+            status_code=303
+        )
+
+
+@router.get("/auth/profile", response_class=HTMLResponse)
+async def user_profile_page(request: Request, success: str = None):
+    """User profile page."""
+    user = await get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/auth/login?next=/auth/profile", status_code=303)
+    
+    # Get printers and materials for preferences dropdowns
+    conn = db()
+    printers = conn.execute("SELECT DISTINCT value as name FROM settings WHERE key LIKE 'printer_%_name'").fetchall()
+    conn.close()
+    
+    materials = ["PLA", "PETG", "ABS", "TPU", "Resin", "Other"]
+    
+    return templates.TemplateResponse("auth_profile.html", {
+        "request": request,
+        "user": user,
+        "printers": printers,
+        "materials": materials,
+        "success": success,
+    })
+
+
+@router.post("/auth/profile")
+async def user_profile_update(
+    request: Request,
+    name: str = Form(...),
+    phone: str = Form(None),
+    preferred_printer: str = Form(None),
+    preferred_material: str = Form(None),
+    preferred_colors: str = Form(None),
+    notes_template: str = Form(None),
+    email_status_updates: str = Form(None),
+    email_print_ready: str = Form(None),
+    push_enabled: str = Form(None),
+    push_progress: str = Form(None),
+):
+    """Update user profile."""
+    user = await get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/auth/login", status_code=303)
+    
+    # Build notification prefs
+    notification_prefs = {
+        "email_status_updates": email_status_updates == "1",
+        "email_print_ready": email_print_ready == "1",
+        "push_enabled": push_enabled == "1",
+        "push_progress": push_progress == "1",
+    }
+    
+    update_user_profile(
+        user.id,
+        name=name,
+        phone=phone or None,
+        preferred_printer=preferred_printer or None,
+        preferred_material=preferred_material or None,
+        preferred_colors=preferred_colors or None,
+        notes_template=notes_template or None,
+        notification_prefs=notification_prefs,
+    )
+    
+    return RedirectResponse(url="/auth/profile?success=Profile updated", status_code=303)
+
+
+@router.get("/auth/logout")
+async def user_logout(request: Request):
+    """Log out user."""
+    token = request.cookies.get("user_session")
+    if token:
+        delete_user_session(token)
+    
+    resp = RedirectResponse(url="/", status_code=303)
+    resp.delete_cookie("user_session", path="/")
+    return resp
+
+
+# ─────────────────────────── ADMIN AUTH ROUTES ───────────────────────────
+
+@router.get("/admin/login/new", response_class=HTMLResponse)
+async def admin_login_new_page(request: Request, next: str = None, error: str = None):
+    """New admin login page (multi-admin system)."""
+    if not is_feature_enabled("multi_admin"):
+        # Fall back to legacy login
+        return RedirectResponse(url="/admin/login", status_code=303)
+    
+    admin = await get_current_admin(request)
+    if admin and admin.id != "legacy":
+        return RedirectResponse(url=next or "/admin", status_code=303)
+    
+    return templates.TemplateResponse("admin_login_new.html", {
+        "request": request,
+        "next": next,
+        "error": error,
+    })
+
+
+@router.post("/admin/login/new")
+async def admin_login_new_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    next: str = Form(None)
+):
+    """Handle new admin login."""
+    result = authenticate_admin(
+        username,
+        password,
+        ip_address=get_client_ip(request)
+    )
+    
+    if not result:
+        return RedirectResponse(
+            url=f"/admin/login/new?error=Invalid credentials&next={quote(next or '')}",
+            status_code=303
+        )
+    
+    admin, token = result
+    
+    redirect_url = next if next and next.startswith("/admin") else "/admin"
+    resp = RedirectResponse(url=redirect_url, status_code=303)
+    resp.set_cookie(
+        "admin_session",
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=os.getenv("BASE_URL", "").startswith("https"),
+        path="/",
+        max_age=7 * 24 * 60 * 60  # 7 days
+    )
+    
+    return resp
+
+
+@router.get("/admin/logout/new")
+async def admin_logout_new(request: Request):
+    """Log out admin (new system)."""
+    admin = await get_current_admin(request)
+    if admin and admin.id != "legacy":
+        logout_admin(admin.id)
+    
+    resp = RedirectResponse(url="/", status_code=303)
+    resp.delete_cookie("admin_session", path="/")
+    resp.delete_cookie("admin_pw", path="/")  # Also clear legacy cookie
+    return resp
+
+
+# ─────────────────────────── ADMIN MANAGEMENT ROUTES ───────────────────────────
+
+@router.get("/admin/admins", response_class=HTMLResponse)
+async def admin_management_page(
+    request: Request,
+    success: str = None,
+    error: str = None,
+    admin: dict = Depends(require_permission("manage_admins"))
+):
+    """Admin management page (Super Admin only)."""
+    admins = get_all_admins()
+    
+    # Convert to dicts for template
+    admins_data = [a.to_dict() for a in admins]
+    
+    return templates.TemplateResponse("admin_admins.html", {
+        "request": request,
+        "admins": admins_data,
+        "current_admin": admin.to_dict() if hasattr(admin, 'to_dict') else admin,
+        "success": success,
+        "error": error,
+    })
+
+
+@router.post("/admin/admins/create")
+async def admin_create(
+    request: Request,
+    username: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    display_name: str = Form(None),
+    role: str = Form("operator"),
+    admin: dict = Depends(require_permission("manage_admins"))
+):
+    """Create new admin account."""
+    try:
+        # Validate role
+        try:
+            admin_role = AdminRole(role)
+        except ValueError:
+            admin_role = AdminRole.OPERATOR
+        
+        # Check if username exists
+        existing = get_admin_by_username(username)
+        if existing:
+            return RedirectResponse(
+                url="/admin/admins?error=Username already exists",
+                status_code=303
+            )
+        
+        new_admin = create_admin(
+            username=username,
+            email=email,
+            password=password,
+            role=admin_role,
+            display_name=display_name,
+            created_by=admin.id if hasattr(admin, 'id') else None
+        )
+        
+        return RedirectResponse(
+            url=f"/admin/admins?success=Admin {username} created",
+            status_code=303
+        )
+        
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/admin/admins?error={str(e)}",
+            status_code=303
+        )
+
+
+@router.post("/admin/admins/update")
+async def admin_update(
+    request: Request,
+    admin_id: str = Form(...),
+    display_name: str = Form(None),
+    email: str = Form(...),
+    role: str = Form(...),
+    new_password: str = Form(None),
+    is_active: str = Form(None),
+    admin: dict = Depends(require_permission("manage_admins"))
+):
+    """Update admin account."""
+    try:
+        # Convert role
+        try:
+            admin_role = AdminRole(role)
+        except ValueError:
+            admin_role = AdminRole.OPERATOR
+        
+        update_admin(
+            admin_id,
+            display_name=display_name,
+            email=email,
+            role=admin_role,
+            is_active=is_active == "1"
+        )
+        
+        if new_password and len(new_password) >= 8:
+            change_admin_password(admin_id, new_password)
+        
+        # Audit log
+        log_audit(
+            action=AuditAction.ADMIN_UPDATED,
+            actor_type="admin",
+            actor_id=admin.id if hasattr(admin, 'id') else None,
+            target_type="admin",
+            target_id=admin_id,
+            details={"role": role, "is_active": is_active == "1"}
+        )
+        
+        return RedirectResponse(
+            url="/admin/admins?success=Admin updated",
+            status_code=303
+        )
+        
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/admin/admins?error={str(e)}",
+            status_code=303
+        )
+
+
+@router.post("/admin/admins/{admin_id}/delete")
+async def admin_delete(
+    request: Request,
+    admin_id: str,
+    admin: dict = Depends(require_permission("manage_admins"))
+):
+    """Delete admin account."""
+    current_admin_id = admin.id if hasattr(admin, 'id') else None
+    
+    if admin_id == current_admin_id:
+        return RedirectResponse(
+            url="/admin/admins?error=Cannot delete your own account",
+            status_code=303
+        )
+    
+    # Get username for audit
+    from app.auth import get_admin_by_id
+    target_admin = get_admin_by_id(admin_id)
+    
+    delete_admin(admin_id)
+    
+    log_audit(
+        action=AuditAction.ADMIN_DELETED,
+        actor_type="admin",
+        actor_id=current_admin_id,
+        target_type="admin",
+        target_id=admin_id,
+        details={"username": target_admin.username if target_admin else "unknown"}
+    )
+    
+    return RedirectResponse(
+        url="/admin/admins?success=Admin deleted",
+        status_code=303
+    )
+
+
+# ─────────────────────────── FEATURE FLAG ROUTES ───────────────────────────
+
+@router.get("/admin/features", response_class=HTMLResponse)
+async def feature_flags_page(
+    request: Request,
+    success: str = None,
+    admin: dict = Depends(require_permission("manage_settings"))
+):
+    """Feature flags management page."""
+    flags = get_all_feature_flags()
+    
+    return templates.TemplateResponse("admin_features.html", {
+        "request": request,
+        "flags": flags,
+        "success": success,
+    })
+
+
+@router.post("/admin/features/{key}/toggle")
+async def toggle_feature_flag(
+    request: Request,
+    key: str,
+    admin: dict = Depends(require_permission("manage_settings"))
+):
+    """Toggle a feature flag."""
+    try:
+        data = await request.json()
+        enabled = data.get("enabled", False)
+        
+        update_feature_flag(
+            key,
+            enabled=enabled,
+            updated_by=admin.id if hasattr(admin, 'id') else None
+        )
+        
+        return JSONResponse({"success": True, "enabled": enabled})
+        
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=400)
+
+
+# ─────────────────────────── AUDIT LOG ROUTES ───────────────────────────
+
+@router.get("/admin/audit", response_class=HTMLResponse)
+async def audit_log_page(
+    request: Request,
+    page: int = 1,
+    action: str = None,
+    admin: dict = Depends(require_permission("view_audit_log"))
+):
+    """View audit logs."""
+    per_page = 50
+    offset = (page - 1) * per_page
+    
+    logs = get_audit_logs(
+        limit=per_page,
+        offset=offset,
+        action=action
+    )
+    
+    # Get unique actions for filter
+    all_actions = [a.value for a in AuditAction]
+    
+    return templates.TemplateResponse("admin_audit.html", {
+        "request": request,
+        "logs": [log.to_dict() for log in logs],
+        "actions": all_actions,
+        "current_action": action,
+        "page": page,
+        "has_more": len(logs) == per_page,
+    })
+
+
+# ─────────────────────────── FILE SYNC ROUTES ───────────────────────────
+
+@router.get("/admin/file-sync", response_class=HTMLResponse)
+async def admin_file_sync_page(
+    request: Request,
+    admin: dict = Depends(require_permission("manage_queue"))
+):
+    """File sync admin page."""
+    from app.file_sync import (
+        get_all_sync_configs, get_pending_matches, get_sync_stats
+    )
+    
+    folders = get_all_sync_configs()
+    pending_matches = get_pending_matches()
+    stats = get_sync_stats()
+    feature_enabled = is_feature_enabled("file_sync")
+    
+    return templates.TemplateResponse("admin_file_sync.html", {
+        "request": request,
+        "folders": [f.to_dict() for f in folders],
+        "pending_matches": pending_matches,
+        "stats": stats,
+        "feature_enabled": feature_enabled,
+    })
+
+
+@router.post("/admin/file-sync/folders")
+async def add_sync_folder(
+    request: Request,
+    admin: dict = Depends(require_permission("manage_settings"))
+):
+    """Add a new sync folder configuration."""
+    from app.file_sync import create_sync_config
+    
+    data = await request.json()
+    
+    config = create_sync_config(
+        name=data.get("name", "Unnamed Folder"),
+        folder_path=data["path"],
+        extensions=data.get("extensions", ".stl,.obj,.3mf"),
+        match_threshold=float(data.get("match_threshold", 0.7)),
+        scan_interval=int(data.get("scan_interval", 300)),
+        recursive=data.get("recursive", True),
+        auto_attach=data.get("auto_attach", True)
+    )
+    
+    # Audit log
+    log_audit(
+        action=AuditAction.SETTINGS_UPDATED,
+        actor_type="admin",
+        actor_id=getattr(admin, 'id', None),
+        details={"action": "add_sync_folder", "folder": data["path"]}
+    )
+    
+    return JSONResponse({"success": True, "folder_id": config.id})
+
+
+@router.patch("/admin/file-sync/folders/{folder_id}")
+async def update_sync_folder(
+    request: Request,
+    folder_id: str,
+    admin: dict = Depends(require_permission("manage_settings"))
+):
+    """Update a sync folder configuration."""
+    from app.file_sync import update_sync_config
+    
+    data = await request.json()
+    update_sync_config(folder_id, **data)
+    
+    return JSONResponse({"success": True})
+
+
+@router.delete("/admin/file-sync/folders/{folder_id}")
+async def delete_sync_folder(
+    folder_id: str,
+    admin: dict = Depends(require_permission("manage_settings"))
+):
+    """Delete a sync folder configuration."""
+    from app.file_sync import delete_sync_config
+    
+    delete_sync_config(folder_id)
+    
+    log_audit(
+        action=AuditAction.SETTINGS_UPDATED,
+        actor_type="admin",
+        actor_id=getattr(admin, 'id', None),
+        details={"action": "delete_sync_folder", "folder_id": folder_id}
+    )
+    
+    return JSONResponse({"success": True})
+
+
+@router.post("/admin/file-sync/folders/{folder_id}/sync")
+async def sync_single_folder(
+    folder_id: str,
+    admin: dict = Depends(require_permission("manage_queue"))
+):
+    """Trigger sync for a single folder."""
+    from app.file_sync import sync_folder
+    
+    result = sync_folder(folder_id)
+    return JSONResponse({"success": True, "files_found": result.get("files_found", 0)})
+
+
+@router.post("/admin/file-sync/sync-all")
+async def sync_all_folders(
+    admin: dict = Depends(require_permission("manage_queue"))
+):
+    """Trigger sync for all enabled folders."""
+    from app.file_sync import run_full_sync
+    
+    result = run_full_sync()
+    return JSONResponse({"success": True, **result})
+
+
+@router.post("/admin/file-sync/process-matches")
+async def process_all_matches(
+    admin: dict = Depends(require_permission("manage_queue"))
+):
+    """Process all pending file matches."""
+    from app.file_sync import get_active_sync_configs, process_pending_matches
+    
+    # Process all active configs
+    total_processed = 0
+    configs = get_active_sync_configs()
+    for config in configs:
+        result = process_pending_matches(config)
+        total_processed += result.get("processed", 0)
+    
+    return JSONResponse({"success": True, "processed": total_processed})
+
+
+@router.post("/admin/file-sync/matches/{match_id}/approve")
+async def approve_match(
+    match_id: str,
+    admin: dict = Depends(require_permission("manage_queue"))
+):
+    """Approve a pending file match."""
+    from app.file_sync import approve_file_match
+    
+    approve_file_match(match_id)
+    
+    log_audit(
+        action=AuditAction.SETTINGS_UPDATED,
+        actor_type="admin",
+        actor_id=getattr(admin, 'id', None),
+        details={"action": "approve_file_match", "match_id": match_id}
+    )
+    
+    return JSONResponse({"success": True})
+
+
+@router.post("/admin/file-sync/matches/{match_id}/reject")
+async def reject_match(
+    match_id: str,
+    admin: dict = Depends(require_permission("manage_queue"))
+):
+    """Reject a pending file match."""
+    from app.file_sync import reject_file_match
+    
+    reject_file_match(match_id)
+    return JSONResponse({"success": True})
+
+
+# ─────────────────────────── API ENDPOINTS ───────────────────────────
+
+@router.get("/api/user/me")
+async def api_current_user(request: Request):
+    """Get current logged-in user."""
+    user = await get_current_user(request)
+    if not user:
+        return JSONResponse({"user": None})
+    
+    return JSONResponse({"user": user.to_dict()})
+
+
+@router.get("/api/features")
+async def api_feature_flags(request: Request):
+    """Get all feature flags (public endpoint)."""
+    user = await get_current_user(request)
+    flags = get_all_feature_flags()
+    
+    # Return only enabled status for public
+    result = {}
+    for key, flag in flags.items():
+        user_id = user.id if user else None
+        email = user.email if user else None
+        result[key] = flag.is_enabled_for_user(user_id, email)
+    
+    return JSONResponse(result)

@@ -1,0 +1,431 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}File Sync | Admin{% endblock %}
+
+{% block nav_admin %}text-white bg-zinc-800{% endblock %}
+{% block bnav_admin %}active{% endblock %}
+
+{% block header_title %}File Sync{% endblock %}
+
+{% block content %}
+<!-- Include Admin Nav -->
+{% include "_components/admin_nav_new.html" %}
+
+<!-- Page Header -->
+<div class="mb-6">
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold">STL Folder Sync</h1>
+      <p class="text-zinc-400 text-sm mt-1">Automatically match uploaded files with STL models from synced folders</p>
+    </div>
+    <button onclick="runFullSync()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold transition flex items-center gap-2">
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+      Run Full Sync
+    </button>
+  </div>
+</div>
+
+<!-- Feature Status -->
+{% if not feature_enabled %}
+<div class="mb-6 bg-amber-900/20 border border-amber-700/50 rounded-2xl p-4">
+  <div class="flex items-start gap-3">
+    <div class="w-10 h-10 rounded-xl bg-amber-900/50 flex items-center justify-center flex-shrink-0">
+      <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+    </div>
+    <div class="flex-1">
+      <h3 class="font-semibold text-amber-200">Feature Disabled</h3>
+      <p class="text-sm text-amber-300/70 mt-1">The file sync feature is currently disabled. Enable it in <a href="/admin/features" class="underline hover:text-amber-200">Feature Flags</a>.</p>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Sync Stats -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+    <div class="text-2xl font-bold text-white">{{ stats.total_folders }}</div>
+    <div class="text-xs text-zinc-400 mt-1">Synced Folders</div>
+  </div>
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+    <div class="text-2xl font-bold text-emerald-400">{{ stats.total_files }}</div>
+    <div class="text-xs text-zinc-400 mt-1">Files Indexed</div>
+  </div>
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+    <div class="text-2xl font-bold text-indigo-400">{{ stats.pending_matches }}</div>
+    <div class="text-xs text-zinc-400 mt-1">Pending Matches</div>
+  </div>
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+    <div class="text-2xl font-bold text-amber-400">{{ stats.auto_matched }}</div>
+    <div class="text-xs text-zinc-400 mt-1">Auto-Matched</div>
+  </div>
+</div>
+
+<!-- Add Folder Form -->
+<div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mb-6">
+  <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+    <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+    Add Sync Folder
+  </h2>
+  
+  <form id="add-folder-form" onsubmit="addFolder(event)" class="space-y-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-1.5">Folder Name</label>
+        <input name="name" required placeholder="My STL Library"
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-1.5">Folder Path</label>
+        <input name="path" required placeholder="/path/to/stl/folder"
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
+      </div>
+    </div>
+    
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-1.5">File Extensions</label>
+        <input name="extensions" value=".stl,.obj,.3mf,.gcode" placeholder=".stl,.obj,.3mf"
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
+        <p class="text-xs text-zinc-500 mt-1">Comma-separated list</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-1.5">Match Threshold</label>
+        <input name="threshold" type="number" min="0" max="100" value="70" 
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
+        <p class="text-xs text-zinc-500 mt-1">% confidence to auto-match</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-1.5">Scan Interval</label>
+        <select name="interval" class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition">
+          <option value="60">Every minute</option>
+          <option value="300" selected>Every 5 minutes</option>
+          <option value="900">Every 15 minutes</option>
+          <option value="3600">Every hour</option>
+          <option value="0">Manual only</option>
+        </select>
+      </div>
+    </div>
+    
+    <div class="flex items-center gap-4">
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" name="recursive" value="1" checked 
+               class="w-4 h-4 rounded border-zinc-600 bg-zinc-950 text-indigo-600 focus:ring-indigo-500">
+        <span class="text-sm text-zinc-300">Scan subfolders</span>
+      </label>
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" name="auto_attach" value="1" checked 
+               class="w-4 h-4 rounded border-zinc-600 bg-zinc-950 text-indigo-600 focus:ring-indigo-500">
+        <span class="text-sm text-zinc-300">Auto-attach matches</span>
+      </label>
+    </div>
+    
+    <button type="submit" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition">
+      Add Folder
+    </button>
+  </form>
+</div>
+
+<!-- Synced Folders List -->
+<div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden mb-6">
+  <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+    <h2 class="text-lg font-semibold">Synced Folders</h2>
+    <span class="text-xs text-zinc-500">{{ folders|length }} folder(s)</span>
+  </div>
+  
+  {% if folders %}
+  <div class="divide-y divide-zinc-800">
+    {% for folder in folders %}
+    <div class="p-4 hover:bg-zinc-800/30 transition" id="folder-{{ folder.id }}">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 {{ 'bg-emerald-900/50 text-emerald-400' if folder.enabled else 'bg-zinc-800 text-zinc-500' }}">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+          </div>
+          <div>
+            <div class="font-medium">{{ folder.name }}</div>
+            <div class="text-xs text-zinc-500 font-mono">{{ folder.path }}</div>
+          </div>
+        </div>
+        
+        <div class="flex items-center gap-3">
+          <div class="text-right text-xs text-zinc-400">
+            <div>{{ folder.file_count or 0 }} files</div>
+            <div>Last sync: {{ folder.last_sync or 'Never' }}</div>
+          </div>
+          
+          <div class="flex items-center gap-1">
+            <button onclick="syncFolder('{{ folder.id }}')" 
+                    class="p-2 text-zinc-400 hover:text-indigo-400 hover:bg-zinc-800 rounded-lg transition"
+                    title="Sync now">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            <button onclick="toggleFolder('{{ folder.id }}', {{ 'false' if folder.enabled else 'true' }})" 
+                    class="p-2 {{ 'text-emerald-400' if folder.enabled else 'text-zinc-500' }} hover:bg-zinc-800 rounded-lg transition"
+                    title="{{ 'Disable' if folder.enabled else 'Enable' }}">
+              {% if folder.enabled %}
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              {% else %}
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+              </svg>
+              {% endif %}
+            </button>
+            <button onclick="deleteFolder('{{ folder.id }}', '{{ folder.name }}')" 
+                    class="p-2 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded-lg transition"
+                    title="Delete">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Folder Settings (expandable) -->
+      <div class="mt-3 pt-3 border-t border-zinc-800/50 text-xs text-zinc-400 flex flex-wrap gap-4">
+        <span>Extensions: <code class="bg-zinc-800 px-1 rounded">{{ folder.extensions or '.stl,.obj,.3mf' }}</code></span>
+        <span>Threshold: <code class="bg-zinc-800 px-1 rounded">{{ folder.match_threshold or 70 }}%</code></span>
+        <span>Interval: <code class="bg-zinc-800 px-1 rounded">{{ folder.scan_interval or 300 }}s</code></span>
+        {% if folder.recursive %}<span class="text-indigo-400">Recursive</span>{% endif %}
+        {% if folder.auto_attach %}<span class="text-emerald-400">Auto-attach</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="p-12 text-center">
+    <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-zinc-800/50 flex items-center justify-center">
+      <svg class="w-8 h-8 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+      </svg>
+    </div>
+    <p class="text-zinc-400">No synced folders configured</p>
+    <p class="text-sm text-zinc-500 mt-1">Add a folder above to start auto-matching files</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Pending Matches -->
+<div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+  <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+    <h2 class="text-lg font-semibold">Pending Matches</h2>
+    <button onclick="processMatches()" class="text-xs px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-medium transition">
+      Process All
+    </button>
+  </div>
+  
+  {% if pending_matches %}
+  <div class="divide-y divide-zinc-800">
+    {% for match in pending_matches %}
+    <div class="p-4 hover:bg-zinc-800/30 transition">
+      <div class="flex items-center justify-between">
+        <div class="flex-1 min-w-0">
+          <div class="font-medium truncate">{{ match.request_name }}</div>
+          <div class="text-xs text-zinc-500">Request #{{ match.request_id[:8] }}...</div>
+        </div>
+        
+        <div class="flex items-center gap-2 mx-4">
+          <svg class="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+          </svg>
+        </div>
+        
+        <div class="flex-1 min-w-0 text-right">
+          <div class="font-medium text-indigo-300 truncate">{{ match.matched_filename }}</div>
+          <div class="text-xs text-zinc-500">{{ (match.confidence * 100)|round|int }}% match</div>
+        </div>
+        
+        <div class="flex items-center gap-1 ml-4">
+          <button onclick="approveMatch('{{ match.id }}')" 
+                  class="p-2 text-emerald-400 hover:bg-emerald-900/30 rounded-lg transition"
+                  title="Approve">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </button>
+          <button onclick="rejectMatch('{{ match.id }}')" 
+                  class="p-2 text-red-400 hover:bg-red-900/30 rounded-lg transition"
+                  title="Reject">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="p-12 text-center">
+    <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-zinc-800/50 flex items-center justify-center">
+      <svg class="w-8 h-8 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    </div>
+    <p class="text-zinc-400">No pending matches</p>
+    <p class="text-sm text-zinc-500 mt-1">All files are up to date</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Toast -->
+<div id="toast" class="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-sm opacity-0 pointer-events-none transition-opacity z-50"></div>
+
+<script>
+function showToast(msg, type = 'info') {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.className = toast.className.replace(/bg-\w+-\d+/g, '');
+  if (type === 'success') {
+    toast.classList.add('bg-emerald-900', 'border-emerald-700', 'text-emerald-200');
+  } else if (type === 'error') {
+    toast.classList.add('bg-red-900', 'border-red-700', 'text-red-200');
+  } else {
+    toast.classList.add('bg-zinc-800', 'border-zinc-700');
+  }
+  toast.classList.remove('opacity-0', 'pointer-events-none');
+  setTimeout(() => {
+    toast.classList.add('opacity-0', 'pointer-events-none');
+  }, 3000);
+}
+
+async function addFolder(e) {
+  e.preventDefault();
+  const form = e.target;
+  const data = {
+    name: form.name.value,
+    path: form.path.value,
+    extensions: form.extensions.value,
+    match_threshold: parseInt(form.threshold.value) / 100,
+    scan_interval: parseInt(form.interval.value),
+    recursive: form.recursive.checked,
+    auto_attach: form.auto_attach.checked
+  };
+  
+  try {
+    const res = await fetch('/admin/file-sync/folders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    
+    if (res.ok) {
+      showToast('Folder added successfully', 'success');
+      setTimeout(() => location.reload(), 500);
+    } else {
+      const err = await res.json();
+      showToast(err.detail || 'Failed to add folder', 'error');
+    }
+  } catch (err) {
+    showToast('Network error', 'error');
+  }
+}
+
+async function syncFolder(folderId) {
+  try {
+    const res = await fetch(`/admin/file-sync/folders/${folderId}/sync`, { method: 'POST' });
+    if (res.ok) {
+      showToast('Sync started', 'success');
+    } else {
+      showToast('Failed to start sync', 'error');
+    }
+  } catch (err) {
+    showToast('Network error', 'error');
+  }
+}
+
+async function toggleFolder(folderId, enable) {
+  try {
+    const res = await fetch(`/admin/file-sync/folders/${folderId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: enable })
+    });
+    
+    if (res.ok) {
+      showToast(enable ? 'Folder enabled' : 'Folder disabled', 'success');
+      setTimeout(() => location.reload(), 500);
+    }
+  } catch (err) {
+    showToast('Network error', 'error');
+  }
+}
+
+async function deleteFolder(folderId, name) {
+  if (!confirm(`Delete sync folder "${name}"?`)) return;
+  
+  try {
+    const res = await fetch(`/admin/file-sync/folders/${folderId}`, { method: 'DELETE' });
+    if (res.ok) {
+      document.getElementById(`folder-${folderId}`)?.remove();
+      showToast('Folder removed', 'success');
+    }
+  } catch (err) {
+    showToast('Network error', 'error');
+  }
+}
+
+async function runFullSync() {
+  showToast('Starting full sync...', 'info');
+  try {
+    const res = await fetch('/admin/file-sync/sync-all', { method: 'POST' });
+    if (res.ok) {
+      showToast('Full sync completed', 'success');
+      setTimeout(() => location.reload(), 1000);
+    }
+  } catch (err) {
+    showToast('Network error', 'error');
+  }
+}
+
+async function processMatches() {
+  try {
+    const res = await fetch('/admin/file-sync/process-matches', { method: 'POST' });
+    if (res.ok) {
+      showToast('Matches processed', 'success');
+      setTimeout(() => location.reload(), 500);
+    }
+  } catch (err) {
+    showToast('Network error', 'error');
+  }
+}
+
+async function approveMatch(matchId) {
+  try {
+    const res = await fetch(`/admin/file-sync/matches/${matchId}/approve`, { method: 'POST' });
+    if (res.ok) {
+      showToast('Match approved', 'success');
+      setTimeout(() => location.reload(), 500);
+    }
+  } catch (err) {
+    showToast('Network error', 'error');
+  }
+}
+
+async function rejectMatch(matchId) {
+  try {
+    const res = await fetch(`/admin/file-sync/matches/${matchId}/reject`, { method: 'POST' });
+    if (res.ok) {
+      showToast('Match rejected', 'success');
+      setTimeout(() => location.reload(), 500);
+    }
+  } catch (err) {
+    showToast('Network error', 'error');
+  }
+}
+</script>
+
+{% endblock %}

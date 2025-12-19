@@ -1,0 +1,199 @@
+{% extends "pwa_base.html" %}
+{% block title %}Audit Log | Printellect{% endblock %}
+{% block bnav_admin %}active{% endblock %}
+
+{% block content %}
+{% include "_components/admin_nav_new.html" %}
+
+<div class="pt-2 pb-24">
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold">Audit Log</h1>
+      <p class="text-zinc-400 text-sm">Track all admin actions and system events</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <!-- Action Filter -->
+      <select id="action-filter" onchange="filterByAction()" 
+              class="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-sm focus:border-indigo-500 transition">
+        <option value="">All Actions</option>
+        {% for action in actions %}
+        <option value="{{ action }}" {% if current_action == action %}selected{% endif %}>
+          {{ action.replace('_', ' ').title() }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <!-- Audit Log Table -->
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead class="bg-zinc-800/50">
+          <tr class="text-left text-xs text-zinc-400 uppercase tracking-wider">
+            <th class="px-4 py-3 font-medium">Time</th>
+            <th class="px-4 py-3 font-medium">Action</th>
+            <th class="px-4 py-3 font-medium">Actor</th>
+            <th class="px-4 py-3 font-medium">Target</th>
+            <th class="px-4 py-3 font-medium">Details</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+          {% for log in logs %}
+          <tr class="hover:bg-zinc-800/30 transition">
+            <td class="px-4 py-3 text-sm text-zinc-400 whitespace-nowrap">
+              {{ log.created_at|localtime('%b %d, %I:%M:%S %p') }}
+            </td>
+            <td class="px-4 py-3">
+              {% set action_colors = {
+                'admin_login': 'emerald',
+                'admin_logout': 'zinc',
+                'admin_login_failed': 'red',
+                'admin_created': 'blue',
+                'admin_updated': 'indigo',
+                'admin_deleted': 'red',
+                'user_registered': 'emerald',
+                'user_login': 'emerald',
+                'request_created': 'blue',
+                'request_approved': 'emerald',
+                'request_rejected': 'red',
+                'request_status_changed': 'indigo',
+                'settings_updated': 'yellow',
+                'feature_flag_toggled': 'purple'
+              } %}
+              {% set color = action_colors.get(log.action, 'zinc') %}
+              <span class="px-2 py-1 bg-{{ color }}-600/20 text-{{ color }}-300 text-xs rounded-lg">
+                {{ log.action.replace('_', ' ').title() if log.action is string else log.action }}
+              </span>
+            </td>
+            <td class="px-4 py-3">
+              <div class="flex items-center gap-2">
+                {% if log.actor_type == 'admin' %}
+                <span class="w-6 h-6 bg-indigo-600/30 rounded-lg flex items-center justify-center">
+                  <svg class="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                  </svg>
+                </span>
+                {% elif log.actor_type == 'user' %}
+                <span class="w-6 h-6 bg-purple-600/30 rounded-lg flex items-center justify-center">
+                  <svg class="w-3 h-3 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                  </svg>
+                </span>
+                {% else %}
+                <span class="w-6 h-6 bg-zinc-600/30 rounded-lg flex items-center justify-center">
+                  <svg class="w-3 h-3 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                  </svg>
+                </span>
+                {% endif %}
+                <div>
+                  <div class="text-sm font-medium">{{ log.actor_name or log.actor_id or 'System' }}</div>
+                  <div class="text-xs text-zinc-500">{{ log.actor_ip or '' }}</div>
+                </div>
+              </div>
+            </td>
+            <td class="px-4 py-3 text-sm">
+              {% if log.target_type %}
+              <span class="text-zinc-300">{{ log.target_type }}</span>
+              {% if log.target_id %}
+              <span class="text-zinc-500 text-xs ml-1">#{{ log.target_id[:8] }}...</span>
+              {% endif %}
+              {% else %}
+              <span class="text-zinc-500">-</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-sm text-zinc-400">
+              {% if log.details %}
+              <button onclick="showDetails(this)" 
+                      data-details="{{ log.details|tojson|e }}"
+                      class="text-indigo-400 hover:text-indigo-300 text-xs">
+                View Details
+              </button>
+              {% else %}
+              <span class="text-zinc-600">-</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" class="px-4 py-12 text-center text-zinc-500">
+              <svg class="w-12 h-12 mx-auto mb-4 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+              </svg>
+              No audit logs found
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Pagination -->
+    {% if logs %}
+    <div class="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
+      <div class="text-sm text-zinc-500">
+        Page {{ page }}
+      </div>
+      <div class="flex gap-2">
+        {% if page > 1 %}
+        <a href="?page={{ page - 1 }}{% if current_action %}&action={{ current_action }}{% endif %}" 
+           class="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition">
+          Previous
+        </a>
+        {% endif %}
+        {% if has_more %}
+        <a href="?page={{ page + 1 }}{% if current_action %}&action={{ current_action }}{% endif %}" 
+           class="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition">
+          Next
+        </a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Details Modal -->
+<div id="details-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+  <div class="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg">
+    <div class="p-4 border-b border-zinc-800 flex items-center justify-between">
+      <h3 class="font-semibold">Event Details</h3>
+      <button onclick="hideDetails()" class="p-2 hover:bg-zinc-800 rounded-lg transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div id="details-content" class="p-4">
+      <pre class="bg-zinc-800 rounded-xl p-4 text-sm text-zinc-300 overflow-x-auto"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+  function filterByAction() {
+    const action = document.getElementById('action-filter').value;
+    const url = new URL(window.location);
+    if (action) {
+      url.searchParams.set('action', action);
+    } else {
+      url.searchParams.delete('action');
+    }
+    url.searchParams.delete('page');
+    window.location = url.toString();
+  }
+  
+  function showDetails(btn) {
+    const details = JSON.parse(btn.dataset.details);
+    const content = document.querySelector('#details-content pre');
+    content.textContent = JSON.stringify(details, null, 2);
+    document.getElementById('details-modal').classList.remove('hidden');
+  }
+  
+  function hideDetails() {
+    document.getElementById('details-modal').classList.add('hidden');
+  }
+</script>
+{% endblock %}

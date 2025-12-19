@@ -20,6 +20,14 @@ from app.demo_data import (
     get_demo_printer_status, get_demo_printer_job, get_demo_all_printers_status
 )
 
+# New auth system - multi-admin, user accounts, feature flags
+from app.auth import (
+    init_auth_tables, init_feature_flags, is_feature_enabled,
+    get_current_user, get_current_admin, optional_user,
+    get_or_create_legacy_admin, log_audit
+)
+from app.models import AuditAction
+
 # ─────────────────────────── VERSION ───────────────────────────
 APP_VERSION = "0.9.0"
 #
@@ -1901,12 +1909,23 @@ def _startup():
     ensure_migrations()
     seed_default_settings()
     
+    # Initialize new auth system (multi-admin, user accounts, feature flags)
+    init_auth_tables()
+    init_feature_flags()
+    
+    # Create default admin from ADMIN_PASSWORD if no admins exist yet
+    get_or_create_legacy_admin()
+    
     # Seed demo data if DEMO_MODE is enabled
     if DEMO_MODE:
         print("[DEMO] Demo mode enabled - seeding fake data...")
         seed_demo_data(db)
     
     start_printer_polling()  # Start background printer status polling
+
+# Mount auth routes
+from app.routes_auth import router as auth_router
+app.include_router(auth_router)
 
 
 def require_admin(request: Request):
@@ -4885,7 +4904,7 @@ def get_request_templates() -> List[Dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
-def render_form(request: Request, error: Optional[str], form: Dict[str, Any]):
+def render_form(request: Request, error: Optional[str], form: Dict[str, Any], user=None):
     # Get printer suggestions
     printer_suggestions = get_printer_suggestions()
     
@@ -4907,6 +4926,20 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any]):
     # Get saved templates
     saved_templates = get_request_templates()
     
+    # If user is logged in, pre-fill form with their preferences (unless form already has values)
+    if user and not form.get("requester_name"):
+        form = {
+            "requester_name": user.display_name,
+            "requester_email": user.email,
+            "printer": user.preferred_printer or "",
+            "material": user.preferred_material or "",
+            "colors": user.preferred_colors or "",
+            **form  # Allow explicit form values to override
+        }
+    
+    # Check if user accounts feature is enabled
+    user_accounts_enabled = is_feature_enabled("user_accounts")
+    
     return templates.TemplateResponse("request_form_new.html", {
         "request": request,
         "turnstile_site_key": TURNSTILE_SITE_KEY,
@@ -4918,12 +4951,16 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any]):
         "printer_suggestions": printer_suggestions,
         "rush_settings": rush_settings,
         "saved_templates": saved_templates,
+        "user": user,
+        "user_accounts_enabled": user_accounts_enabled,
     }, status_code=400 if error else 200)
 
 
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request):
-    return render_form(request, None, form={})
+async def home(request: Request):
+    # Check if user is logged in
+    user = await optional_user(request)
+    return render_form(request, None, form={}, user=user)
 
 
 @app.post("/submit")
