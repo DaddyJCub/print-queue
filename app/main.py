@@ -21,9 +21,9 @@ from app.demo_data import (
 )
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "1.8.24"
-# Changelog:
-# 1.8.24 - Admin PWA tab: shows Admin in bottom nav when logged in, My Prints pagination with collapsible Past Prints
+APP_VERSION = "1.9.0"
+# Changelog (following Semantic Versioning: MAJOR.MINOR.PATCH):
+# 1.9.0 - [FEATURE] Admin PWA navigation: Admin tab in bottom nav, unified navigation on admin pages, My Prints pagination
 # 1.8.23 - Admin dashboard pagination: "show more" for long lists, collapsible Recently Closed section
 # 1.8.22 - Admin request page UX: cleaner build configuration section, inline quick actions, collapsible edit forms
 # 1.8.21 - Flexible build reordering: allow reordering queued builds even while other builds are printing
