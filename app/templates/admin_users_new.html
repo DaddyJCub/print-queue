@@ -1,0 +1,494 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>User Management | Admin | Printellect</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-7xl mx-auto p-6">
+    <!-- Navigation -->
+    {% set active_page = 'users' %}
+    {% include 'admin_nav.html' %}
+
+    <!-- Page Header -->
+    <div class="mb-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-bold">👥 User Management</h1>
+          <p class="text-zinc-400 text-sm mt-1">{{ total_count }} registered user(s)</p>
+        </div>
+        <button onclick="showCreateModal()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold transition flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+          Add User
+        </button>
+      </div>
+    </div>
+
+    <!-- Success/Error Messages -->
+    {% if success %}
+    <div class="mb-4 bg-emerald-900/30 border border-emerald-700/50 text-emerald-200 rounded-xl p-4 flex items-center gap-3">
+      <svg class="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <span>{{ success }}</span>
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="mb-4 bg-red-900/30 border border-red-700/50 text-red-200 rounded-xl p-4 flex items-center gap-3">
+      <svg class="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <span>{{ error }}</span>
+    </div>
+    {% endif %}
+
+    <!-- Filters -->
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 mb-6">
+      <form method="GET" action="/admin/users" class="flex flex-col sm:flex-row gap-3">
+        <div class="flex-1">
+          <input type="text" name="search" value="{{ search or '' }}" placeholder="Search by name or email..."
+                 class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-2.5 text-sm transition" />
+        </div>
+        <select name="status" class="rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-2.5 text-sm transition">
+          <option value="">All Statuses</option>
+          {% for s in all_statuses %}
+          <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s|capitalize }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition">
+          Filter
+        </button>
+        {% if search or status_filter %}
+        <a href="/admin/users" class="px-4 py-2.5 text-zinc-400 hover:text-white text-sm transition">Clear</a>
+        {% endif %}
+      </form>
+    </div>
+
+    <!-- Users Table -->
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+      {% if users %}
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="border-b border-zinc-800 text-left text-xs text-zinc-400 uppercase tracking-wider">
+              <th class="px-4 py-3">User</th>
+              <th class="px-4 py-3 hidden sm:table-cell">Status</th>
+              <th class="px-4 py-3 hidden md:table-cell">Requests</th>
+              <th class="px-4 py-3 hidden md:table-cell">Credits</th>
+              <th class="px-4 py-3 hidden lg:table-cell">Joined</th>
+              <th class="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-800">
+            {% for user in users %}
+            <tr class="hover:bg-zinc-800/30 transition" id="user-{{ user.id }}">
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                    {{ user.name[0]|upper if user.name else '?' }}
+                  </div>
+                  <div>
+                    <div class="font-medium">{{ user.name or 'No name' }}</div>
+                    <div class="text-sm text-zinc-400">{{ user.email }}</div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-4 py-3 hidden sm:table-cell">
+                {% if user.status == 'active' %}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-900/50 text-emerald-300 border border-emerald-700/50">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  Active
+                </span>
+                {% elif user.status == 'suspended' %}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-900/50 text-red-300 border border-red-700/50">
+                  <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+                  Suspended
+                </span>
+                {% else %}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-900/50 text-amber-300 border border-amber-700/50">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                  Unverified
+                </span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 hidden md:table-cell text-zinc-300">
+                {{ user.total_requests or 0 }}
+              </td>
+              <td class="px-4 py-3 hidden md:table-cell">
+                <span class="text-amber-400">{{ user.credits or 0 }}</span>
+              </td>
+              <td class="px-4 py-3 hidden lg:table-cell text-zinc-400 text-sm">
+                {{ user.created_at[:10] if user.created_at else 'Unknown' }}
+              </td>
+              <td class="px-4 py-3 text-right">
+                <div class="flex items-center justify-end gap-1">
+                  <button onclick="showEditModal('{{ user.id }}', '{{ user.name }}', '{{ user.email }}', '{{ user.status }}', {{ user.credits or 0 }})"
+                          class="p-2 text-zinc-400 hover:text-indigo-400 hover:bg-zinc-800 rounded-lg transition" title="Edit">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                  {% if user.status == 'suspended' %}
+                  <button onclick="activateUser('{{ user.id }}')"
+                          class="p-2 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-lg transition" title="Activate">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+                  {% else %}
+                  <button onclick="suspendUser('{{ user.id }}', '{{ user.name }}')"
+                          class="p-2 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 rounded-lg transition" title="Suspend">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                  </button>
+                  {% endif %}
+                  <button onclick="showConvertModal('{{ user.id }}', '{{ user.name }}', '{{ user.email }}')"
+                          class="p-2 text-zinc-400 hover:text-purple-400 hover:bg-zinc-800 rounded-lg transition" title="Convert to Admin">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                  </button>
+                  <button onclick="deleteUser('{{ user.id }}', '{{ user.name }}')"
+                          class="p-2 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded-lg transition" title="Delete">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      
+      <!-- Pagination -->
+      {% if total_pages > 1 %}
+      <div class="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
+        <div class="text-sm text-zinc-400">
+          Page {{ page }} of {{ total_pages }}
+        </div>
+        <div class="flex gap-2">
+          {% if has_prev %}
+          <a href="/admin/users?page={{ page - 1 }}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search %}&search={{ search }}{% endif %}"
+             class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition">Previous</a>
+          {% endif %}
+          {% if has_next %}
+          <a href="/admin/users?page={{ page + 1 }}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search %}&search={{ search }}{% endif %}"
+             class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition">Next</a>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+      {% else %}
+      <div class="p-12 text-center">
+        <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-zinc-800/50 flex items-center justify-center">
+          <svg class="w-8 h-8 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+        </div>
+        <p class="text-zinc-400">No users found</p>
+        <p class="text-sm text-zinc-500 mt-1">Users will appear here when they create accounts</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Create User Modal -->
+    <div id="create-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md">
+        <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+          <h3 class="text-lg font-semibold">Create User</h3>
+          <button onclick="hideCreateModal()" class="text-zinc-400 hover:text-white">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <form action="/admin/users/create" method="POST" class="p-6 space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-zinc-300 mb-1.5">Email</label>
+            <input type="email" name="email" required
+                   class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-2.5 transition" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-zinc-300 mb-1.5">Name</label>
+            <input type="text" name="name" required
+                   class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-2.5 transition" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-zinc-300 mb-1.5">Password (optional)</label>
+            <input type="password" name="password" id="create-password" minlength="8" oninput="checkPasswordStrength('create-password', 'create-str')"
+                   class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-2.5 transition" />
+            <!-- Password strength indicator -->
+            <div class="mt-2">
+              <div class="flex gap-1">
+                <div id="create-str-1" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+                <div id="create-str-2" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+                <div id="create-str-3" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+                <div id="create-str-4" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+              </div>
+              <p id="create-str-text" class="text-xs text-zinc-500 mt-1">Leave blank for magic-link only auth</p>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-zinc-300 mb-1.5">Status</label>
+            <select name="status" class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-2.5 transition">
+              <option value="active">Active</option>
+              <option value="unverified">Unverified</option>
+            </select>
+          </div>
+          <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition">
+            Create User
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Edit User Modal -->
+    <div id="edit-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md">
+        <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+          <h3 class="text-lg font-semibold">Edit User</h3>
+          <button onclick="hideEditModal()" class="text-zinc-400 hover:text-white">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <form action="/admin/users/update" method="POST" class="p-6 space-y-4">
+          <input type="hidden" name="user_id" id="edit-user-id" />
+          <div>
+            <label class="block text-sm font-medium text-zinc-300 mb-1.5">Name</label>
+            <input type="text" name="name" id="edit-name"
+                   class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-2.5 transition" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-zinc-300 mb-1.5">Email</label>
+            <input type="email" name="email" id="edit-email"
+                   class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-2.5 transition" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-zinc-300 mb-1.5">Status</label>
+            <select name="status" id="edit-status" class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-2.5 transition">
+              <option value="active">Active</option>
+              <option value="unverified">Unverified</option>
+              <option value="suspended">Suspended</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-zinc-300 mb-1.5">Credits</label>
+            <input type="number" name="credits" id="edit-credits" min="0"
+                   class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-2.5 transition" />
+          </div>
+          <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition">
+            Save Changes
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Convert to Admin Modal -->
+    <div id="convert-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md">
+        <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+          <h3 class="text-lg font-semibold">Convert to Admin</h3>
+          <button onclick="hideConvertModal()" class="text-zinc-400 hover:text-white">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <form action="" method="POST" id="convert-form" class="p-6 space-y-4">
+          <div class="bg-amber-900/20 border border-amber-700/50 rounded-xl p-4 mb-4">
+            <p class="text-amber-200 text-sm">
+              <strong>Warning:</strong> This will create an admin account for <span id="convert-name" class="font-semibold"></span>.
+              The user account will remain but they'll also have admin access.
+            </p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-zinc-300 mb-1.5">Admin Role</label>
+            <select name="role" class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-2.5 transition">
+              <option value="viewer">Viewer (read-only)</option>
+              <option value="operator" selected>Operator (queue management)</option>
+              <option value="admin">Admin (queue + store)</option>
+              <option value="super_admin">Super Admin (full access)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-zinc-300 mb-1.5">Admin Password</label>
+            <input type="password" name="password" minlength="8"
+                   class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-2.5 transition" />
+            <p class="text-xs text-zinc-500 mt-1">Leave blank to auto-generate</p>
+          </div>
+          <button type="submit" class="w-full py-3 bg-purple-600 hover:bg-purple-500 rounded-xl font-semibold transition">
+            Convert to Admin
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-sm opacity-0 pointer-events-none transition-opacity z-50"></div>
+  </div>
+
+  <script>
+  // Password strength checker
+  function checkPasswordStrength(inputId, prefix) {
+    const input = document.getElementById(inputId);
+    const password = input.value;
+    let strength = 0;
+    
+    if (password.length === 0) {
+      for (let i = 1; i <= 4; i++) {
+        document.getElementById(prefix + '-' + i).className = 'h-1 flex-1 bg-zinc-700 rounded';
+      }
+      document.getElementById(prefix + '-text').textContent = 'Leave blank for magic-link only auth';
+      document.getElementById(prefix + '-text').className = 'text-xs text-zinc-500 mt-1';
+      return;
+    }
+    
+    if (password.length >= 8) strength++;
+    if (password.match(/[a-z]/) && password.match(/[A-Z]/)) strength++;
+    if (password.match(/\d/)) strength++;
+    if (password.match(/[^a-zA-Z\d]/)) strength++;
+    
+    const colors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-emerald-500'];
+    const texts = ['Weak', 'Fair', 'Good', 'Strong 💪'];
+    const textColors = ['text-red-400', 'text-orange-400', 'text-yellow-400', 'text-emerald-400'];
+    
+    for (let i = 1; i <= 4; i++) {
+      const bar = document.getElementById(prefix + '-' + i);
+      bar.className = 'h-1 flex-1 rounded ' + (i <= strength ? colors[strength - 1] : 'bg-zinc-700');
+    }
+    
+    document.getElementById(prefix + '-text').textContent = texts[strength - 1];
+    document.getElementById(prefix + '-text').className = 'text-xs mt-1 ' + textColors[strength - 1];
+  }
+
+  function showToast(msg, type = 'info') {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.className = 'fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm transition-opacity z-50';
+    if (type === 'success') {
+      toast.classList.add('bg-emerald-900', 'border', 'border-emerald-700', 'text-emerald-200');
+    } else if (type === 'error') {
+      toast.classList.add('bg-red-900', 'border', 'border-red-700', 'text-red-200');
+    } else {
+      toast.classList.add('bg-zinc-800', 'border', 'border-zinc-700');
+    }
+    toast.classList.remove('opacity-0', 'pointer-events-none');
+    setTimeout(() => {
+      toast.classList.add('opacity-0', 'pointer-events-none');
+    }, 3000);
+  }
+
+  function showCreateModal() {
+    document.getElementById('create-modal').classList.remove('hidden');
+    document.getElementById('create-modal').classList.add('flex');
+  }
+
+  function hideCreateModal() {
+    document.getElementById('create-modal').classList.add('hidden');
+    document.getElementById('create-modal').classList.remove('flex');
+  }
+
+  function showEditModal(id, name, email, status, credits) {
+    document.getElementById('edit-user-id').value = id;
+    document.getElementById('edit-name').value = name;
+    document.getElementById('edit-email').value = email;
+    document.getElementById('edit-status').value = status;
+    document.getElementById('edit-credits').value = credits;
+    document.getElementById('edit-modal').classList.remove('hidden');
+    document.getElementById('edit-modal').classList.add('flex');
+  }
+
+  function hideEditModal() {
+    document.getElementById('edit-modal').classList.add('hidden');
+    document.getElementById('edit-modal').classList.remove('flex');
+  }
+
+  function showConvertModal(id, name, email) {
+    document.getElementById('convert-name').textContent = name + ' (' + email + ')';
+    document.getElementById('convert-form').action = '/admin/users/' + id + '/convert-to-admin';
+    document.getElementById('convert-modal').classList.remove('hidden');
+    document.getElementById('convert-modal').classList.add('flex');
+  }
+
+  function hideConvertModal() {
+    document.getElementById('convert-modal').classList.add('hidden');
+    document.getElementById('convert-modal').classList.remove('flex');
+  }
+
+  async function suspendUser(id, name) {
+    if (!confirm('Suspend user "' + name + '"? They will not be able to submit requests.')) return;
+    
+    try {
+      const res = await fetch('/admin/users/' + id + '/suspend', { method: 'POST' });
+      if (res.ok) {
+        showToast('User suspended', 'success');
+        setTimeout(() => location.reload(), 500);
+      } else {
+        showToast('Failed to suspend user', 'error');
+      }
+    } catch (err) {
+      showToast('Network error', 'error');
+    }
+  }
+
+  async function activateUser(id) {
+    try {
+      const res = await fetch('/admin/users/' + id + '/activate', { method: 'POST' });
+      if (res.ok) {
+        showToast('User activated', 'success');
+        setTimeout(() => location.reload(), 500);
+      } else {
+        showToast('Failed to activate user', 'error');
+      }
+    } catch (err) {
+      showToast('Network error', 'error');
+    }
+  }
+
+  async function deleteUser(id, name) {
+    if (!confirm('Delete user "' + name + '"? This cannot be undone.')) return;
+    
+    try {
+      const res = await fetch('/admin/users/' + id, { method: 'DELETE' });
+      if (res.ok) {
+        document.getElementById('user-' + id)?.remove();
+        showToast('User deleted', 'success');
+      } else {
+        showToast('Failed to delete user', 'error');
+      }
+    } catch (err) {
+      showToast('Network error', 'error');
+    }
+  }
+
+  // Close modals on escape key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      hideCreateModal();
+      hideEditModal();
+      hideConvertModal();
+    }
+  });
+
+  // Close modals on backdrop click
+  ['create-modal', 'edit-modal', 'convert-modal'].forEach(id => {
+    document.getElementById(id)?.addEventListener('click', function(e) {
+      if (e.target === this) {
+        this.classList.add('hidden');
+        this.classList.remove('flex');
+      }
+    });
+  });
+  </script>
+</body>
+</html>

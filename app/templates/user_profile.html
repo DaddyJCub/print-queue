@@ -1,0 +1,818 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}My Account | Printellect{% endblock %}
+
+{% block nav_myrequests %}text-white bg-zinc-800{% endblock %}
+{% block bnav_myrequests %}active{% endblock %}
+
+{% block header_title %}My Account{% endblock %}
+
+{% block header_right %}
+<a href="/my-requests/view?token={{ token }}" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">
+  ← Back to My Prints
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  
+  {% if success %}
+  <div class="mb-6 bg-emerald-900/30 border border-emerald-500/50 text-emerald-200 rounded-xl p-4 flex items-center gap-3">
+    <svg class="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <span>{{ success }}</span>
+  </div>
+  {% endif %}
+
+  {% if error %}
+  <div class="mb-6 bg-red-900/30 border border-red-500/50 text-red-200 rounded-xl p-4 flex items-center gap-3">
+    <svg class="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+    <span>{{ error }}</span>
+  </div>
+  {% endif %}
+
+  <!-- Account Overview -->
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mb-6">
+    <div class="flex items-center gap-4 mb-6">
+      <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white">
+        {{ user.name[0]|upper if user.name else user.email[0]|upper }}
+      </div>
+      <div class="flex-1">
+        <h1 class="text-xl font-bold">{{ user.name or 'Printellect User' }}</h1>
+        <p class="text-zinc-400 text-sm">{{ user.email }}</p>
+        <div class="flex items-center gap-3 mt-1 text-xs">
+          {% if user.email_verified %}
+          <span class="text-emerald-400 flex items-center gap-1">
+            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            Verified
+          </span>
+          {% else %}
+          <span class="text-amber-400">Unverified</span>
+          {% endif %}
+          <span class="text-zinc-600">•</span>
+          <span class="text-zinc-500">Joined {{ user.created_at[:10] if user.created_at else 'recently' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="grid grid-cols-3 gap-3 text-center">
+      <div class="bg-zinc-800/50 rounded-xl p-3">
+        <div class="text-2xl font-bold text-indigo-400">{{ user.total_requests or 0 }}</div>
+        <div class="text-xs text-zinc-500">Total Requests</div>
+      </div>
+      <div class="bg-zinc-800/50 rounded-xl p-3">
+        <div class="text-2xl font-bold text-emerald-400">{{ user.total_prints or 0 }}</div>
+        <div class="text-xs text-zinc-500">Prints Done</div>
+      </div>
+      <div class="bg-zinc-800/50 rounded-xl p-3">
+        <div class="text-2xl font-bold text-amber-400">{{ user.credits or 0 }}</div>
+        <div class="text-xs text-zinc-500">Credits</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile Settings -->
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden mb-6">
+    <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+      <h2 class="font-semibold flex items-center gap-2">
+        <span>👤</span> Profile Information
+      </h2>
+    </div>
+    
+    <form action="/user/profile" method="POST" class="p-6 space-y-4">
+      <input type="hidden" name="token" value="{{ token }}">
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Name</label>
+        <input type="text" name="name" value="{{ user.name or '' }}"
+               class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
+               placeholder="Your name">
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Email</label>
+        <input type="email" value="{{ user.email }}" disabled
+               class="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-500 cursor-not-allowed">
+        <p class="text-xs text-zinc-500 mt-1">Email cannot be changed</p>
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Phone <span class="text-zinc-500">(optional)</span></label>
+        <input type="tel" name="phone" value="{{ user.phone or '' }}"
+               class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
+               placeholder="(555) 123-4567">
+      </div>
+      
+      <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition">
+        Save Profile
+      </button>
+    </form>
+  </div>
+
+  <!-- Print Preferences -->
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden mb-6">
+    <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+      <h2 class="font-semibold flex items-center gap-2">
+        <span>🖨️</span> Print Preferences
+      </h2>
+      <span class="text-xs text-zinc-500">Auto-fills on new requests</span>
+    </div>
+    
+    <form action="/user/preferences" method="POST" class="p-6 space-y-4">
+      <input type="hidden" name="token" value="{{ token }}">
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Preferred Printer</label>
+        <select name="preferred_printer" 
+                class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 transition">
+          <option value="">No preference</option>
+          {% for printer in printers %}
+          <option value="{{ printer.name }}" {% if user.preferred_printer == printer.name %}selected{% endif %}>
+            {{ printer.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Preferred Material</label>
+        <select name="preferred_material"
+                class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 transition">
+          <option value="">No preference</option>
+          {% for mat in materials %}
+          <option value="{{ mat }}" {% if user.preferred_material == mat %}selected{% endif %}>{{ mat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Favorite Colors</label>
+        <input type="text" name="preferred_colors" value="{{ user.preferred_colors or '' }}"
+               class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
+               placeholder="e.g., Black, White, Blue">
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Default Notes</label>
+        <textarea name="notes_template" rows="3"
+                  class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition resize-none"
+                  placeholder="Standard notes for all your prints...">{{ user.notes_template or '' }}</textarea>
+        <p class="text-xs text-zinc-500 mt-1">These notes will be pre-filled on new requests</p>
+      </div>
+      
+      <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition">
+        Save Preferences
+      </button>
+    </form>
+  </div>
+
+  <!-- Notification Settings -->
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden mb-6">
+    <div class="px-6 py-4 border-b border-zinc-800">
+      <h2 class="font-semibold flex items-center gap-2">
+        <span>🔔</span> Notification Settings
+      </h2>
+    </div>
+    
+    <div class="p-6 space-y-5">
+      <!-- Push Status Banner -->
+      <div id="push-status-banner" class="hidden p-3 rounded-xl border">
+        <div class="flex items-start gap-2">
+          <span class="text-lg" id="push-status-icon">⚠️</span>
+          <p id="push-status-message" class="text-sm"></p>
+        </div>
+      </div>
+      
+      <!-- iOS Install Hint -->
+      <div id="ios-install-hint" class="hidden p-3 bg-blue-900/30 border border-blue-500/30 rounded-xl">
+        <p class="text-xs text-blue-300">
+          <strong>📱 iPhone/iPad:</strong> To get push notifications, first install this app: 
+          tap <span class="inline-block px-1.5 py-0.5 bg-zinc-700 rounded">Share</span> → 
+          <span class="inline-block px-1.5 py-0.5 bg-zinc-700 rounded">Add to Home Screen</span>
+        </p>
+      </div>
+      
+      <!-- Main Push Toggle -->
+      <div class="bg-gradient-to-br from-indigo-900/40 to-purple-900/30 rounded-2xl p-4 border border-indigo-500/30">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-indigo-600/30 flex items-center justify-center">
+              <span class="text-xl">📲</span>
+            </div>
+            <div>
+              <span class="font-semibold text-white">Push Notifications</span>
+              <div class="mt-0.5">
+                <span id="push-status-indicator" class="text-xs font-medium text-zinc-400">Checking...</span>
+              </div>
+            </div>
+          </div>
+          <button id="push-toggle" onclick="togglePushNotifications()" 
+                  class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-zinc-700">
+            <span id="push-toggle-dot" class="inline-block h-5 w-5 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-1"></span>
+          </button>
+        </div>
+        
+        <!-- Test Button -->
+        <div class="mt-3 pt-3 border-t border-white/10">
+          <button id="test-push-btn" onclick="testPushNotification()" 
+                  class="w-full px-4 py-2 bg-white/10 hover:bg-white/15 rounded-xl text-sm font-medium text-white transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
+            <span>🧪</span> Send Test Notification
+          </button>
+        </div>
+      </div>
+      
+      <!-- Notification Types -->
+      <div class="space-y-3">
+        <h3 class="text-xs font-semibold text-zinc-500 uppercase tracking-wider px-1">What to notify me about</h3>
+        
+        <!-- Progress Updates -->
+        <div class="bg-zinc-800/60 rounded-xl overflow-hidden border border-zinc-700/50">
+          <div class="p-4">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-emerald-600/20 flex items-center justify-center flex-shrink-0">
+                  <span class="text-lg">📊</span>
+                </div>
+                <div>
+                  <span class="font-medium text-white">Build Progress</span>
+                  <p class="text-xs text-zinc-400 mt-0.5">Get notified at key milestones</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Milestone Chips -->
+            <div class="mt-4">
+              <p class="text-xs text-zinc-500 mb-2">Notify me at:</p>
+              <div class="flex flex-wrap gap-2" id="milestone-chips">
+                <button type="button" data-milestone="25" onclick="toggleMilestone(25)" 
+                        class="milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border">25%</button>
+                <button type="button" data-milestone="50" onclick="toggleMilestone(50)" 
+                        class="milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border">50%</button>
+                <button type="button" data-milestone="75" onclick="toggleMilestone(75)" 
+                        class="milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border">75%</button>
+                <button type="button" data-milestone="90" onclick="toggleMilestone(90)" 
+                        class="milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border">90%</button>
+              </div>
+            </div>
+            
+            <!-- Push/Email toggles -->
+            <div class="mt-4 pt-3 border-t border-zinc-700/50 flex items-center gap-4">
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-progress-push" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Push</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-progress-email" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Email</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Status Updates -->
+        <div class="bg-zinc-800/60 rounded-xl overflow-hidden border border-zinc-700/50">
+          <div class="p-4">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-blue-600/20 flex items-center justify-center flex-shrink-0">
+                  <span class="text-lg">🔄</span>
+                </div>
+                <div>
+                  <span class="font-medium text-white">Status Changes</span>
+                  <p class="text-xs text-zinc-400 mt-0.5">Approved, printing, ready for pickup</p>
+                </div>
+              </div>
+            </div>
+            
+            <div class="mt-4 pt-3 border-t border-zinc-700/50 flex items-center gap-4">
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-status-push" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Push</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-status-email" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Email</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Announcements -->
+        <div class="bg-zinc-800/60 rounded-xl overflow-hidden border border-zinc-700/50">
+          <div class="p-4">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-amber-600/20 flex items-center justify-center flex-shrink-0">
+                  <span class="text-lg">📢</span>
+                </div>
+                <div>
+                  <span class="font-medium text-white">Announcements</span>
+                  <p class="text-xs text-zinc-400 mt-0.5">App updates & important news</p>
+                </div>
+              </div>
+            </div>
+            
+            <div class="mt-4 pt-3 border-t border-zinc-700/50 flex items-center gap-4">
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-broadcast-push" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Push</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Saving indicator -->
+      <div id="prefs-saving" class="hidden">
+        <div class="flex items-center justify-center gap-2 py-2">
+          <div class="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          <span class="text-xs text-zinc-400">Saving...</span>
+        </div>
+      </div>
+      
+      <p class="text-xs text-zinc-500 text-center">Changes are saved automatically</p>
+    </div>
+  </div>
+
+  <!-- Security -->
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden mb-6">
+    <div class="px-6 py-4 border-b border-zinc-800">
+      <h2 class="font-semibold flex items-center gap-2">
+        <span>🔒</span> Security
+      </h2>
+    </div>
+    
+    <div class="p-6 space-y-4">
+      {% if user.password_hash %}
+      <!-- User has password set -->
+      <div class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+        <div>
+          <p class="font-medium text-sm">Password</p>
+          <p class="text-xs text-zinc-500">Password authentication enabled</p>
+        </div>
+        <button onclick="showChangePasswordModal()" class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm transition">
+          Change
+        </button>
+      </div>
+      {% else %}
+      <!-- Magic link only -->
+      <div class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+        <div>
+          <p class="font-medium text-sm">Authentication</p>
+          <p class="text-xs text-zinc-500">Using magic link login</p>
+        </div>
+        <button onclick="showSetPasswordModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm transition">
+          Set Password
+        </button>
+      </div>
+      {% endif %}
+      
+      <div class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+        <div>
+          <p class="font-medium text-sm">Last Login</p>
+          <p class="text-xs text-zinc-500">{{ user.last_login|localtime('%b %d, %Y at %I:%M %p') if user.last_login else 'Never' }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Danger Zone -->
+  <div class="bg-red-950/30 border border-red-900/50 rounded-2xl overflow-hidden">
+    <div class="px-6 py-4 border-b border-red-900/50">
+      <h2 class="font-semibold text-red-400 flex items-center gap-2">
+        <span>⚠️</span> Danger Zone
+      </h2>
+    </div>
+    
+    <div class="p-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="font-medium text-sm">Delete Account</p>
+          <p class="text-xs text-zinc-500">Permanently delete your account and all data</p>
+        </div>
+        <button onclick="confirmDeleteAccount()" class="px-3 py-1.5 bg-red-900/50 hover:bg-red-800 text-red-300 rounded-lg text-sm transition">
+          Delete Account
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Set/Change Password Modal -->
+<div id="password-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+  <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md">
+    <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+      <h3 id="password-modal-title" class="text-lg font-semibold">Set Password</h3>
+      <button onclick="hidePasswordModal()" class="text-zinc-400 hover:text-white">✕</button>
+    </div>
+    <form action="/user/password" method="POST" class="p-6 space-y-4">
+      <input type="hidden" name="token" value="{{ token }}">
+      
+      <div id="current-password-field" class="hidden">
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Current Password</label>
+        <input type="password" name="current_password"
+               class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 transition">
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">New Password</label>
+        <input type="password" name="new_password" id="new-password" required minlength="8"
+               oninput="checkPasswordStrength('new-password', 'pwd-str')"
+               class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 transition">
+        <!-- Password strength indicator -->
+        <div class="mt-2">
+          <div class="flex gap-1">
+            <div id="pwd-str-1" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+            <div id="pwd-str-2" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+            <div id="pwd-str-3" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+            <div id="pwd-str-4" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+          </div>
+          <p id="pwd-str-text" class="text-xs text-zinc-500 mt-1">Min. 8 characters</p>
+        </div>
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Confirm Password</label>
+        <input type="password" name="confirm_password" id="confirm-password" required minlength="8"
+               oninput="checkPasswordMatch()"
+               class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 transition">
+        <p id="pwd-match-error" class="text-xs text-red-400 mt-1 hidden">Passwords don't match</p>
+      </div>
+      
+      <button type="submit" id="pwd-submit-btn" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition disabled:opacity-50">
+        Save Password
+      </button>
+    </form>
+  </div>
+</div>
+
+<script>
+// ========== Notification Preferences ==========
+const userEmail = '{{ user.email }}';
+const userToken = '{{ token }}';
+
+// User prefs object (will be populated on load)
+let userPrefs = {
+  progress_push: true,
+  progress_email: false,
+  progress_milestones: '50,75',
+  status_push: true,
+  status_email: true,
+  broadcast_push: true,
+};
+
+// Load preferences on page load
+document.addEventListener('DOMContentLoaded', async function() {
+  await loadUserPrefs();
+  await checkPushStatus();
+  updateMilestoneChips();
+});
+
+async function loadUserPrefs() {
+  try {
+    const res = await fetch(`/api/user/notification-prefs?token=${userToken}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.prefs) userPrefs = { ...userPrefs, ...data.prefs };
+    }
+  } catch (e) {
+    console.log('[PREFS] Could not load preferences');
+  }
+  
+  // Update UI
+  document.getElementById('pref-progress-push').checked = userPrefs.progress_push;
+  document.getElementById('pref-progress-email').checked = userPrefs.progress_email;
+  document.getElementById('pref-status-push').checked = userPrefs.status_push;
+  document.getElementById('pref-status-email').checked = userPrefs.status_email;
+  document.getElementById('pref-broadcast-push').checked = userPrefs.broadcast_push;
+  updateMilestoneChips();
+}
+
+async function updateUserPrefs() {
+  userPrefs.progress_push = document.getElementById('pref-progress-push').checked;
+  userPrefs.progress_email = document.getElementById('pref-progress-email').checked;
+  userPrefs.status_push = document.getElementById('pref-status-push').checked;
+  userPrefs.status_email = document.getElementById('pref-status-email').checked;
+  userPrefs.broadcast_push = document.getElementById('pref-broadcast-push').checked;
+  
+  document.getElementById('prefs-saving').classList.remove('hidden');
+  
+  try {
+    await fetch('/api/user/notification-prefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: userToken, prefs: userPrefs })
+    });
+  } catch (e) {
+    console.error('[PREFS] Save failed:', e);
+  }
+  
+  setTimeout(() => {
+    document.getElementById('prefs-saving').classList.add('hidden');
+  }, 500);
+}
+
+function updateMilestoneChips() {
+  const selected = (userPrefs.progress_milestones || '50,75').split(',').map(s => parseInt(s.trim()));
+  document.querySelectorAll('.milestone-chip').forEach(chip => {
+    const milestone = parseInt(chip.dataset.milestone);
+    const isSelected = selected.includes(milestone);
+    chip.className = `milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border ${
+      isSelected 
+        ? 'bg-indigo-600 border-indigo-500 text-white' 
+        : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+    }`;
+  });
+}
+
+function toggleMilestone(milestone) {
+  const current = (userPrefs.progress_milestones || '50,75').split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+  const idx = current.indexOf(milestone);
+  
+  if (idx >= 0) {
+    current.splice(idx, 1);
+  } else {
+    current.push(milestone);
+  }
+  
+  current.sort((a, b) => a - b);
+  userPrefs.progress_milestones = current.join(',');
+  updateMilestoneChips();
+  updateUserPrefs();
+}
+
+// ========== Push Notifications ==========
+let isPushEnabled = false;
+let pushSubscription = null;
+
+async function checkPushStatus() {
+  const indicator = document.getElementById('push-status-indicator');
+  const toggle = document.getElementById('push-toggle');
+  const toggleDot = document.getElementById('push-toggle-dot');
+  const banner = document.getElementById('push-status-banner');
+  const bannerIcon = document.getElementById('push-status-icon');
+  const bannerMsg = document.getElementById('push-status-message');
+  const iosHint = document.getElementById('ios-install-hint');
+  
+  // Check if iOS Safari not installed as PWA
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if (isIOS && !isStandalone && iosHint) {
+    iosHint.classList.remove('hidden');
+  }
+  
+  // Check if push is supported
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    indicator.textContent = 'Not supported';
+    indicator.className = 'text-xs font-medium text-zinc-500';
+    toggle.disabled = true;
+    banner.classList.remove('hidden');
+    banner.className = 'p-3 rounded-xl border border-zinc-700 bg-zinc-800/50';
+    bannerIcon.textContent = 'ℹ️';
+    bannerMsg.textContent = 'Push notifications are not supported in this browser.';
+    bannerMsg.className = 'text-sm text-zinc-400';
+    return;
+  }
+  
+  // Check notification permission
+  const permission = Notification.permission;
+  
+  if (permission === 'denied') {
+    indicator.textContent = 'Blocked';
+    indicator.className = 'text-xs font-medium text-red-400';
+    banner.classList.remove('hidden');
+    banner.className = 'p-3 rounded-xl border border-red-500/40 bg-red-900/20';
+    bannerIcon.textContent = '🚫';
+    bannerMsg.textContent = 'Notifications are blocked. Please enable them in your browser settings.';
+    bannerMsg.className = 'text-sm text-red-200';
+    return;
+  }
+  
+  // Check if already subscribed
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    pushSubscription = await reg.pushManager.getSubscription();
+    
+    if (pushSubscription) {
+      isPushEnabled = true;
+      indicator.textContent = 'Enabled';
+      indicator.className = 'text-xs font-medium text-emerald-400';
+      toggle.className = 'relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-indigo-600';
+      toggleDot.className = 'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform translate-x-6';
+      banner.classList.add('hidden');
+    } else {
+      isPushEnabled = false;
+      indicator.textContent = 'Disabled';
+      indicator.className = 'text-xs font-medium text-zinc-500';
+      toggle.className = 'relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-zinc-700';
+      toggleDot.className = 'inline-block h-5 w-5 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-1';
+    }
+  } catch (e) {
+    console.error('[PUSH] Error checking status:', e);
+    indicator.textContent = 'Error';
+    indicator.className = 'text-xs font-medium text-amber-400';
+  }
+}
+
+async function togglePushNotifications() {
+  if (isPushEnabled) {
+    // Unsubscribe
+    try {
+      if (pushSubscription) {
+        await pushSubscription.unsubscribe();
+        await fetch('/api/push/unsubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: userToken, endpoint: pushSubscription.endpoint })
+        });
+      }
+      isPushEnabled = false;
+      pushSubscription = null;
+      await checkPushStatus();
+    } catch (e) {
+      console.error('[PUSH] Unsubscribe failed:', e);
+    }
+  } else {
+    // Subscribe
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        await checkPushStatus();
+        return;
+      }
+      
+      const reg = await navigator.serviceWorker.ready;
+      const vapidKey = await fetch('/api/push/vapid-key').then(r => r.json()).then(d => d.publicKey);
+      
+      pushSubscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey)
+      });
+      
+      await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: userToken, subscription: pushSubscription.toJSON() })
+      });
+      
+      isPushEnabled = true;
+      await checkPushStatus();
+    } catch (e) {
+      console.error('[PUSH] Subscribe failed:', e);
+    }
+  }
+}
+
+async function testPushNotification() {
+  const btn = document.getElementById('test-push-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="animate-pulse">Sending...</span>';
+  
+  try {
+    await fetch('/api/push/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: userToken })
+    });
+    btn.innerHTML = '<span>✓</span> Sent!';
+  } catch (e) {
+    btn.innerHTML = '<span>✕</span> Failed';
+  }
+  
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.innerHTML = '<span>🧪</span> Send Test Notification';
+  }, 2000);
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+// ========== Password Functions ==========
+function checkPasswordStrength(inputId, prefix) {
+  const input = document.getElementById(inputId);
+  const password = input.value;
+  let strength = 0;
+  
+  if (password.length >= 8) strength++;
+  if (password.match(/[a-z]/) && password.match(/[A-Z]/)) strength++;
+  if (password.match(/\d/)) strength++;
+  if (password.match(/[^a-zA-Z\d]/)) strength++;
+  
+  const colors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-emerald-500'];
+  const texts = ['Weak', 'Fair', 'Good', 'Strong 💪'];
+  const textColors = ['text-red-400', 'text-orange-400', 'text-yellow-400', 'text-emerald-400'];
+  
+  for (let i = 1; i <= 4; i++) {
+    const bar = document.getElementById(prefix + '-' + i);
+    if (bar) bar.className = 'h-1 flex-1 rounded ' + (i <= strength ? colors[strength - 1] : 'bg-zinc-700');
+  }
+  
+  const textEl = document.getElementById(prefix + '-text');
+  if (textEl) {
+    textEl.textContent = strength > 0 ? texts[strength - 1] : 'Min. 8 characters';
+    textEl.className = 'text-xs mt-1 ' + (strength > 0 ? textColors[strength - 1] : 'text-zinc-500');
+  }
+  
+  checkPasswordMatch();
+}
+
+function checkPasswordMatch() {
+  const pwd1 = document.getElementById('new-password')?.value || '';
+  const pwd2 = document.getElementById('confirm-password')?.value || '';
+  const errorEl = document.getElementById('pwd-match-error');
+  const submitBtn = document.getElementById('pwd-submit-btn');
+  
+  if (pwd2.length > 0 && errorEl && submitBtn) {
+    const match = pwd1 === pwd2;
+    errorEl.classList.toggle('hidden', match);
+    submitBtn.disabled = !match || pwd1.length < 8;
+  }
+}
+
+function showSetPasswordModal() {
+  document.getElementById('password-modal-title').textContent = 'Set Password';
+  document.getElementById('current-password-field').classList.add('hidden');
+  document.getElementById('password-modal').classList.remove('hidden');
+  document.getElementById('password-modal').classList.add('flex');
+}
+
+function showChangePasswordModal() {
+  document.getElementById('password-modal-title').textContent = 'Change Password';
+  document.getElementById('current-password-field').classList.remove('hidden');
+  document.getElementById('password-modal').classList.remove('hidden');
+  document.getElementById('password-modal').classList.add('flex');
+}
+
+function hidePasswordModal() {
+  document.getElementById('password-modal').classList.add('hidden');
+  document.getElementById('password-modal').classList.remove('flex');
+}
+
+function confirmDeleteAccount() {
+  if (confirm('Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently deleted.')) {
+    if (confirm('This is your final warning. Type "DELETE" in the next prompt to confirm.')) {
+      const confirmation = prompt('Type DELETE to confirm account deletion:');
+      if (confirmation === 'DELETE') {
+        fetch('/user/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'token={{ token }}'
+        }).then(response => {
+          if (response.ok) {
+            localStorage.removeItem('my_requests_token');
+            localStorage.removeItem('my_requests_email');
+            window.location.href = '/?deleted=1';
+          } else {
+            alert('Failed to delete account. Please try again.');
+          }
+        });
+      }
+    }
+  }
+}
+
+// Close modal on escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') hidePasswordModal();
+});
+
+// Close modal on backdrop click
+document.getElementById('password-modal')?.addEventListener('click', function(e) {
+  if (e.target === this) hidePasswordModal();
+});
+</script>
+{% endblock %}

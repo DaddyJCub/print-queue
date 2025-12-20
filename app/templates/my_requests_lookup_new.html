@@ -9,6 +9,9 @@
 
 {% block head_extra %}
 <script>
+  // Feature flag for user accounts
+  window.USER_ACCOUNTS_ENABLED = {{ user_accounts_enabled|default(false)|tojson }};
+  
   // Redirect loop protection
   (function() {
     const LOOP_KEY = 'my_requests_redirect_count';
@@ -127,6 +130,11 @@
     <button type="button" id="tab-code" class="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition text-zinc-400">
       🔢 Sync Code
     </button>
+    {% if user_accounts_enabled %}
+    <button type="button" id="tab-login" class="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition text-zinc-400">
+      🔐 Login
+    </button>
+    {% endif %}
   </div>
 
   <!-- Email Login Form -->
@@ -189,7 +197,201 @@
       <li>Enter the code here within 10 minutes</li>
     </ol>
   </div>
+
+  {% if user_accounts_enabled %}
+  <!-- Login Form (for user accounts) -->
+  <div id="form-login" class="hidden bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+    <p class="text-sm text-zinc-400 mb-4">Sign in with your Printellect account</p>
+    <form id="login-form">
+      <div class="mb-4">
+        <input 
+          type="email" 
+          id="login-email"
+          placeholder="your@email.com"
+          required
+          class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3.5 text-lg focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"
+        />
+      </div>
+      <div class="mb-4">
+        <input 
+          type="password" 
+          id="login-password"
+          placeholder="Password"
+          class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3.5 text-lg focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"
+        />
+        <p class="text-xs text-zinc-500 mt-1">Or leave blank for magic link</p>
+      </div>
+      
+      <button 
+        type="submit"
+        class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition py-3.5 font-semibold tap-highlight"
+      >
+        Sign In
+      </button>
+      
+      <p id="login-error" class="hidden text-red-400 text-sm text-center mt-3"></p>
+    </form>
+    
+    <div class="mt-4 pt-4 border-t border-zinc-800 text-center">
+      <p class="text-sm text-zinc-400">Don't have an account?</p>
+      <button onclick="showSignupModal()" class="mt-2 text-indigo-400 hover:text-indigo-300 font-medium">
+        Create Account →
+      </button>
+    </div>
+  </div>
+  {% endif %}
 </div>
+
+{% if user_accounts_enabled %}
+<!-- Signup Modal -->
+<div id="signup-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+  <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+    <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between sticky top-0 bg-zinc-900 z-10">
+      <h3 class="text-lg font-semibold">Create Account</h3>
+      <button onclick="hideSignupModal()" class="text-zinc-400 hover:text-white p-1">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+    
+    <form id="signup-form" class="p-6">
+      <!-- Benefits Banner -->
+      <div class="bg-gradient-to-br from-indigo-900/50 to-purple-900/50 border border-indigo-700/50 rounded-xl p-4 mb-6">
+        <h4 class="font-semibold text-indigo-300 mb-2">Why create an account?</h4>
+        <ul class="text-sm text-zinc-300 space-y-1.5">
+          <li class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            Track all your prints in one place
+          </li>
+          <li class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            Auto-fill your details on requests
+          </li>
+          <li class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            Earn credits for future prints
+          </li>
+          <li class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            Real-time push notifications
+          </li>
+        </ul>
+      </div>
+      
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-1.5">Email</label>
+          <input type="email" id="signup-email" required
+                 class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-1.5">Name</label>
+          <input type="text" id="signup-name" required
+                 class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-1.5">Password (optional)</label>
+          <input type="password" id="signup-password" minlength="8" oninput="checkPasswordStrength('signup-password', 'signup-str')"
+                 class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition" />
+          <!-- Password strength indicator -->
+          <div class="mt-2">
+            <div class="flex gap-1">
+              <div id="signup-str-1" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+              <div id="signup-str-2" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+              <div id="signup-str-3" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+              <div id="signup-str-4" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+            </div>
+            <p id="signup-str-text" class="text-xs text-zinc-500 mt-1">Leave blank to use magic link only</p>
+          </div>
+        </div>
+        
+        <p id="signup-error" class="hidden text-red-400 text-sm"></p>
+        <p id="signup-success" class="hidden text-emerald-400 text-sm"></p>
+        
+        <button type="submit" id="signup-btn"
+                class="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition">
+          Create Account
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Upgrade Account Modal (for token users) -->
+<div id="upgrade-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+  <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+    <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between sticky top-0 bg-zinc-900 z-10">
+      <h3 class="text-lg font-semibold">Upgrade to Account</h3>
+      <button onclick="hideUpgradeModal()" class="text-zinc-400 hover:text-white p-1">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+    
+    <form id="upgrade-form" class="p-6">
+      <div class="bg-gradient-to-br from-amber-900/50 to-orange-900/50 border border-amber-700/50 rounded-xl p-4 mb-6">
+        <h4 class="font-semibold text-amber-300 mb-2">🎉 You have existing requests!</h4>
+        <p class="text-sm text-zinc-300">
+          Create an account to keep all your print history and unlock new features.
+          Your existing requests will be linked to your new account.
+        </p>
+      </div>
+      
+      <p class="text-sm text-zinc-400 mb-4">
+        Email: <span id="upgrade-email-display" class="font-medium text-white"></span>
+      </p>
+      <input type="hidden" id="upgrade-email" />
+      <input type="hidden" id="upgrade-token" />
+      
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-1.5">Your Name</label>
+          <input type="text" id="upgrade-name" required
+                 class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-1.5">Password (optional)</label>
+          <input type="password" id="upgrade-password" minlength="8" oninput="checkPasswordStrength('upgrade-password', 'upgrade-str')"
+                 class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition" />
+          <!-- Password strength indicator -->
+          <div class="mt-2">
+            <div class="flex gap-1">
+              <div id="upgrade-str-1" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+              <div id="upgrade-str-2" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+              <div id="upgrade-str-3" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+              <div id="upgrade-str-4" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+            </div>
+            <p id="upgrade-str-text" class="text-xs text-zinc-500 mt-1">Leave blank for magic link only</p>
+          </div>
+        </div>
+        
+        <p id="upgrade-error" class="hidden text-red-400 text-sm"></p>
+        <p id="upgrade-success" class="hidden text-emerald-400 text-sm"></p>
+        
+        <button type="submit" id="upgrade-btn"
+                class="w-full py-3.5 bg-amber-600 hover:bg-amber-500 rounded-xl font-semibold transition">
+          Create My Account
+        </button>
+        
+        <button type="button" onclick="hideUpgradeModal()"
+                class="w-full py-2 text-zinc-400 hover:text-white text-sm transition">
+          Maybe Later
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 <style>
   .tab-active {
@@ -201,54 +403,109 @@
 
 {% block scripts %}
 <script>
+// Password strength checker
+function checkPasswordStrength(inputId, prefix) {
+  const input = document.getElementById(inputId);
+  const password = input.value;
+  let strength = 0;
+  
+  if (password.length === 0) {
+    // Reset to default state
+    for (let i = 1; i <= 4; i++) {
+      document.getElementById(prefix + '-' + i).className = 'h-1 flex-1 bg-zinc-700 rounded';
+    }
+    document.getElementById(prefix + '-text').textContent = 'Leave blank for magic link only';
+    document.getElementById(prefix + '-text').className = 'text-xs text-zinc-500 mt-1';
+    return;
+  }
+  
+  if (password.length >= 8) strength++;
+  if (password.match(/[a-z]/) && password.match(/[A-Z]/)) strength++;
+  if (password.match(/\d/)) strength++;
+  if (password.match(/[^a-zA-Z\d]/)) strength++;
+  
+  const colors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-emerald-500'];
+  const texts = ['Weak - add more variety', 'Fair - try uppercase or symbols', 'Good password', 'Strong password 💪'];
+  const textColors = ['text-red-400', 'text-orange-400', 'text-yellow-400', 'text-emerald-400'];
+  
+  for (let i = 1; i <= 4; i++) {
+    const bar = document.getElementById(prefix + '-' + i);
+    bar.className = 'h-1 flex-1 rounded ' + (i <= strength ? colors[strength - 1] : 'bg-zinc-700');
+  }
+  
+  const textEl = document.getElementById(prefix + '-text');
+  textEl.textContent = strength > 0 ? texts[strength - 1] : 'Enter a password';
+  textEl.className = 'text-xs mt-1 ' + (strength > 0 ? textColors[strength - 1] : 'text-zinc-500');
+}
+
 function showTab(tab) {
   console.log('showTab called with:', tab);
   const emailTab = document.getElementById('tab-email');
   const codeTab = document.getElementById('tab-code');
+  const loginTab = document.getElementById('tab-login');
   const emailForm = document.getElementById('form-email');
   const codeForm = document.getElementById('form-code');
+  const loginForm = document.getElementById('form-login');
   const codeHelp = document.getElementById('code-help');
   
+  // Reset all tabs
+  [emailTab, codeTab, loginTab].forEach(t => {
+    if (t) {
+      t.classList.remove('tab-active');
+      t.classList.add('text-zinc-400');
+    }
+  });
+  
+  // Hide all forms
+  [emailForm, codeForm, loginForm, codeHelp].forEach(f => {
+    if (f) f.classList.add('hidden');
+  });
+  
+  // Show selected
   if (tab === 'email') {
-    emailTab.classList.add('tab-active');
-    emailTab.classList.remove('text-zinc-400');
-    codeTab.classList.remove('tab-active');
-    codeTab.classList.add('text-zinc-400');
-    emailForm.classList.remove('hidden');
-    codeForm.classList.add('hidden');
-    codeHelp.classList.add('hidden');
-  } else {
-    codeTab.classList.add('tab-active');
-    codeTab.classList.remove('text-zinc-400');
-    emailTab.classList.remove('tab-active');
-    emailTab.classList.add('text-zinc-400');
-    codeForm.classList.remove('hidden');
-    emailForm.classList.add('hidden');
-    codeHelp.classList.remove('hidden');
-    // Focus first input after a short delay for iOS
+    emailTab?.classList.add('tab-active');
+    emailTab?.classList.remove('text-zinc-400');
+    emailForm?.classList.remove('hidden');
+  } else if (tab === 'code') {
+    codeTab?.classList.add('tab-active');
+    codeTab?.classList.remove('text-zinc-400');
+    codeForm?.classList.remove('hidden');
+    codeHelp?.classList.remove('hidden');
     setTimeout(() => document.querySelector('.code-input')?.focus(), 100);
+  } else if (tab === 'login') {
+    loginTab?.classList.add('tab-active');
+    loginTab?.classList.remove('text-zinc-400');
+    loginForm?.classList.remove('hidden');
   }
 }
 
 // Attach click handlers after DOM is ready (iOS compatible)
 document.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('tab-email').addEventListener('click', function(e) {
+  document.getElementById('tab-email')?.addEventListener('click', function(e) {
     e.preventDefault();
     showTab('email');
   });
-  document.getElementById('tab-code').addEventListener('click', function(e) {
+  document.getElementById('tab-code')?.addEventListener('click', function(e) {
     e.preventDefault();
     showTab('code');
+  });
+  document.getElementById('tab-login')?.addEventListener('click', function(e) {
+    e.preventDefault();
+    showTab('login');
   });
   
   // Also handle touch events for iOS
-  document.getElementById('tab-email').addEventListener('touchend', function(e) {
+  document.getElementById('tab-email')?.addEventListener('touchend', function(e) {
     e.preventDefault();
     showTab('email');
   });
-  document.getElementById('tab-code').addEventListener('touchend', function(e) {
+  document.getElementById('tab-code')?.addEventListener('touchend', function(e) {
     e.preventDefault();
     showTab('code');
+  });
+  document.getElementById('tab-login')?.addEventListener('touchend', function(e) {
+    e.preventDefault();
+    showTab('login');
   });
 });
 
@@ -342,5 +599,231 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => showTab('code'), 50);
   }
 });
+
+{% if user_accounts_enabled %}
+// ─────────────────────────── USER ACCOUNT FUNCTIONS ───────────────────────────
+
+function showSignupModal() {
+  document.getElementById('signup-modal').classList.remove('hidden');
+  document.getElementById('signup-modal').classList.add('flex');
+}
+
+function hideSignupModal() {
+  document.getElementById('signup-modal').classList.add('hidden');
+  document.getElementById('signup-modal').classList.remove('flex');
+}
+
+function showUpgradeModal(email, token) {
+  document.getElementById('upgrade-email').value = email;
+  document.getElementById('upgrade-token').value = token;
+  document.getElementById('upgrade-email-display').textContent = email;
+  document.getElementById('upgrade-modal').classList.remove('hidden');
+  document.getElementById('upgrade-modal').classList.add('flex');
+}
+
+function hideUpgradeModal() {
+  document.getElementById('upgrade-modal').classList.add('hidden');
+  document.getElementById('upgrade-modal').classList.remove('flex');
+  // Mark as dismissed so we don't show again this session
+  sessionStorage.setItem('upgrade_dismissed', 'true');
+}
+
+// Login form handler
+document.getElementById('login-form')?.addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-password').value;
+  const errorEl = document.getElementById('login-error');
+  const btn = this.querySelector('button[type="submit"]');
+  
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  errorEl.classList.add('hidden');
+  
+  try {
+    if (password) {
+      // Password login
+      const response = await fetch('/api/user/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        localStorage.setItem('user_session', data.session_token);
+        localStorage.setItem('user_email', email);
+        window.location.href = '/my-requests/view?user_session=' + data.session_token;
+      } else {
+        errorEl.textContent = data.error || 'Invalid credentials';
+        errorEl.classList.remove('hidden');
+      }
+    } else {
+      // Magic link fallback - use existing email form
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/my-requests';
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'email';
+      input.value = email;
+      form.appendChild(input);
+      document.body.appendChild(form);
+      form.submit();
+      return;
+    }
+  } catch (e) {
+    errorEl.textContent = 'Connection error. Please try again.';
+    errorEl.classList.remove('hidden');
+  }
+  
+  btn.disabled = false;
+  btn.textContent = 'Sign In';
+});
+
+// Signup form handler
+document.getElementById('signup-form')?.addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const email = document.getElementById('signup-email').value;
+  const name = document.getElementById('signup-name').value;
+  const password = document.getElementById('signup-password').value;
+  const errorEl = document.getElementById('signup-error');
+  const successEl = document.getElementById('signup-success');
+  const btn = document.getElementById('signup-btn');
+  
+  btn.disabled = true;
+  btn.textContent = 'Creating account...';
+  errorEl.classList.add('hidden');
+  successEl.classList.add('hidden');
+  
+  try {
+    const response = await fetch('/api/user/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name, password: password || undefined })
+    });
+    const data = await response.json();
+    
+    if (data.success) {
+      successEl.textContent = 'Account created! Redirecting...';
+      successEl.classList.remove('hidden');
+      if (data.session_token) {
+        localStorage.setItem('user_session', data.session_token);
+        localStorage.setItem('user_email', email);
+        setTimeout(() => {
+          window.location.href = '/my-requests/view?user_session=' + data.session_token;
+        }, 1000);
+      } else {
+        // Magic link sent
+        successEl.textContent = 'Account created! Check your email for a login link.';
+        setTimeout(() => hideSignupModal(), 2000);
+      }
+    } else {
+      errorEl.textContent = data.error || 'Failed to create account';
+      errorEl.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = 'Create Account';
+    }
+  } catch (e) {
+    errorEl.textContent = 'Connection error. Please try again.';
+    errorEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Create Account';
+  }
+});
+
+// Upgrade form handler (for token users)
+document.getElementById('upgrade-form')?.addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const email = document.getElementById('upgrade-email').value;
+  const token = document.getElementById('upgrade-token').value;
+  const name = document.getElementById('upgrade-name').value;
+  const password = document.getElementById('upgrade-password').value;
+  const errorEl = document.getElementById('upgrade-error');
+  const successEl = document.getElementById('upgrade-success');
+  const btn = document.getElementById('upgrade-btn');
+  
+  btn.disabled = true;
+  btn.textContent = 'Creating account...';
+  errorEl.classList.add('hidden');
+  successEl.classList.add('hidden');
+  
+  try {
+    const response = await fetch('/api/user/migrate-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, token, name, password: password || undefined })
+    });
+    const data = await response.json();
+    
+    if (data.success) {
+      successEl.textContent = 'Account created! Your requests have been linked.';
+      successEl.classList.remove('hidden');
+      if (data.session_token) {
+        localStorage.setItem('user_session', data.session_token);
+        localStorage.setItem('user_email', email);
+        localStorage.removeItem('my_requests_token'); // Clear old token
+        setTimeout(() => {
+          window.location.href = '/my-requests/view?user_session=' + data.session_token;
+        }, 1500);
+      }
+    } else {
+      errorEl.textContent = data.error || 'Failed to create account';
+      errorEl.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = 'Create My Account';
+    }
+  } catch (e) {
+    errorEl.textContent = 'Connection error. Please try again.';
+    errorEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Create My Account';
+  }
+});
+
+// Close modals on escape
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    hideSignupModal();
+    hideUpgradeModal();
+  }
+});
+
+// Close modals on backdrop click
+['signup-modal', 'upgrade-modal'].forEach(id => {
+  document.getElementById(id)?.addEventListener('click', function(e) {
+    if (e.target === this) {
+      this.classList.add('hidden');
+      this.classList.remove('flex');
+    }
+  });
+});
+
+// Check if token user should see upgrade modal
+document.addEventListener('DOMContentLoaded', async function() {
+  if (!window.USER_ACCOUNTS_ENABLED) return;
+  if (sessionStorage.getItem('upgrade_dismissed')) return;
+  
+  const savedToken = localStorage.getItem('my_requests_token');
+  const savedEmail = localStorage.getItem('my_requests_email');
+  
+  // Only check if we have a token but no user session
+  if (savedToken && savedEmail && !localStorage.getItem('user_session')) {
+    try {
+      const response = await fetch('/api/user/check-migration?email=' + encodeURIComponent(savedEmail));
+      const data = await response.json();
+      
+      if (data.should_migrate) {
+        // Show upgrade modal after a brief delay
+        setTimeout(() => {
+          showUpgradeModal(savedEmail, savedToken);
+        }, 500);
+      }
+    } catch (e) {
+      console.log('Migration check failed:', e);
+    }
+  }
+});
+{% endif %}
 </script>
 {% endblock %}

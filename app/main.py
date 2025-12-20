@@ -20,8 +20,16 @@ from app.demo_data import (
     get_demo_printer_status, get_demo_printer_job, get_demo_all_printers_status
 )
 
+# New auth system - multi-admin, user accounts, feature flags
+from app.auth import (
+    init_auth_tables, init_feature_flags, is_feature_enabled,
+    get_current_user, get_current_admin, optional_user,
+    get_or_create_legacy_admin, log_audit
+)
+from app.models import AuditAction
+
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.9.0"
+APP_VERSION = "0.10.0"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -33,6 +41,7 @@ APP_VERSION = "0.9.0"
 #   - 0.x.PATCH = Bug fixes only
 #
 # Changelog:
+# 0.10.0 - [FEATURE] User auth APIs, session stability fixes, notification settings improvements
 # 0.9.0 - [FEATURE] Admin PWA navigation: Admin tab in bottom nav, unified navigation on admin pages, My Prints pagination
 # --- Version scheme changed from 1.x.x to 0.x.x (Dec 2025) - all prior versions below are historical ---
 # 1.8.23 - Admin dashboard pagination: "show more" for long lists, collapsible Recently Closed section
@@ -1901,12 +1910,23 @@ def _startup():
     ensure_migrations()
     seed_default_settings()
     
+    # Initialize new auth system (multi-admin, user accounts, feature flags)
+    init_auth_tables()
+    init_feature_flags()
+    
+    # Create default admin from ADMIN_PASSWORD if no admins exist yet
+    get_or_create_legacy_admin()
+    
     # Seed demo data if DEMO_MODE is enabled
     if DEMO_MODE:
         print("[DEMO] Demo mode enabled - seeding fake data...")
         seed_demo_data(db)
     
     start_printer_polling()  # Start background printer status polling
+
+# Mount auth routes
+from app.routes_auth import router as auth_router
+app.include_router(auth_router)
 
 
 def require_admin(request: Request):
@@ -2949,7 +2969,7 @@ def get_user_notification_prefs(email: str) -> dict:
     """
     conn = db()
     row = conn.execute(
-        "SELECT progress_push, progress_email, progress_milestones, status_push, status_email, broadcast_push FROM user_notification_prefs WHERE email = ?",
+        "SELECT progress_push, progress_email, progress_milestones, status_push, status_email, broadcast_push FROM user_notification_prefs WHERE LOWER(email) = LOWER(?)",
         (email,)
     ).fetchone()
     conn.close()
@@ -2991,7 +3011,7 @@ def update_user_notification_prefs(email: str, prefs: dict) -> bool:
                 broadcast_push = excluded.broadcast_push,
                 updated_at = excluded.updated_at
         """, (
-            email,
+            email.lower(),
             1 if prefs.get("progress_push", True) else 0,
             1 if prefs.get("progress_email", False) else 0,
             prefs.get("progress_milestones", "50,75"),
@@ -4536,7 +4556,7 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
         
     conn = db()
     subs = conn.execute(
-        "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE email = ?",
+        "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE LOWER(email) = LOWER(?)",
         (email,)
     ).fetchall()
     conn.close()
@@ -4762,6 +4782,51 @@ def send_broadcast_notification(title: str, body: str, url: str = None,
     return result
 
 
+def send_push_notification_to_admins(title: str, body: str, url: str = None, tag: str = None) -> dict:
+    """
+    Send push notification to all admins who have push subscriptions.
+    Uses the admin_notify_emails setting to determine which emails are admins.
+    
+    Args:
+        title: Notification title
+        body: Notification body text  
+        url: Click-through URL (default: /admin)
+        tag: Optional tag for notification grouping
+    
+    Returns:
+        dict with sent/failed counts and any errors
+    """
+    result = {"total_sent": 0, "total_failed": 0, "admin_count": 0, "errors": []}
+    
+    # Get list of admin emails
+    admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))
+    
+    if not admin_emails:
+        print("[ADMIN-PUSH] No admin emails configured")
+        result["errors"].append("No admin emails configured in settings")
+        return result
+    
+    result["admin_count"] = len(admin_emails)
+    print(f"[ADMIN-PUSH] Sending to {len(admin_emails)} admin(s): {title}")
+    
+    # Send push to each admin
+    for admin_email in admin_emails:
+        push_result = send_push_notification(
+            email=admin_email,
+            title=title,
+            body=body,
+            url=url or "/admin",
+            tag=tag
+        )
+        result["total_sent"] += push_result.get("sent", 0)
+        result["total_failed"] += push_result.get("failed", 0)
+        if push_result.get("errors"):
+            result["errors"].extend(push_result["errors"])
+    
+    print(f"[ADMIN-PUSH] Completed: {result['total_sent']} sent, {result['total_failed']} failed")
+    return result
+
+
 def get_broadcast_history(limit: int = 20) -> List[Dict]:
     """Get recent broadcast notification history."""
     conn = db()
@@ -4885,7 +4950,7 @@ def get_request_templates() -> List[Dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
-def render_form(request: Request, error: Optional[str], form: Dict[str, Any]):
+def render_form(request: Request, error: Optional[str], form: Dict[str, Any], user=None):
     # Get printer suggestions
     printer_suggestions = get_printer_suggestions()
     
@@ -4907,6 +4972,20 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any]):
     # Get saved templates
     saved_templates = get_request_templates()
     
+    # If user is logged in, pre-fill form with their preferences (unless form already has values)
+    if user and not form.get("requester_name"):
+        form = {
+            "requester_name": user.display_name,
+            "requester_email": user.email,
+            "printer": user.preferred_printer or "",
+            "material": user.preferred_material or "",
+            "colors": user.preferred_colors or "",
+            **form  # Allow explicit form values to override
+        }
+    
+    # Check if user accounts feature is enabled
+    user_accounts_enabled = is_feature_enabled("user_accounts")
+    
     return templates.TemplateResponse("request_form_new.html", {
         "request": request,
         "turnstile_site_key": TURNSTILE_SITE_KEY,
@@ -4918,12 +4997,16 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any]):
         "printer_suggestions": printer_suggestions,
         "rush_settings": rush_settings,
         "saved_templates": saved_templates,
+        "user": user,
+        "user_accounts_enabled": user_accounts_enabled,
     }, status_code=400 if error else 200)
 
 
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request):
-    return render_form(request, None, form={})
+async def home(request: Request):
+    # Check if user is logged in
+    user = await optional_user(request)
+    return render_form(request, None, form={}, user=user)
 
 
 @app.post("/submit")
@@ -5136,6 +5219,14 @@ async def submit(
             cta_label="Open in admin",
         )
         send_email(admin_emails, subject, text, html)
+        
+        # Also send admin push notification
+        send_push_notification_to_admins(
+            title="📥 New Request",
+            body=f"{requester_name.strip()} - {print_name or rid[:8]}",
+            url=f"/admin/request/{rid}",
+            tag="admin-new-request"
+        )
 
     # Show thanks page with portal link
     return templates.TemplateResponse("thanks_new.html", {
@@ -5733,6 +5824,14 @@ def requester_reply(request: Request, rid: str, token: str, message: str = Form(
             header_color="#6366f1",
         )
         send_email(admin_emails, subject, text, html)
+        
+        # Also send admin push notification for replies
+        send_push_notification_to_admins(
+            title="💬 Reply from Requester",
+            body=f"{req['requester_name']}: {message[:50]}{'...' if len(message) > 50 else ''}",
+            url=f"/admin/request/{rid}",
+            tag="admin-requester-reply"
+        )
     
     return RedirectResponse(url=f"/my/{rid}?token={token}", status_code=303)
 
@@ -6033,11 +6132,15 @@ def my_requests_lookup(request: Request, sent: Optional[str] = None, error: Opti
     if token:
         return RedirectResponse(url=f"/my-requests/view?token={token}", status_code=302)
     
+    # Check if user accounts feature is enabled
+    user_accounts_enabled = is_feature_enabled("user_accounts")
+    
     return templates.TemplateResponse("my_requests_lookup_new.html", {
         "request": request,
         "sent": sent,
         "error": error,
         "version": APP_VERSION,
+        "user_accounts_enabled": user_accounts_enabled,
     })
 
 
@@ -8681,15 +8784,10 @@ def admin_set_status(
     if to_status == "PRINTING":
         should_notify_requester = False  # Will be sent by poll_printer_status_worker
 
-    # Parse user notification preferences
-    user_prefs = {"email": True, "push": False}
-    if req.get("notification_prefs"):
-        try:
-            user_prefs = json.loads(req["notification_prefs"])
-        except:
-            pass
-    user_wants_email = user_prefs.get("email", True)
-    user_wants_push = user_prefs.get("push", False)
+    # Parse user notification preferences - use the proper preferences table
+    user_prefs = get_user_notification_prefs(req.get("requester_email", ""))
+    user_wants_email = user_prefs.get("status_email", True)
+    user_wants_push = user_prefs.get("status_push", True)  # Default to True for push notifications
 
     if requester_email_on_status and should_notify_requester and user_wants_email:
         print_label = req["print_name"] or f"Request {rid[:8]}"
@@ -8783,21 +8881,23 @@ def admin_set_status(
         send_email([req["requester_email"]], subject, text, html)
 
     # Send push notification for important status changes (if user wants push notifications)
-    push_statuses = ["NEEDS_INFO", "APPROVED", "PRINTING", "DONE", "CANCELLED"]
+    # NOTE: PRINTING is excluded because poll_printer_status_worker sends a better notification
+    # with layer count and ETA once the printer reports those
+    push_statuses = ["NEEDS_INFO", "APPROVED", "DONE", "CANCELLED", "REJECTED"]
     if to_status in push_statuses and user_wants_push:
         push_titles = {
             "NEEDS_INFO": "📝 Action Needed",
             "APPROVED": "✅ Request Approved",
-            "PRINTING": "🖨️ Now Printing",
             "DONE": "🎉 Print Complete!",
             "CANCELLED": "❌ Request Cancelled",
+            "REJECTED": "❌ Request Rejected",
         }
         push_bodies = {
             "NEEDS_INFO": f"We need more info about '{req['print_name'] or 'your request'}'",
             "APPROVED": f"'{req['print_name'] or 'Your request'}' is approved and in queue",
-            "PRINTING": f"'{req['print_name'] or 'Your request'}' has started printing",
             "DONE": f"'{req['print_name'] or 'Your request'}' is ready for pickup!",
             "CANCELLED": f"'{req['print_name'] or 'Your request'}' has been cancelled.",
+            "REJECTED": f"'{req['print_name'] or 'Your request'}' was rejected.",
         }
         try:
             send_push_notification(
@@ -8848,6 +8948,24 @@ def admin_set_status(
                 header_color=header_color,
             )
             send_email(admin_emails, subject, text, html)
+            
+            # Also send admin push notification for status changes
+            admin_push_titles = {
+                "DONE": "✅ Print Complete",
+                "PICKED_UP": "📦 Picked Up",
+                "REJECTED": "❌ Request Rejected",
+                "CANCELLED": "🚫 Request Cancelled",
+                "APPROVED": "✓ Request Approved",
+                "PRINTING": "🖨️ Now Printing",
+                "NEEDS_INFO": "❓ Info Requested",
+            }
+            admin_push_title = admin_push_titles.get(to_status, f"Status: {to_status}")
+            send_push_notification_to_admins(
+                title=admin_push_title,
+                body=f"{req['requester_name']} - {req['print_name'] or rid[:8]}",
+                url=f"/admin/request/{rid}",
+                tag=f"admin-status-{rid[:8]}"
+            )
 
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
@@ -8943,6 +9061,23 @@ def admin_send_message(
             header_color="#6366f1",
         )
         send_email([req["requester_email"]], subject, text, html)
+    
+    # Send push notification to requester
+    if req["requester_email"]:
+        user_prefs = get_user_notification_prefs(req["requester_email"])
+        if user_prefs.get("status_push", True):  # Use status_push for messages too
+            print_label = req["print_name"] or f"Request {rid[:8]}"
+            truncated_msg = message[:80] + "..." if len(message) > 80 else message
+            try:
+                send_push_notification(
+                    email=req["requester_email"],
+                    title="💬 New Message",
+                    body=f"About '{print_label}': {truncated_msg}",
+                    url=f"/my/{rid}?token={req['access_token']}",
+                    tag=f"message-{rid[:8]}"
+                )
+            except Exception as e:
+                print(f"[PUSH] Error sending message notification: {e}")
     
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
@@ -10195,6 +10330,12 @@ async def test_push_notification(request: Request):
         if not email and token:
             email = _get_email_from_token(token)
         
+        # Fallback to session-based auth
+        if not email:
+            user = await get_current_user(request)
+            if user:
+                email = user.email
+        
         if not email:
             return JSONResponse(
                 status_code=400,
@@ -10230,6 +10371,7 @@ async def subscribe_push(request: Request):
     Accepts either:
     - JSON with {email, subscription}
     - FormData with {token, subscription} (token resolved to email)
+    - Session-based auth via user_session cookie
     """
     try:
         data = await _parse_request_data(request)
@@ -10241,6 +10383,12 @@ async def subscribe_push(request: Request):
         
         if not email and token:
             email = _get_email_from_token(token)
+        
+        # Fallback to session-based auth
+        if not email:
+            user = await get_current_user(request)
+            if user:
+                email = user.email
         
         subscription = data.get("subscription", {})
         
@@ -10279,10 +10427,10 @@ async def subscribe_push(request: Request):
         
         if existing:
             # Update email if endpoint exists but email changed
-            if existing["email"] != email:
+            if existing["email"].lower() != email.lower():
                 conn.execute(
                     "UPDATE push_subscriptions SET email = ? WHERE endpoint = ?",
-                    (email, endpoint)
+                    (email.lower(), endpoint)
                 )
                 conn.commit()
                 print(f"[PUSH] Updated subscription email: {endpoint}")
@@ -10292,7 +10440,7 @@ async def subscribe_push(request: Request):
         conn.execute(
             """INSERT INTO push_subscriptions (id, email, endpoint, p256dh, auth, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (str(uuid.uuid4()), email, endpoint, p256dh, auth, now_iso())
+            (str(uuid.uuid4()), email.lower(), endpoint, p256dh, auth, now_iso())
         )
         conn.commit()
         conn.close()
@@ -10454,6 +10602,7 @@ async def unsubscribe_push(request: Request):
     Accepts either:
     - JSON with {email, endpoint?}
     - FormData with {token, endpoint?}
+    - Session-based auth via user_session cookie
     """
     try:
         data = await _parse_request_data(request)
@@ -10464,6 +10613,12 @@ async def unsubscribe_push(request: Request):
         
         if not email and token:
             email = _get_email_from_token(token)
+        
+        # Fallback to session-based auth
+        if not email:
+            user = await get_current_user(request)
+            if user:
+                email = user.email
         
         if not email:
             return JSONResponse(
@@ -10538,11 +10693,17 @@ async def clear_all_push_subscriptions(request: Request):
 async def api_get_user_notification_prefs(request: Request, email: str = None, token: str = None):
     """
     Get user-level notification preferences.
-    Requires either email or my-requests token for auth.
+    Requires either email, my-requests token, or user session for auth.
     """
     # Try to get email from token if not provided directly
     if not email and token:
         email = _get_email_from_token(token)
+    
+    # Fallback to session-based auth
+    if not email:
+        user = await get_current_user(request)
+        if user:
+            email = user.email
     
     if not email:
         return JSONResponse(
@@ -10573,6 +10734,7 @@ async def api_update_user_notification_prefs(request: Request):
             "broadcast_push": true
         }
     }
+    Also supports session-based auth via user_session cookie.
     """
     try:
         data = await _parse_request_data(request)
@@ -10583,6 +10745,12 @@ async def api_update_user_notification_prefs(request: Request):
         
         if not email and token:
             email = _get_email_from_token(token)
+        
+        # Fallback to session-based auth
+        if not email:
+            user = await get_current_user(request)
+            if user:
+                email = user.email
         
         if not email:
             return JSONResponse(

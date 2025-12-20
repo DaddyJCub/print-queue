@@ -1,0 +1,281 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}My Profile | Printellect{% endblock %}
+
+{% block nav_account %}text-white bg-zinc-800{% endblock %}
+{% block bnav_account %}active{% endblock %}
+
+{% block header_title %}Profile{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  
+  {% if success %}
+  <div class="mb-6 bg-emerald-900/30 border border-emerald-500/50 text-emerald-200 rounded-xl p-4">
+    <div class="flex items-center gap-2">
+      <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <span class="text-sm">{{ success }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Profile Header Card -->
+  <div class="bg-gradient-to-br from-indigo-600/20 to-purple-600/10 border border-indigo-500/30 rounded-2xl p-6 mb-6">
+    <div class="flex items-center gap-4">
+      <div class="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center flex-shrink-0">
+        <span class="text-2xl font-bold text-white">{{ user.name[0].upper() if user.name else '?' }}</span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <h1 class="text-xl font-bold truncate">{{ user.name }}</h1>
+        <p class="text-zinc-400 text-sm truncate">{{ user.email }}</p>
+        <div class="flex items-center gap-2 mt-1">
+          {% if user.email_verified %}
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            Verified
+          </span>
+          {% else %}
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-yellow-600/20 text-yellow-300 text-xs rounded-lg">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01"/>
+            </svg>
+            Unverified
+          </span>
+          {% endif %}
+          <span class="text-xs text-zinc-500">Member since {{ user.created_at|localtime('%b %Y') }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-indigo-500/20">
+      <div class="text-center">
+        <div class="text-2xl font-bold text-white">{{ user.total_requests }}</div>
+        <div class="text-xs text-zinc-400">Requests</div>
+      </div>
+      <div class="text-center">
+        <div class="text-2xl font-bold text-white">{{ user.total_prints }}</div>
+        <div class="text-xs text-zinc-400">Completed</div>
+      </div>
+      <div class="text-center">
+        <div class="text-2xl font-bold text-indigo-400">{{ user.credits }}</div>
+        <div class="text-xs text-zinc-400">Credits</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="grid grid-cols-2 gap-3 mb-6">
+    <a href="/new" class="flex items-center gap-3 p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl hover:border-zinc-700 transition tap-highlight">
+      <div class="w-10 h-10 bg-indigo-600/20 rounded-xl flex items-center justify-center">
+        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+      </div>
+      <span class="font-medium">New Request</span>
+    </a>
+    <a href="/my-prints" class="flex items-center gap-3 p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl hover:border-zinc-700 transition tap-highlight">
+      <div class="w-10 h-10 bg-purple-600/20 rounded-xl flex items-center justify-center">
+        <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+      </div>
+      <span class="font-medium">My Prints</span>
+    </a>
+  </div>
+
+  <!-- Profile Settings Form -->
+  <form action="/auth/profile" method="POST" class="space-y-6">
+    <!-- Personal Info -->
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+      <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+        <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+        </svg>
+        Personal Info
+      </h2>
+      
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-2">Full Name</label>
+          <input type="text" name="name" value="{{ user.name }}" required
+                 class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-2">Phone</label>
+          <input type="tel" name="phone" value="{{ user.phone or '' }}"
+                 class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
+                 placeholder="(optional)">
+        </div>
+      </div>
+    </div>
+
+    <!-- Print Preferences (Auto-fill for new requests) -->
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+      <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
+        <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        Default Preferences
+      </h2>
+      <p class="text-sm text-zinc-500 mb-4">These will auto-fill when you create new requests</p>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-2">Preferred Printer</label>
+          <select name="preferred_printer" 
+                  class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition">
+            <option value="">No preference</option>
+            {% for printer in printers %}
+            <option value="{{ printer.name }}" {% if user.preferred_printer == printer.name %}selected{% endif %}>
+              {{ printer.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-2">Preferred Material</label>
+          <select name="preferred_material"
+                  class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition">
+            <option value="">No preference</option>
+            {% for material in materials %}
+            <option value="{{ material }}" {% if user.preferred_material == material %}selected{% endif %}>
+              {{ material }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium text-zinc-300 mb-2">Preferred Colors</label>
+          <input type="text" name="preferred_colors" value="{{ user.preferred_colors or '' }}"
+                 class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
+                 placeholder="e.g., Black, White, Any">
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium text-zinc-300 mb-2">Default Notes</label>
+          <textarea name="notes_template" rows="2"
+                    class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition resize-none"
+                    placeholder="Notes that will be pre-filled on new requests">{{ user.notes_template or '' }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification Settings -->
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+      <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+        <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+        </svg>
+        Notifications
+      </h2>
+
+      <div class="space-y-4">
+        <!-- Email Notifications -->
+        <div class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+          <div>
+            <div class="font-medium text-sm">Email Status Updates</div>
+            <div class="text-xs text-zinc-500">Get emails when your print status changes</div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" name="email_status_updates" value="1" class="sr-only peer"
+                   {% if user.notification_prefs.get('email_status_updates', True) %}checked{% endif %}>
+            <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+          </label>
+        </div>
+
+        <div class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+          <div>
+            <div class="font-medium text-sm">Email When Ready</div>
+            <div class="text-xs text-zinc-500">Get an email when your print is ready for pickup</div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" name="email_print_ready" value="1" class="sr-only peer"
+                   {% if user.notification_prefs.get('email_print_ready', True) %}checked{% endif %}>
+            <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+          </label>
+        </div>
+
+        <!-- Push Notifications -->
+        <div class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+          <div>
+            <div class="font-medium text-sm">Push Notifications</div>
+            <div class="text-xs text-zinc-500">Get instant notifications on this device</div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" name="push_enabled" value="1" class="sr-only peer" id="push-toggle"
+                   {% if user.notification_prefs.get('push_enabled', False) %}checked{% endif %}>
+            <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+          </label>
+        </div>
+
+        <div class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+          <div>
+            <div class="font-medium text-sm">Progress Notifications</div>
+            <div class="text-xs text-zinc-500">Get notified at 50%, 75% completion</div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" name="push_progress" value="1" class="sr-only peer"
+                   {% if user.notification_prefs.get('push_progress', True) %}checked{% endif %}>
+            <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Save Button -->
+    <div class="flex gap-3">
+      <button type="submit" 
+              class="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition tap-highlight">
+        Save Changes
+      </button>
+    </div>
+  </form>
+
+  <!-- Danger Zone -->
+  <div class="mt-8 bg-zinc-900/60 border border-red-900/50 rounded-2xl p-6">
+    <h2 class="text-lg font-semibold mb-2 text-red-400">Danger Zone</h2>
+    <p class="text-sm text-zinc-500 mb-4">These actions are irreversible.</p>
+    
+    <div class="flex flex-wrap gap-3">
+      <a href="/auth/logout" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl text-sm font-medium transition">
+        Sign Out
+      </a>
+      <button type="button" onclick="confirmDelete()" 
+              class="px-4 py-2 bg-red-900/30 hover:bg-red-900/50 border border-red-800 text-red-400 rounded-xl text-sm font-medium transition">
+        Delete Account
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Push notification toggle
+  document.getElementById('push-toggle')?.addEventListener('change', async function() {
+    if (this.checked) {
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          this.checked = false;
+          alert('Please allow notifications in your browser settings.');
+        }
+      } catch (e) {
+        this.checked = false;
+        alert('Push notifications are not supported in this browser.');
+      }
+    }
+  });
+  
+  function confirmDelete() {
+    if (confirm('Are you sure you want to delete your account? This cannot be undone.')) {
+      if (confirm('Really sure? All your data will be permanently deleted.')) {
+        window.location.href = '/auth/delete-account';
+      }
+    }
+  }
+</script>
+{% endblock %}

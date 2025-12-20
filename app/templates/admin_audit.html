@@ -1,0 +1,100 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Audit Log | Printellect</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-7xl mx-auto p-6">
+    {% set active_page = 'settings' %}
+    {% include 'admin_nav.html' %}
+
+    <!-- Settings Tabs -->
+    {% set active_settings_tab = 'audit' %}
+    {% include '_components/settings_tabs.html' %}
+
+    <div class="mb-6 flex items-center justify-between">
+      <div>
+        <h2 class="text-xl font-semibold">Track all admin actions and system events</h2>
+      </div>
+      <select id="action-filter" onchange="filterByAction()" class="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-sm">
+        <option value="">All Actions</option>
+        {% for action in actions %}
+        <option value="{{ action }}" {% if current_action == action %}selected{% endif %}>{{ action.replace('_', ' ').title() }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+      <table class="w-full">
+        <thead class="bg-zinc-800/50">
+          <tr class="text-left text-xs text-zinc-400 uppercase tracking-wider">
+            <th class="px-4 py-3">Time</th>
+            <th class="px-4 py-3">Action</th>
+            <th class="px-4 py-3">Actor</th>
+            <th class="px-4 py-3">Target</th>
+            <th class="px-4 py-3">Details</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+          {% for log in logs %}
+          <tr class="hover:bg-zinc-800/30">
+            <td class="px-4 py-3 text-sm text-zinc-400 whitespace-nowrap">{{ log.created_at|localtime('%b %d, %I:%M:%S %p') }}</td>
+            <td class="px-4 py-3">
+              {% set action_colors = {'admin_login': 'emerald', 'admin_logout': 'zinc', 'admin_login_failed': 'red', 'admin_created': 'blue', 'admin_updated': 'indigo', 'admin_deleted': 'red', 'user_registered': 'emerald', 'user_login': 'emerald', 'request_created': 'blue', 'request_approved': 'emerald', 'request_rejected': 'red', 'request_status_changed': 'indigo', 'settings_updated': 'yellow', 'feature_flag_toggled': 'purple'} %}
+              {% set color = action_colors.get(log.action, 'zinc') %}
+              <span class="px-2 py-1 bg-{{ color }}-600/20 text-{{ color }}-300 text-xs rounded-lg">{{ log.action.replace('_', ' ').title() if log.action is string else log.action }}</span>
+            </td>
+            <td class="px-4 py-3">
+              <div class="flex items-center gap-2">
+                {% if log.actor_type == 'admin' %}<span class="w-6 h-6 bg-indigo-600/30 rounded-lg flex items-center justify-center text-xs">👔</span>
+                {% elif log.actor_type == 'user' %}<span class="w-6 h-6 bg-purple-600/30 rounded-lg flex items-center justify-center text-xs">👤</span>
+                {% else %}<span class="w-6 h-6 bg-zinc-600/30 rounded-lg flex items-center justify-center text-xs">🖥</span>{% endif %}
+                <div>
+                  <div class="text-sm font-medium">{{ log.actor_name or log.actor_id or 'System' }}</div>
+                  <div class="text-xs text-zinc-500">{{ log.actor_ip or '' }}</div>
+                </div>
+              </div>
+            </td>
+            <td class="px-4 py-3 text-sm">
+              {% if log.target_type %}<span class="text-zinc-300">{{ log.target_type }}</span>{% if log.target_id %}<span class="text-zinc-500 text-xs ml-1">#{{ log.target_id[:8] }}...</span>{% endif %}{% else %}<span class="text-zinc-500">-</span>{% endif %}
+            </td>
+            <td class="px-4 py-3 text-sm text-zinc-400">
+              {% if log.details %}<button onclick="showDetails(this)" data-details="{{ log.details|tojson|e }}" class="text-indigo-400 hover:text-indigo-300 text-xs">View Details</button>{% else %}<span class="text-zinc-600">-</span>{% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="px-4 py-12 text-center text-zinc-500">No audit logs found</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      
+      {% if logs %}
+      <div class="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
+        <span class="text-sm text-zinc-500">Page {{ page }}</span>
+        <div class="flex gap-2">
+          {% if page > 1 %}<a href="?page={{ page - 1 }}{% if current_action %}&action={{ current_action }}{% endif %}" class="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm">Previous</a>{% endif %}
+          {% if has_more %}<a href="?page={{ page + 1 }}{% if current_action %}&action={{ current_action }}{% endif %}" class="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm">Next</a>{% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Details Modal -->
+    <div id="details-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+      <div class="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg">
+        <div class="p-4 border-b border-zinc-800 flex justify-between"><h3 class="font-semibold">Event Details</h3><button onclick="hideDetails()" class="text-zinc-400 hover:text-white">✕</button></div>
+        <div id="details-content" class="p-4"><pre class="bg-zinc-800 rounded-xl p-4 text-sm text-zinc-300 overflow-x-auto"></pre></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  function filterByAction() { const action = document.getElementById('action-filter').value; const url = new URL(window.location); if (action) url.searchParams.set('action', action); else url.searchParams.delete('action'); url.searchParams.delete('page'); window.location = url.toString(); }
+  function showDetails(btn) { const details = JSON.parse(btn.dataset.details); document.querySelector('#details-content pre').textContent = JSON.stringify(details, null, 2); document.getElementById('details-modal').classList.remove('hidden'); }
+  function hideDetails() { document.getElementById('details-modal').classList.add('hidden'); }
+  </script>
+</body>
+</html>

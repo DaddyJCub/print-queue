@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Login | Printellect</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen flex items-center justify-center">
+  <div class="w-full max-w-md p-6">
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-8">
+      <div class="text-center mb-6">
+        <div class="text-4xl mb-2">🔐</div>
+        <h1 class="text-2xl font-bold">Admin Login</h1>
+        <p class="text-zinc-400 text-sm mt-1">Printellect Admin Dashboard</p>
+      </div>
+
+      {% if error %}
+        <div class="mb-4 bg-red-900/20 border border-red-800 text-red-200 rounded-xl p-3 text-sm text-center">
+          {{ error }}
+        </div>
+      {% endif %}
+
+      {% if request.query_params.get("bad") %}
+        <div class="mb-4 bg-red-900/20 border border-red-800 text-red-200 rounded-xl p-3 text-sm text-center">
+          Invalid credentials. Try again.
+        </div>
+      {% endif %}
+
+      {% if request.query_params.get("session_expired") %}
+        <div class="mb-4 bg-amber-900/20 border border-amber-800 text-amber-200 rounded-xl p-3 text-sm text-center">
+          Your session has expired. Please log in again.
+        </div>
+      {% endif %}
+
+      <form action="/admin/login/new" method="POST" class="space-y-4">
+        {% set next_url = next or request.query_params.get("next") %}
+        {% if next_url %}
+        <input type="hidden" name="next" value="{{ next_url }}" />
+        {% endif %}
+        
+        <!-- Username/Email -->
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-1.5">Username or Email</label>
+          <input name="username" type="text" required autofocus 
+                 placeholder="admin"
+                 class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition outline-none" />
+        </div>
+        
+        <!-- Password -->
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-1.5">Password</label>
+          <input name="password" type="password" required 
+                 class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition outline-none" />
+        </div>
+        
+        <!-- Remember Me -->
+        <div class="flex items-center justify-between">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" name="remember" value="1" class="w-4 h-4 rounded border-zinc-600 bg-zinc-950 text-indigo-600 focus:ring-indigo-500">
+            <span class="text-sm text-zinc-400">Remember me</span>
+          </label>
+        </div>
+
+        <button type="submit" class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-3 font-semibold">
+          Sign In
+        </button>
+      </form>
+
+      <!-- Legacy Login Link -->
+      <div class="mt-4 pt-4 border-t border-zinc-800/50">
+        <p class="text-center text-xs text-zinc-500">
+          Using the old single-password login?
+          <a href="/admin/login" class="text-indigo-400 hover:underline">Use legacy login →</a>
+        </p>
+      </div>
+
+      <div class="mt-4 pt-4 border-t border-zinc-800 text-center text-sm text-zinc-500">
+        <a class="text-indigo-400 hover:underline" href="/">← Back to request form</a>
+      </div>
+    </div>
+    
+    <!-- Help Text -->
+    <div class="mt-6 text-center text-xs text-zinc-600">
+      <p>Having trouble? Contact your system administrator.</p>
+    </div>
+  </div>
+</body>
+</html>
