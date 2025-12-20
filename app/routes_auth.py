@@ -1405,6 +1405,116 @@ async def api_user_register(request: Request):
         })
 
 
+@router.post("/api/user/upgrade")
+async def api_user_upgrade(request: Request):
+    """
+    Upgrade a magic link user to a full account with password.
+    For users who used magic link but want to set a password.
+    """
+    if not is_feature_enabled("user_accounts"):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "error": "User accounts are not enabled"}
+        )
+    
+    try:
+        data = await request.json()
+    except:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Invalid JSON"}
+        )
+    
+    email = data.get("email", "").strip().lower()
+    name = data.get("name", "").strip()
+    password = data.get("password", "")
+    token = data.get("token", "")  # Magic link token for verification
+    
+    if not email:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Email is required"}
+        )
+    
+    if not password or len(password) < 8:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Password must be at least 8 characters"}
+        )
+    
+    # Verify the token belongs to this email
+    conn = db()
+    token_row = conn.execute(
+        "SELECT email FROM email_lookup_tokens WHERE token = ?", (token,)
+    ).fetchone()
+    conn.close()
+    
+    if not token_row or token_row["email"].lower() != email:
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "error": "Invalid or expired token"}
+        )
+    
+    # Check if user exists
+    user = get_user_by_email(email)
+    
+    if user:
+        # Update existing user with password
+        if user.password_hash:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Account already has a password. Please use login."}
+            )
+        
+        # Set password for existing user
+        change_user_password(user.id, password)
+        if name:
+            update_user(user.id, display_name=name)
+        set_user_status(user.id, UserStatus.ACTIVE)
+    else:
+        # Create new user account
+        try:
+            user = create_user(email, password, name or email.split('@')[0])
+            set_user_status(user.id, UserStatus.ACTIVE)
+        except Exception as e:
+            return JSONResponse(
+                status_code=500,
+                content={"success": False, "error": f"Failed to create account: {str(e)}"}
+            )
+    
+    # Create session
+    session_token = create_user_session(
+        user.id,
+        device_info=request.headers.get("User-Agent") or "unknown",
+        ip_address=get_client_ip(request)
+    )
+    
+    log_audit(
+        action=AuditAction.USER_PROFILE_UPDATED,
+        actor_type="user",
+        actor_id=user.id,
+        details={"action": "password_set", "from_magic_link": True}
+    )
+    
+    response = JSONResponse({
+        "success": True,
+        "session_token": session_token,
+        "message": "Account upgraded successfully!"
+    })
+    
+    response.set_cookie(
+        "user_session",
+        session_token,
+        httponly=True,
+        samesite="lax",
+        secure=os.getenv("BASE_URL", "").startswith("https"),
+        path="/",
+        max_age=30 * 24 * 60 * 60
+    )
+    
+    return response
+
+
 # ─────────────────────────── USER PROFILE ROUTES ───────────────────────────
 
 @router.get("/user/profile", response_class=HTMLResponse)

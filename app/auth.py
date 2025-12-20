@@ -547,6 +547,12 @@ def convert_user_to_admin(user_id: str, role: AdminRole = AdminRole.OPERATOR,
     if not user:
         return None
     
+    # Check if admin with this email already exists
+    existing_admin = get_admin_by_email(user.email)
+    if existing_admin:
+        logger.warning(f"Admin with email {user.email} already exists")
+        return existing_admin  # Return existing admin instead of failing
+    
     # Generate username from email if not provided
     if not username:
         username = user.email.split('@')[0].lower()
@@ -677,9 +683,10 @@ def get_admin_by_email(email: str) -> Optional[Admin]:
 def get_admin_by_session(token: str) -> Optional[Admin]:
     """Get admin by session token."""
     conn = db()
+    now_iso = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     row = conn.execute("""
         SELECT * FROM admins WHERE session_token = ? AND session_expires > ? AND is_active = 1
-    """, (token, datetime.utcnow().isoformat())).fetchone()
+    """, (token, now_iso)).fetchone()
     conn.close()
     
     if not row:

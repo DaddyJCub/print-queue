@@ -1929,25 +1929,35 @@ from app.routes_auth import router as auth_router
 app.include_router(auth_router)
 
 
-def require_admin(request: Request):
+async def require_admin(request: Request):
+    """
+    Require admin authentication. Supports both:
+    - Multi-admin sessions (admin_session cookie) 
+    - Legacy single password (admin_pw cookie or X-Admin-Password header)
+    """
+    # First, check for multi-admin session (new system)
+    admin = await get_current_admin(request)
+    if admin:
+        return admin  # Return admin object for new system
+    
+    # Fall back to legacy password check
     pw = request.headers.get("X-Admin-Password") or request.cookies.get("admin_pw") or ""
-    if not ADMIN_PASSWORD:
-        raise HTTPException(status_code=500, detail="ADMIN_PASSWORD is not set")
-    if pw != ADMIN_PASSWORD:
-        # For browser requests (HTML pages), redirect to login with next param
-        accept = request.headers.get("Accept", "")
-        if "text/html" in accept:
-            from urllib.parse import quote
-            next_url = str(request.url.path)
-            if request.url.query:
-                next_url += f"?{request.url.query}"
-            raise HTTPException(
-                status_code=303,
-                detail="Redirect to login",
-                headers={"Location": f"/admin/login?next={quote(next_url)}"}
-            )
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    return True
+    if ADMIN_PASSWORD and pw == ADMIN_PASSWORD:
+        return True  # Legacy auth successful
+    
+    # Not authenticated - redirect to login
+    accept = request.headers.get("Accept", "")
+    if "text/html" in accept:
+        from urllib.parse import quote
+        next_url = str(request.url.path)
+        if request.url.query:
+            next_url += f"?{request.url.query}"
+        raise HTTPException(
+            status_code=303,
+            detail="Redirect to login",
+            headers={"Location": f"/admin/login?next={quote(next_url)}"}
+        )
+    raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 # ------------------------
@@ -6210,11 +6220,14 @@ def my_requests_send_link(request: Request, email: str = Form(...)):
 @app.get("/my-requests/view", response_class=HTMLResponse)
 async def my_requests_view(request: Request, token: str = None, user_session: str = None):
     """View all requests for an email using magic link or user session"""
-    from app.auth import get_user_by_session
+    from app.auth import get_user_by_session, get_user_by_email
     
     conn = db()
     email = None
     token_to_use = token
+    user = None
+    needs_password_prompt = False
+    is_admin_user = False
     
     # First, try user session auth
     if user_session:
@@ -6223,6 +6236,10 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
             email = user.email
             # Get or create a token for this email (for page functionality)
             token_to_use = get_or_create_my_requests_token(email)
+            # Check if this user is also an admin
+            admin = await get_current_admin(request)
+            if admin and admin.id != "legacy":
+                is_admin_user = True
     
     # If no session auth, try token auth
     if not email and token:
@@ -6235,9 +6252,19 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
             expiry = datetime.fromisoformat(token_row["expires_at"].replace("Z", "+00:00"))
             if datetime.utcnow().replace(tzinfo=expiry.tzinfo) <= expiry:
                 email = token_row["email"]
+                # Check if user exists and needs password
+                if is_feature_enabled("user_accounts"):
+                    user = get_user_by_email(email)
+                    if not user:
+                        # Token user without account - prompt to create one
+                        needs_password_prompt = True
+                    elif not user.password_hash:
+                        # User exists but no password - prompt to set one
+                        needs_password_prompt = True
             else:
                 # Token expired - clean up
                 conn.execute("DELETE FROM email_lookup_tokens WHERE token = ?", (token,))
+                conn.commit()
                 conn.commit()
     
     # No valid auth
@@ -6322,6 +6349,10 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
         "requests_list": enriched_requests,
         "token": token_to_use,  # Keep token for refresh
         "version": APP_VERSION,
+        "user": user.to_dict() if user and hasattr(user, 'to_dict') else None,
+        "needs_password_prompt": needs_password_prompt,
+        "is_admin_user": is_admin_user,
+        "user_accounts_enabled": is_feature_enabled("user_accounts"),
     })
 
 
@@ -10245,10 +10276,17 @@ def get_version():
 
 
 @app.get("/api/admin/check")
-def check_admin_status(request: Request):
+async def check_admin_status(request: Request):
     """Check if the current user is authenticated as admin.
     Returns {is_admin: true/false} - used by PWA to show admin tab.
+    Supports both multi-admin sessions and legacy password auth.
     """
+    # Check multi-admin session first
+    admin = await get_current_admin(request)
+    if admin:
+        return {"is_admin": True, "admin_id": admin.id, "admin_name": admin.display_name}
+    
+    # Fall back to legacy password check
     pw = request.cookies.get("admin_pw", "")
     is_admin = bool(pw and ADMIN_PASSWORD and pw == ADMIN_PASSWORD)
     return {"is_admin": is_admin}
