@@ -6939,9 +6939,9 @@ def admin_feedback_delete(fid: str, _=Depends(require_admin)):
 
 
 @app.get("/admin/login", response_class=HTMLResponse)
-def admin_login(request: Request, next: Optional[str] = None, bad: Optional[str] = None):
-    # If multi_admin is enabled, redirect to the new login page
-    if is_feature_enabled("multi_admin"):
+def admin_login(request: Request, next: Optional[str] = None, bad: Optional[str] = None, legacy: Optional[str] = None):
+    # If multi_admin is enabled and not explicitly requesting legacy, redirect to new login
+    if is_feature_enabled("multi_admin") and legacy != "1":
         redirect_url = "/admin/login/new"
         if next:
             from urllib.parse import quote
