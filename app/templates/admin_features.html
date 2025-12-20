@@ -17,6 +17,20 @@
 
     {% if success %}<div class="mb-6 bg-emerald-900/30 border border-emerald-500/50 text-emerald-200 rounded-xl p-4">{{ success }}</div>{% endif %}
 
+    <!-- SMTP Warning (if user accounts enabled but no email) -->
+    {% if flags.get('user_accounts') and flags.get('user_accounts').enabled and not smtp_configured %}
+    <div class="mb-6 bg-red-900/20 border border-red-600/30 rounded-xl p-4">
+      <div class="flex items-start gap-3">
+        <span class="text-red-400">🚨</span>
+        <div>
+          <div class="font-medium text-red-300">Email Not Configured</div>
+          <p class="text-sm text-zinc-400 mt-1">User accounts require email for magic links. Set <code class="bg-zinc-800 px-1 rounded">SMTP_HOST</code>, <code class="bg-zinc-800 px-1 rounded">SMTP_FROM</code> environment variables.</p>
+          <a href="/admin/debug" class="text-sm text-indigo-400 hover:underline mt-2 inline-block">→ Check Debug page for env status</a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Warning Banner -->
     <div class="mb-6 bg-yellow-900/20 border border-yellow-600/30 rounded-xl p-4">
       <div class="flex items-start gap-3">
@@ -31,23 +45,34 @@
     <!-- User Features -->
     <div class="mb-6">
       <h2 class="text-lg font-semibold mb-4">👤 User Accounts</h2>
+      <p class="text-sm text-zinc-500 mb-4">Enable user registration and authentication. Users can save preferences and track their print history.</p>
       <div class="space-y-3">
+        {% set user_flag_details = {
+          'user_accounts': {'icon': '👤', 'title': 'User Accounts', 'desc': 'Master toggle for user account system. When enabled, users can create accounts to save preferences and view their print history in one place.', 'requires': []},
+          'user_registration': {'icon': '📝', 'title': 'User Registration', 'desc': 'Allow new users to sign up. Disable for invite-only mode where admins create accounts manually.', 'requires': ['user_accounts']},
+          'user_password_auth': {'icon': '🔑', 'title': 'Password Auth', 'desc': 'Allow password login in addition to magic links. Users can set a password for faster login.', 'requires': ['user_accounts']}
+        } %}
         {% for key in ['user_accounts', 'user_registration', 'user_password_auth'] %}
         {% set flag = flags.get(key) %}
+        {% set details = user_flag_details.get(key, {}) %}
         {% if flag %}
-        <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
-          <div class="flex-1">
-            <div class="flex items-center gap-2">
-              <span class="font-medium">{{ flag.key.replace('_', ' ').title() }}</span>
-              {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
-              {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-lg">{{ details.icon }}</span>
+                <span class="font-medium">{{ details.title }}</span>
+                {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
+                {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
+                {% if details.requires %}<span class="text-xs text-zinc-600">requires: {{ details.requires|join(', ') }}</span>{% endif %}
+              </div>
+              <p class="text-sm text-zinc-400 mt-2">{{ details.desc }}</p>
             </div>
-            <p class="text-sm text-zinc-500 mt-1">{{ flag.description }}</p>
+            <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+              <input type="checkbox" class="sr-only peer" {% if flag.enabled %}checked{% endif %} onchange="toggleFlag('{{ flag.key }}', this.checked)">
+              <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+            </label>
           </div>
-          <label class="relative inline-flex items-center cursor-pointer ml-4">
-            <input type="checkbox" class="sr-only peer" {% if flag.enabled %}checked{% endif %} onchange="toggleFlag('{{ flag.key }}', this.checked)">
-            <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
-          </label>
         </div>
         {% endif %}
         {% endfor %}
@@ -57,24 +82,35 @@
     <!-- Store Features -->
     <div class="mb-6">
       <h2 class="text-lg font-semibold mb-4">🏪 Store</h2>
+      <p class="text-sm text-zinc-500 mb-4">Configure your pre-made prints store and payment options.</p>
       <div class="space-y-3">
+        {% set store_flag_details = {
+          'store_public': {'icon': '🏪', 'title': 'Public Store', 'desc': 'Make the store visible to all users. Disable to hide store while setting up inventory.'},
+          'store_payments': {'icon': '💳', 'title': 'Payments', 'desc': 'Enable online payments for store purchases. Requires Stripe integration setup.'},
+          'store_rewards': {'icon': '🎁', 'title': 'Rewards Program', 'desc': 'Enable credits and loyalty rewards. Users earn points on purchases.'},
+          'store_preorders': {'icon': '📦', 'title': 'Pre-orders', 'desc': 'Allow pre-ordering items that are out of stock or coming soon.'}
+        } %}
         {% for key in ['store_public', 'store_payments', 'store_rewards', 'store_preorders'] %}
         {% set flag = flags.get(key) %}
+        {% set details = store_flag_details.get(key, {}) %}
         {% if flag %}
-        <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
-          <div class="flex-1">
-            <div class="flex items-center gap-2">
-              <span class="font-medium">{{ flag.key.replace('_', ' ').title() }}</span>
-              {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
-              {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
-              {% if key in ['store_payments', 'store_rewards'] %}<span class="px-2 py-0.5 bg-yellow-600/20 text-yellow-300 text-xs rounded-lg">Beta</span>{% endif %}
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-lg">{{ details.icon }}</span>
+                <span class="font-medium">{{ details.title }}</span>
+                {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
+                {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
+                {% if key in ['store_payments', 'store_rewards'] %}<span class="px-2 py-0.5 bg-yellow-600/20 text-yellow-300 text-xs rounded-lg">Beta</span>{% endif %}
+              </div>
+              <p class="text-sm text-zinc-400 mt-2">{{ details.desc }}</p>
             </div>
-            <p class="text-sm text-zinc-500 mt-1">{{ flag.description }}</p>
+            <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+              <input type="checkbox" class="sr-only peer" {% if flag.enabled %}checked{% endif %} onchange="toggleFlag('{{ flag.key }}', this.checked)">
+              <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+            </label>
           </div>
-          <label class="relative inline-flex items-center cursor-pointer ml-4">
-            <input type="checkbox" class="sr-only peer" {% if flag.enabled %}checked{% endif %} onchange="toggleFlag('{{ flag.key }}', this.checked)">
-            <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
-          </label>
         </div>
         {% endif %}
         {% endfor %}
@@ -84,24 +120,37 @@
     <!-- Advanced Features -->
     <div class="mb-6">
       <h2 class="text-lg font-semibold mb-4">⚙️ Advanced</h2>
+      <p class="text-sm text-zinc-500 mb-4">Power features for automation and integrations.</p>
       <div class="space-y-3">
+        {% set advanced_flag_details = {
+          'file_sync': {'icon': '📁', 'title': 'File Sync', 'desc': 'Watch folders for STL files and auto-match to requests. Great for SD card workflows.'},
+          'multi_admin': {'icon': '👥', 'title': 'Multi Admin', 'desc': 'Enable role-based access control (RBAC) with multiple admin accounts and permission levels.'},
+          'audit_logging': {'icon': '📜', 'title': 'Audit Logging', 'desc': 'Track all admin and user actions for compliance and debugging.'},
+          'octoprint_integration': {'icon': '🐙', 'title': 'OctoPrint', 'desc': 'Connect to OctoPrint for remote print monitoring and control.'},
+          'auto_slicer': {'icon': '🔪', 'title': 'Auto Slicer', 'desc': 'Automatically slice uploaded STL files with preset profiles.'},
+          '3d_preview': {'icon': '🎲', 'title': '3D Preview', 'desc': 'Interactive 3D model preview for uploaded STL files.'}
+        } %}
         {% for key in ['file_sync', 'multi_admin', 'audit_logging', 'octoprint_integration', 'auto_slicer', '3d_preview'] %}
         {% set flag = flags.get(key) %}
+        {% set details = advanced_flag_details.get(key, {}) %}
         {% if flag %}
-        <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
-          <div class="flex-1">
-            <div class="flex items-center gap-2">
-              <span class="font-medium">{{ flag.key.replace('_', ' ').replace('3d', '3D').title() }}</span>
-              {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
-              {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
-              {% if key in ['octoprint_integration', 'auto_slicer', 'file_sync'] %}<span class="px-2 py-0.5 bg-orange-600/20 text-orange-300 text-xs rounded-lg">Coming Soon</span>{% endif %}
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-lg">{{ details.icon }}</span>
+                <span class="font-medium">{{ details.title }}</span>
+                {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
+                {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
+                {% if key in ['octoprint_integration', 'auto_slicer', 'file_sync'] %}<span class="px-2 py-0.5 bg-orange-600/20 text-orange-300 text-xs rounded-lg">Coming Soon</span>{% endif %}
+              </div>
+              <p class="text-sm text-zinc-400 mt-2">{{ details.desc }}</p>
             </div>
-            <p class="text-sm text-zinc-500 mt-1">{{ flag.description }}</p>
+            <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+              <input type="checkbox" class="sr-only peer" {% if flag.enabled %}checked{% endif %} onchange="toggleFlag('{{ flag.key }}', this.checked)">
+              <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+            </label>
           </div>
-          <label class="relative inline-flex items-center cursor-pointer ml-4">
-            <input type="checkbox" class="sr-only peer" {% if flag.enabled %}checked{% endif %} onchange="toggleFlag('{{ flag.key }}', this.checked)">
-            <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
-          </label>
         </div>
         {% endif %}
         {% endfor %}
@@ -111,26 +160,88 @@
     <!-- UI Features -->
     <div class="mb-6">
       <h2 class="text-lg font-semibold mb-4">🎨 UI / UX</h2>
+      <p class="text-sm text-zinc-500 mb-4">Customize the user interface experience.</p>
       <div class="space-y-3">
+        {% set ui_flag_details = {
+          'dark_mode_toggle': {'icon': '🌙', 'title': 'Dark Mode Toggle', 'desc': 'Allow users to switch between light and dark themes. Currently dark-only.'}
+        } %}
         {% for key in ['dark_mode_toggle'] %}
         {% set flag = flags.get(key) %}
+        {% set details = ui_flag_details.get(key, {}) %}
         {% if flag %}
-        <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
-          <div class="flex-1">
-            <div class="flex items-center gap-2">
-              <span class="font-medium">{{ flag.key.replace('_', ' ').title() }}</span>
-              {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
-              {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-lg">{{ details.icon }}</span>
+                <span class="font-medium">{{ details.title }}</span>
+                {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
+                {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
+              </div>
+              <p class="text-sm text-zinc-400 mt-2">{{ details.desc }}</p>
             </div>
-            <p class="text-sm text-zinc-500 mt-1">{{ flag.description }}</p>
+            <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+              <input type="checkbox" class="sr-only peer" {% if flag.enabled %}checked{% endif %} onchange="toggleFlag('{{ flag.key }}', this.checked)">
+              <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+            </label>
           </div>
-          <label class="relative inline-flex items-center cursor-pointer ml-4">
-            <input type="checkbox" class="sr-only peer" {% if flag.enabled %}checked{% endif %} onchange="toggleFlag('{{ flag.key }}', this.checked)">
-            <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
-          </label>
         </div>
         {% endif %}
         {% endfor %}
+      </div>
+    </div>
+
+    <!-- Admin Role Reference -->
+    <div class="mb-6">
+      <h2 class="text-lg font-semibold mb-4">🛡️ Admin Role Reference</h2>
+      <p class="text-sm text-zinc-500 mb-4">Understanding admin permission levels (requires Multi Admin feature).</p>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-zinc-800/50">
+            <tr class="text-left text-xs text-zinc-400 uppercase tracking-wider">
+              <th class="px-4 py-3">Role</th>
+              <th class="px-4 py-3">Queue</th>
+              <th class="px-4 py-3">Users</th>
+              <th class="px-4 py-3">Store</th>
+              <th class="px-4 py-3">Settings</th>
+              <th class="px-4 py-3">Admins</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-800">
+            <tr>
+              <td class="px-4 py-3"><span class="px-2 py-1 bg-purple-600/20 text-purple-300 text-xs rounded-lg">Super Admin</span></td>
+              <td class="px-4 py-3 text-emerald-400">✓ Full</td>
+              <td class="px-4 py-3 text-emerald-400">✓ Full</td>
+              <td class="px-4 py-3 text-emerald-400">✓ Full</td>
+              <td class="px-4 py-3 text-emerald-400">✓ Full</td>
+              <td class="px-4 py-3 text-emerald-400">✓ Manage</td>
+            </tr>
+            <tr>
+              <td class="px-4 py-3"><span class="px-2 py-1 bg-indigo-600/20 text-indigo-300 text-xs rounded-lg">Admin</span></td>
+              <td class="px-4 py-3 text-emerald-400">✓ Full</td>
+              <td class="px-4 py-3 text-emerald-400">✓ Full</td>
+              <td class="px-4 py-3 text-emerald-400">✓ Full</td>
+              <td class="px-4 py-3 text-zinc-500">—</td>
+              <td class="px-4 py-3 text-zinc-500">—</td>
+            </tr>
+            <tr>
+              <td class="px-4 py-3"><span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg">Operator</span></td>
+              <td class="px-4 py-3 text-emerald-400">✓ Manage</td>
+              <td class="px-4 py-3 text-zinc-500">—</td>
+              <td class="px-4 py-3 text-zinc-500">—</td>
+              <td class="px-4 py-3 text-zinc-500">—</td>
+              <td class="px-4 py-3 text-zinc-500">—</td>
+            </tr>
+            <tr>
+              <td class="px-4 py-3"><span class="px-2 py-1 bg-zinc-700 text-zinc-300 text-xs rounded-lg">Viewer</span></td>
+              <td class="px-4 py-3 text-amber-400">👁️ View</td>
+              <td class="px-4 py-3 text-zinc-500">—</td>
+              <td class="px-4 py-3 text-zinc-500">—</td>
+              <td class="px-4 py-3 text-zinc-500">—</td>
+              <td class="px-4 py-3 text-zinc-500">—</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>

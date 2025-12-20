@@ -27,6 +27,7 @@ from app.auth import (
     create_magic_link, verify_magic_link, create_user_session, delete_user_session,
     update_user_profile, get_current_user, require_user, optional_user,
     get_user_by_id, get_all_users, get_user_count, update_user, delete_user, set_user_status,
+    hash_password, verify_password, _row_to_user, db, change_user_password,
     
     # Admin auth
     create_admin, get_admin_by_username, authenticate_admin, get_admin_by_session,
@@ -628,12 +629,17 @@ async def feature_flags_page(
     admin: dict = Depends(require_permission("manage_settings"))
 ):
     """Feature flags management page."""
+    import os
     flags = get_all_feature_flags()
+    
+    # Check if SMTP is configured
+    smtp_configured = bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_FROM"))
     
     return templates.TemplateResponse("admin_features.html", {
         "request": request,
         "flags": flags,
         "success": success,
+        "smtp_configured": smtp_configured,
     })
 
 
@@ -1213,3 +1219,282 @@ async def migrate_token_to_account(
         "user": user.to_dict()
     })
 
+
+# ─────────────────────────── USER PROFILE ROUTES ───────────────────────────
+
+@router.get("/user/profile", response_class=HTMLResponse)
+async def user_profile_page(
+    request: Request,
+    token: str = Query(None),
+    success: str = Query(None),
+    error: str = Query(None)
+):
+    """User profile and settings page."""
+    if not is_feature_enabled("user_accounts"):
+        return RedirectResponse(url="/my-requests", status_code=303)
+    
+    # Get user from token or session
+    user = None
+    if token:
+        # Look up user by email lookup token
+        conn = db()
+        row = conn.execute("""
+            SELECT u.* FROM users u
+            JOIN email_lookup_tokens t ON LOWER(u.email) = LOWER(t.email)
+            WHERE t.token = ?
+        """, (token,)).fetchone()
+        conn.close()
+        if row:
+            user = _row_to_user(row)
+    
+    if not user:
+        user = await get_current_user(request)
+    
+    if not user:
+        return RedirectResponse(url="/my-requests?error=not_logged_in", status_code=303)
+    
+    # Get printers and materials for preferences
+    conn = db()
+    printers = conn.execute("SELECT name FROM printers WHERE is_active = 1 ORDER BY name").fetchall()
+    conn.close()
+    
+    materials = ["PLA", "PETG", "ABS", "TPU", "ASA", "Nylon", "Resin", "Other"]
+    
+    return templates.TemplateResponse("user_profile.html", {
+        "request": request,
+        "user": user,
+        "token": token,
+        "printers": printers,
+        "materials": materials,
+        "success": success,
+        "error": error,
+    })
+
+
+@router.post("/user/profile")
+async def update_user_profile_route(
+    request: Request,
+    token: str = Form(None),
+    name: str = Form(None),
+    phone: str = Form(None)
+):
+    """Update user profile information."""
+    # Get user
+    user = None
+    if token:
+        conn = db()
+        row = conn.execute("""
+            SELECT u.* FROM users u
+            JOIN email_lookup_tokens t ON LOWER(u.email) = LOWER(t.email)
+            WHERE t.token = ?
+        """, (token,)).fetchone()
+        conn.close()
+        if row:
+            user = _row_to_user(row)
+    
+    if not user:
+        user = await get_current_user(request)
+    
+    if not user:
+        return RedirectResponse(url="/my-requests?error=not_logged_in", status_code=303)
+    
+    # Update profile
+    update_user_profile(user.id, name=name, phone=phone)
+    
+    return RedirectResponse(
+        url=f"/user/profile?token={token}&success=Profile updated",
+        status_code=303
+    )
+
+
+@router.post("/user/preferences")
+async def update_user_preferences(
+    request: Request,
+    token: str = Form(None),
+    preferred_printer: str = Form(None),
+    preferred_material: str = Form(None),
+    preferred_colors: str = Form(None),
+    notes_template: str = Form(None)
+):
+    """Update user print preferences."""
+    user = None
+    if token:
+        conn = db()
+        row = conn.execute("""
+            SELECT u.* FROM users u
+            JOIN email_lookup_tokens t ON LOWER(u.email) = LOWER(t.email)
+            WHERE t.token = ?
+        """, (token,)).fetchone()
+        conn.close()
+        if row:
+            user = _row_to_user(row)
+    
+    if not user:
+        user = await get_current_user(request)
+    
+    if not user:
+        return RedirectResponse(url="/my-requests?error=not_logged_in", status_code=303)
+    
+    update_user_profile(
+        user.id,
+        preferred_printer=preferred_printer,
+        preferred_material=preferred_material,
+        preferred_colors=preferred_colors,
+        notes_template=notes_template
+    )
+    
+    return RedirectResponse(
+        url=f"/user/profile?token={token}&success=Preferences saved",
+        status_code=303
+    )
+
+
+@router.post("/user/notifications")
+async def update_user_notifications(
+    request: Request,
+    token: str = Form(None),
+    email_status_updates: str = Form(None),
+    email_print_ready: str = Form(None),
+    push_enabled: str = Form(None),
+    push_progress: str = Form(None)
+):
+    """Update user notification preferences."""
+    user = None
+    if token:
+        conn = db()
+        row = conn.execute("""
+            SELECT u.* FROM users u
+            JOIN email_lookup_tokens t ON LOWER(u.email) = LOWER(t.email)
+            WHERE t.token = ?
+        """, (token,)).fetchone()
+        conn.close()
+        if row:
+            user = _row_to_user(row)
+    
+    if not user:
+        user = await get_current_user(request)
+    
+    if not user:
+        return RedirectResponse(url="/my-requests?error=not_logged_in", status_code=303)
+    
+    notification_prefs = {
+        "email_status_updates": email_status_updates == "1",
+        "email_print_ready": email_print_ready == "1",
+        "push_enabled": push_enabled == "1",
+        "push_progress": push_progress == "1",
+    }
+    
+    update_user_profile(user.id, notification_prefs=notification_prefs)
+    
+    return RedirectResponse(
+        url=f"/user/profile?token={token}&success=Notification settings saved",
+        status_code=303
+    )
+
+
+@router.post("/user/password")
+async def update_user_password(
+    request: Request,
+    token: str = Form(None),
+    current_password: str = Form(None),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...)
+):
+    """Set or change user password."""
+    user = None
+    if token:
+        conn = db()
+        row = conn.execute("""
+            SELECT u.* FROM users u
+            JOIN email_lookup_tokens t ON LOWER(u.email) = LOWER(t.email)
+            WHERE t.token = ?
+        """, (token,)).fetchone()
+        conn.close()
+        if row:
+            user = _row_to_user(row)
+    
+    if not user:
+        user = await get_current_user(request)
+    
+    if not user:
+        return RedirectResponse(url="/my-requests?error=not_logged_in", status_code=303)
+    
+    # Validate passwords match
+    if new_password != confirm_password:
+        return RedirectResponse(
+            url=f"/user/profile?token={token}&error=Passwords don't match",
+            status_code=303
+        )
+    
+    # If user has existing password, verify current password
+    if user.password_hash and current_password:
+        if not verify_password(current_password, user.password_hash):
+            return RedirectResponse(
+                url=f"/user/profile?token={token}&error=Current password is incorrect",
+                status_code=303
+            )
+    
+    # Hash and save new password
+    password_hash = hash_password(new_password)
+    conn = db()
+    conn.execute("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?", 
+                 (password_hash, datetime.utcnow().isoformat(timespec="seconds") + "Z", user.id))
+    conn.commit()
+    conn.close()
+    
+    return RedirectResponse(
+        url=f"/user/profile?token={token}&success=Password updated successfully",
+        status_code=303
+    )
+
+
+@router.post("/user/delete")
+async def delete_user_account(
+    request: Request,
+    token: str = Form(None)
+):
+    """Delete user account (GDPR compliance)."""
+    user = None
+    if token:
+        conn = db()
+        row = conn.execute("""
+            SELECT u.* FROM users u
+            JOIN email_lookup_tokens t ON LOWER(u.email) = LOWER(t.email)
+            WHERE t.token = ?
+        """, (token,)).fetchone()
+        conn.close()
+        if row:
+            user = _row_to_user(row)
+    
+    if not user:
+        user = await get_current_user(request)
+    
+    if not user:
+        return JSONResponse({"success": False, "error": "Not logged in"}, status_code=401)
+    
+    # Delete user sessions
+    conn = db()
+    conn.execute("DELETE FROM user_sessions WHERE user_id = ?", (user.id,))
+    
+    # Anonymize requests (keep history but remove PII)
+    conn.execute("""
+        UPDATE requests SET 
+            requester_name = 'Deleted User',
+            requester_email = 'deleted@deleted.com',
+            requester_phone = NULL
+        WHERE requester_email = ?
+    """, (user.email,))
+    
+    # Delete user account
+    conn.execute("DELETE FROM users WHERE id = ?", (user.id,))
+    conn.commit()
+    conn.close()
+    
+    log_audit(
+        action=AuditAction.USER_UPDATED,
+        actor_type="user",
+        actor_id=user.id,
+        details={"action": "account_deleted", "email": user.email}
+    )
+    
+    return JSONResponse({"success": True})

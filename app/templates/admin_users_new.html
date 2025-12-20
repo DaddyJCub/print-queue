@@ -223,9 +223,18 @@
           </div>
           <div>
             <label class="block text-sm font-medium text-zinc-300 mb-1.5">Password (optional)</label>
-            <input type="password" name="password" minlength="8"
+            <input type="password" name="password" id="create-password" minlength="8" oninput="checkPasswordStrength('create-password', 'create-str')"
                    class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-2.5 transition" />
-            <p class="text-xs text-zinc-500 mt-1">Leave blank for magic-link only auth</p>
+            <!-- Password strength indicator -->
+            <div class="mt-2">
+              <div class="flex gap-1">
+                <div id="create-str-1" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+                <div id="create-str-2" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+                <div id="create-str-3" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+                <div id="create-str-4" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+              </div>
+              <p id="create-str-text" class="text-xs text-zinc-500 mt-1">Leave blank for magic-link only auth</p>
+            </div>
           </div>
           <div>
             <label class="block text-sm font-medium text-zinc-300 mb-1.5">Status</label>
@@ -329,6 +338,39 @@
   </div>
 
   <script>
+  // Password strength checker
+  function checkPasswordStrength(inputId, prefix) {
+    const input = document.getElementById(inputId);
+    const password = input.value;
+    let strength = 0;
+    
+    if (password.length === 0) {
+      for (let i = 1; i <= 4; i++) {
+        document.getElementById(prefix + '-' + i).className = 'h-1 flex-1 bg-zinc-700 rounded';
+      }
+      document.getElementById(prefix + '-text').textContent = 'Leave blank for magic-link only auth';
+      document.getElementById(prefix + '-text').className = 'text-xs text-zinc-500 mt-1';
+      return;
+    }
+    
+    if (password.length >= 8) strength++;
+    if (password.match(/[a-z]/) && password.match(/[A-Z]/)) strength++;
+    if (password.match(/\d/)) strength++;
+    if (password.match(/[^a-zA-Z\d]/)) strength++;
+    
+    const colors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-emerald-500'];
+    const texts = ['Weak', 'Fair', 'Good', 'Strong 💪'];
+    const textColors = ['text-red-400', 'text-orange-400', 'text-yellow-400', 'text-emerald-400'];
+    
+    for (let i = 1; i <= 4; i++) {
+      const bar = document.getElementById(prefix + '-' + i);
+      bar.className = 'h-1 flex-1 rounded ' + (i <= strength ? colors[strength - 1] : 'bg-zinc-700');
+    }
+    
+    document.getElementById(prefix + '-text').textContent = texts[strength - 1];
+    document.getElementById(prefix + '-text').className = 'text-xs mt-1 ' + textColors[strength - 1];
+  }
+
   function showToast(msg, type = 'info') {
     const toast = document.getElementById('toast');
     toast.textContent = msg;

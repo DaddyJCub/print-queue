@@ -468,6 +468,60 @@ def set_user_status(user_id: str, status: UserStatus) -> bool:
     return True
 
 
+def change_user_password(user_id: str, new_password: str) -> bool:
+    """Change a user's password."""
+    conn = db()
+    
+    # Hash the new password
+    password_hash = hash_password(new_password)
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    
+    conn.execute("""
+        UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?
+    """, (password_hash, now, user_id))
+    conn.commit()
+    conn.close()
+    
+    logger.info(f"User {user_id} password changed")
+    return True
+
+
+def update_user_profile(user_id: str, name: str = None, email: str = None) -> bool:
+    """Update a user's profile information."""
+    conn = db()
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    
+    updates = ["updated_at = ?"]
+    params = [now]
+    
+    if name:
+        updates.append("name = ?")
+        params.append(name)
+    
+    if email:
+        # Check if email is already in use by another user
+        existing = conn.execute(
+            "SELECT id FROM users WHERE email = ? AND id != ?", 
+            (email.lower(), user_id)
+        ).fetchone()
+        if existing:
+            conn.close()
+            return False
+        updates.append("email = ?")
+        params.append(email.lower())
+    
+    params.append(user_id)
+    
+    conn.execute(f"""
+        UPDATE users SET {', '.join(updates)} WHERE id = ?
+    """, params)
+    conn.commit()
+    conn.close()
+    
+    logger.info(f"User {user_id} profile updated")
+    return True
+
+
 def delete_user(user_id: str) -> bool:
     """Delete a user account."""
     conn = db()

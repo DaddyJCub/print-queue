@@ -1,0 +1,447 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}My Account | Printellect{% endblock %}
+
+{% block nav_myrequests %}text-white bg-zinc-800{% endblock %}
+{% block bnav_myrequests %}active{% endblock %}
+
+{% block header_title %}My Account{% endblock %}
+
+{% block header_right %}
+<a href="/my-requests/view?token={{ token }}" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">
+  ← Back to My Prints
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  
+  {% if success %}
+  <div class="mb-6 bg-emerald-900/30 border border-emerald-500/50 text-emerald-200 rounded-xl p-4 flex items-center gap-3">
+    <svg class="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <span>{{ success }}</span>
+  </div>
+  {% endif %}
+
+  {% if error %}
+  <div class="mb-6 bg-red-900/30 border border-red-500/50 text-red-200 rounded-xl p-4 flex items-center gap-3">
+    <svg class="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+    <span>{{ error }}</span>
+  </div>
+  {% endif %}
+
+  <!-- Account Overview -->
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mb-6">
+    <div class="flex items-center gap-4 mb-6">
+      <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white">
+        {{ user.name[0]|upper if user.name else user.email[0]|upper }}
+      </div>
+      <div class="flex-1">
+        <h1 class="text-xl font-bold">{{ user.name or 'Printellect User' }}</h1>
+        <p class="text-zinc-400 text-sm">{{ user.email }}</p>
+        <div class="flex items-center gap-3 mt-1 text-xs">
+          {% if user.email_verified %}
+          <span class="text-emerald-400 flex items-center gap-1">
+            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            Verified
+          </span>
+          {% else %}
+          <span class="text-amber-400">Unverified</span>
+          {% endif %}
+          <span class="text-zinc-600">•</span>
+          <span class="text-zinc-500">Joined {{ user.created_at[:10] if user.created_at else 'recently' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="grid grid-cols-3 gap-3 text-center">
+      <div class="bg-zinc-800/50 rounded-xl p-3">
+        <div class="text-2xl font-bold text-indigo-400">{{ user.total_requests or 0 }}</div>
+        <div class="text-xs text-zinc-500">Total Requests</div>
+      </div>
+      <div class="bg-zinc-800/50 rounded-xl p-3">
+        <div class="text-2xl font-bold text-emerald-400">{{ user.total_prints or 0 }}</div>
+        <div class="text-xs text-zinc-500">Prints Done</div>
+      </div>
+      <div class="bg-zinc-800/50 rounded-xl p-3">
+        <div class="text-2xl font-bold text-amber-400">{{ user.credits or 0 }}</div>
+        <div class="text-xs text-zinc-500">Credits</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile Settings -->
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden mb-6">
+    <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+      <h2 class="font-semibold flex items-center gap-2">
+        <span>👤</span> Profile Information
+      </h2>
+    </div>
+    
+    <form action="/user/profile" method="POST" class="p-6 space-y-4">
+      <input type="hidden" name="token" value="{{ token }}">
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Name</label>
+        <input type="text" name="name" value="{{ user.name or '' }}"
+               class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
+               placeholder="Your name">
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Email</label>
+        <input type="email" value="{{ user.email }}" disabled
+               class="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-500 cursor-not-allowed">
+        <p class="text-xs text-zinc-500 mt-1">Email cannot be changed</p>
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Phone <span class="text-zinc-500">(optional)</span></label>
+        <input type="tel" name="phone" value="{{ user.phone or '' }}"
+               class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
+               placeholder="(555) 123-4567">
+      </div>
+      
+      <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition">
+        Save Profile
+      </button>
+    </form>
+  </div>
+
+  <!-- Print Preferences -->
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden mb-6">
+    <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+      <h2 class="font-semibold flex items-center gap-2">
+        <span>🖨️</span> Print Preferences
+      </h2>
+      <span class="text-xs text-zinc-500">Auto-fills on new requests</span>
+    </div>
+    
+    <form action="/user/preferences" method="POST" class="p-6 space-y-4">
+      <input type="hidden" name="token" value="{{ token }}">
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Preferred Printer</label>
+        <select name="preferred_printer" 
+                class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 transition">
+          <option value="">No preference</option>
+          {% for printer in printers %}
+          <option value="{{ printer.name }}" {% if user.preferred_printer == printer.name %}selected{% endif %}>
+            {{ printer.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Preferred Material</label>
+        <select name="preferred_material"
+                class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 transition">
+          <option value="">No preference</option>
+          {% for mat in materials %}
+          <option value="{{ mat }}" {% if user.preferred_material == mat %}selected{% endif %}>{{ mat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Favorite Colors</label>
+        <input type="text" name="preferred_colors" value="{{ user.preferred_colors or '' }}"
+               class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
+               placeholder="e.g., Black, White, Blue">
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Default Notes</label>
+        <textarea name="notes_template" rows="3"
+                  class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition resize-none"
+                  placeholder="Standard notes for all your prints...">{{ user.notes_template or '' }}</textarea>
+        <p class="text-xs text-zinc-500 mt-1">These notes will be pre-filled on new requests</p>
+      </div>
+      
+      <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition">
+        Save Preferences
+      </button>
+    </form>
+  </div>
+
+  <!-- Notification Settings -->
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden mb-6">
+    <div class="px-6 py-4 border-b border-zinc-800">
+      <h2 class="font-semibold flex items-center gap-2">
+        <span>🔔</span> Notification Settings
+      </h2>
+    </div>
+    
+    <form action="/user/notifications" method="POST" class="p-6 space-y-4">
+      <input type="hidden" name="token" value="{{ token }}">
+      
+      <!-- Email Notifications -->
+      <div class="space-y-3">
+        <h3 class="text-sm font-medium text-zinc-300">Email Notifications</h3>
+        
+        <label class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl cursor-pointer hover:bg-zinc-800 transition">
+          <div>
+            <p class="font-medium text-sm">Status Updates</p>
+            <p class="text-xs text-zinc-500">Get notified when your request status changes</p>
+          </div>
+          <input type="checkbox" name="email_status_updates" value="1" 
+                 {% if user.notification_prefs.get('email_status_updates', True) %}checked{% endif %}
+                 class="w-5 h-5 rounded bg-zinc-700 border-zinc-600 text-indigo-600 focus:ring-indigo-500">
+        </label>
+        
+        <label class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl cursor-pointer hover:bg-zinc-800 transition">
+          <div>
+            <p class="font-medium text-sm">Print Ready</p>
+            <p class="text-xs text-zinc-500">Get notified when your print is ready for pickup</p>
+          </div>
+          <input type="checkbox" name="email_print_ready" value="1"
+                 {% if user.notification_prefs.get('email_print_ready', True) %}checked{% endif %}
+                 class="w-5 h-5 rounded bg-zinc-700 border-zinc-600 text-indigo-600 focus:ring-indigo-500">
+        </label>
+      </div>
+      
+      <!-- Push Notifications -->
+      <div class="space-y-3 pt-4 border-t border-zinc-800">
+        <h3 class="text-sm font-medium text-zinc-300">Push Notifications</h3>
+        
+        <label class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl cursor-pointer hover:bg-zinc-800 transition">
+          <div>
+            <p class="font-medium text-sm">Enable Push</p>
+            <p class="text-xs text-zinc-500">Receive push notifications on this device</p>
+          </div>
+          <input type="checkbox" name="push_enabled" value="1"
+                 {% if user.notification_prefs.get('push_enabled', False) %}checked{% endif %}
+                 class="w-5 h-5 rounded bg-zinc-700 border-zinc-600 text-indigo-600 focus:ring-indigo-500">
+        </label>
+        
+        <label class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl cursor-pointer hover:bg-zinc-800 transition">
+          <div>
+            <p class="font-medium text-sm">Print Progress</p>
+            <p class="text-xs text-zinc-500">Updates at 25%, 50%, 75% completion</p>
+          </div>
+          <input type="checkbox" name="push_progress" value="1"
+                 {% if user.notification_prefs.get('push_progress', True) %}checked{% endif %}
+                 class="w-5 h-5 rounded bg-zinc-700 border-zinc-600 text-indigo-600 focus:ring-indigo-500">
+        </label>
+      </div>
+      
+      <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition">
+        Save Notification Settings
+      </button>
+    </form>
+  </div>
+
+  <!-- Security -->
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden mb-6">
+    <div class="px-6 py-4 border-b border-zinc-800">
+      <h2 class="font-semibold flex items-center gap-2">
+        <span>🔒</span> Security
+      </h2>
+    </div>
+    
+    <div class="p-6 space-y-4">
+      {% if user.password_hash %}
+      <!-- User has password set -->
+      <div class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+        <div>
+          <p class="font-medium text-sm">Password</p>
+          <p class="text-xs text-zinc-500">Password authentication enabled</p>
+        </div>
+        <button onclick="showChangePasswordModal()" class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm transition">
+          Change
+        </button>
+      </div>
+      {% else %}
+      <!-- Magic link only -->
+      <div class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+        <div>
+          <p class="font-medium text-sm">Authentication</p>
+          <p class="text-xs text-zinc-500">Using magic link login</p>
+        </div>
+        <button onclick="showSetPasswordModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm transition">
+          Set Password
+        </button>
+      </div>
+      {% endif %}
+      
+      <div class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl">
+        <div>
+          <p class="font-medium text-sm">Last Login</p>
+          <p class="text-xs text-zinc-500">{{ user.last_login|localtime('%b %d, %Y at %I:%M %p') if user.last_login else 'Never' }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Danger Zone -->
+  <div class="bg-red-950/30 border border-red-900/50 rounded-2xl overflow-hidden">
+    <div class="px-6 py-4 border-b border-red-900/50">
+      <h2 class="font-semibold text-red-400 flex items-center gap-2">
+        <span>⚠️</span> Danger Zone
+      </h2>
+    </div>
+    
+    <div class="p-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="font-medium text-sm">Delete Account</p>
+          <p class="text-xs text-zinc-500">Permanently delete your account and all data</p>
+        </div>
+        <button onclick="confirmDeleteAccount()" class="px-3 py-1.5 bg-red-900/50 hover:bg-red-800 text-red-300 rounded-lg text-sm transition">
+          Delete Account
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Set/Change Password Modal -->
+<div id="password-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+  <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md">
+    <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+      <h3 id="password-modal-title" class="text-lg font-semibold">Set Password</h3>
+      <button onclick="hidePasswordModal()" class="text-zinc-400 hover:text-white">✕</button>
+    </div>
+    <form action="/user/password" method="POST" class="p-6 space-y-4">
+      <input type="hidden" name="token" value="{{ token }}">
+      
+      <div id="current-password-field" class="hidden">
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Current Password</label>
+        <input type="password" name="current_password"
+               class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 transition">
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">New Password</label>
+        <input type="password" name="new_password" id="new-password" required minlength="8"
+               oninput="checkPasswordStrength('new-password', 'pwd-str')"
+               class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 transition">
+        <!-- Password strength indicator -->
+        <div class="mt-2">
+          <div class="flex gap-1">
+            <div id="pwd-str-1" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+            <div id="pwd-str-2" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+            <div id="pwd-str-3" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+            <div id="pwd-str-4" class="h-1 flex-1 bg-zinc-700 rounded"></div>
+          </div>
+          <p id="pwd-str-text" class="text-xs text-zinc-500 mt-1">Min. 8 characters</p>
+        </div>
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Confirm Password</label>
+        <input type="password" name="confirm_password" id="confirm-password" required minlength="8"
+               oninput="checkPasswordMatch()"
+               class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 transition">
+        <p id="pwd-match-error" class="text-xs text-red-400 mt-1 hidden">Passwords don't match</p>
+      </div>
+      
+      <button type="submit" id="pwd-submit-btn" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition disabled:opacity-50">
+        Save Password
+      </button>
+    </form>
+  </div>
+</div>
+
+<script>
+// Password strength checker
+function checkPasswordStrength(inputId, prefix) {
+  const input = document.getElementById(inputId);
+  const password = input.value;
+  let strength = 0;
+  
+  if (password.length >= 8) strength++;
+  if (password.match(/[a-z]/) && password.match(/[A-Z]/)) strength++;
+  if (password.match(/\d/)) strength++;
+  if (password.match(/[^a-zA-Z\d]/)) strength++;
+  
+  const colors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-emerald-500'];
+  const texts = ['Weak', 'Fair', 'Good', 'Strong 💪'];
+  const textColors = ['text-red-400', 'text-orange-400', 'text-yellow-400', 'text-emerald-400'];
+  
+  for (let i = 1; i <= 4; i++) {
+    const bar = document.getElementById(prefix + '-' + i);
+    bar.className = 'h-1 flex-1 rounded ' + (i <= strength ? colors[strength - 1] : 'bg-zinc-700');
+  }
+  
+  const textEl = document.getElementById(prefix + '-text');
+  textEl.textContent = strength > 0 ? texts[strength - 1] : 'Min. 8 characters';
+  textEl.className = 'text-xs mt-1 ' + (strength > 0 ? textColors[strength - 1] : 'text-zinc-500');
+  
+  checkPasswordMatch();
+}
+
+function checkPasswordMatch() {
+  const pwd1 = document.getElementById('new-password').value;
+  const pwd2 = document.getElementById('confirm-password').value;
+  const errorEl = document.getElementById('pwd-match-error');
+  const submitBtn = document.getElementById('pwd-submit-btn');
+  
+  if (pwd2.length > 0) {
+    const match = pwd1 === pwd2;
+    errorEl.classList.toggle('hidden', match);
+    submitBtn.disabled = !match || pwd1.length < 8;
+  }
+}
+
+function showSetPasswordModal() {
+  document.getElementById('password-modal-title').textContent = 'Set Password';
+  document.getElementById('current-password-field').classList.add('hidden');
+  document.getElementById('password-modal').classList.remove('hidden');
+  document.getElementById('password-modal').classList.add('flex');
+}
+
+function showChangePasswordModal() {
+  document.getElementById('password-modal-title').textContent = 'Change Password';
+  document.getElementById('current-password-field').classList.remove('hidden');
+  document.getElementById('password-modal').classList.remove('hidden');
+  document.getElementById('password-modal').classList.add('flex');
+}
+
+function hidePasswordModal() {
+  document.getElementById('password-modal').classList.add('hidden');
+  document.getElementById('password-modal').classList.remove('flex');
+}
+
+function confirmDeleteAccount() {
+  if (confirm('Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently deleted.')) {
+    if (confirm('This is your final warning. Type "DELETE" in the next prompt to confirm.')) {
+      const confirmation = prompt('Type DELETE to confirm account deletion:');
+      if (confirmation === 'DELETE') {
+        // Submit delete request
+        fetch('/user/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'token={{ token }}'
+        }).then(response => {
+          if (response.ok) {
+            localStorage.removeItem('my_requests_token');
+            localStorage.removeItem('my_requests_email');
+            window.location.href = '/?deleted=1';
+          } else {
+            alert('Failed to delete account. Please try again.');
+          }
+        });
+      }
+    }
+  }
+}
+
+// Close modal on escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') hidePasswordModal();
+});
+
+// Close modal on backdrop click
+document.getElementById('password-modal')?.addEventListener('click', function(e) {
+  if (e.target === this) hidePasswordModal();
+});
+</script>
+{% endblock %}
