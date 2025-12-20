@@ -1065,6 +1065,85 @@ async def admin_activate_user(
     return JSONResponse({"success": True})
 
 
+@router.post("/admin/users/{user_id}/reset-password")
+async def admin_reset_user_password(
+    user_id: str,
+    new_password: str = Form(None),
+    send_magic_link: str = Form(None),
+    admin: dict = Depends(require_permission("manage_users"))
+):
+    """Reset a user's password or send them a magic link."""
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if send_magic_link == "1":
+        # Send magic link email
+        token = create_magic_link_token(user.email)
+        if token:
+            from app.main import send_email_wrapper
+            magic_url = f"https://print.jcubhub.com/auth/magic/{token}"
+            
+            html_body = f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #6366f1;">Password Reset Request</h2>
+                <p>Hi {user.name or 'there'},</p>
+                <p>An admin has initiated a password reset for your Printellect account.</p>
+                <p>Click the button below to sign in and set a new password:</p>
+                <a href="{magic_url}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin: 16px 0;">
+                    Sign In & Reset Password
+                </a>
+                <p style="color: #666; font-size: 14px;">This link expires in 15 minutes.</p>
+                <p style="color: #666; font-size: 14px;">Once signed in, go to My Account → Security to set a new password.</p>
+            </div>
+            """
+            
+            send_email_wrapper(
+                to_email=user.email,
+                subject="Password Reset - Printellect",
+                html_body=html_body
+            )
+            
+            log_audit(
+                action=AuditAction.PASSWORD_RESET,
+                actor_type="admin",
+                actor_id=getattr(admin, 'id', None),
+                target_type="user",
+                target_id=user_id,
+                details={"method": "magic_link", "email": user.email}
+            )
+            
+            return JSONResponse({"success": True, "message": f"Magic link sent to {user.email}"})
+        else:
+            return JSONResponse({"success": False, "error": "Failed to create magic link"}, status_code=500)
+    
+    elif new_password:
+        # Set new password directly
+        if len(new_password) < 8:
+            return JSONResponse({"success": False, "error": "Password must be at least 8 characters"}, status_code=400)
+        
+        password_hash = hash_password(new_password)
+        conn = db()
+        conn.execute("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?", 
+                     (password_hash, datetime.utcnow().isoformat(timespec="seconds") + "Z", user_id))
+        conn.commit()
+        conn.close()
+        
+        log_audit(
+            action=AuditAction.PASSWORD_RESET,
+            actor_type="admin",
+            actor_id=getattr(admin, 'id', None),
+            target_type="user",
+            target_id=user_id,
+            details={"method": "admin_set", "email": user.email}
+        )
+        
+        return JSONResponse({"success": True, "message": "Password updated successfully"})
+    
+    else:
+        return JSONResponse({"success": False, "error": "Must provide either new_password or send_magic_link"}, status_code=400)
+
+
 @router.delete("/admin/users/{user_id}")
 async def admin_delete_user(
     user_id: str,
@@ -1559,12 +1638,11 @@ async def user_profile_page(
         from app.main import get_or_create_my_requests_token
         token = get_or_create_my_requests_token(user.email)
     
-    # Get printers and materials for preferences
-    conn = db()
-    printers = conn.execute("SELECT DISTINCT value as name FROM settings WHERE key LIKE 'printer_%_name'").fetchall()
-    conn.close()
-    
-    materials = ["PLA", "PETG", "ABS", "TPU", "ASA", "Nylon", "Resin", "Other"]
+    # Get printers and materials for preferences - use the same list as request form
+    from app.main import PRINTERS, MATERIALS
+    # Convert to simple name list for template (skip 'ANY')
+    printers = [{"name": p[1]} for p in PRINTERS if p[0] != "ANY"]
+    materials = [m[1] for m in MATERIALS if m[0] != "ANY"]
     
     return templates.TemplateResponse("user_profile.html", {
         "request": request,

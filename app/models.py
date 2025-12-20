@@ -52,6 +52,7 @@ class AuditAction(str, Enum):
     USER_SUSPENDED = "user_suspended"
     USER_REACTIVATED = "user_reactivated"
     USER_EMAIL_VERIFIED = "user_email_verified"
+    PASSWORD_RESET = "password_reset"
     
     # Request actions
     REQUEST_CREATED = "request_created"
