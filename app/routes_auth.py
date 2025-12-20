@@ -1079,7 +1079,7 @@ async def admin_reset_user_password(
     
     if send_magic_link == "1":
         # Send magic link email
-        token = create_magic_link_token(user.email)
+        token = create_magic_link(user.email)
         if token:
             from app.main import send_email_wrapper
             magic_url = f"https://print.jcubhub.com/auth/magic/{token}"
