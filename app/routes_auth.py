@@ -316,30 +316,24 @@ async def user_register_submit(
 
 
 @router.get("/auth/profile", response_class=HTMLResponse)
-async def user_profile_page(request: Request, success: str = None):
-    """User profile page."""
+async def auth_profile_redirect(request: Request, success: str = None):
+    """Redirect to new user profile page."""
     user = await get_current_user(request)
     if not user:
-        return RedirectResponse(url="/auth/login?next=/auth/profile", status_code=303)
+        return RedirectResponse(url="/my-requests?error=not_logged_in", status_code=303)
     
-    # Get printers and materials for preferences dropdowns
-    conn = db()
-    printers = conn.execute("SELECT DISTINCT value as name FROM settings WHERE key LIKE 'printer_%_name'").fetchall()
-    conn.close()
+    # Get or create a token for this user's email
+    from app.main import get_or_create_my_requests_token
+    token = get_or_create_my_requests_token(user.email)
     
-    materials = ["PLA", "PETG", "ABS", "TPU", "Resin", "Other"]
-    
-    return templates.TemplateResponse("auth_profile.html", {
-        "request": request,
-        "user": user,
-        "printers": printers,
-        "materials": materials,
-        "success": success,
-    })
+    redirect_url = f"/user/profile?token={token}"
+    if success:
+        redirect_url += f"&success={quote(success)}"
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 @router.post("/auth/profile")
-async def user_profile_update(
+async def auth_profile_update_redirect(
     request: Request,
     name: str = Form(...),
     phone: str = Form(None),
@@ -352,10 +346,10 @@ async def user_profile_update(
     push_enabled: str = Form(None),
     push_progress: str = Form(None),
 ):
-    """Update user profile."""
+    """Update user profile (legacy route - redirects to new profile)."""
     user = await get_current_user(request)
     if not user:
-        return RedirectResponse(url="/auth/login", status_code=303)
+        return RedirectResponse(url="/my-requests?error=not_logged_in", status_code=303)
     
     # Build notification prefs
     notification_prefs = {
@@ -376,7 +370,10 @@ async def user_profile_update(
         notification_prefs=notification_prefs,
     )
     
-    return RedirectResponse(url="/auth/profile?success=Profile updated", status_code=303)
+    # Redirect to new profile page
+    from app.main import get_or_create_my_requests_token
+    token = get_or_create_my_requests_token(user.email)
+    return RedirectResponse(url=f"/user/profile?token={token}&success=Profile+updated", status_code=303)
 
 
 @router.get("/auth/logout")
@@ -1522,7 +1519,8 @@ async def user_profile_page(
     request: Request,
     token: str = Query(None),
     success: str = Query(None),
-    error: str = Query(None)
+    error: str = Query(None),
+    from_page: str = Query(None, alias="from")
 ):
     """User profile and settings page."""
     if not is_feature_enabled("user_accounts"):
@@ -1548,6 +1546,11 @@ async def user_profile_page(
     if not user:
         return RedirectResponse(url="/my-requests?error=not_logged_in", status_code=303)
     
+    # If no token provided, generate one for the back link
+    if not token:
+        from app.main import get_or_create_my_requests_token
+        token = get_or_create_my_requests_token(user.email)
+    
     # Get printers and materials for preferences
     conn = db()
     printers = conn.execute("SELECT DISTINCT value as name FROM settings WHERE key LIKE 'printer_%_name'").fetchall()
@@ -1563,6 +1566,7 @@ async def user_profile_page(
         "materials": materials,
         "success": success,
         "error": error,
+        "from_page": from_page,
     })
 
 

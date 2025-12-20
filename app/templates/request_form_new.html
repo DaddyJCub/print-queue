@@ -21,16 +21,46 @@
 <!-- User Account Card (when logged in) -->
 {% if user %}
 <div class="mb-6 bg-gradient-to-br from-emerald-600/20 to-teal-600/10 border border-emerald-500/30 rounded-2xl p-4">
-  <div class="flex items-center gap-4">
+  <div class="flex items-start gap-4">
     <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center flex-shrink-0 text-white text-xl font-bold">
       {{ user.display_name[0]|upper if user.display_name else '?' }}
     </div>
     <div class="flex-1 min-w-0">
       <h3 class="font-semibold text-emerald-100">Welcome back, {{ user.display_name }}!</h3>
-      <p class="text-xs text-emerald-300/70">Your preferences have been auto-filled</p>
+      <p class="text-xs text-emerald-300/70 mt-0.5">Form fields below have been auto-filled from your profile</p>
+      
+      <!-- Show which fields are pre-filled -->
+      <div class="mt-3 flex flex-wrap gap-2">
+        <span class="inline-flex items-center gap-1 px-2 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          {{ user.display_name }}
+        </span>
+        <span class="inline-flex items-center gap-1 px-2 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          {{ user.email }}
+        </span>
+        {% if user.preferred_printer %}
+        <span class="inline-flex items-center gap-1 px-2 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          🖨️ {{ user.preferred_printer }}
+        </span>
+        {% endif %}
+        {% if user.preferred_material %}
+        <span class="inline-flex items-center gap-1 px-2 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          🧵 {{ user.preferred_material }}
+        </span>
+        {% endif %}
+        {% if user.preferred_colors %}
+        <span class="inline-flex items-center gap-1 px-2 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          🎨 {{ user.preferred_colors }}
+        </span>
+        {% endif %}
+      </div>
     </div>
-    <a href="/auth/profile" class="px-4 py-2 bg-emerald-600/50 hover:bg-emerald-600 border border-emerald-500/50 rounded-xl text-sm font-semibold transition tap-highlight">
-      Profile
+    <a href="/user/profile?from=submit" class="px-3 py-1.5 bg-emerald-600/50 hover:bg-emerald-600 border border-emerald-500/50 rounded-lg text-xs font-medium transition tap-highlight whitespace-nowrap">
+      Edit Profile
     </a>
   </div>
 </div>
@@ -154,18 +184,24 @@
   <!-- Contact Info -->
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
     <div>
-      <label class="block text-sm font-medium text-zinc-300 mb-1.5">Name</label>
+      <label class="block text-sm font-medium text-zinc-300 mb-1.5">
+        Name
+        {% if user %}<span class="text-emerald-400 text-xs ml-1">● from profile</span>{% endif %}
+      </label>
       <input name="requester_name" id="requester-name" required
              value="{{ (form.requester_name if form is defined else '') }}"
              onchange="updateRushPricing()"
              onkeyup="debounceUpdatePricing()"
-             class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
+             class="w-full rounded-xl bg-zinc-950 border {% if user %}border-emerald-600/50 ring-1 ring-emerald-600/20{% else %}border-zinc-700{% endif %} focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
     </div>
     <div>
-      <label class="block text-sm font-medium text-zinc-300 mb-1.5">Email</label>
+      <label class="block text-sm font-medium text-zinc-300 mb-1.5">
+        Email
+        {% if user %}<span class="text-emerald-400 text-xs ml-1">● from profile</span>{% endif %}
+      </label>
       <input name="requester_email" type="email" required
              value="{{ (form.requester_email if form is defined else '') }}"
-             class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
+             class="w-full rounded-xl bg-zinc-950 border {% if user %}border-emerald-600/50 ring-1 ring-emerald-600/20{% else %}border-zinc-700{% endif %} focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
     </div>
   </div>
 
@@ -180,9 +216,12 @@
   <!-- Printer & Material -->
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
     <div>
-      <label class="block text-sm font-medium text-zinc-300 mb-1.5">Printer</label>
+      <label class="block text-sm font-medium text-zinc-300 mb-1.5">
+        Printer
+        {% if user and user.preferred_printer %}<span class="text-emerald-400 text-xs ml-1">● from profile</span>{% endif %}
+      </label>
       <select name="printer" id="printer-select" required 
-              class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition">
+              class="w-full rounded-xl bg-zinc-950 border {% if user and user.preferred_printer %}border-emerald-600/50 ring-1 ring-emerald-600/20{% else %}border-zinc-700{% endif %} focus:border-indigo-500 px-4 py-3 transition">
         {% set selected_printer = (form.printer if form is defined and form.printer else 'ANY') %}
         {% for val, label in printers %}
           <option value="{{val}}" {% if val == selected_printer %}selected{% endif %}>{{label}}</option>
@@ -197,9 +236,12 @@
       {% endif %}
     </div>
     <div>
-      <label class="block text-sm font-medium text-zinc-300 mb-1.5">Material</label>
+      <label class="block text-sm font-medium text-zinc-300 mb-1.5">
+        Material
+        {% if user and user.preferred_material %}<span class="text-emerald-400 text-xs ml-1">● from profile</span>{% endif %}
+      </label>
       <select name="material" required 
-              class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition">
+              class="w-full rounded-xl bg-zinc-950 border {% if user and user.preferred_material %}border-emerald-600/50 ring-1 ring-emerald-600/20{% else %}border-zinc-700{% endif %} focus:border-indigo-500 px-4 py-3 transition">
         {% set selected_material = (form.material if form is defined and form.material else 'ANY') %}
         {% for val, label in materials %}
           <option value="{{val}}" {% if val == selected_material %}selected{% endif %}>{{label}}</option>
@@ -210,10 +252,13 @@
 
   <!-- Colors -->
   <div>
-    <label class="block text-sm font-medium text-zinc-300 mb-1.5">Colors</label>
+    <label class="block text-sm font-medium text-zinc-300 mb-1.5">
+      Colors
+      {% if user and user.preferred_colors %}<span class="text-emerald-400 text-xs ml-1">● from profile</span>{% endif %}
+    </label>
     <input name="colors" placeholder="Black / White / Red (comma-separated)" required
            value="{{ (form.colors if form is defined else '') }}"
-           class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
+           class="w-full rounded-xl bg-zinc-950 border {% if user and user.preferred_colors %}border-emerald-600/50 ring-1 ring-emerald-600/20{% else %}border-zinc-700{% endif %} focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
   </div>
 
   <!-- Link -->
