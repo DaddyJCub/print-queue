@@ -51,6 +51,38 @@ from app.models import AdminRole, AuditAction, UserStatus
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
+# Timezone for display (default to US Eastern)
+DISPLAY_TIMEZONE = os.getenv("DISPLAY_TIMEZONE", "America/New_York")
+
+def format_datetime_local(value, fmt="%b %d, %Y at %I:%M %p"):
+    """Convert ISO datetime string to local timezone for display"""
+    if not value:
+        return ""
+    try:
+        from datetime import timezone
+        # Parse the ISO string
+        if isinstance(value, str):
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        else:
+            dt = value
+        
+        # Convert to target timezone
+        try:
+            import zoneinfo
+            tz = zoneinfo.ZoneInfo(DISPLAY_TIMEZONE)
+            local_dt = dt.astimezone(tz)
+        except Exception:
+            # Fallback: just use UTC offset for US Eastern (-5 or -4 DST)
+            from datetime import timedelta
+            local_dt = dt - timedelta(hours=5)  # EST approximation
+        
+        return local_dt.strftime(fmt)
+    except Exception:
+        return str(value)
+
+# Register the localtime filter
+templates.env.filters["localtime"] = format_datetime_local
+
 # Database helper
 def get_db_path():
     return os.getenv("DB_PATH", "/data/app.db")

@@ -734,7 +734,7 @@ def get_pending_matches(limit: int = 50) -> List[Dict]:
     rows = conn.execute("""
         SELECT 
             q.id,
-            q.config_id,
+            q.sync_config_id,
             q.file_name,
             q.file_path,
             q.matched_request_id,
@@ -746,7 +746,7 @@ def get_pending_matches(limit: int = 50) -> List[Dict]:
         FROM file_sync_queue q
         LEFT JOIN requests r ON q.matched_request_id = r.id
         WHERE q.status = 'matched' AND q.match_confidence < 0.9
-        ORDER BY q.discovered_at DESC
+        ORDER BY q.created_at DESC
         LIMIT ?
     """, (limit,)).fetchall()
     conn.close()
@@ -773,7 +773,7 @@ def get_sync_stats() -> Dict:
     
     # Count indexed files
     file_count = conn.execute(
-        "SELECT SUM(total_files_scanned) as cnt FROM file_sync_configs"
+        "SELECT SUM(total_files_synced) as cnt FROM file_sync_configs"
     ).fetchone()['cnt'] or 0
     
     # Count pending matches

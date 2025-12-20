@@ -1,211 +1,148 @@
-{% extends "pwa_base.html" %}
-{% block title %}Feature Flags | Printellect{% endblock %}
-{% block bnav_admin %}active{% endblock %}
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Feature Flags | Printellect</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-7xl mx-auto p-6">
+    {% set active_page = 'settings' %}
+    {% include 'admin_nav.html' %}
 
-{% block head_extra %}
-<script>
-async function toggleFlag(key, enabled) {
-  try {
-    const response = await fetch('/admin/features/' + key + '/toggle', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: enabled })
-    });
-    if (!response.ok) throw new Error('Failed to update');
-    location.reload();
-  } catch (e) {
-    alert('Failed to update feature flag');
-    location.reload();
+    <!-- Settings Tabs -->
+    {% set active_settings_tab = 'features' %}
+    {% include '_components/settings_tabs.html' %}
+
+    {% if success %}<div class="mb-6 bg-emerald-900/30 border border-emerald-500/50 text-emerald-200 rounded-xl p-4">{{ success }}</div>{% endif %}
+
+    <!-- Warning Banner -->
+    <div class="mb-6 bg-yellow-900/20 border border-yellow-600/30 rounded-xl p-4">
+      <div class="flex items-start gap-3">
+        <span class="text-yellow-400">⚠️</span>
+        <div>
+          <div class="font-medium text-yellow-300">Experimental Features</div>
+          <p class="text-sm text-zinc-400 mt-1">Some features are in development and may not work as expected.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- User Features -->
+    <div class="mb-6">
+      <h2 class="text-lg font-semibold mb-4">👤 User Accounts</h2>
+      <div class="space-y-3">
+        {% for key in ['user_accounts', 'user_registration', 'user_password_auth'] %}
+        {% set flag = flags.get(key) %}
+        {% if flag %}
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+          <div class="flex-1">
+            <div class="flex items-center gap-2">
+              <span class="font-medium">{{ flag.key.replace('_', ' ').title() }}</span>
+              {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
+              {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
+            </div>
+            <p class="text-sm text-zinc-500 mt-1">{{ flag.description }}</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer ml-4">
+            <input type="checkbox" class="sr-only peer" {% if flag.enabled %}checked{% endif %} onchange="toggleFlag('{{ flag.key }}', this.checked)">
+            <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+          </label>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Store Features -->
+    <div class="mb-6">
+      <h2 class="text-lg font-semibold mb-4">🏪 Store</h2>
+      <div class="space-y-3">
+        {% for key in ['store_public', 'store_payments', 'store_rewards', 'store_preorders'] %}
+        {% set flag = flags.get(key) %}
+        {% if flag %}
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+          <div class="flex-1">
+            <div class="flex items-center gap-2">
+              <span class="font-medium">{{ flag.key.replace('_', ' ').title() }}</span>
+              {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
+              {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
+              {% if key in ['store_payments', 'store_rewards'] %}<span class="px-2 py-0.5 bg-yellow-600/20 text-yellow-300 text-xs rounded-lg">Beta</span>{% endif %}
+            </div>
+            <p class="text-sm text-zinc-500 mt-1">{{ flag.description }}</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer ml-4">
+            <input type="checkbox" class="sr-only peer" {% if flag.enabled %}checked{% endif %} onchange="toggleFlag('{{ flag.key }}', this.checked)">
+            <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+          </label>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Advanced Features -->
+    <div class="mb-6">
+      <h2 class="text-lg font-semibold mb-4">⚙️ Advanced</h2>
+      <div class="space-y-3">
+        {% for key in ['file_sync', 'multi_admin', 'audit_logging', 'octoprint_integration', 'auto_slicer', '3d_preview'] %}
+        {% set flag = flags.get(key) %}
+        {% if flag %}
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+          <div class="flex-1">
+            <div class="flex items-center gap-2">
+              <span class="font-medium">{{ flag.key.replace('_', ' ').replace('3d', '3D').title() }}</span>
+              {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
+              {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
+              {% if key in ['octoprint_integration', 'auto_slicer', 'file_sync'] %}<span class="px-2 py-0.5 bg-orange-600/20 text-orange-300 text-xs rounded-lg">Coming Soon</span>{% endif %}
+            </div>
+            <p class="text-sm text-zinc-500 mt-1">{{ flag.description }}</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer ml-4">
+            <input type="checkbox" class="sr-only peer" {% if flag.enabled %}checked{% endif %} onchange="toggleFlag('{{ flag.key }}', this.checked)">
+            <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+          </label>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- UI Features -->
+    <div class="mb-6">
+      <h2 class="text-lg font-semibold mb-4">🎨 UI / UX</h2>
+      <div class="space-y-3">
+        {% for key in ['dark_mode_toggle'] %}
+        {% set flag = flags.get(key) %}
+        {% if flag %}
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+          <div class="flex-1">
+            <div class="flex items-center gap-2">
+              <span class="font-medium">{{ flag.key.replace('_', ' ').title() }}</span>
+              {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
+              {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
+            </div>
+            <p class="text-sm text-zinc-500 mt-1">{{ flag.description }}</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer ml-4">
+            <input type="checkbox" class="sr-only peer" {% if flag.enabled %}checked{% endif %} onchange="toggleFlag('{{ flag.key }}', this.checked)">
+            <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+          </label>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <script>
+  async function toggleFlag(key, enabled) {
+    try {
+      const response = await fetch('/admin/features/' + key + '/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: enabled }) });
+      if (!response.ok) throw new Error('Failed');
+      location.reload();
+    } catch (e) { alert('Failed to update feature flag'); location.reload(); }
   }
-}
-</script>
-{% endblock %}
-
-{% block content %}
-{% include "_components/admin_nav_new.html" %}
-
-<div class="pt-2 pb-24">
-  <!-- Header -->
-  <div class="mb-6">
-    <h1 class="text-2xl font-bold">Feature Flags</h1>
-    <p class="text-zinc-400 text-sm">Control which features are enabled in your installation</p>
-  </div>
-
-  {% if success %}
-  <div class="mb-6 bg-emerald-900/30 border border-emerald-500/50 text-emerald-200 rounded-xl p-4">
-    <div class="flex items-center gap-2">
-      <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-      </svg>
-      <span class="text-sm">{{ success }}</span>
-    </div>
-  </div>
-  {% endif %}
-
-  <!-- Warning Banner -->
-  <div class="mb-6 bg-yellow-900/20 border border-yellow-600/30 rounded-xl p-4">
-    <div class="flex items-start gap-3">
-      <svg class="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-      </svg>
-      <div>
-        <div class="font-medium text-yellow-300">Experimental Features</div>
-        <p class="text-sm text-zinc-400 mt-1">Some features are in development and may not work as expected. Toggle with caution.</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- Feature Categories -->
-  
-  <!-- User Features -->
-  <div class="mb-6">
-    <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-      <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-      </svg>
-      User Accounts
-    </h2>
-    <div class="space-y-3">
-      {% for key in ['user_accounts', 'user_registration', 'user_password_auth'] %}
-      {% set flag = flags.get(key) %}
-      {% if flag %}
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
-        <div class="flex-1">
-          <div class="flex items-center gap-2">
-            <span class="font-medium">{{ flag.key.replace('_', ' ').title() }}</span>
-            {% if flag.enabled %}
-            <span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
-            {% else %}
-            <span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>
-            {% endif %}
-          </div>
-          <p class="text-sm text-zinc-500 mt-1">{{ flag.description }}</p>
-        </div>
-        <label class="relative inline-flex items-center cursor-pointer ml-4">
-          <input type="checkbox" class="sr-only peer" 
-                 {% if flag.enabled %}checked{% endif %}
-                 onchange="toggleFlag('{{ flag.key }}', this.checked)">
-          <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
-        </label>
-      </div>
-      {% endif %}
-      {% endfor %}
-    </div>
-  </div>
-
-  <!-- Store Features -->
-  <div class="mb-6">
-    <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-      <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
-      </svg>
-      Store
-    </h2>
-    <div class="space-y-3">
-      {% for key in ['store_public', 'store_payments', 'store_rewards', 'store_preorders'] %}
-      {% set flag = flags.get(key) %}
-      {% if flag %}
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
-        <div class="flex-1">
-          <div class="flex items-center gap-2">
-            <span class="font-medium">{{ flag.key.replace('_', ' ').title() }}</span>
-            {% if flag.enabled %}
-            <span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
-            {% else %}
-            <span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>
-            {% endif %}
-            {% if key in ['store_payments', 'store_rewards'] %}
-            <span class="px-2 py-0.5 bg-yellow-600/20 text-yellow-300 text-xs rounded-lg">Beta</span>
-            {% endif %}
-          </div>
-          <p class="text-sm text-zinc-500 mt-1">{{ flag.description }}</p>
-        </div>
-        <label class="relative inline-flex items-center cursor-pointer ml-4">
-          <input type="checkbox" class="sr-only peer" 
-                 {% if flag.enabled %}checked{% endif %}
-                 onchange="toggleFlag('{{ flag.key }}', this.checked)">
-          <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
-        </label>
-      </div>
-      {% endif %}
-      {% endfor %}
-    </div>
-  </div>
-
-  <!-- Advanced Features -->
-  <div class="mb-6">
-    <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-      <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-      </svg>
-      Advanced
-    </h2>
-    <div class="space-y-3">
-      {% for key in ['file_sync', 'multi_admin', 'audit_logging', 'octoprint_integration', 'auto_slicer', '3d_preview'] %}
-      {% set flag = flags.get(key) %}
-      {% if flag %}
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
-        <div class="flex-1">
-          <div class="flex items-center gap-2">
-            <span class="font-medium">{{ flag.key.replace('_', ' ').replace('3d', '3D').title() }}</span>
-            {% if flag.enabled %}
-            <span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
-            {% else %}
-            <span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>
-            {% endif %}
-            {% if key in ['octoprint_integration', 'auto_slicer', 'file_sync'] %}
-            <span class="px-2 py-0.5 bg-orange-600/20 text-orange-300 text-xs rounded-lg">Coming Soon</span>
-            {% endif %}
-          </div>
-          <p class="text-sm text-zinc-500 mt-1">{{ flag.description }}</p>
-        </div>
-        <label class="relative inline-flex items-center cursor-pointer ml-4">
-          <input type="checkbox" class="sr-only peer" 
-                 {% if flag.enabled %}checked{% endif %}
-                 onchange="toggleFlag('{{ flag.key }}', this.checked)">
-          <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
-        </label>
-      </div>
-      {% endif %}
-      {% endfor %}
-    </div>
-  </div>
-
-  <!-- UI Features -->
-  <div class="mb-6">
-    <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-      <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
-      </svg>
-      UI / UX
-    </h2>
-    <div class="space-y-3">
-      {% for key in ['dark_mode_toggle'] %}
-      {% set flag = flags.get(key) %}
-      {% if flag %}
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
-        <div class="flex-1">
-          <div class="flex items-center gap-2">
-            <span class="font-medium">{{ flag.key.replace('_', ' ').title() }}</span>
-            {% if flag.enabled %}
-            <span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
-            {% else %}
-            <span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>
-            {% endif %}
-          </div>
-          <p class="text-sm text-zinc-500 mt-1">{{ flag.description }}</p>
-        </div>
-        <label class="relative inline-flex items-center cursor-pointer ml-4">
-          <input type="checkbox" class="sr-only peer" 
-                 {% if flag.enabled %}checked{% endif %}
-                 onchange="toggleFlag('{{ flag.key }}', this.checked)">
-          <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
-        </label>
-      </div>
-      {% endif %}
-      {% endfor %}
-    </div>
-  </div>
-</div>
-{% endblock %}
+  </script>
+</body>
+</html>

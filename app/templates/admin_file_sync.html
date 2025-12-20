@@ -1,21 +1,25 @@
-{% extends "pwa_base.html" %}
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>File Sync | Admin | Printellect</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-7xl mx-auto p-6">
+    {% set active_page = 'settings' %}
+    {% include 'admin_nav.html' %}
 
-{% block title %}File Sync | Admin{% endblock %}
-
-{% block nav_admin %}text-white bg-zinc-800{% endblock %}
-{% block bnav_admin %}active{% endblock %}
-
-{% block header_title %}File Sync{% endblock %}
-
-{% block content %}
-<!-- Include Admin Nav -->
-{% include "_components/admin_nav_new.html" %}
+    <!-- Settings Tabs -->
+    {% set active_settings_tab = 'file-sync' %}
+    {% include '_components/settings_tabs.html' %}
 
 <!-- Page Header -->
 <div class="mb-6">
   <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-2xl font-bold">STL Folder Sync</h1>
+      <h2 class="text-xl font-semibold">STL Folder Sync</h2>
       <p class="text-zinc-400 text-sm mt-1">Automatically match uploaded files with STL models from synced folders</p>
     </div>
     <button onclick="runFullSync()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold transition flex items-center gap-2">
@@ -427,5 +431,6 @@ async function rejectMatch(matchId) {
   }
 }
 </script>
-
-{% endblock %}
+  </div>
+</body>
+</html>

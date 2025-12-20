@@ -12,15 +12,13 @@
     {% set active_page = 'settings' %}
     {% include 'admin_nav.html' %}
     
-    <!-- Page Header -->
-    <div class="mb-6">
-      <h1 class="text-3xl font-bold">⚙️ Settings</h1>
-      <p class="text-zinc-400 mt-1">Email notifications and preferences.</p>
-    </div>
+    <!-- Settings Tabs -->
+    {% set active_settings_tab = 'general' %}
+    {% include '_components/settings_tabs.html' %}
 
     {% if s.saved %}
-      <div class="mt-5 bg-emerald-900/20 border border-emerald-800 text-emerald-200 rounded-2xl p-4">
-        Saved.
+      <div class="mb-4 bg-emerald-900/20 border border-emerald-800 text-emerald-200 rounded-xl p-4">
+        ✓ Settings saved successfully
       </div>
     {% endif %}
 

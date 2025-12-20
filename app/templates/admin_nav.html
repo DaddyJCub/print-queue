@@ -1,4 +1,4 @@
-{# Admin Navigation Component - Redesigned with grouped dropdowns #}
+{# Admin Navigation Component - Simplified flat navigation #}
 {# Usage: {% include 'admin_nav.html' %} with active_page variable set #}
 
 <nav class="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50 -mx-6 -mt-6 mb-6">
@@ -11,109 +11,36 @@
         <span class="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-medium">Admin</span>
       </a>
       
-      <!-- Desktop Navigation -->
+      <!-- Desktop Navigation - Flat, simple links -->
       <div class="hidden md:flex items-center gap-1">
-        <!-- Queue - Primary action -->
-        <a href="/admin" 
-           class="admin-nav-link {% if active_page == 'queue' %}active{% endif %}">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-          </svg>
-          <span>Queue</span>
+        <!-- Queue - Main view -->
+        <a href="/admin" class="admin-nav-link {% if active_page == 'queue' %}active{% endif %}">
+          📋 Queue
         </a>
         
-        <!-- Operations Dropdown -->
-        <div class="relative admin-dropdown">
-          <button class="admin-nav-link flex items-center gap-1 {% if active_page in ['printers', 'store'] %}active{% endif %}"
-                  onclick="toggleDropdown(this)">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
-            <span>Operations</span>
-            <svg class="w-3 h-3 transition-transform dropdown-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-            </svg>
-          </button>
-          <div class="dropdown-menu hidden absolute top-full left-0 mt-1 w-48 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-50">
-            <a href="/admin/printer-settings" class="admin-dropdown-item {% if active_page == 'printers' %}active{% endif %}">
-              <span>🖨</span> Printer Status
-            </a>
-            <a href="/admin/store" class="admin-dropdown-item {% if active_page == 'store' %}active{% endif %}">
-              <span>🏪</span> Store Management
-            </a>
-          </div>
-        </div>
+        <!-- Printers -->
+        <a href="/admin/printer-settings" class="admin-nav-link {% if active_page == 'printers' %}active{% endif %}">
+          🖨️ Printers
+        </a>
         
-        <!-- Insights Dropdown -->
-        <div class="relative admin-dropdown">
-          <button class="admin-nav-link flex items-center gap-1 {% if active_page in ['analytics', 'feedback', 'broadcast'] %}active{% endif %}"
-                  onclick="toggleDropdown(this)">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-            </svg>
-            <span>Insights</span>
-            <svg class="w-3 h-3 transition-transform dropdown-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-            </svg>
-          </button>
-          <div class="dropdown-menu hidden absolute top-full left-0 mt-1 w-48 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-50">
-            <a href="/admin/analytics" class="admin-dropdown-item {% if active_page == 'analytics' %}active{% endif %}">
-              <span>📊</span> Analytics
-            </a>
-            <a href="/admin/feedback" class="admin-dropdown-item {% if active_page == 'feedback' %}active{% endif %}">
-              <span>📬</span> User Feedback
-            </a>
-            <a href="/admin/broadcast" class="admin-dropdown-item {% if active_page == 'broadcast' %}active{% endif %}">
-              <span>📢</span> Broadcast
-            </a>
-          </div>
-        </div>
+        <!-- Store -->
+        <a href="/admin/store" class="admin-nav-link {% if active_page == 'store' %}active{% endif %}">
+          🏪 Store
+        </a>
         
-        <!-- System Dropdown -->
-        <div class="relative admin-dropdown">
-          <button class="admin-nav-link flex items-center gap-1 {% if active_page in ['settings', 'admins', 'users', 'features', 'file-sync', 'audit', 'debug'] %}active{% endif %}"
-                  onclick="toggleDropdown(this)">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
-            <span>System</span>
-            <svg class="w-3 h-3 transition-transform dropdown-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-            </svg>
-          </button>
-          <div class="dropdown-menu hidden absolute top-full right-0 mt-1 w-52 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 z-50">
-            <a href="/admin/settings" class="admin-dropdown-item {% if active_page == 'settings' %}active{% endif %}">
-              <span>⚙️</span> Settings
-            </a>
-            <a href="/admin/admins" class="admin-dropdown-item {% if active_page == 'admins' %}active{% endif %}">
-              <span>👔</span> Admin Accounts
-            </a>
-            <a href="/admin/users" class="admin-dropdown-item {% if active_page == 'users' %}active{% endif %}">
-              <span>👥</span> User Accounts
-            </a>
-            <a href="/admin/features" class="admin-dropdown-item {% if active_page == 'features' %}active{% endif %}">
-              <span>✨</span> Feature Flags
-            </a>
-            <a href="/admin/file-sync" class="admin-dropdown-item {% if active_page == 'file-sync' %}active{% endif %}">
-              <span>📁</span> File Sync
-            </a>
-            <div class="border-t border-zinc-700 my-1"></div>
-            <a href="/admin/audit" class="admin-dropdown-item {% if active_page == 'audit' %}active{% endif %}">
-              <span>📜</span> Audit Log
-            </a>
-            <a href="/admin/debug" class="admin-dropdown-item text-zinc-500 {% if active_page == 'debug' %}active{% endif %}">
-              <span>🔧</span> Debug
-            </a>
-          </div>
-        </div>
+        <!-- Analytics -->
+        <a href="/admin/analytics" class="admin-nav-link {% if active_page == 'analytics' %}active{% endif %}">
+          📊 Analytics
+        </a>
         
-        <!-- Small icon-only Debug link for quick access -->
-        <a href="/admin/debug" class="admin-nav-link text-zinc-500 {% if active_page == 'debug' %}active{% endif %}" title="Debug">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-          </svg>
+        <!-- Users (combined) -->
+        <a href="/admin/users" class="admin-nav-link {% if active_page == 'users' %}active{% endif %}">
+          👥 Users
+        </a>
+        
+        <!-- Settings (contains everything else) -->
+        <a href="/admin/settings" class="admin-nav-link {% if active_page == 'settings' %}active{% endif %}">
+          ⚙️ Settings
         </a>
         
         <!-- Divider -->
@@ -146,39 +73,48 @@
   <!-- Mobile Menu -->
   <div id="mobile-menu" class="hidden md:hidden border-t border-zinc-800 bg-zinc-900">
     <div class="px-4 py-3 space-y-1">
+      <!-- Main -->
       <a href="/admin" class="mobile-nav-link {% if active_page == 'queue' %}active{% endif %}">
         📋 Queue
       </a>
-      <div class="pt-2 pb-1 px-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Operations</div>
       <a href="/admin/printer-settings" class="mobile-nav-link {% if active_page == 'printers' %}active{% endif %}">
-        🖨 Printer Status
+        🖨️ Printers
       </a>
       <a href="/admin/store" class="mobile-nav-link {% if active_page == 'store' %}active{% endif %}">
-        🏪 Store Management
+        🏪 Store
       </a>
-      <div class="pt-2 pb-1 px-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Insights</div>
       <a href="/admin/analytics" class="mobile-nav-link {% if active_page == 'analytics' %}active{% endif %}">
         📊 Analytics
       </a>
+      
+      <div class="border-t border-zinc-800 my-2"></div>
+      
+      <!-- People -->
+      <a href="/admin/users" class="mobile-nav-link {% if active_page == 'users' %}active{% endif %}">
+        👥 Users
+      </a>
+      <a href="/admin/admins" class="mobile-nav-link {% if active_page == 'admins' %}active{% endif %}">
+        👔 Admins
+      </a>
+      
+      <div class="border-t border-zinc-800 my-2"></div>
+      
+      <!-- Communication -->
       <a href="/admin/feedback" class="mobile-nav-link {% if active_page == 'feedback' %}active{% endif %}">
-        📬 User Feedback
+        📬 Feedback
       </a>
       <a href="/admin/broadcast" class="mobile-nav-link {% if active_page == 'broadcast' %}active{% endif %}">
         📢 Broadcast
       </a>
+      
       <div class="border-t border-zinc-800 my-2"></div>
-      <div class="pt-2 pb-1 px-3 text-xs font-semibold text-zinc-500 uppercase tracking-wider">System</div>
+      
+      <!-- System -->
       <a href="/admin/settings" class="mobile-nav-link {% if active_page == 'settings' %}active{% endif %}">
         ⚙️ Settings
       </a>
-      <a href="/admin/admins" class="mobile-nav-link {% if active_page == 'admins' %}active{% endif %}">
-        👔 Admin Accounts
-      </a>
-      <a href="/admin/users" class="mobile-nav-link {% if active_page == 'users' %}active{% endif %}">
-        👥 User Accounts
-      </a>
       <a href="/admin/features" class="mobile-nav-link {% if active_page == 'features' %}active{% endif %}">
-        ✨ Feature Flags
+        ✨ Features
       </a>
       <a href="/admin/file-sync" class="mobile-nav-link {% if active_page == 'file-sync' %}active{% endif %}">
         📁 File Sync
@@ -189,7 +125,9 @@
       <a href="/admin/debug" class="mobile-nav-link text-zinc-500 {% if active_page == 'debug' %}active{% endif %}">
         🔧 Debug
       </a>
+      
       <div class="border-t border-zinc-800 my-2"></div>
+      
       <a href="/queue" target="_blank" class="mobile-nav-link text-zinc-500">
         View Public Site →
       </a>
@@ -211,21 +149,10 @@
     align-items: center;
     gap: 0.5rem;
     transition: color 0.15s, background-color 0.15s;
+    white-space: nowrap;
   }
   .admin-nav-link:hover { color: white; background-color: #27272a; }
   .admin-nav-link.active { color: #818cf8; background-color: rgba(99, 102, 241, 0.1); }
-  
-  .admin-dropdown-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 1rem;
-    font-size: 0.875rem;
-    color: #d4d4d8;
-    transition: color 0.15s, background-color 0.15s;
-  }
-  .admin-dropdown-item:hover { background-color: #3f3f46; color: white; }
-  .admin-dropdown-item.active { color: #818cf8; background-color: rgba(99, 102, 241, 0.1); }
   
   .mobile-nav-link {
     display: block;
@@ -237,9 +164,6 @@
   }
   .mobile-nav-link:hover { background-color: #27272a; color: white; }
   .mobile-nav-link.active { color: #818cf8; background-color: rgba(99, 102, 241, 0.1); }
-  
-  .admin-dropdown .dropdown-menu.show { display: block; }
-  .admin-dropdown .dropdown-arrow.rotate { transform: rotate(180deg); }
 </style>
 
 <!-- PWA Bottom Navigation for Admin Pages (Mobile only) -->
@@ -308,37 +232,9 @@
 </style>
 
 <script>
-function toggleDropdown(btn) {
-  const dropdown = btn.closest('.admin-dropdown');
-  const menu = dropdown.querySelector('.dropdown-menu');
-  const arrow = btn.querySelector('.dropdown-arrow');
-  const isOpen = menu.classList.contains('show');
-  
-  // Close all other dropdowns first
-  document.querySelectorAll('.admin-dropdown .dropdown-menu.show').forEach(m => {
-    m.classList.remove('show');
-    m.closest('.admin-dropdown').querySelector('.dropdown-arrow')?.classList.remove('rotate');
-  });
-  
-  if (!isOpen) {
-    menu.classList.add('show');
-    arrow?.classList.add('rotate');
-  }
-}
-
 function toggleMobileMenu() {
   document.getElementById('mobile-menu').classList.toggle('hidden');
 }
-
-// Close dropdowns when clicking outside
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('.admin-dropdown')) {
-    document.querySelectorAll('.admin-dropdown .dropdown-menu.show').forEach(m => {
-      m.classList.remove('show');
-      m.closest('.admin-dropdown').querySelector('.dropdown-arrow')?.classList.remove('rotate');
-    });
-  }
-});
 
 // Update My Requests link if user has saved token
 const savedToken = localStorage.getItem('my_requests_token');
@@ -350,7 +246,6 @@ if (savedToken) {
 // Add bottom padding for mobile to account for fixed bottom nav
 (function() {
   if (window.innerWidth < 640) {
-    // Add padding to body for the fixed bottom nav
     document.body.style.paddingBottom = 'calc(80px + env(safe-area-inset-bottom, 0px))';
   }
 })();

@@ -16,14 +16,17 @@
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-7xl mx-auto p-6">
     <!-- Navigation -->
-    {% set active_page = 'feedback' %}
+    {% set active_page = 'settings' %}
     {% include 'admin_nav.html' %}
+    
+    <!-- Settings Tabs -->
+    {% set active_settings_tab = 'feedback' %}
+    {% include '_components/settings_tabs.html' %}
     
     <!-- Page Header -->
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
       <div>
-        <h1 class="text-3xl font-bold">📬 Feedback</h1>
-        <p class="text-zinc-400 mt-1">Bug reports and suggestions from users</p>
+        <h2 class="text-xl font-semibold">Bug reports and suggestions from users</h2>
       </div>
       
       <!-- Quick Stats -->

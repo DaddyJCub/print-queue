@@ -1,0 +1,127 @@
+{# Settings Tab Navigation Component #}
+{# Usage: set active_settings_tab = 'general' then include this component #}
+
+<div class="mb-6">
+  <!-- Back to main nav hint on mobile -->
+  <div class="md:hidden mb-3">
+    <a href="/admin" class="text-sm text-zinc-500 hover:text-zinc-300 flex items-center gap-1">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      </svg>
+      Back to Dashboard
+    </a>
+  </div>
+  
+  <!-- Settings Header -->
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <h1 class="text-2xl font-bold flex items-center gap-2">
+        ⚙️ Settings
+      </h1>
+      <p class="text-zinc-500 text-sm">System configuration and preferences</p>
+    </div>
+  </div>
+  
+  <!-- Tab Navigation - Scrollable on mobile -->
+  <div class="border-b border-zinc-800 overflow-x-auto scrollbar-hide">
+    <nav class="flex gap-1 min-w-max" role="tablist">
+      <a href="/admin/settings" 
+         class="px-4 py-2.5 text-sm font-medium rounded-t-lg transition whitespace-nowrap
+                {% if active_settings_tab == 'general' %}
+                  bg-zinc-800 text-white border-b-2 border-indigo-500
+                {% else %}
+                  text-zinc-400 hover:text-white hover:bg-zinc-800/50
+                {% endif %}"
+         role="tab">
+        📧 General
+      </a>
+      
+      <a href="/admin/admins" 
+         class="px-4 py-2.5 text-sm font-medium rounded-t-lg transition whitespace-nowrap
+                {% if active_settings_tab == 'admins' %}
+                  bg-zinc-800 text-white border-b-2 border-indigo-500
+                {% else %}
+                  text-zinc-400 hover:text-white hover:bg-zinc-800/50
+                {% endif %}"
+         role="tab">
+        👔 Admins
+      </a>
+      
+      <a href="/admin/features" 
+         class="px-4 py-2.5 text-sm font-medium rounded-t-lg transition whitespace-nowrap
+                {% if active_settings_tab == 'features' %}
+                  bg-zinc-800 text-white border-b-2 border-indigo-500
+                {% else %}
+                  text-zinc-400 hover:text-white hover:bg-zinc-800/50
+                {% endif %}"
+         role="tab">
+        ✨ Features
+      </a>
+      
+      <a href="/admin/broadcast" 
+         class="px-4 py-2.5 text-sm font-medium rounded-t-lg transition whitespace-nowrap
+                {% if active_settings_tab == 'broadcast' %}
+                  bg-zinc-800 text-white border-b-2 border-indigo-500
+                {% else %}
+                  text-zinc-400 hover:text-white hover:bg-zinc-800/50
+                {% endif %}"
+         role="tab">
+        📢 Broadcast
+      </a>
+      
+      <a href="/admin/feedback" 
+         class="px-4 py-2.5 text-sm font-medium rounded-t-lg transition whitespace-nowrap
+                {% if active_settings_tab == 'feedback' %}
+                  bg-zinc-800 text-white border-b-2 border-indigo-500
+                {% else %}
+                  text-zinc-400 hover:text-white hover:bg-zinc-800/50
+                {% endif %}"
+         role="tab">
+        📬 Feedback
+      </a>
+      
+      <a href="/admin/file-sync" 
+         class="px-4 py-2.5 text-sm font-medium rounded-t-lg transition whitespace-nowrap
+                {% if active_settings_tab == 'file-sync' %}
+                  bg-zinc-800 text-white border-b-2 border-indigo-500
+                {% else %}
+                  text-zinc-400 hover:text-white hover:bg-zinc-800/50
+                {% endif %}"
+         role="tab">
+        📁 File Sync
+      </a>
+      
+      <a href="/admin/audit" 
+         class="px-4 py-2.5 text-sm font-medium rounded-t-lg transition whitespace-nowrap
+                {% if active_settings_tab == 'audit' %}
+                  bg-zinc-800 text-white border-b-2 border-indigo-500
+                {% else %}
+                  text-zinc-400 hover:text-white hover:bg-zinc-800/50
+                {% endif %}"
+         role="tab">
+        📜 Audit
+      </a>
+      
+      <a href="/admin/debug" 
+         class="px-4 py-2.5 text-sm font-medium rounded-t-lg transition whitespace-nowrap
+                {% if active_settings_tab == 'debug' %}
+                  bg-zinc-800 text-white border-b-2 border-indigo-500
+                {% else %}
+                  text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50
+                {% endif %}"
+         role="tab">
+        🔧 Debug
+      </a>
+    </nav>
+  </div>
+</div>
+
+<style>
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+</style>
