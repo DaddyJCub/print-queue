@@ -918,7 +918,7 @@ async def admin_users_page(
     # Get all statuses for filter dropdown
     all_statuses = [s.value for s in UserStatus]
     
-    return templates.TemplateResponse("admin_users.html", {
+    return templates.TemplateResponse("admin_users_new.html", {
         "request": request,
         "users": [u.to_dict() for u in users],
         "total_count": total_count,
