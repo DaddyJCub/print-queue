@@ -66,162 +66,175 @@
       </div>
 
       <!-- v0.10.0 -->
-      <div id="v0.10.0" class="bg-zinc-900/50 border border-indigo-500/50 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
+      <div id="v0.10.0" class="bg-gradient-to-br from-zinc-900/80 to-indigo-950/30 border-2 border-indigo-500/50 rounded-2xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500 shadow-lg shadow-indigo-500/10">
         <div class="flex items-center gap-3 mb-4 flex-wrap">
-          <a href="#v0.10.0" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.10.0</a>
-          <span class="text-zinc-400 text-sm">2025-12-19</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50">Latest</span>
-          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Major Feature</span>
-        </div>
-        <h3 class="text-lg font-semibold mb-3">User Accounts System & Multi-Admin Support</h3>
-        <p class="text-sm text-zinc-400 mb-4">Major release introducing a complete user account system with authentication, profile management, and multi-admin capabilities.</p>
-        
-        <div class="mb-4">
-          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">👤 User Accounts</h4>
-          <ul class="space-y-2 text-sm text-zinc-300">
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>User registration & login</strong> - Create accounts with email/password or magic links</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>User profile page</strong> - Manage name, phone, print preferences, and notification settings</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>Password management</strong> - Set/change password with strength indicator</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>Session management</strong> - 30-day persistent sessions with secure cookies</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>Token-to-account migration</strong> - Existing email token users can upgrade to full accounts</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>Print preferences</strong> - Save preferred printer, material, colors, and default notes</span>
-            </li>
-          </ul>
+          <a href="#v0.10.0" class="px-4 py-1.5 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition shadow">v0.10.0</a>
+          <span class="text-zinc-400 text-sm">December 19, 2025</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-purple-600/20 text-purple-300 text-xs rounded-lg border border-purple-500/50 font-medium">🚀 Major Release</span>
         </div>
         
-        <div class="mb-4">
-          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">🔐 Multi-Admin System</h4>
-          <ul class="space-y-2 text-sm text-zinc-300">
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>Multiple admin accounts</strong> - Create and manage multiple administrators</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>Admin roles</strong> - Super Admin and Admin roles with different permissions</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>Admin management page</strong> - Create, edit, deactivate admin accounts</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>Audit logging</strong> - Track admin actions with timestamps and details</span>
-            </li>
-          </ul>
+        <h3 class="text-xl font-bold mb-2 text-white">User Accounts System & Multi-Admin Support</h3>
+        <p class="text-sm text-zinc-400 mb-6">Major release introducing a complete user account system with authentication, profile management, multi-admin capabilities, and feature flags.</p>
+        
+        <!-- Feature Grid -->
+        <div class="grid md:grid-cols-2 gap-4 mb-6">
+          <!-- User Accounts -->
+          <div class="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700/50">
+            <h4 class="text-sm font-bold text-emerald-400 mb-3 flex items-center gap-2">
+              <span class="text-base">👤</span> User Accounts
+            </h4>
+            <ul class="space-y-1.5 text-sm text-zinc-300">
+              <li class="flex items-start gap-2">
+                <span class="text-emerald-500 mt-0.5">•</span>
+                <span>Registration & login with email/password or magic links</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-emerald-500 mt-0.5">•</span>
+                <span>Profile page with print preferences & notification settings</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-emerald-500 mt-0.5">•</span>
+                <span>Password management with strength indicator</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-emerald-500 mt-0.5">•</span>
+                <span>30-day persistent sessions with secure cookies</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-emerald-500 mt-0.5">•</span>
+                <span>Token-to-account migration for existing users</span>
+              </li>
+            </ul>
+          </div>
+          
+          <!-- Multi-Admin -->
+          <div class="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700/50">
+            <h4 class="text-sm font-bold text-blue-400 mb-3 flex items-center gap-2">
+              <span class="text-base">🔐</span> Multi-Admin System
+            </h4>
+            <ul class="space-y-1.5 text-sm text-zinc-300">
+              <li class="flex items-start gap-2">
+                <span class="text-blue-500 mt-0.5">•</span>
+                <span>Create & manage multiple administrator accounts</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-blue-500 mt-0.5">•</span>
+                <span>Role-based permissions (Super Admin / Admin)</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-blue-500 mt-0.5">•</span>
+                <span>Admin management page with create/edit/deactivate</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-blue-500 mt-0.5">•</span>
+                <span>Comprehensive audit logging</span>
+              </li>
+            </ul>
+          </div>
+          
+          <!-- Feature Flags -->
+          <div class="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700/50">
+            <h4 class="text-sm font-bold text-purple-400 mb-3 flex items-center gap-2">
+              <span class="text-base">🎛️</span> Feature Flags
+            </h4>
+            <ul class="space-y-1.5 text-sm text-zinc-300">
+              <li class="flex items-start gap-2">
+                <span class="text-purple-500 mt-0.5">•</span>
+                <span>Toggle features on/off without code changes</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-purple-500 mt-0.5">•</span>
+                <span>Visual admin interface for flag management</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-purple-500 mt-0.5">•</span>
+                <span>Gradual rollout with percentage controls</span>
+              </li>
+            </ul>
+          </div>
+          
+          <!-- User Management -->
+          <div class="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700/50">
+            <h4 class="text-sm font-bold text-amber-400 mb-3 flex items-center gap-2">
+              <span class="text-base">👥</span> User Management
+            </h4>
+            <ul class="space-y-1.5 text-sm text-zinc-300">
+              <li class="flex items-start gap-2">
+                <span class="text-amber-500 mt-0.5">•</span>
+                <span>Admin page to view, search & manage all users</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-amber-500 mt-0.5">•</span>
+                <span>Activate, suspend, or verify user accounts</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-amber-500 mt-0.5">•</span>
+                <span>Promote users to admin accounts</span>
+              </li>
+            </ul>
+          </div>
         </div>
         
-        <div class="mb-4">
-          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">🎛️ Feature Flags</h4>
-          <ul class="space-y-2 text-sm text-zinc-300">
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>Feature flag system</strong> - Toggle features on/off without code changes</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>Admin feature page</strong> - Visual interface to manage feature flags</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>Rollout percentages</strong> - Gradually roll out features to users</span>
-            </li>
-          </ul>
+        <!-- API & Bug Fixes Row -->
+        <div class="grid md:grid-cols-2 gap-4 mb-6">
+          <!-- API -->
+          <div class="bg-zinc-800/30 rounded-xl p-4 border border-zinc-700/30">
+            <h4 class="text-sm font-bold text-cyan-400 mb-3 flex items-center gap-2">
+              <span class="text-base">🔌</span> API Enhancements
+            </h4>
+            <ul class="space-y-1.5 text-sm text-zinc-300">
+              <li class="flex items-start gap-2">
+                <span class="text-cyan-500 mt-0.5">•</span>
+                <span>JSON login: <code class="text-xs bg-zinc-900 px-1.5 py-0.5 rounded font-mono">/api/user/login</code></span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-cyan-500 mt-0.5">•</span>
+                <span>JSON register: <code class="text-xs bg-zinc-900 px-1.5 py-0.5 rounded font-mono">/api/user/register</code></span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-cyan-500 mt-0.5">•</span>
+                <span>Session-based API auth (no token required)</span>
+              </li>
+            </ul>
+          </div>
+          
+          <!-- Bug Fixes -->
+          <div class="bg-zinc-800/30 rounded-xl p-4 border border-zinc-700/30">
+            <h4 class="text-sm font-bold text-rose-400 mb-3 flex items-center gap-2">
+              <span class="text-base">🐛</span> Bug Fixes
+            </h4>
+            <ul class="space-y-1.5 text-sm text-zinc-300">
+              <li class="flex items-start gap-2">
+                <span class="text-rose-500 mt-0.5">•</span>
+                <span>Fixed session datetime causing premature expiry</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-rose-500 mt-0.5">•</span>
+                <span>Fixed redirect URLs with <code class="text-xs bg-zinc-900 px-1 rounded">token=None</code></span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-rose-500 mt-0.5">•</span>
+                <span>Fixed email case sensitivity in push lookups</span>
+              </li>
+            </ul>
+          </div>
         </div>
         
-        <div class="mb-4">
-          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">👥 User Management (Admin)</h4>
-          <ul class="space-y-2 text-sm text-zinc-300">
+        <!-- Notes -->
+        <div class="bg-indigo-950/30 rounded-xl p-4 border border-indigo-800/30">
+          <h4 class="text-sm font-bold text-indigo-300 mb-2 flex items-center gap-2">
+            <span class="text-base">📝</span> Notes
+          </h4>
+          <ul class="space-y-1 text-sm text-indigo-200/80">
             <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>User management page</strong> - View, search, and manage all users</span>
+              <span class="text-indigo-400">ℹ</span>
+              <span>User accounts controlled by <code class="text-xs bg-indigo-900/50 px-1.5 py-0.5 rounded font-mono">user_accounts</code> feature flag (off by default)</span>
             </li>
             <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>User status control</strong> - Activate, suspend, or verify users</span>
+              <span class="text-indigo-400">ℹ</span>
+              <span>See <code class="text-xs bg-indigo-900/50 px-1.5 py-0.5 rounded font-mono">PRODUCTION_USER_ACCOUNTS.md</code> for deployment guide</span>
             </li>
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>Convert user to admin</strong> - Promote users to admin accounts</span>
-            </li>
-          </ul>
-        </div>
-        
-        <div class="mb-4">
-          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">🔌 API Enhancements</h4>
-          <ul class="space-y-2 text-sm text-zinc-300">
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>JSON login API</strong> - <code class="text-xs bg-zinc-800 px-1 rounded">/api/user/login</code> for programmatic auth</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>JSON registration API</strong> - <code class="text-xs bg-zinc-800 px-1 rounded">/api/user/register</code> for account creation</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>Session-based API auth</strong> - APIs work with session cookies (no token required)</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-emerald-400">✓</span>
-              <span><strong>Notification preferences API</strong> - Get/set user notification preferences</span>
-            </li>
-          </ul>
-        </div>
-        
-        <div class="mb-4">
-          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">🐛 Bug Fixes</h4>
-          <ul class="space-y-2 text-sm text-zinc-300">
-            <li class="flex items-start gap-2">
-              <span class="text-amber-400">✓</span>
-              <span><strong>Session stability</strong> - Fixed datetime format mismatch causing premature session expiry</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-amber-400">✓</span>
-              <span><strong>Redirect URLs</strong> - Profile redirects no longer include <code class="text-xs bg-zinc-800 px-1 rounded">token=None</code></span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-amber-400">✓</span>
-              <span><strong>Email case sensitivity</strong> - Fixed push notification lookups to be case-insensitive</span>
-            </li>
-          </ul>
-        </div>
-        
-        <div>
-          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">📝 Notes</h4>
-          <ul class="space-y-2 text-sm text-zinc-300">
-            <li class="flex items-start gap-2">
-              <span class="text-blue-400">ℹ</span>
-              <span>User accounts feature is controlled by the <code class="text-xs bg-zinc-800 px-1 rounded">user_accounts</code> feature flag (disabled by default)</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-blue-400">ℹ</span>
-              <span>See <code class="text-xs bg-zinc-800 px-1 rounded">PRODUCTION_USER_ACCOUNTS.md</code> for deployment guide</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <span class="text-blue-400">ℹ</span>
-              <span>Versioning policy documented in <code class="text-xs bg-zinc-800 px-1 rounded">VERSIONING.md</code></span>
-            </li>
-          </ul>
-        </div>
-      </div>
           </ul>
         </div>
       </div>
@@ -230,7 +243,7 @@
       <div id="v0.9.0" class="bg-zinc-900/50 border border-zinc-700/50 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
         <div class="flex items-center gap-3 mb-4 flex-wrap">
           <a href="#v0.9.0" class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg hover:bg-zinc-600 transition">v0.9.0</a>
-          <span class="text-zinc-400 text-sm">2025-12-19</span>
+          <span class="text-zinc-400 text-sm">December 19, 2025</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-3">Admin PWA Experience & My Prints Improvements</h3>
