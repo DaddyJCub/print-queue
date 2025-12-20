@@ -1440,7 +1440,7 @@ async def user_profile_page(
     
     # Get printers and materials for preferences
     conn = db()
-    printers = conn.execute("SELECT name FROM printers WHERE is_active = 1 ORDER BY name").fetchall()
+    printers = conn.execute("SELECT DISTINCT value as name FROM settings WHERE key LIKE 'printer_%_name'").fetchall()
     conn.close()
     
     materials = ["PLA", "PETG", "ABS", "TPU", "ASA", "Nylon", "Resin", "Other"]

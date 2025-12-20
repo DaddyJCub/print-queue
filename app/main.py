@@ -6208,37 +6208,47 @@ def my_requests_send_link(request: Request, email: str = Form(...)):
 
 
 @app.get("/my-requests/view", response_class=HTMLResponse)
-async def my_requests_view(request: Request, token: str):
-    """View all requests for an email using magic link"""
+async def my_requests_view(request: Request, token: str = None, user_session: str = None):
+    """View all requests for an email using magic link or user session"""
+    from app.auth import get_user_by_session
+    
     conn = db()
+    email = None
+    token_to_use = token
     
-    # Find token
-    token_row = conn.execute(
-        "SELECT email, expires_at FROM email_lookup_tokens WHERE token = ?", (token,)
-    ).fetchone()
+    # First, try user session auth
+    if user_session:
+        user = get_user_by_session(user_session)
+        if user:
+            email = user.email
+            # Get or create a token for this email (for page functionality)
+            token_to_use = get_or_create_my_requests_token(email)
     
-    if not token_row:
+    # If no session auth, try token auth
+    if not email and token:
+        token_row = conn.execute(
+            "SELECT email, expires_at FROM email_lookup_tokens WHERE token = ?", (token,)
+        ).fetchone()
+        
+        if token_row:
+            # Check expiry
+            expiry = datetime.fromisoformat(token_row["expires_at"].replace("Z", "+00:00"))
+            if datetime.utcnow().replace(tzinfo=expiry.tzinfo) <= expiry:
+                email = token_row["email"]
+            else:
+                # Token expired - clean up
+                conn.execute("DELETE FROM email_lookup_tokens WHERE token = ?", (token,))
+                conn.commit()
+    
+    # No valid auth
+    if not email:
         conn.close()
         return templates.TemplateResponse("my_requests_lookup_new.html", {
             "request": request,
             "error": "expired",
             "version": APP_VERSION,
+            "user_accounts_enabled": is_feature_enabled("user_accounts"),
         })
-    
-    # Check expiry
-    expiry = datetime.fromisoformat(token_row["expires_at"].replace("Z", "+00:00"))
-    if datetime.utcnow().replace(tzinfo=expiry.tzinfo) > expiry:
-        # Token expired - clean up
-        conn.execute("DELETE FROM email_lookup_tokens WHERE token = ?", (token,))
-        conn.commit()
-        conn.close()
-        return templates.TemplateResponse("my_requests_lookup_new.html", {
-            "request": request,
-            "error": "expired",
-            "version": APP_VERSION,
-        })
-    
-    email = token_row["email"]
     
     # Fetch all requests for this email, including multi-build info
     requests_list = conn.execute(
@@ -6310,7 +6320,7 @@ async def my_requests_view(request: Request, token: str):
         "request": request,
         "email": email,
         "requests_list": enriched_requests,
-        "token": token,  # Keep token for refresh
+        "token": token_to_use,  # Keep token for refresh
         "version": APP_VERSION,
     })
 
@@ -6929,8 +6939,16 @@ def admin_feedback_delete(fid: str, _=Depends(require_admin)):
 
 
 @app.get("/admin/login", response_class=HTMLResponse)
-def admin_login(request: Request, next: Optional[str] = None):
-    return templates.TemplateResponse("admin_login.html", {"request": request, "next": next})
+def admin_login(request: Request, next: Optional[str] = None, bad: Optional[str] = None):
+    # If multi_admin is enabled, redirect to the new login page
+    if is_feature_enabled("multi_admin"):
+        redirect_url = "/admin/login/new"
+        if next:
+            from urllib.parse import quote
+            redirect_url += f"?next={quote(next)}"
+        return RedirectResponse(url=redirect_url, status_code=303)
+    
+    return templates.TemplateResponse("admin_login.html", {"request": request, "next": next, "bad": bad})
 
 
 @app.post("/admin/login")

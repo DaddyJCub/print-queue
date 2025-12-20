@@ -555,14 +555,33 @@ def convert_user_to_admin(user_id: str, role: AdminRole = AdminRole.OPERATOR,
         if existing:
             username = f"{username}_{str(uuid.uuid4())[:4]}"
     
-    # Create admin account
-    admin = create_admin(
-        username=username,
-        email=user.email,
-        password=password or secrets.token_urlsafe(16),  # Generate random password if not provided
-        role=role,
-        display_name=user.display_name
-    )
+    # Create admin account - use user's existing password hash if they have one and no new password provided
+    if password:
+        admin = create_admin(
+            username=username,
+            email=user.email,
+            password=password,
+            role=role,
+            display_name=user.display_name
+        )
+    elif user.password_hash:
+        # Reuse user's existing password hash
+        admin = create_admin_with_hash(
+            username=username,
+            email=user.email,
+            password_hash=user.password_hash,
+            role=role,
+            display_name=user.display_name
+        )
+    else:
+        # No password available, generate random one
+        admin = create_admin(
+            username=username,
+            email=user.email,
+            password=secrets.token_urlsafe(16),
+            role=role,
+            display_name=user.display_name
+        )
     
     logger.info(f"User {user.email} converted to admin {username} with role {role.value}")
     return admin
@@ -587,10 +606,16 @@ def link_user_to_email_token(email: str, token: str) -> Optional[User]:
 def create_admin(username: str, email: str, password: str, role: AdminRole = AdminRole.OPERATOR, 
                  display_name: str = None, created_by: str = None) -> Admin:
     """Create a new admin account."""
+    password_hash = hash_password(password)
+    return create_admin_with_hash(username, email, password_hash, role, display_name, created_by)
+
+
+def create_admin_with_hash(username: str, email: str, password_hash: str, role: AdminRole = AdminRole.OPERATOR, 
+                           display_name: str = None, created_by: str = None) -> Admin:
+    """Create a new admin account with an existing password hash."""
     conn = db()
     now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     admin_id = str(uuid.uuid4())
-    password_hash = hash_password(password)
     
     conn.execute("""
         INSERT INTO admins (id, username, email, password_hash, display_name, role, created_at, updated_at)
@@ -637,6 +662,18 @@ def get_admin_by_username(username: str) -> Optional[Admin]:
     return _row_to_admin(row)
 
 
+def get_admin_by_email(email: str) -> Optional[Admin]:
+    """Get admin by email (case-insensitive)."""
+    conn = db()
+    row = conn.execute("SELECT * FROM admins WHERE LOWER(email) = LOWER(?)", (email,)).fetchone()
+    conn.close()
+    
+    if not row:
+        return None
+    
+    return _row_to_admin(row)
+
+
 def get_admin_by_session(token: str) -> Optional[Admin]:
     """Get admin by session token."""
     conn = db()
@@ -674,10 +711,13 @@ def _row_to_admin(row: sqlite3.Row) -> Admin:
 
 def authenticate_admin(username: str, password: str, ip_address: str = None) -> Optional[Tuple[Admin, str]]:
     """
-    Authenticate admin with username and password.
+    Authenticate admin with username/email and password.
     Returns (Admin, session_token) on success, None on failure.
     """
+    # Try username first, then email
     admin = get_admin_by_username(username)
+    if not admin:
+        admin = get_admin_by_email(username)  # Allow login by email too
     
     if not admin:
         log_audit(
