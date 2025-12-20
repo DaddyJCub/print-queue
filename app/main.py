@@ -6220,7 +6220,7 @@ def my_requests_send_link(request: Request, email: str = Form(...)):
 @app.get("/my-requests/view", response_class=HTMLResponse)
 async def my_requests_view(request: Request, token: str = None, user_session: str = None):
     """View all requests for an email using magic link or user session"""
-    from app.auth import get_user_by_session, get_user_by_email
+    from app.auth import get_user_by_session, get_user_by_email, get_current_user
     
     conn = db()
     email = None
@@ -6240,6 +6240,21 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
             admin = await get_current_admin(request)
             if admin and admin.id != "legacy":
                 is_admin_user = True
+            # Check if user needs password prompt (logged in via magic link but no password)
+            if is_feature_enabled("user_accounts") and not user.password_hash:
+                needs_password_prompt = True
+    
+    # Also try cookie-based session
+    if not email:
+        user = await get_current_user(request)
+        if user:
+            email = user.email
+            token_to_use = get_or_create_my_requests_token(email)
+            admin = await get_current_admin(request)
+            if admin and admin.id != "legacy":
+                is_admin_user = True
+            if is_feature_enabled("user_accounts") and not user.password_hash:
+                needs_password_prompt = True
     
     # If no session auth, try token auth
     if not email and token:
