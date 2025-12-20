@@ -221,6 +221,86 @@
         document.getElementById('batch-edit-modal').classList.add('hidden');
       }
 
+      // Quick status change without redirect (for dashboard actions)
+      async function quickStatusChange(requestId, toStatus, comment, buttonEl) {
+        const originalText = buttonEl.innerHTML;
+        buttonEl.disabled = true;
+        buttonEl.innerHTML = '<span class="animate-pulse">...</span>';
+        
+        try {
+          const formData = new FormData();
+          formData.append('to_status', toStatus);
+          formData.append('comment', comment || '');
+          formData.append('quick_action', '1');  // Signal to not redirect
+          
+          const response = await fetch(`/admin/request/${requestId}/status`, {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (response.ok) {
+            // Find and hide the parent request item
+            const requestItem = buttonEl.closest('.request-item');
+            if (requestItem) {
+              requestItem.style.transition = 'opacity 0.3s, transform 0.3s';
+              requestItem.style.opacity = '0';
+              requestItem.style.transform = 'translateX(20px)';
+              setTimeout(() => {
+                requestItem.remove();
+                // Update section count if present
+                updateSectionCounts();
+              }, 300);
+            }
+            
+            // Show success toast
+            showToast(`✓ Marked as ${toStatus.replace('_', ' ').toLowerCase()}`);
+          } else {
+            const errorText = await response.text();
+            showToast(`Error: ${errorText}`, 'error');
+            buttonEl.disabled = false;
+            buttonEl.innerHTML = originalText;
+          }
+        } catch (e) {
+          showToast('Network error', 'error');
+          buttonEl.disabled = false;
+          buttonEl.innerHTML = originalText;
+        }
+      }
+      
+      // Update section header counts after removing items
+      function updateSectionCounts() {
+        // Count remaining items in each section
+        const sections = ['new-section', 'printing-section', 'approved-section', 'done-section'];
+        sections.forEach(sectionId => {
+          const section = document.getElementById(sectionId);
+          if (section) {
+            const count = section.querySelectorAll('.request-item:not([style*="opacity: 0"])').length;
+            const countBadge = section.querySelector('.section-count');
+            if (countBadge) {
+              countBadge.textContent = count;
+            }
+          }
+        });
+      }
+      
+      // Simple toast notification
+      function showToast(message, type = 'success') {
+        const toast = document.createElement('div');
+        toast.className = `fixed bottom-4 right-4 px-4 py-3 rounded-xl text-sm font-medium z-50 transform transition-all duration-300 ${
+          type === 'error' 
+            ? 'bg-red-900/90 border border-red-700 text-red-200' 
+            : 'bg-emerald-900/90 border border-emerald-700 text-emerald-200'
+        }`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transform = 'translateX(100%)';
+          setTimeout(() => toast.remove(), 300);
+        }, 3000);
+      }
+
       // Close modal when clicking outside
       document.getElementById('batch-edit-modal').addEventListener('click', (e) => {
         if (e.target.id === 'batch-edit-modal') hideBatchEditModal();
@@ -885,13 +965,10 @@
                 </div>
 
                 <div class="mt-2">
-                  <form method="POST" action="/admin/request/{{ r['id'] }}/status">
-                    <input type="hidden" name="to_status" value="DONE" />
-                    <input type="hidden" name="comment" value="Print completed" />
-                    <button class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-1.5 text-xs font-semibold">
-                      ✓ Mark Done + notify
-                    </button>
-                  </form>
+                  <button onclick="quickStatusChange('{{ r['id'] }}', 'DONE', 'Print completed', this)" 
+                          class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-1.5 text-xs font-semibold">
+                    ✓ Mark Done + notify
+                  </button>
                 </div>
               </div>
             {% endfor %}
@@ -928,13 +1005,10 @@
                   </div>
                 </div>
                 <div class="mt-2">
-                  <form method="POST" action="/admin/request/{{ r['id'] }}/status">
-                    <input type="hidden" name="to_status" value="DONE" />
-                    <input type="hidden" name="comment" value="Print completed" />
-                    <button class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-1.5 text-xs font-semibold">
-                      ✓ Mark Done + notify
-                    </button>
-                  </form>
+                  <button onclick="quickStatusChange('{{ r['id'] }}', 'DONE', 'Print completed', this)" 
+                          class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-1.5 text-xs font-semibold">
+                    ✓ Mark Done + notify
+                  </button>
                 </div>
               </div>
             {% endfor %}
@@ -1123,13 +1197,10 @@
                 </div>
 
                 <div class="mt-2">
-                  <form method="POST" action="/admin/request/{{ r['id'] }}/status">
-                    <input type="hidden" name="to_status" value="PICKED_UP" />
-                    <input type="hidden" name="comment" value="Picked up" />
-                    <button class="w-full rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-3 py-1.5 text-xs">
-                      ✓ Mark Picked Up
-                    </button>
-                  </form>
+                  <button onclick="quickStatusChange('{{ r['id'] }}', 'PICKED_UP', 'Picked up', this)" 
+                          class="w-full rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-3 py-1.5 text-xs">
+                    ✓ Mark Picked Up
+                  </button>
                 </div>
               </div>
             {% endfor %}
@@ -1153,11 +1224,10 @@
                   </div>
                 </div>
                 <div class="mt-2">
-                  <form method="POST" action="/admin/request/{{ r['id'] }}/status">
-                    <input type="hidden" name="to_status" value="PICKED_UP" />
-                    <input type="hidden" name="comment" value="Picked up" />
-                    <button class="w-full rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-3 py-1.5 text-xs">✓ Mark Picked Up</button>
-                  </form>
+                  <button onclick="quickStatusChange('{{ r['id'] }}', 'PICKED_UP', 'Picked up', this)" 
+                          class="w-full rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-3 py-1.5 text-xs">
+                    ✓ Mark Picked Up
+                  </button>
                 </div>
               </div>
             {% endfor %}

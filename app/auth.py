@@ -343,17 +343,19 @@ def create_user_session(user_id: str, device_info: str = None, ip_address: str =
 def get_user_by_session(token: str) -> Optional[User]:
     """Get user by session token."""
     conn = db()
+    # Use consistent ISO format with Z suffix for comparison
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     row = conn.execute("""
         SELECT u.* FROM users u
         JOIN user_sessions s ON u.id = s.user_id
         WHERE s.token = ? AND s.expires_at > ?
-    """, (token, datetime.utcnow().isoformat())).fetchone()
+    """, (token, now)).fetchone()
     
     if row:
         # Update last active
         conn.execute("""
             UPDATE user_sessions SET last_active = ? WHERE token = ?
-        """, (datetime.utcnow().isoformat(timespec="seconds") + "Z", token))
+        """, (now, token))
         conn.commit()
     
     conn.close()

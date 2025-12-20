@@ -1220,6 +1220,191 @@ async def migrate_token_to_account(
     })
 
 
+# ─────────────────────────── USER API ENDPOINTS (JSON) ───────────────────────────
+
+@router.post("/api/user/login")
+async def api_user_login(request: Request):
+    """
+    JSON API for user login.
+    Accepts: { email, password }
+    Returns: { success, session_token?, error? }
+    """
+    if not is_feature_enabled("user_accounts"):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "error": "User accounts are not enabled"}
+        )
+    
+    try:
+        data = await request.json()
+    except:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Invalid JSON"}
+        )
+    
+    email = data.get("email", "").strip()
+    password = data.get("password", "")
+    
+    if not email:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Email is required"}
+        )
+    
+    if not password:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Password is required"}
+        )
+    
+    user = authenticate_user(email, password)
+    
+    if not user:
+        return JSONResponse(
+            status_code=401,
+            content={"success": False, "error": "Invalid email or password"}
+        )
+    
+    if user.status == UserStatus.SUSPENDED:
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "error": "Your account has been suspended"}
+        )
+    
+    # Create session
+    session_token = create_user_session(
+        user.id,
+        device_info=request.headers.get("User-Agent") or "unknown",
+        ip_address=get_client_ip(request)
+    )
+    
+    response = JSONResponse({
+        "success": True,
+        "session_token": session_token,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name
+        }
+    })
+    
+    # Also set the cookie for web clients
+    response.set_cookie(
+        "user_session",
+        session_token,
+        httponly=True,
+        samesite="lax",
+        secure=os.getenv("BASE_URL", "").startswith("https"),
+        path="/",
+        max_age=30 * 24 * 60 * 60
+    )
+    
+    return response
+
+
+@router.post("/api/user/register")
+async def api_user_register(request: Request):
+    """
+    JSON API for user registration.
+    Accepts: { email, name?, password? }
+    Returns: { success, session_token?, error? }
+    """
+    if not is_feature_enabled("user_accounts"):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "error": "User accounts are not enabled"}
+        )
+    
+    try:
+        data = await request.json()
+    except:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Invalid JSON"}
+        )
+    
+    email = data.get("email", "").strip().lower()
+    name = data.get("name", "").strip()
+    password = data.get("password")
+    
+    if not email:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Email is required"}
+        )
+    
+    # Check if user already exists
+    existing = get_user_by_email(email)
+    if existing:
+        return JSONResponse(
+            status_code=409,
+            content={"success": False, "error": "An account with this email already exists"}
+        )
+    
+    # Create user
+    try:
+        user = create_user(email=email, name=name or None, password=password or None)
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": f"Failed to create account: {str(e)}"}
+        )
+    
+    # If password provided, auto-verify and create session
+    if password:
+        set_user_status(user.id, UserStatus.ACTIVE)
+        
+        session_token = create_user_session(
+            user.id,
+            device_info=request.headers.get("User-Agent") or "unknown",
+            ip_address=get_client_ip(request)
+        )
+        
+        log_audit(
+            action=AuditAction.USER_REGISTERED,
+            actor_type="user",
+            actor_id=user.id,
+            details={"email": email, "with_password": True}
+        )
+        
+        response = JSONResponse({
+            "success": True,
+            "session_token": session_token,
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "name": user.name
+            }
+        })
+        
+        response.set_cookie(
+            "user_session",
+            session_token,
+            httponly=True,
+            samesite="lax",
+            secure=os.getenv("BASE_URL", "").startswith("https"),
+            path="/",
+            max_age=30 * 24 * 60 * 60
+        )
+        
+        return response
+    else:
+        # No password - would need magic link (not implemented in API yet)
+        log_audit(
+            action=AuditAction.USER_REGISTERED,
+            actor_type="user",
+            actor_id=user.id,
+            details={"email": email, "with_password": False}
+        )
+        
+        return JSONResponse({
+            "success": True,
+            "message": "Account created. Please check your email for verification.",
+            "requires_verification": True
+        })
+
+
 # ─────────────────────────── USER PROFILE ROUTES ───────────────────────────
 
 @router.get("/user/profile", response_class=HTMLResponse)
@@ -1301,8 +1486,13 @@ async def update_user_profile_route(
     # Update profile
     update_user_profile(user.id, name=name, phone=phone)
     
+    # Redirect back with appropriate params
+    redirect_params = "success=Profile updated"
+    if token:
+        redirect_params = f"token={token}&{redirect_params}"
+    
     return RedirectResponse(
-        url=f"/user/profile?token={token}&success=Profile updated",
+        url=f"/user/profile?{redirect_params}",
         status_code=303
     )
 
@@ -1343,8 +1533,12 @@ async def update_user_preferences(
         notes_template=notes_template
     )
     
+    redirect_params = "success=Preferences saved"
+    if token:
+        redirect_params = f"token={token}&{redirect_params}"
+    
     return RedirectResponse(
-        url=f"/user/profile?token={token}&success=Preferences saved",
+        url=f"/user/profile?{redirect_params}",
         status_code=303
     )
 
@@ -1386,8 +1580,12 @@ async def update_user_notifications(
     
     update_user_profile(user.id, notification_prefs=notification_prefs)
     
+    redirect_params = "success=Notification settings saved"
+    if token:
+        redirect_params = f"token={token}&{redirect_params}"
+    
     return RedirectResponse(
-        url=f"/user/profile?token={token}&success=Notification settings saved",
+        url=f"/user/profile?{redirect_params}",
         status_code=303
     )
 
@@ -1421,16 +1619,22 @@ async def update_user_password(
     
     # Validate passwords match
     if new_password != confirm_password:
+        redirect_params = "error=Passwords don't match"
+        if token:
+            redirect_params = f"token={token}&{redirect_params}"
         return RedirectResponse(
-            url=f"/user/profile?token={token}&error=Passwords don't match",
+            url=f"/user/profile?{redirect_params}",
             status_code=303
         )
     
     # If user has existing password, verify current password
     if user.password_hash and current_password:
         if not verify_password(current_password, user.password_hash):
+            redirect_params = "error=Current password is incorrect"
+            if token:
+                redirect_params = f"token={token}&{redirect_params}"
             return RedirectResponse(
-                url=f"/user/profile?token={token}&error=Current password is incorrect",
+                url=f"/user/profile?{redirect_params}",
                 status_code=303
             )
     
@@ -1442,8 +1646,12 @@ async def update_user_password(
     conn.commit()
     conn.close()
     
+    redirect_params = "success=Password updated successfully"
+    if token:
+        redirect_params = f"token={token}&{redirect_params}"
+    
     return RedirectResponse(
-        url=f"/user/profile?token={token}&success=Password updated successfully",
+        url=f"/user/profile?{redirect_params}",
         status_code=303
     )
 

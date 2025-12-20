@@ -178,63 +178,184 @@
       </h2>
     </div>
     
-    <form action="/user/notifications" method="POST" class="p-6 space-y-4">
-      <input type="hidden" name="token" value="{{ token }}">
+    <div class="p-6 space-y-5">
+      <!-- Push Status Banner -->
+      <div id="push-status-banner" class="hidden p-3 rounded-xl border">
+        <div class="flex items-start gap-2">
+          <span class="text-lg" id="push-status-icon">⚠️</span>
+          <p id="push-status-message" class="text-sm"></p>
+        </div>
+      </div>
       
-      <!-- Email Notifications -->
+      <!-- iOS Install Hint -->
+      <div id="ios-install-hint" class="hidden p-3 bg-blue-900/30 border border-blue-500/30 rounded-xl">
+        <p class="text-xs text-blue-300">
+          <strong>📱 iPhone/iPad:</strong> To get push notifications, first install this app: 
+          tap <span class="inline-block px-1.5 py-0.5 bg-zinc-700 rounded">Share</span> → 
+          <span class="inline-block px-1.5 py-0.5 bg-zinc-700 rounded">Add to Home Screen</span>
+        </p>
+      </div>
+      
+      <!-- Main Push Toggle -->
+      <div class="bg-gradient-to-br from-indigo-900/40 to-purple-900/30 rounded-2xl p-4 border border-indigo-500/30">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-indigo-600/30 flex items-center justify-center">
+              <span class="text-xl">📲</span>
+            </div>
+            <div>
+              <span class="font-semibold text-white">Push Notifications</span>
+              <div class="mt-0.5">
+                <span id="push-status-indicator" class="text-xs font-medium text-zinc-400">Checking...</span>
+              </div>
+            </div>
+          </div>
+          <button id="push-toggle" onclick="togglePushNotifications()" 
+                  class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-zinc-700">
+            <span id="push-toggle-dot" class="inline-block h-5 w-5 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-1"></span>
+          </button>
+        </div>
+        
+        <!-- Test Button -->
+        <div class="mt-3 pt-3 border-t border-white/10">
+          <button id="test-push-btn" onclick="testPushNotification()" 
+                  class="w-full px-4 py-2 bg-white/10 hover:bg-white/15 rounded-xl text-sm font-medium text-white transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
+            <span>🧪</span> Send Test Notification
+          </button>
+        </div>
+      </div>
+      
+      <!-- Notification Types -->
       <div class="space-y-3">
-        <h3 class="text-sm font-medium text-zinc-300">Email Notifications</h3>
+        <h3 class="text-xs font-semibold text-zinc-500 uppercase tracking-wider px-1">What to notify me about</h3>
         
-        <label class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl cursor-pointer hover:bg-zinc-800 transition">
-          <div>
-            <p class="font-medium text-sm">Status Updates</p>
-            <p class="text-xs text-zinc-500">Get notified when your request status changes</p>
+        <!-- Progress Updates -->
+        <div class="bg-zinc-800/60 rounded-xl overflow-hidden border border-zinc-700/50">
+          <div class="p-4">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-emerald-600/20 flex items-center justify-center flex-shrink-0">
+                  <span class="text-lg">📊</span>
+                </div>
+                <div>
+                  <span class="font-medium text-white">Build Progress</span>
+                  <p class="text-xs text-zinc-400 mt-0.5">Get notified at key milestones</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Milestone Chips -->
+            <div class="mt-4">
+              <p class="text-xs text-zinc-500 mb-2">Notify me at:</p>
+              <div class="flex flex-wrap gap-2" id="milestone-chips">
+                <button type="button" data-milestone="25" onclick="toggleMilestone(25)" 
+                        class="milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border">25%</button>
+                <button type="button" data-milestone="50" onclick="toggleMilestone(50)" 
+                        class="milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border">50%</button>
+                <button type="button" data-milestone="75" onclick="toggleMilestone(75)" 
+                        class="milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border">75%</button>
+                <button type="button" data-milestone="90" onclick="toggleMilestone(90)" 
+                        class="milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border">90%</button>
+              </div>
+            </div>
+            
+            <!-- Push/Email toggles -->
+            <div class="mt-4 pt-3 border-t border-zinc-700/50 flex items-center gap-4">
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-progress-push" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Push</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-progress-email" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Email</span>
+              </label>
+            </div>
           </div>
-          <input type="checkbox" name="email_status_updates" value="1" 
-                 {% if user.notification_prefs.get('email_status_updates', True) %}checked{% endif %}
-                 class="w-5 h-5 rounded bg-zinc-700 border-zinc-600 text-indigo-600 focus:ring-indigo-500">
-        </label>
+        </div>
         
-        <label class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl cursor-pointer hover:bg-zinc-800 transition">
-          <div>
-            <p class="font-medium text-sm">Print Ready</p>
-            <p class="text-xs text-zinc-500">Get notified when your print is ready for pickup</p>
+        <!-- Status Updates -->
+        <div class="bg-zinc-800/60 rounded-xl overflow-hidden border border-zinc-700/50">
+          <div class="p-4">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-blue-600/20 flex items-center justify-center flex-shrink-0">
+                  <span class="text-lg">🔄</span>
+                </div>
+                <div>
+                  <span class="font-medium text-white">Status Changes</span>
+                  <p class="text-xs text-zinc-400 mt-0.5">Approved, printing, ready for pickup</p>
+                </div>
+              </div>
+            </div>
+            
+            <div class="mt-4 pt-3 border-t border-zinc-700/50 flex items-center gap-4">
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-status-push" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Push</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-status-email" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Email</span>
+              </label>
+            </div>
           </div>
-          <input type="checkbox" name="email_print_ready" value="1"
-                 {% if user.notification_prefs.get('email_print_ready', True) %}checked{% endif %}
-                 class="w-5 h-5 rounded bg-zinc-700 border-zinc-600 text-indigo-600 focus:ring-indigo-500">
-        </label>
+        </div>
+        
+        <!-- Announcements -->
+        <div class="bg-zinc-800/60 rounded-xl overflow-hidden border border-zinc-700/50">
+          <div class="p-4">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-amber-600/20 flex items-center justify-center flex-shrink-0">
+                  <span class="text-lg">📢</span>
+                </div>
+                <div>
+                  <span class="font-medium text-white">Announcements</span>
+                  <p class="text-xs text-zinc-400 mt-0.5">App updates & important news</p>
+                </div>
+              </div>
+            </div>
+            
+            <div class="mt-4 pt-3 border-t border-zinc-700/50 flex items-center gap-4">
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" id="pref-broadcast-push" onchange="updateUserPrefs()" class="sr-only peer">
+                  <div class="w-8 h-5 bg-zinc-700 rounded-full peer-checked:bg-indigo-600 transition"></div>
+                  <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-zinc-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-white transition"></div>
+                </div>
+                <span class="text-sm text-zinc-400 group-hover:text-zinc-300">Push</span>
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
       
-      <!-- Push Notifications -->
-      <div class="space-y-3 pt-4 border-t border-zinc-800">
-        <h3 class="text-sm font-medium text-zinc-300">Push Notifications</h3>
-        
-        <label class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl cursor-pointer hover:bg-zinc-800 transition">
-          <div>
-            <p class="font-medium text-sm">Enable Push</p>
-            <p class="text-xs text-zinc-500">Receive push notifications on this device</p>
-          </div>
-          <input type="checkbox" name="push_enabled" value="1"
-                 {% if user.notification_prefs.get('push_enabled', False) %}checked{% endif %}
-                 class="w-5 h-5 rounded bg-zinc-700 border-zinc-600 text-indigo-600 focus:ring-indigo-500">
-        </label>
-        
-        <label class="flex items-center justify-between p-3 bg-zinc-800/50 rounded-xl cursor-pointer hover:bg-zinc-800 transition">
-          <div>
-            <p class="font-medium text-sm">Print Progress</p>
-            <p class="text-xs text-zinc-500">Updates at 25%, 50%, 75% completion</p>
-          </div>
-          <input type="checkbox" name="push_progress" value="1"
-                 {% if user.notification_prefs.get('push_progress', True) %}checked{% endif %}
-                 class="w-5 h-5 rounded bg-zinc-700 border-zinc-600 text-indigo-600 focus:ring-indigo-500">
-        </label>
+      <!-- Saving indicator -->
+      <div id="prefs-saving" class="hidden">
+        <div class="flex items-center justify-center gap-2 py-2">
+          <div class="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          <span class="text-xs text-zinc-400">Saving...</span>
+        </div>
       </div>
       
-      <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition">
-        Save Notification Settings
-      </button>
-    </form>
+      <p class="text-xs text-zinc-500 text-center">Changes are saved automatically</p>
+    </div>
   </div>
 
   <!-- Security -->
@@ -351,7 +472,256 @@
 </div>
 
 <script>
-// Password strength checker
+// ========== Notification Preferences ==========
+const userEmail = '{{ user.email }}';
+const userToken = '{{ token }}';
+
+// User prefs object (will be populated on load)
+let userPrefs = {
+  progress_push: true,
+  progress_email: false,
+  progress_milestones: '50,75',
+  status_push: true,
+  status_email: true,
+  broadcast_push: true,
+};
+
+// Load preferences on page load
+document.addEventListener('DOMContentLoaded', async function() {
+  await loadUserPrefs();
+  await checkPushStatus();
+  updateMilestoneChips();
+});
+
+async function loadUserPrefs() {
+  try {
+    const res = await fetch(`/api/user/notification-prefs?token=${userToken}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.prefs) userPrefs = { ...userPrefs, ...data.prefs };
+    }
+  } catch (e) {
+    console.log('[PREFS] Could not load preferences');
+  }
+  
+  // Update UI
+  document.getElementById('pref-progress-push').checked = userPrefs.progress_push;
+  document.getElementById('pref-progress-email').checked = userPrefs.progress_email;
+  document.getElementById('pref-status-push').checked = userPrefs.status_push;
+  document.getElementById('pref-status-email').checked = userPrefs.status_email;
+  document.getElementById('pref-broadcast-push').checked = userPrefs.broadcast_push;
+  updateMilestoneChips();
+}
+
+async function updateUserPrefs() {
+  userPrefs.progress_push = document.getElementById('pref-progress-push').checked;
+  userPrefs.progress_email = document.getElementById('pref-progress-email').checked;
+  userPrefs.status_push = document.getElementById('pref-status-push').checked;
+  userPrefs.status_email = document.getElementById('pref-status-email').checked;
+  userPrefs.broadcast_push = document.getElementById('pref-broadcast-push').checked;
+  
+  document.getElementById('prefs-saving').classList.remove('hidden');
+  
+  try {
+    await fetch('/api/user/notification-prefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: userToken, prefs: userPrefs })
+    });
+  } catch (e) {
+    console.error('[PREFS] Save failed:', e);
+  }
+  
+  setTimeout(() => {
+    document.getElementById('prefs-saving').classList.add('hidden');
+  }, 500);
+}
+
+function updateMilestoneChips() {
+  const selected = (userPrefs.progress_milestones || '50,75').split(',').map(s => parseInt(s.trim()));
+  document.querySelectorAll('.milestone-chip').forEach(chip => {
+    const milestone = parseInt(chip.dataset.milestone);
+    const isSelected = selected.includes(milestone);
+    chip.className = `milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border ${
+      isSelected 
+        ? 'bg-indigo-600 border-indigo-500 text-white' 
+        : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+    }`;
+  });
+}
+
+function toggleMilestone(milestone) {
+  const current = (userPrefs.progress_milestones || '50,75').split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+  const idx = current.indexOf(milestone);
+  
+  if (idx >= 0) {
+    current.splice(idx, 1);
+  } else {
+    current.push(milestone);
+  }
+  
+  current.sort((a, b) => a - b);
+  userPrefs.progress_milestones = current.join(',');
+  updateMilestoneChips();
+  updateUserPrefs();
+}
+
+// ========== Push Notifications ==========
+let isPushEnabled = false;
+let pushSubscription = null;
+
+async function checkPushStatus() {
+  const indicator = document.getElementById('push-status-indicator');
+  const toggle = document.getElementById('push-toggle');
+  const toggleDot = document.getElementById('push-toggle-dot');
+  const banner = document.getElementById('push-status-banner');
+  const bannerIcon = document.getElementById('push-status-icon');
+  const bannerMsg = document.getElementById('push-status-message');
+  const iosHint = document.getElementById('ios-install-hint');
+  
+  // Check if iOS Safari not installed as PWA
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if (isIOS && !isStandalone && iosHint) {
+    iosHint.classList.remove('hidden');
+  }
+  
+  // Check if push is supported
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    indicator.textContent = 'Not supported';
+    indicator.className = 'text-xs font-medium text-zinc-500';
+    toggle.disabled = true;
+    banner.classList.remove('hidden');
+    banner.className = 'p-3 rounded-xl border border-zinc-700 bg-zinc-800/50';
+    bannerIcon.textContent = 'ℹ️';
+    bannerMsg.textContent = 'Push notifications are not supported in this browser.';
+    bannerMsg.className = 'text-sm text-zinc-400';
+    return;
+  }
+  
+  // Check notification permission
+  const permission = Notification.permission;
+  
+  if (permission === 'denied') {
+    indicator.textContent = 'Blocked';
+    indicator.className = 'text-xs font-medium text-red-400';
+    banner.classList.remove('hidden');
+    banner.className = 'p-3 rounded-xl border border-red-500/40 bg-red-900/20';
+    bannerIcon.textContent = '🚫';
+    bannerMsg.textContent = 'Notifications are blocked. Please enable them in your browser settings.';
+    bannerMsg.className = 'text-sm text-red-200';
+    return;
+  }
+  
+  // Check if already subscribed
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    pushSubscription = await reg.pushManager.getSubscription();
+    
+    if (pushSubscription) {
+      isPushEnabled = true;
+      indicator.textContent = 'Enabled';
+      indicator.className = 'text-xs font-medium text-emerald-400';
+      toggle.className = 'relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-indigo-600';
+      toggleDot.className = 'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform translate-x-6';
+      banner.classList.add('hidden');
+    } else {
+      isPushEnabled = false;
+      indicator.textContent = 'Disabled';
+      indicator.className = 'text-xs font-medium text-zinc-500';
+      toggle.className = 'relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-zinc-700';
+      toggleDot.className = 'inline-block h-5 w-5 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-1';
+    }
+  } catch (e) {
+    console.error('[PUSH] Error checking status:', e);
+    indicator.textContent = 'Error';
+    indicator.className = 'text-xs font-medium text-amber-400';
+  }
+}
+
+async function togglePushNotifications() {
+  if (isPushEnabled) {
+    // Unsubscribe
+    try {
+      if (pushSubscription) {
+        await pushSubscription.unsubscribe();
+        await fetch('/api/push/unsubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: userToken, endpoint: pushSubscription.endpoint })
+        });
+      }
+      isPushEnabled = false;
+      pushSubscription = null;
+      await checkPushStatus();
+    } catch (e) {
+      console.error('[PUSH] Unsubscribe failed:', e);
+    }
+  } else {
+    // Subscribe
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        await checkPushStatus();
+        return;
+      }
+      
+      const reg = await navigator.serviceWorker.ready;
+      const vapidKey = await fetch('/api/push/vapid-key').then(r => r.json()).then(d => d.publicKey);
+      
+      pushSubscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey)
+      });
+      
+      await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: userToken, subscription: pushSubscription.toJSON() })
+      });
+      
+      isPushEnabled = true;
+      await checkPushStatus();
+    } catch (e) {
+      console.error('[PUSH] Subscribe failed:', e);
+    }
+  }
+}
+
+async function testPushNotification() {
+  const btn = document.getElementById('test-push-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="animate-pulse">Sending...</span>';
+  
+  try {
+    await fetch('/api/push/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: userToken })
+    });
+    btn.innerHTML = '<span>✓</span> Sent!';
+  } catch (e) {
+    btn.innerHTML = '<span>✕</span> Failed';
+  }
+  
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.innerHTML = '<span>🧪</span> Send Test Notification';
+  }, 2000);
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+// ========== Password Functions ==========
 function checkPasswordStrength(inputId, prefix) {
   const input = document.getElementById(inputId);
   const password = input.value;
@@ -368,23 +738,25 @@ function checkPasswordStrength(inputId, prefix) {
   
   for (let i = 1; i <= 4; i++) {
     const bar = document.getElementById(prefix + '-' + i);
-    bar.className = 'h-1 flex-1 rounded ' + (i <= strength ? colors[strength - 1] : 'bg-zinc-700');
+    if (bar) bar.className = 'h-1 flex-1 rounded ' + (i <= strength ? colors[strength - 1] : 'bg-zinc-700');
   }
   
   const textEl = document.getElementById(prefix + '-text');
-  textEl.textContent = strength > 0 ? texts[strength - 1] : 'Min. 8 characters';
-  textEl.className = 'text-xs mt-1 ' + (strength > 0 ? textColors[strength - 1] : 'text-zinc-500');
+  if (textEl) {
+    textEl.textContent = strength > 0 ? texts[strength - 1] : 'Min. 8 characters';
+    textEl.className = 'text-xs mt-1 ' + (strength > 0 ? textColors[strength - 1] : 'text-zinc-500');
+  }
   
   checkPasswordMatch();
 }
 
 function checkPasswordMatch() {
-  const pwd1 = document.getElementById('new-password').value;
-  const pwd2 = document.getElementById('confirm-password').value;
+  const pwd1 = document.getElementById('new-password')?.value || '';
+  const pwd2 = document.getElementById('confirm-password')?.value || '';
   const errorEl = document.getElementById('pwd-match-error');
   const submitBtn = document.getElementById('pwd-submit-btn');
   
-  if (pwd2.length > 0) {
+  if (pwd2.length > 0 && errorEl && submitBtn) {
     const match = pwd1 === pwd2;
     errorEl.classList.toggle('hidden', match);
     submitBtn.disabled = !match || pwd1.length < 8;
@@ -415,7 +787,6 @@ function confirmDeleteAccount() {
     if (confirm('This is your final warning. Type "DELETE" in the next prompt to confirm.')) {
       const confirmation = prompt('Type DELETE to confirm account deletion:');
       if (confirmation === 'DELETE') {
-        // Submit delete request
         fetch('/user/delete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

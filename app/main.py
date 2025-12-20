@@ -2968,7 +2968,7 @@ def get_user_notification_prefs(email: str) -> dict:
     """
     conn = db()
     row = conn.execute(
-        "SELECT progress_push, progress_email, progress_milestones, status_push, status_email, broadcast_push FROM user_notification_prefs WHERE email = ?",
+        "SELECT progress_push, progress_email, progress_milestones, status_push, status_email, broadcast_push FROM user_notification_prefs WHERE LOWER(email) = LOWER(?)",
         (email,)
     ).fetchone()
     conn.close()
@@ -3010,7 +3010,7 @@ def update_user_notification_prefs(email: str, prefs: dict) -> bool:
                 broadcast_push = excluded.broadcast_push,
                 updated_at = excluded.updated_at
         """, (
-            email,
+            email.lower(),
             1 if prefs.get("progress_push", True) else 0,
             1 if prefs.get("progress_email", False) else 0,
             prefs.get("progress_milestones", "50,75"),
@@ -4555,7 +4555,7 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
         
     conn = db()
     subs = conn.execute(
-        "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE email = ?",
+        "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE LOWER(email) = LOWER(?)",
         (email,)
     ).fetchall()
     conn.close()
@@ -8880,21 +8880,23 @@ def admin_set_status(
         send_email([req["requester_email"]], subject, text, html)
 
     # Send push notification for important status changes (if user wants push notifications)
-    push_statuses = ["NEEDS_INFO", "APPROVED", "PRINTING", "DONE", "CANCELLED"]
+    # NOTE: PRINTING is excluded because poll_printer_status_worker sends a better notification
+    # with layer count and ETA once the printer reports those
+    push_statuses = ["NEEDS_INFO", "APPROVED", "DONE", "CANCELLED", "REJECTED"]
     if to_status in push_statuses and user_wants_push:
         push_titles = {
             "NEEDS_INFO": "📝 Action Needed",
             "APPROVED": "✅ Request Approved",
-            "PRINTING": "🖨️ Now Printing",
             "DONE": "🎉 Print Complete!",
             "CANCELLED": "❌ Request Cancelled",
+            "REJECTED": "❌ Request Rejected",
         }
         push_bodies = {
             "NEEDS_INFO": f"We need more info about '{req['print_name'] or 'your request'}'",
             "APPROVED": f"'{req['print_name'] or 'Your request'}' is approved and in queue",
-            "PRINTING": f"'{req['print_name'] or 'Your request'}' has started printing",
             "DONE": f"'{req['print_name'] or 'Your request'}' is ready for pickup!",
             "CANCELLED": f"'{req['print_name'] or 'Your request'}' has been cancelled.",
+            "REJECTED": f"'{req['print_name'] or 'Your request'}' was rejected.",
         }
         try:
             send_push_notification(
@@ -9058,6 +9060,23 @@ def admin_send_message(
             header_color="#6366f1",
         )
         send_email([req["requester_email"]], subject, text, html)
+    
+    # Send push notification to requester
+    if req["requester_email"]:
+        user_prefs = get_user_notification_prefs(req["requester_email"])
+        if user_prefs.get("status_push", True):  # Use status_push for messages too
+            print_label = req["print_name"] or f"Request {rid[:8]}"
+            truncated_msg = message[:80] + "..." if len(message) > 80 else message
+            try:
+                send_push_notification(
+                    email=req["requester_email"],
+                    title="💬 New Message",
+                    body=f"About '{print_label}': {truncated_msg}",
+                    url=f"/my/{rid}?token={req['access_token']}",
+                    tag=f"message-{rid[:8]}"
+                )
+            except Exception as e:
+                print(f"[PUSH] Error sending message notification: {e}")
     
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
@@ -10310,6 +10329,12 @@ async def test_push_notification(request: Request):
         if not email and token:
             email = _get_email_from_token(token)
         
+        # Fallback to session-based auth
+        if not email:
+            user = await get_current_user(request)
+            if user:
+                email = user.email
+        
         if not email:
             return JSONResponse(
                 status_code=400,
@@ -10345,6 +10370,7 @@ async def subscribe_push(request: Request):
     Accepts either:
     - JSON with {email, subscription}
     - FormData with {token, subscription} (token resolved to email)
+    - Session-based auth via user_session cookie
     """
     try:
         data = await _parse_request_data(request)
@@ -10356,6 +10382,12 @@ async def subscribe_push(request: Request):
         
         if not email and token:
             email = _get_email_from_token(token)
+        
+        # Fallback to session-based auth
+        if not email:
+            user = await get_current_user(request)
+            if user:
+                email = user.email
         
         subscription = data.get("subscription", {})
         
@@ -10394,10 +10426,10 @@ async def subscribe_push(request: Request):
         
         if existing:
             # Update email if endpoint exists but email changed
-            if existing["email"] != email:
+            if existing["email"].lower() != email.lower():
                 conn.execute(
                     "UPDATE push_subscriptions SET email = ? WHERE endpoint = ?",
-                    (email, endpoint)
+                    (email.lower(), endpoint)
                 )
                 conn.commit()
                 print(f"[PUSH] Updated subscription email: {endpoint}")
@@ -10407,7 +10439,7 @@ async def subscribe_push(request: Request):
         conn.execute(
             """INSERT INTO push_subscriptions (id, email, endpoint, p256dh, auth, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (str(uuid.uuid4()), email, endpoint, p256dh, auth, now_iso())
+            (str(uuid.uuid4()), email.lower(), endpoint, p256dh, auth, now_iso())
         )
         conn.commit()
         conn.close()
@@ -10569,6 +10601,7 @@ async def unsubscribe_push(request: Request):
     Accepts either:
     - JSON with {email, endpoint?}
     - FormData with {token, endpoint?}
+    - Session-based auth via user_session cookie
     """
     try:
         data = await _parse_request_data(request)
@@ -10579,6 +10612,12 @@ async def unsubscribe_push(request: Request):
         
         if not email and token:
             email = _get_email_from_token(token)
+        
+        # Fallback to session-based auth
+        if not email:
+            user = await get_current_user(request)
+            if user:
+                email = user.email
         
         if not email:
             return JSONResponse(
@@ -10653,11 +10692,17 @@ async def clear_all_push_subscriptions(request: Request):
 async def api_get_user_notification_prefs(request: Request, email: str = None, token: str = None):
     """
     Get user-level notification preferences.
-    Requires either email or my-requests token for auth.
+    Requires either email, my-requests token, or user session for auth.
     """
     # Try to get email from token if not provided directly
     if not email and token:
         email = _get_email_from_token(token)
+    
+    # Fallback to session-based auth
+    if not email:
+        user = await get_current_user(request)
+        if user:
+            email = user.email
     
     if not email:
         return JSONResponse(
@@ -10688,6 +10733,7 @@ async def api_update_user_notification_prefs(request: Request):
             "broadcast_push": true
         }
     }
+    Also supports session-based auth via user_session cookie.
     """
     try:
         data = await _parse_request_data(request)
@@ -10698,6 +10744,12 @@ async def api_update_user_notification_prefs(request: Request):
         
         if not email and token:
             email = _get_email_from_token(token)
+        
+        # Fallback to session-based auth
+        if not email:
+            user = await get_current_user(request)
+            if user:
+                email = user.email
         
         if not email:
             return JSONResponse(
