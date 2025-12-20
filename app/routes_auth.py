@@ -868,9 +868,10 @@ async def api_current_user(request: Request):
     if not user:
         return JSONResponse({"user": None})
     
-    # Include token for My Prints access
-    import hashlib
-    token = hashlib.sha256(user.email.lower().encode()).hexdigest()[:16]
+    # Get or create the My Requests token for this user
+    # This must match what's stored in email_lookup_tokens table
+    from app.main import get_or_create_my_requests_token
+    token = get_or_create_my_requests_token(user.email)
     
     user_dict = user.to_dict()
     user_dict['token'] = token
