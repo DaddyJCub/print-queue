@@ -180,16 +180,50 @@ async def user_magic_link(
     token = create_magic_link(email)
     
     # Always show success (don't reveal if email exists)
-    # In production, you'd send an email here
     if token:
-        # TODO: Send email with magic link
-        # link = f"{BASE_URL}/auth/verify?token={token}"
-        pass
+        from app.main import send_email
+        magic_url = f"https://print.jcubhub.com/auth/magic/{token}"
+        
+        html_body = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #6366f1;">Sign In to Printellect</h2>
+            <p>Hi there,</p>
+            <p>Click the button below to sign in to your Printellect account:</p>
+            <a href="{magic_url}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin: 16px 0;">
+                Sign In
+            </a>
+            <p style="color: #666; font-size: 14px;">This link expires in 15 minutes.</p>
+            <p style="color: #666; font-size: 14px;">If you didn't request this link, you can safely ignore this email.</p>
+        </div>
+        """
+        
+        text_body = f"""Sign In to Printellect
+
+Click this link to sign in to your account:
+{magic_url}
+
+This link expires in 15 minutes.
+
+If you didn't request this link, you can safely ignore this email.
+"""
+        
+        send_email(
+            [email],
+            "Sign In - Printellect",
+            text_body,
+            html_body
+        )
     
     return RedirectResponse(
         url=f"/auth/login?success=Check your email for a login link&next={quote(next or '')}",
         status_code=303
     )
+
+
+@router.get("/auth/magic/{token}")
+async def user_magic_link_verify(request: Request, token: str):
+    """Verify magic link and log user in (clean URL format)."""
+    return await user_verify_magic_link(request, token)
 
 
 @router.get("/auth/verify")
@@ -1081,7 +1115,7 @@ async def admin_reset_user_password(
         # Send magic link email
         token = create_magic_link(user.email)
         if token:
-            from app.main import send_email_wrapper
+            from app.main import send_email
             magic_url = f"https://print.jcubhub.com/auth/magic/{token}"
             
             html_body = f"""
@@ -1098,10 +1132,25 @@ async def admin_reset_user_password(
             </div>
             """
             
-            send_email_wrapper(
-                to_email=user.email,
-                subject="Password Reset - Printellect",
-                html_body=html_body
+            text_body = f"""Password Reset Request
+
+Hi {user.name or 'there'},
+
+An admin has initiated a password reset for your Printellect account.
+
+Click this link to sign in and set a new password:
+{magic_url}
+
+This link expires in 15 minutes.
+
+Once signed in, go to My Account → Security to set a new password.
+"""
+            
+            send_email(
+                [user.email],
+                "Password Reset - Printellect",
+                text_body,
+                html_body
             )
             
             log_audit(
