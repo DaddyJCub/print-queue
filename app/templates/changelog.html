@@ -71,28 +71,117 @@
           <a href="#v0.10.0" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.10.0</a>
           <span class="text-zinc-400 text-sm">2025-12-19</span>
           <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50">Latest</span>
-          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Major Feature</span>
         </div>
-        <h3 class="text-lg font-semibold mb-3">User Auth APIs & Session Stability</h3>
+        <h3 class="text-lg font-semibold mb-3">User Accounts System & Multi-Admin Support</h3>
+        <p class="text-sm text-zinc-400 mb-4">Major release introducing a complete user account system with authentication, profile management, and multi-admin capabilities.</p>
         
         <div class="mb-4">
-          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">✨ Enhancements</h4>
+          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">👤 User Accounts</h4>
           <ul class="space-y-2 text-sm text-zinc-300">
             <li class="flex items-start gap-2">
               <span class="text-emerald-400">✓</span>
-              <span><strong>JSON login API</strong> - New <code class="text-xs bg-zinc-800 px-1 rounded">/api/user/login</code> endpoint for programmatic authentication</span>
+              <span><strong>User registration & login</strong> - Create accounts with email/password or magic links</span>
             </li>
             <li class="flex items-start gap-2">
               <span class="text-emerald-400">✓</span>
-              <span><strong>JSON registration API</strong> - New <code class="text-xs bg-zinc-800 px-1 rounded">/api/user/register</code> endpoint for account creation</span>
+              <span><strong>User profile page</strong> - Manage name, phone, print preferences, and notification settings</span>
             </li>
             <li class="flex items-start gap-2">
               <span class="text-emerald-400">✓</span>
-              <span><strong>Session-based API auth</strong> - Notification and push APIs now work with session cookies (no token required)</span>
+              <span><strong>Password management</strong> - Set/change password with strength indicator</span>
             </li>
             <li class="flex items-start gap-2">
               <span class="text-emerald-400">✓</span>
-              <span><strong>iOS PWA install hint</strong> - User profile page now shows iOS install instructions when on Safari</span>
+              <span><strong>Session management</strong> - 30-day persistent sessions with secure cookies</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>Token-to-account migration</strong> - Existing email token users can upgrade to full accounts</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>Print preferences</strong> - Save preferred printer, material, colors, and default notes</span>
+            </li>
+          </ul>
+        </div>
+        
+        <div class="mb-4">
+          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">🔐 Multi-Admin System</h4>
+          <ul class="space-y-2 text-sm text-zinc-300">
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>Multiple admin accounts</strong> - Create and manage multiple administrators</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>Admin roles</strong> - Super Admin and Admin roles with different permissions</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>Admin management page</strong> - Create, edit, deactivate admin accounts</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>Audit logging</strong> - Track admin actions with timestamps and details</span>
+            </li>
+          </ul>
+        </div>
+        
+        <div class="mb-4">
+          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">🎛️ Feature Flags</h4>
+          <ul class="space-y-2 text-sm text-zinc-300">
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>Feature flag system</strong> - Toggle features on/off without code changes</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>Admin feature page</strong> - Visual interface to manage feature flags</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>Rollout percentages</strong> - Gradually roll out features to users</span>
+            </li>
+          </ul>
+        </div>
+        
+        <div class="mb-4">
+          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">👥 User Management (Admin)</h4>
+          <ul class="space-y-2 text-sm text-zinc-300">
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>User management page</strong> - View, search, and manage all users</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>User status control</strong> - Activate, suspend, or verify users</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>Convert user to admin</strong> - Promote users to admin accounts</span>
+            </li>
+          </ul>
+        </div>
+        
+        <div class="mb-4">
+          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">🔌 API Enhancements</h4>
+          <ul class="space-y-2 text-sm text-zinc-300">
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>JSON login API</strong> - <code class="text-xs bg-zinc-800 px-1 rounded">/api/user/login</code> for programmatic auth</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>JSON registration API</strong> - <code class="text-xs bg-zinc-800 px-1 rounded">/api/user/register</code> for account creation</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>Session-based API auth</strong> - APIs work with session cookies (no token required)</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>Notification preferences API</strong> - Get/set user notification preferences</span>
             </li>
           </ul>
         </div>
@@ -102,11 +191,15 @@
           <ul class="space-y-2 text-sm text-zinc-300">
             <li class="flex items-start gap-2">
               <span class="text-amber-400">✓</span>
-              <span><strong>Session stability fix</strong> - Fixed datetime format mismatch causing premature session expiry</span>
+              <span><strong>Session stability</strong> - Fixed datetime format mismatch causing premature session expiry</span>
             </li>
             <li class="flex items-start gap-2">
               <span class="text-amber-400">✓</span>
-              <span><strong>Redirect URL fix</strong> - Profile page redirects no longer include <code class="text-xs bg-zinc-800 px-1 rounded">token=None</code></span>
+              <span><strong>Redirect URLs</strong> - Profile redirects no longer include <code class="text-xs bg-zinc-800 px-1 rounded">token=None</code></span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-amber-400">✓</span>
+              <span><strong>Email case sensitivity</strong> - Fixed push notification lookups to be case-insensitive</span>
             </li>
           </ul>
         </div>
@@ -116,8 +209,19 @@
           <ul class="space-y-2 text-sm text-zinc-300">
             <li class="flex items-start gap-2">
               <span class="text-blue-400">ℹ</span>
+              <span>User accounts feature is controlled by the <code class="text-xs bg-zinc-800 px-1 rounded">user_accounts</code> feature flag (disabled by default)</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-blue-400">ℹ</span>
+              <span>See <code class="text-xs bg-zinc-800 px-1 rounded">PRODUCTION_USER_ACCOUNTS.md</code> for deployment guide</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-blue-400">ℹ</span>
               <span>Versioning policy documented in <code class="text-xs bg-zinc-800 px-1 rounded">VERSIONING.md</code></span>
             </li>
+          </ul>
+        </div>
+      </div>
           </ul>
         </div>
       </div>

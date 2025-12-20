@@ -41,7 +41,7 @@ APP_VERSION = "0.10.0"
 #   - 0.x.PATCH = Bug fixes only
 #
 # Changelog:
-# 0.10.0 - [FEATURE] User auth APIs, session stability fixes, notification settings improvements
+# 0.10.0 - [MAJOR] User accounts system: registration/login, profiles, multi-admin, feature flags, user management
 # 0.9.0 - [FEATURE] Admin PWA navigation: Admin tab in bottom nav, unified navigation on admin pages, My Prints pagination
 # --- Version scheme changed from 1.x.x to 0.x.x (Dec 2025) - all prior versions below are historical ---
 # 1.8.23 - Admin dashboard pagination: "show more" for long lists, collapsible Recently Closed section
