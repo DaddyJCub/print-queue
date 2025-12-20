@@ -160,31 +160,149 @@
   </script>
 </head>
 <body class="bg-zinc-950 text-zinc-100">
-  <div class="max-w-2xl mx-auto p-6">
-    
-    <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <h1 class="text-2xl font-bold">{{ req.print_name or 'My Request' }}</h1>
-        <p class="text-zinc-400 text-sm">Request #{{ req.id[:8] }}</p>
-      </div>
-      <div class="flex gap-2 text-sm">
-        <a id="my-requests-link" href="/my-requests" class="text-zinc-400 hover:text-zinc-200">← My Requests</a>
-        <span class="text-zinc-600">|</span>
-        <a href="/queue" class="text-indigo-400 hover:underline">View Queue</a>
+  <!-- Top Header Bar (consistent with pwa_base) -->
+  <header class="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-lg border-b border-zinc-800/50">
+    <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+      <!-- Left: Logo -->
+      <a href="/" class="flex items-center gap-2">
+        <img src="/static/icons/logo.png" alt="Printellect" class="h-8 w-8 rounded-lg">
+        <span class="font-bold text-lg hidden sm:block">Printellect</span>
+      </a>
+      
+      <!-- Right: Nav + Account -->
+      <div class="flex items-center gap-2">
+        <nav class="hidden sm:flex items-center gap-1">
+          <a href="/" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">Submit</a>
+          <a href="/queue" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">Queue</a>
+          <a href="/store" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">Store</a>
+          <a href="/my-requests" id="desktop-my-requests-link" class="px-3 py-2 rounded-lg text-sm font-medium text-white bg-zinc-800 transition flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+            My Prints
+          </a>
+          <a href="/admin" id="desktop-admin-link" class="hidden px-3 py-2 rounded-lg text-sm font-medium text-amber-400 hover:text-amber-300 hover:bg-amber-900/20 transition flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+            Admin
+          </a>
+        </nav>
+        
+        <!-- User Account Menu -->
+        <div id="global-account-menu-container" class="hidden relative flex items-center">
+          <div class="w-px h-5 bg-zinc-700 mx-1 hidden sm:block"></div>
+          <button id="global-account-btn" onclick="toggleGlobalAccountMenu()" class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 rounded-lg transition">
+            <div id="global-account-avatar" class="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">?</div>
+            <svg class="w-4 h-4 text-zinc-400 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          
+          <div id="global-account-dropdown" class="hidden absolute top-full right-0 mt-2 w-72 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
+            <div class="p-4 border-b border-zinc-800 bg-zinc-950/50">
+              <div class="flex items-center gap-3">
+                <div id="global-account-avatar-lg" class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold">?</div>
+                <div class="flex-1 min-w-0">
+                  <p id="global-account-email" class="text-sm font-medium text-white truncate">Loading...</p>
+                  <p class="text-xs text-zinc-500">Printellect Account</p>
+                </div>
+              </div>
+            </div>
+            <div class="p-2">
+              <a id="global-profile-link" href="/user/profile" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+                <span class="text-lg">👤</span>
+                <div><p class="text-sm font-medium">My Account</p><p class="text-xs text-zinc-500">Profile & preferences</p></div>
+              </a>
+              <a id="global-my-prints-link" href="/my-requests" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+                <span class="text-lg">🖨️</span>
+                <div><p class="text-sm font-medium">My Prints</p><p class="text-xs text-zinc-500">Track your requests</p></div>
+              </a>
+            </div>
+            <div id="global-admin-section" class="hidden p-2 border-t border-zinc-800">
+              <a href="/admin" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-amber-900/30 text-amber-400 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                <div><p class="text-sm font-medium">Admin Dashboard</p></div>
+              </a>
+            </div>
+            <div class="p-2 border-t border-zinc-800">
+              <button onclick="signOutUser()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-900/30 text-red-400 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                </svg>
+                <span class="text-sm font-medium">Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
+  </header>
+  
+  <script>
+    // Global account menu functions
+    function toggleGlobalAccountMenu() {
+      document.getElementById('global-account-dropdown')?.classList.toggle('hidden');
+    }
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('global-account-dropdown');
+      const btn = document.getElementById('global-account-btn');
+      if (menu && btn && !btn.contains(e.target) && !menu.contains(e.target)) menu.classList.add('hidden');
+    });
+    function signOutUser() {
+      localStorage.removeItem('my_requests_token');
+      localStorage.removeItem('user_session');
+      window.location.href = '/auth/logout';
+    }
     
-    <script>
-      // Check for saved token to link back to my requests (use localStorage for persistence)
+    // Check user session and admin status
+    async function initGlobalNav() {
       const savedToken = localStorage.getItem('my_requests_token');
       if (savedToken) {
-        const link = document.getElementById('my-requests-link');
-        if (link) {
-          link.href = '/my-requests/view?token=' + savedToken;
-        }
+        document.getElementById('desktop-my-requests-link').href = '/my-requests/view?token=' + savedToken;
       }
-    </script>
+      
+      try {
+        const resp = await fetch('/api/user/me', { credentials: 'include' });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.user && data.user.email) {
+            const container = document.getElementById('global-account-menu-container');
+            if (container) { container.classList.remove('hidden'); }
+            const displayName = data.user.display_name || data.user.email;
+            const initial = displayName[0].toUpperCase();
+            document.getElementById('global-account-avatar').textContent = initial;
+            document.getElementById('global-account-avatar-lg').textContent = initial;
+            document.getElementById('global-account-email').textContent = data.user.email;
+            const token = savedToken || data.user.token;
+            if (token) {
+              document.getElementById('global-profile-link').href = '/user/profile?token=' + token;
+              document.getElementById('global-my-prints-link').href = '/my-requests/view?token=' + token;
+            }
+          }
+        }
+      } catch (e) {}
+      
+      try {
+        const resp = await fetch('/api/admin/check', { credentials: 'include' });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.is_admin) {
+            document.getElementById('desktop-admin-link')?.classList.remove('hidden');
+            document.getElementById('global-admin-section')?.classList.remove('hidden');
+          }
+        }
+      } catch (e) {}
+    }
+    initGlobalNav();
+  </script>
+
+  <div class="max-w-2xl mx-auto p-6">
+    
+    <!-- Page Title -->
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold">{{ req.print_name or 'My Request' }}</h1>
+      <p class="text-zinc-400 text-sm">Request #{{ req.id[:8] }}</p>
+    </div>
     
     <!-- Open in App Banner (shown when viewing in browser but PWA may be installed) -->
     <div id="open-in-app-banner" class="hidden bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-4 mb-6 shadow-lg">

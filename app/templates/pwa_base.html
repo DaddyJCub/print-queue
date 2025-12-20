@@ -202,7 +202,90 @@
             <span id="user-indicator" class="hidden w-2 h-2 rounded-full bg-indigo-500"></span>
             My Prints
           </a>
+          <!-- Admin link - shown via JS if user is admin -->
+          <a href="/admin" id="desktop-admin-link" class="hidden px-3 py-2 rounded-lg text-sm font-medium text-amber-400 hover:text-amber-300 hover:bg-amber-900/20 transition flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+            Admin
+          </a>
         </nav>
+        
+        <!-- User Account Menu (shown when logged in) -->
+        <div id="global-account-menu-container" class="hidden relative">
+          <div class="w-px h-5 bg-zinc-700 mx-1 hidden sm:block"></div>
+          <button id="global-account-btn" onclick="toggleGlobalAccountMenu()" class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 rounded-lg transition tap-highlight">
+            <div id="global-account-avatar" class="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">
+              ?
+            </div>
+            <svg class="w-4 h-4 text-zinc-400 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          
+          <!-- Account Dropdown -->
+          <div id="global-account-dropdown" class="hidden absolute top-full right-0 mt-2 w-72 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
+            <!-- Account Header -->
+            <div class="p-4 border-b border-zinc-800 bg-zinc-950/50">
+              <div class="flex items-center gap-3">
+                <div id="global-account-avatar-lg" class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold">
+                  ?
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p id="global-account-email" class="text-sm font-medium text-white truncate">Loading...</p>
+                  <p class="text-xs text-zinc-500">Printellect Account</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Menu Items -->
+            <div class="p-2">
+              <a id="global-profile-link" href="/user/profile" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+                <span class="text-lg">👤</span>
+                <div>
+                  <p class="text-sm font-medium">My Account</p>
+                  <p class="text-xs text-zinc-500">Profile & preferences</p>
+                </div>
+              </a>
+              <a id="global-my-prints-link" href="/my-requests" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+                <span class="text-lg">🖨️</span>
+                <div>
+                  <p class="text-sm font-medium">My Prints</p>
+                  <p class="text-xs text-zinc-500">Track your requests</p>
+                </div>
+              </a>
+              <a href="/feedback?type=suggestion" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+                <span class="text-lg">💡</span>
+                <div>
+                  <p class="text-sm font-medium">Send Feedback</p>
+                  <p class="text-xs text-zinc-500">Suggestions & bug reports</p>
+                </div>
+              </a>
+            </div>
+            
+            <!-- Admin Section (shown if admin) -->
+            <div id="global-admin-section" class="hidden p-2 border-t border-zinc-800">
+              <a href="/admin" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-amber-900/30 text-amber-400 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                <div>
+                  <p class="text-sm font-medium">Admin Dashboard</p>
+                  <p class="text-xs text-amber-500/70">Manage print queue</p>
+                </div>
+              </a>
+            </div>
+            
+            <!-- Sign Out -->
+            <div class="p-2 border-t border-zinc-800">
+              <button onclick="signOutUser()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-900/30 text-red-400 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                </svg>
+                <span class="text-sm font-medium">Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
         {% endblock %}
       </div>
     </div>
@@ -271,7 +354,7 @@
         if (resp.ok) {
           const data = await resp.json();
           if (data.is_admin) {
-            // Show admin tab
+            // Show admin tab (mobile bottom nav)
             const adminNav = document.getElementById('admin-nav');
             if (adminNav) {
               adminNav.classList.remove('hidden');
@@ -279,15 +362,15 @@
               const grid = document.getElementById('bottom-nav-grid');
               if (grid) grid.classList.replace('grid-cols-4', 'grid-cols-5');
             }
-            // Also add admin link to desktop nav if not present
-            const desktopNav = document.querySelector('header nav');
-            if (desktopNav && !document.getElementById('desktop-admin-link')) {
-              const adminLink = document.createElement('a');
-              adminLink.id = 'desktop-admin-link';
-              adminLink.href = '/admin';
-              adminLink.className = 'px-3 py-2 rounded-lg text-sm font-medium text-amber-400 hover:text-amber-300 hover:bg-zinc-800 transition flex items-center gap-1';
-              adminLink.innerHTML = '⚙️ Admin';
-              desktopNav.appendChild(adminLink);
+            // Show admin link in desktop nav
+            const desktopAdminLink = document.getElementById('desktop-admin-link');
+            if (desktopAdminLink) {
+              desktopAdminLink.classList.remove('hidden');
+            }
+            // Show admin section in global account dropdown
+            const globalAdminSection = document.getElementById('global-admin-section');
+            if (globalAdminSection) {
+              globalAdminSection.classList.remove('hidden');
             }
           }
         }
@@ -296,6 +379,74 @@
       }
     }
     checkAdminStatus();
+    
+    // Check for user session and show account menu
+    async function checkUserSession() {
+      try {
+        const resp = await fetch('/api/user/me', { credentials: 'include' });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.user && data.user.email) {
+            // User is logged in - show account menu
+            const container = document.getElementById('global-account-menu-container');
+            if (container) {
+              container.classList.remove('hidden');
+              container.classList.add('flex');
+            }
+            
+            // Update avatar and email
+            const displayName = data.user.display_name || data.user.email;
+            const initial = displayName[0].toUpperCase();
+            const avatar = document.getElementById('global-account-avatar');
+            const avatarLg = document.getElementById('global-account-avatar-lg');
+            const emailEl = document.getElementById('global-account-email');
+            
+            if (avatar) avatar.textContent = initial;
+            if (avatarLg) avatarLg.textContent = initial;
+            if (emailEl) emailEl.textContent = data.user.email;
+            
+            // Update profile link with token if available
+            const token = localStorage.getItem('my_requests_token') || data.user.token;
+            if (token) {
+              const profileLink = document.getElementById('global-profile-link');
+              const myPrintsLink = document.getElementById('global-my-prints-link');
+              if (profileLink) profileLink.href = '/user/profile?token=' + token;
+              if (myPrintsLink) myPrintsLink.href = '/my-requests/view?token=' + token;
+            }
+          }
+        }
+      } catch (e) {
+        // User not logged in - keep menu hidden
+      }
+    }
+    checkUserSession();
+    
+    // Global account menu toggle
+    function toggleGlobalAccountMenu() {
+      const menu = document.getElementById('global-account-dropdown');
+      if (menu) menu.classList.toggle('hidden');
+    }
+    window.toggleGlobalAccountMenu = toggleGlobalAccountMenu;
+    
+    // Close menu when clicking outside
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('global-account-dropdown');
+      const btn = document.getElementById('global-account-btn');
+      if (menu && btn && !btn.contains(e.target) && !menu.contains(e.target)) {
+        menu.classList.add('hidden');
+      }
+    });
+    
+    // Sign out function
+    function signOutUser() {
+      // Clear local storage
+      localStorage.removeItem('my_requests_token');
+      localStorage.removeItem('user_session');
+      localStorage.removeItem('user_email');
+      // Redirect to logout endpoint
+      window.location.href = '/auth/logout';
+    }
+    window.signOutUser = signOutUser;
     
     // Update My Requests nav link if user has token
     const savedToken = localStorage.getItem('my_requests_token');

@@ -5,11 +5,13 @@
   <div class="max-w-7xl mx-auto px-4 sm:px-6">
     <div class="flex items-center justify-between h-14">
       <!-- Logo/Brand -->
-      <a href="/admin" class="flex items-center gap-2 text-white">
-        <img src="/static/icons/logo.png" alt="Printellect" class="h-8 w-8 rounded-lg">
-        <span class="font-bold text-lg hidden sm:block">Printellect</span>
-        <span class="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-medium">Admin</span>
-      </a>
+      <div class="flex items-center gap-2">
+        <a href="/" class="flex items-center gap-2 text-white hover:opacity-80 transition" title="Back to site">
+          <img src="/static/icons/logo.png" alt="Printellect" class="h-8 w-8 rounded-lg">
+          <span class="font-bold text-lg hidden sm:block">Printellect</span>
+        </a>
+        <a href="/admin" class="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-medium hover:bg-amber-500/30 transition">Admin</a>
+      </div>
       
       <!-- Desktop Navigation - Flat, simple links -->
       <div class="hidden md:flex items-center gap-1">
@@ -46,19 +48,69 @@
         <!-- Divider -->
         <div class="w-px h-6 bg-zinc-700 mx-2"></div>
         
-        <!-- View Site -->
-        <a href="/queue" class="admin-nav-link text-zinc-500" title="View public site" target="_blank">
+        <!-- View Site (more prominent) -->
+        <a href="/" class="admin-nav-link text-zinc-400 hover:text-indigo-300" title="Exit to main site">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"/>
           </svg>
+          <span class="hidden lg:inline">Exit Admin</span>
         </a>
         
-        <!-- Logout -->
-        <a href="/admin/logout" class="admin-nav-link text-red-400 hover:text-red-300 hover:bg-red-900/30" title="Logout">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-          </svg>
-        </a>
+        <!-- User Account Menu -->
+        <div class="relative" id="admin-account-container">
+          <button id="admin-account-btn" onclick="toggleAdminAccountMenu()" class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 rounded-lg transition">
+            <div id="admin-account-avatar" class="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">
+              ?
+            </div>
+            <svg class="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          
+          <!-- Account Dropdown -->
+          <div id="admin-account-dropdown" class="hidden absolute top-full right-0 mt-2 w-72 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
+            <!-- Account Header -->
+            <div class="p-4 border-b border-zinc-800 bg-zinc-950/50">
+              <div class="flex items-center gap-3">
+                <div id="admin-account-avatar-lg" class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold">
+                  ?
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p id="admin-account-email" class="text-sm font-medium text-white truncate">Loading...</p>
+                  <p class="text-xs text-zinc-500">Printellect Admin</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Menu Items -->
+            <div class="p-2">
+              <a id="admin-profile-link" href="/user/profile" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+                <span class="text-lg">👤</span>
+                <div>
+                  <p class="text-sm font-medium">My Account</p>
+                  <p class="text-xs text-zinc-500">Profile & preferences</p>
+                </div>
+              </a>
+              <a id="admin-my-prints-link" href="/my-requests" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+                <span class="text-lg">🖨️</span>
+                <div>
+                  <p class="text-sm font-medium">My Prints</p>
+                  <p class="text-xs text-zinc-500">Track your requests</p>
+                </div>
+              </a>
+            </div>
+            
+            <!-- Sign Out -->
+            <div class="p-2 border-t border-zinc-800">
+              <a href="/admin/logout" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-900/30 text-red-400 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                </svg>
+                <span class="text-sm font-medium">Sign Out</span>
+              </a>
+            </div>
+          </div>
+        </div>
       </div>
       
       <!-- Mobile Menu Button -->
@@ -128,8 +180,8 @@
       
       <div class="border-t border-zinc-800 my-2"></div>
       
-      <a href="/queue" target="_blank" class="mobile-nav-link text-zinc-500">
-        View Public Site →
+      <a href="/" class="mobile-nav-link text-indigo-400">
+        ← Exit Admin
       </a>
       <a href="/admin/logout" class="mobile-nav-link text-red-400">
         Logout
@@ -235,6 +287,55 @@
 function toggleMobileMenu() {
   document.getElementById('mobile-menu').classList.toggle('hidden');
 }
+
+// Admin account menu toggle
+function toggleAdminAccountMenu() {
+  const menu = document.getElementById('admin-account-dropdown');
+  if (menu) menu.classList.toggle('hidden');
+}
+
+// Close menu when clicking outside
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('admin-account-dropdown');
+  const btn = document.getElementById('admin-account-btn');
+  if (menu && btn && !btn.contains(e.target) && !menu.contains(e.target)) {
+    menu.classList.add('hidden');
+  }
+});
+
+// Load user info for account menu
+async function loadAdminAccountInfo() {
+  try {
+    const resp = await fetch('/api/user/me', { credentials: 'include' });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.user && data.user.email) {
+        const displayName = data.user.display_name || data.user.email;
+        const initial = displayName[0].toUpperCase();
+        
+        const avatar = document.getElementById('admin-account-avatar');
+        const avatarLg = document.getElementById('admin-account-avatar-lg');
+        const emailEl = document.getElementById('admin-account-email');
+        
+        if (avatar) avatar.textContent = initial;
+        if (avatarLg) avatarLg.textContent = initial;
+        if (emailEl) emailEl.textContent = data.user.email;
+        
+        // Update links with token
+        const token = localStorage.getItem('my_requests_token') || data.user.token;
+        if (token) {
+          const profileLink = document.getElementById('admin-profile-link');
+          const myPrintsLink = document.getElementById('admin-my-prints-link');
+          if (profileLink) profileLink.href = '/user/profile?token=' + token;
+          if (myPrintsLink) myPrintsLink.href = '/my-requests/view?token=' + token;
+        }
+      }
+    }
+  } catch (e) {
+    // Silently fail
+  }
+}
+loadAdminAccountInfo();
 
 // Update My Requests link if user has saved token
 const savedToken = localStorage.getItem('my_requests_token');

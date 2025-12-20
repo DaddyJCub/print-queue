@@ -7,18 +7,6 @@
 
 {% block header_title %}My Account{% endblock %}
 
-{% block header_right %}
-{% if from_page == 'submit' %}
-<a href="/" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">
-  ← Back to Submit
-</a>
-{% else %}
-<a href="/my-requests/view?token={{ token }}" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">
-  ← Back to My Prints
-</a>
-{% endif %}
-{% endblock %}
-
 {% block content %}
 <div class="max-w-2xl mx-auto">
   

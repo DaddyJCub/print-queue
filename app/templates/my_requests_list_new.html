@@ -13,6 +13,15 @@
   <a href="/" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">Submit</a>
   <a href="/queue" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">Queue</a>
   <a href="/store" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">Store</a>
+  <a href="/my-requests" class="px-3 py-2 rounded-lg text-sm font-medium text-white bg-zinc-800 transition flex items-center gap-1.5">
+    <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+    My Prints
+  </a>
+  <!-- Admin link - shown via JS if user is admin -->
+  <a href="/admin" id="desktop-admin-link" class="hidden px-3 py-2 rounded-lg text-sm font-medium text-amber-400 hover:text-amber-300 hover:bg-amber-900/20 transition flex items-center gap-1.5">
+    <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+    Admin
+  </a>
   <div class="w-px h-5 bg-zinc-700 mx-1"></div>
 </nav>
 
@@ -69,6 +78,20 @@
         <div>
           <p class="text-sm font-medium">Send Feedback</p>
           <p class="text-xs text-zinc-500">Suggestions & bug reports</p>
+        </div>
+      </a>
+    </div>
+    
+    <!-- Admin Section (shown via JS if user is admin) -->
+    <div id="account-admin-section" class="hidden p-2 border-t border-zinc-800">
+      <a href="/admin" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-amber-900/30 text-amber-400 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <div>
+          <p class="text-sm font-medium">Admin Dashboard</p>
+          <p class="text-xs text-amber-500/70">Manage print queue</p>
         </div>
       </a>
     </div>
@@ -1299,5 +1322,38 @@ document.getElementById('upgrade-form')?.addEventListener('submit', async functi
 if (sessionStorage.getItem('upgrade_banner_dismissed')) {
   document.getElementById('upgrade-banner')?.style.setProperty('display', 'none');
 }
+
+// ========== Check Admin Status ==========
+// Show admin links if user is an admin
+async function checkAdminStatus() {
+  try {
+    const resp = await fetch('/api/admin/check', { credentials: 'include' });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.is_admin) {
+        // Show admin link in desktop nav
+        const desktopAdminLink = document.getElementById('desktop-admin-link');
+        if (desktopAdminLink) {
+          desktopAdminLink.classList.remove('hidden');
+        }
+        // Show admin section in account dropdown
+        const adminSection = document.getElementById('account-admin-section');
+        if (adminSection) {
+          adminSection.classList.remove('hidden');
+        }
+        // Show admin tab in mobile bottom nav (handled by pwa_base)
+        const adminNav = document.getElementById('admin-nav');
+        if (adminNav) {
+          adminNav.classList.remove('hidden');
+          const grid = document.getElementById('bottom-nav-grid');
+          if (grid) grid.classList.replace('grid-cols-4', 'grid-cols-5');
+        }
+      }
+    }
+  } catch (e) {
+    // Silently fail - user is not admin
+  }
+}
+checkAdminStatus();
 </script>
 {% endblock %}

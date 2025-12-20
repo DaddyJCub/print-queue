@@ -868,7 +868,14 @@ async def api_current_user(request: Request):
     if not user:
         return JSONResponse({"user": None})
     
-    return JSONResponse({"user": user.to_dict()})
+    # Include token for My Prints access
+    import hashlib
+    token = hashlib.sha256(user.email.lower().encode()).hexdigest()[:16]
+    
+    user_dict = user.to_dict()
+    user_dict['token'] = token
+    
+    return JSONResponse({"user": user_dict})
 
 
 @router.get("/api/features")
