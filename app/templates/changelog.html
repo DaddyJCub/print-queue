@@ -65,12 +65,68 @@
         </p>
       </div>
 
-      <!-- v0.9.0 -->
-      <div id="v0.9.0" class="bg-zinc-900/50 border border-indigo-500/50 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
+      <!-- v0.10.0 -->
+      <div id="v0.10.0" class="bg-zinc-900/50 border border-indigo-500/50 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
         <div class="flex items-center gap-3 mb-4 flex-wrap">
-          <a href="#v0.9.0" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.9.0</a>
+          <a href="#v0.10.0" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.10.0</a>
           <span class="text-zinc-400 text-sm">2025-12-19</span>
           <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50">Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-3">User Auth APIs & Session Stability</h3>
+        
+        <div class="mb-4">
+          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">✨ Enhancements</h4>
+          <ul class="space-y-2 text-sm text-zinc-300">
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>JSON login API</strong> - New <code class="text-xs bg-zinc-800 px-1 rounded">/api/user/login</code> endpoint for programmatic authentication</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>JSON registration API</strong> - New <code class="text-xs bg-zinc-800 px-1 rounded">/api/user/register</code> endpoint for account creation</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>Session-based API auth</strong> - Notification and push APIs now work with session cookies (no token required)</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-400">✓</span>
+              <span><strong>iOS PWA install hint</strong> - User profile page now shows iOS install instructions when on Safari</span>
+            </li>
+          </ul>
+        </div>
+        
+        <div class="mb-4">
+          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">🐛 Bug Fixes</h4>
+          <ul class="space-y-2 text-sm text-zinc-300">
+            <li class="flex items-start gap-2">
+              <span class="text-amber-400">✓</span>
+              <span><strong>Session stability fix</strong> - Fixed datetime format mismatch causing premature session expiry</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-amber-400">✓</span>
+              <span><strong>Redirect URL fix</strong> - Profile page redirects no longer include <code class="text-xs bg-zinc-800 px-1 rounded">token=None</code></span>
+            </li>
+          </ul>
+        </div>
+        
+        <div>
+          <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-2">📝 Notes</h4>
+          <ul class="space-y-2 text-sm text-zinc-300">
+            <li class="flex items-start gap-2">
+              <span class="text-blue-400">ℹ</span>
+              <span>Versioning policy documented in <code class="text-xs bg-zinc-800 px-1 rounded">VERSIONING.md</code></span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- v0.9.0 -->
+      <div id="v0.9.0" class="bg-zinc-900/50 border border-zinc-700/50 rounded-xl p-6 scroll-mt-6 target:ring-2 target:ring-indigo-500">
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <a href="#v0.9.0" class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg hover:bg-zinc-600 transition">v0.9.0</a>
+          <span class="text-zinc-400 text-sm">2025-12-19</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-3">Admin PWA Experience & My Prints Improvements</h3>

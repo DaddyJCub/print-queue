@@ -29,7 +29,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.9.0"
+APP_VERSION = "0.10.0"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -41,6 +41,7 @@ APP_VERSION = "0.9.0"
 #   - 0.x.PATCH = Bug fixes only
 #
 # Changelog:
+# 0.10.0 - [FEATURE] User auth APIs, session stability fixes, notification settings improvements
 # 0.9.0 - [FEATURE] Admin PWA navigation: Admin tab in bottom nav, unified navigation on admin pages, My Prints pagination
 # --- Version scheme changed from 1.x.x to 0.x.x (Dec 2025) - all prior versions below are historical ---
 # 1.8.23 - Admin dashboard pagination: "show more" for long lists, collapsible Recently Closed section
