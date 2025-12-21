@@ -30,7 +30,8 @@ jobs:
           MERGE_COMMIT="${{ github.sha }}"
           
           # Find the previous merge from qa to main
-          PREVIOUS_MERGE=$(git log --grep="Merge.*qa.*main" --grep="Merge.*pull request.*qa" --oneline -2 --format="%H" | tail -1)
+          # Match various merge commit patterns: PR merges and direct branch merges
+          PREVIOUS_MERGE=$(git log --grep="Merge pull request.*from.*qa" --grep="Merge branch.*qa.*into.*main" --oneline -2 --format="%H" | tail -1)
           
           # If no previous merge found, use the first commit
           if [ -z "$PREVIOUS_MERGE" ]; then
@@ -110,7 +111,7 @@ jobs:
             **Next Steps:**
             1. Review the generated changelog
             2. Organize commits into appropriate sections (Enhancements, Bug Fixes, Notes)
-            3. Add version number according to [VERSIONING.md](../blob/main/VERSIONING.md)
+            3. Add version number according to [VERSIONING.md](VERSIONING.md)
             4. Update the Overview/Highlights section
             `;
             
