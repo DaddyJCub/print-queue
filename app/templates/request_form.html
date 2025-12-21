@@ -258,18 +258,12 @@
             <p class="text-xs text-zinc-500 mt-1">STL, 3MF, OBJ, GCODE, STEP, ZIP • Max 200MB</p>
           </div>
           <div id="file-preview" class="hidden">
-            <div class="flex items-center justify-center gap-3">
-              <span class="text-2xl">📄</span>
-              <div class="text-left">
-                <p id="file-name" class="text-zinc-200 font-medium"></p>
-                <p id="file-size" class="text-xs text-zinc-500"></p>
-              </div>
-              <button type="button" onclick="clearFile(event)" class="ml-2 text-red-400 hover:text-red-300 text-sm">✕ Remove</button>
-            </div>
+            <div id="file-list" class="space-y-2"></div>
+            <button type="button" onclick="clearFile(event)" class="mt-3 text-red-400 hover:text-red-300 text-sm">✕ Clear all files</button>
           </div>
         </div>
-        <input id="file-input" name="upload" type="file" accept=".stl,.3mf,.obj,.gcode,.step,.stp,.fpp,.zip" class="hidden" onchange="handleFileSelect(this)" />
-        <p class="text-xs text-zinc-400 mt-1">Note: you must provide either a link or a file upload.</p>
+        <input id="file-input" name="upload" type="file" accept=".stl,.3mf,.obj,.gcode,.step,.stp,.fpp,.zip" class="hidden" multiple onchange="handleFileSelect(this)" />
+        <p class="text-xs text-zinc-400 mt-1">Note: you must provide either a link or a file upload. Multiple files supported.</p>
       </div>
 
       <script>
@@ -287,19 +281,33 @@
           const files = e.dataTransfer.files;
           if (files.length > 0) {
             document.getElementById('file-input').files = files;
-            showFilePreview(files[0]);
+            showFilePreview(files);
           }
         }
         function handleFileSelect(input) {
           if (input.files.length > 0) {
-            showFilePreview(input.files[0]);
+            showFilePreview(input.files);
           }
         }
-        function showFilePreview(file) {
+        function showFilePreview(files) {
           document.getElementById('drop-zone-content').classList.add('hidden');
           document.getElementById('file-preview').classList.remove('hidden');
-          document.getElementById('file-name').textContent = file.name;
-          document.getElementById('file-size').textContent = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+          const list = document.getElementById('file-list');
+          list.innerHTML = '';
+          let totalSize = 0;
+          for (const file of files) {
+            totalSize += file.size;
+            const item = document.createElement('div');
+            item.className = 'flex items-center justify-center gap-2';
+            item.innerHTML = `<span class="text-xl">📄</span><span class="text-zinc-200">${file.name}</span><span class="text-zinc-500 text-xs">(${(file.size / 1024 / 1024).toFixed(2)} MB)</span>`;
+            list.appendChild(item);
+          }
+          if (files.length > 1) {
+            const summary = document.createElement('div');
+            summary.className = 'text-xs text-zinc-400 mt-2 pt-2 border-t border-zinc-700';
+            summary.textContent = `${files.length} files selected • ${(totalSize / 1024 / 1024).toFixed(2)} MB total`;
+            list.appendChild(summary);
+          }
         }
         function clearFile(e) {
           e.stopPropagation();

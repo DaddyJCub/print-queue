@@ -68,7 +68,12 @@
       </div>
 
       <div>
-        <label for="password" class="block text-sm font-medium text-zinc-300 mb-2">Password</label>
+        <div class="flex items-center justify-between mb-2">
+          <label for="password" class="block text-sm font-medium text-zinc-300">Password</label>
+          <a href="#" onclick="showTab('magic'); return false;" class="text-xs text-indigo-400 hover:text-indigo-300">
+            Forgot password?
+          </a>
+        </div>
         <div class="relative">
           <input type="password" id="password" name="password" required autocomplete="current-password"
                  class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition pr-12"
@@ -101,6 +106,7 @@
 
       <p class="text-xs text-zinc-500">
         We'll send you a magic link that lets you sign in without a password.
+        <span class="text-indigo-400">This also works to reset your password!</span>
       </p>
 
       <button type="submit"

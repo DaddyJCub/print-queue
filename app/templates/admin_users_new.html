@@ -154,6 +154,12 @@
                       <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                     </svg>
                   </button>
+                  <button onclick="showResetPasswordModal('{{ user.id }}', '{{ user.name }}', '{{ user.email }}')"
+                          class="p-2 text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 rounded-lg transition" title="Reset Password">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                  </button>
                   <button onclick="deleteUser('{{ user.id }}', '{{ user.name }}')"
                           class="p-2 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded-lg transition" title="Delete">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -333,6 +339,57 @@
       </div>
     </div>
 
+    <!-- Reset Password Modal -->
+    <div id="reset-password-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md">
+        <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+          <h3 class="text-lg font-semibold">Reset Password</h3>
+          <button onclick="hideResetPasswordModal()" class="text-zinc-400 hover:text-white">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="p-6 space-y-4">
+          <div class="text-sm text-zinc-400 mb-4">
+            Reset password for: <span id="reset-user-info" class="text-white font-medium"></span>
+          </div>
+          
+          <!-- Option 1: Send Magic Link -->
+          <div class="bg-indigo-900/20 border border-indigo-700/50 rounded-xl p-4">
+            <h4 class="font-medium text-indigo-300 mb-2 flex items-center gap-2">
+              <span>✉️</span> Send Magic Link (Recommended)
+            </h4>
+            <p class="text-sm text-zinc-400 mb-3">
+              Sends an email with a secure link to sign in and set a new password.
+            </p>
+            <button onclick="sendMagicLink()" id="send-magic-btn"
+                    class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition">
+              Send Password Reset Email
+            </button>
+          </div>
+          
+          <!-- Option 2: Set Password Directly -->
+          <div class="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-4">
+            <h4 class="font-medium text-zinc-300 mb-2 flex items-center gap-2">
+              <span>🔑</span> Set Password Directly
+            </h4>
+            <p class="text-sm text-zinc-400 mb-3">
+              Set a new password immediately. You'll need to share it with the user.
+            </p>
+            <input type="password" id="reset-new-password" placeholder="New password (min 8 chars)"
+                   class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-2.5 transition mb-3" />
+            <button onclick="setPasswordDirectly()" id="set-password-btn"
+                    class="w-full py-2.5 bg-zinc-700 hover:bg-zinc-600 rounded-xl font-semibold transition">
+              Set Password
+            </button>
+          </div>
+          
+          <input type="hidden" id="reset-user-id" />
+        </div>
+      </div>
+    </div>
+
     <!-- Toast -->
     <div id="toast" class="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-sm opacity-0 pointer-events-none transition-opacity z-50"></div>
   </div>
@@ -471,17 +528,99 @@
     }
   }
 
+  // Reset Password Modal functions
+  function showResetPasswordModal(id, name, email) {
+    document.getElementById('reset-user-info').textContent = name + ' (' + email + ')';
+    document.getElementById('reset-user-id').value = id;
+    document.getElementById('reset-new-password').value = '';
+    document.getElementById('reset-password-modal').classList.remove('hidden');
+    document.getElementById('reset-password-modal').classList.add('flex');
+  }
+
+  function hideResetPasswordModal() {
+    document.getElementById('reset-password-modal').classList.add('hidden');
+    document.getElementById('reset-password-modal').classList.remove('flex');
+  }
+
+  async function sendMagicLink() {
+    const userId = document.getElementById('reset-user-id').value;
+    const btn = document.getElementById('send-magic-btn');
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+    
+    try {
+      const formData = new FormData();
+      formData.append('send_magic_link', '1');
+      
+      const res = await fetch('/admin/users/' + userId + '/reset-password', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        showToast(data.message || 'Reset email sent!', 'success');
+        hideResetPasswordModal();
+      } else {
+        showToast(data.error || 'Failed to send email', 'error');
+      }
+    } catch (err) {
+      showToast('Network error', 'error');
+    }
+    
+    btn.disabled = false;
+    btn.textContent = 'Send Password Reset Email';
+  }
+
+  async function setPasswordDirectly() {
+    const userId = document.getElementById('reset-user-id').value;
+    const newPassword = document.getElementById('reset-new-password').value;
+    
+    if (newPassword.length < 8) {
+      showToast('Password must be at least 8 characters', 'error');
+      return;
+    }
+    
+    const btn = document.getElementById('set-password-btn');
+    btn.disabled = true;
+    btn.textContent = 'Setting...';
+    
+    try {
+      const formData = new FormData();
+      formData.append('new_password', newPassword);
+      
+      const res = await fetch('/admin/users/' + userId + '/reset-password', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        showToast('Password updated!', 'success');
+        hideResetPasswordModal();
+      } else {
+        showToast(data.error || 'Failed to set password', 'error');
+      }
+    } catch (err) {
+      showToast('Network error', 'error');
+    }
+    
+    btn.disabled = false;
+    btn.textContent = 'Set Password';
+  }
+
   // Close modals on escape key
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
       hideCreateModal();
       hideEditModal();
       hideConvertModal();
+      hideResetPasswordModal();
     }
   });
 
   // Close modals on backdrop click
-  ['create-modal', 'edit-modal', 'convert-modal'].forEach(id => {
+  ['create-modal', 'edit-modal', 'convert-modal', 'reset-password-modal'].forEach(id => {
     document.getElementById(id)?.addEventListener('click', function(e) {
       if (e.target === this) {
         this.classList.add('hidden');

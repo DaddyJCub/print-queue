@@ -65,12 +65,43 @@
         </p>
       </div>
 
+      <!-- v0.10.2 -->
+      <div id="v0.10.2" class="bg-gradient-to-br from-zinc-900/80 to-red-950/20 border border-red-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-red-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.10.2" class="px-3 py-1 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-500 transition">v0.10.2</a>
+          <span class="text-zinc-400 text-sm">December 20, 2025</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-red-600/20 text-red-300 text-xs rounded-lg border border-red-500/50">🚨 Hotfix</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">User Account System Hotfix</h3>
+        <p class="text-sm text-zinc-400 mb-4">Critical fix for user profile and preferences saving.</p>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
+            <h4 class="text-xs font-bold text-rose-400 mb-2">🐛 Critical Fixes</h4>
+            <ul class="space-y-1 text-sm text-zinc-300">
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed duplicate function causing preference saves to fail</span></li>
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Printer preferences now save correctly</span></li>
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Material preferences now save correctly</span></li>
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Notes template now saves correctly</span></li>
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Notification settings now save correctly</span></li>
+            </ul>
+          </div>
+          <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
+            <h4 class="text-xs font-bold text-indigo-400 mb-2">✨ Improvements</h4>
+            <ul class="space-y-1 text-sm text-zinc-300">
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Added "Forgot password?" link to login page</span></li>
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Magic link now works as password reset</span></li>
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Set/change password from My Account after magic link login</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       <!-- v0.10.1 -->
       <div id="v0.10.1" class="bg-gradient-to-br from-zinc-900/80 to-amber-950/20 border border-amber-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-amber-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.10.1" class="px-3 py-1 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-500 transition">v0.10.1</a>
           <span class="text-zinc-400 text-sm">December 19, 2025</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Navigation & UX Improvements</h3>
@@ -89,7 +120,9 @@
           <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
             <h4 class="text-xs font-bold text-rose-400 mb-2">🐛 Bug Fixes</h4>
             <ul class="space-y-1 text-sm text-zinc-300">
-              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed /api/user/me token generation error</span></li>
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed /api/user/me returning wrong token format</span></li>
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed My Account page not opening in PWA</span></li>
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed account upgrade prompt not showing for magic link users</span></li>
               <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed pages missing standard header (feedback, store item, request detail)</span></li>
               <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed user profile overriding nav links</span></li>
             </ul>

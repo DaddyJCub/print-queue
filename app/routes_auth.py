@@ -180,16 +180,50 @@ async def user_magic_link(
     token = create_magic_link(email)
     
     # Always show success (don't reveal if email exists)
-    # In production, you'd send an email here
     if token:
-        # TODO: Send email with magic link
-        # link = f"{BASE_URL}/auth/verify?token={token}"
-        pass
+        from app.main import send_email
+        magic_url = f"https://print.jcubhub.com/auth/magic/{token}"
+        
+        html_body = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #6366f1;">Sign In to Printellect</h2>
+            <p>Hi there,</p>
+            <p>Click the button below to sign in to your Printellect account:</p>
+            <a href="{magic_url}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin: 16px 0;">
+                Sign In
+            </a>
+            <p style="color: #666; font-size: 14px;">This link expires in 15 minutes.</p>
+            <p style="color: #666; font-size: 14px;">If you didn't request this link, you can safely ignore this email.</p>
+        </div>
+        """
+        
+        text_body = f"""Sign In to Printellect
+
+Click this link to sign in to your account:
+{magic_url}
+
+This link expires in 15 minutes.
+
+If you didn't request this link, you can safely ignore this email.
+"""
+        
+        send_email(
+            [email],
+            "Sign In - Printellect",
+            text_body,
+            html_body
+        )
     
     return RedirectResponse(
         url=f"/auth/login?success=Check your email for a login link&next={quote(next or '')}",
         status_code=303
     )
+
+
+@router.get("/auth/magic/{token}")
+async def user_magic_link_verify(request: Request, token: str):
+    """Verify magic link and log user in (clean URL format)."""
+    return await user_verify_magic_link(request, token)
 
 
 @router.get("/auth/verify")
@@ -868,9 +902,10 @@ async def api_current_user(request: Request):
     if not user:
         return JSONResponse({"user": None})
     
-    # Include token for My Prints access
-    import hashlib
-    token = hashlib.sha256(user.email.lower().encode()).hexdigest()[:16]
+    # Get or create the My Requests token for this user
+    # This must match what's stored in email_lookup_tokens table
+    from app.main import get_or_create_my_requests_token
+    token = get_or_create_my_requests_token(user.email)
     
     user_dict = user.to_dict()
     user_dict['token'] = token
@@ -917,7 +952,7 @@ async def admin_users_page(
     # Get all statuses for filter dropdown
     all_statuses = [s.value for s in UserStatus]
     
-    return templates.TemplateResponse("admin_users.html", {
+    return templates.TemplateResponse("admin_users_new.html", {
         "request": request,
         "users": [u.to_dict() for u in users],
         "total_count": total_count,
@@ -1062,6 +1097,100 @@ async def admin_activate_user(
     )
     
     return JSONResponse({"success": True})
+
+
+@router.post("/admin/users/{user_id}/reset-password")
+async def admin_reset_user_password(
+    user_id: str,
+    new_password: str = Form(None),
+    send_magic_link: str = Form(None),
+    admin: dict = Depends(require_permission("manage_users"))
+):
+    """Reset a user's password or send them a magic link."""
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if send_magic_link == "1":
+        # Send magic link email
+        token = create_magic_link(user.email)
+        if token:
+            from app.main import send_email
+            magic_url = f"https://print.jcubhub.com/auth/magic/{token}"
+            
+            html_body = f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #6366f1;">Password Reset Request</h2>
+                <p>Hi {user.name or 'there'},</p>
+                <p>An admin has initiated a password reset for your Printellect account.</p>
+                <p>Click the button below to sign in and set a new password:</p>
+                <a href="{magic_url}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin: 16px 0;">
+                    Sign In & Reset Password
+                </a>
+                <p style="color: #666; font-size: 14px;">This link expires in 15 minutes.</p>
+                <p style="color: #666; font-size: 14px;">Once signed in, go to My Account → Security to set a new password.</p>
+            </div>
+            """
+            
+            text_body = f"""Password Reset Request
+
+Hi {user.name or 'there'},
+
+An admin has initiated a password reset for your Printellect account.
+
+Click this link to sign in and set a new password:
+{magic_url}
+
+This link expires in 15 minutes.
+
+Once signed in, go to My Account → Security to set a new password.
+"""
+            
+            send_email(
+                [user.email],
+                "Password Reset - Printellect",
+                text_body,
+                html_body
+            )
+            
+            log_audit(
+                action=AuditAction.PASSWORD_RESET,
+                actor_type="admin",
+                actor_id=getattr(admin, 'id', None),
+                target_type="user",
+                target_id=user_id,
+                details={"method": "magic_link", "email": user.email}
+            )
+            
+            return JSONResponse({"success": True, "message": f"Magic link sent to {user.email}"})
+        else:
+            return JSONResponse({"success": False, "error": "Failed to create magic link"}, status_code=500)
+    
+    elif new_password:
+        # Set new password directly
+        if len(new_password) < 8:
+            return JSONResponse({"success": False, "error": "Password must be at least 8 characters"}, status_code=400)
+        
+        password_hash = hash_password(new_password)
+        conn = db()
+        conn.execute("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?", 
+                     (password_hash, datetime.utcnow().isoformat(timespec="seconds") + "Z", user_id))
+        conn.commit()
+        conn.close()
+        
+        log_audit(
+            action=AuditAction.PASSWORD_RESET,
+            actor_type="admin",
+            actor_id=getattr(admin, 'id', None),
+            target_type="user",
+            target_id=user_id,
+            details={"method": "admin_set", "email": user.email}
+        )
+        
+        return JSONResponse({"success": True, "message": "Password updated successfully"})
+    
+    else:
+        return JSONResponse({"success": False, "error": "Must provide either new_password or send_magic_link"}, status_code=400)
 
 
 @router.delete("/admin/users/{user_id}")
@@ -1558,12 +1687,11 @@ async def user_profile_page(
         from app.main import get_or_create_my_requests_token
         token = get_or_create_my_requests_token(user.email)
     
-    # Get printers and materials for preferences
-    conn = db()
-    printers = conn.execute("SELECT DISTINCT value as name FROM settings WHERE key LIKE 'printer_%_name'").fetchall()
-    conn.close()
-    
-    materials = ["PLA", "PETG", "ABS", "TPU", "ASA", "Nylon", "Resin", "Other"]
+    # Get printers and materials for preferences - use the same list as request form
+    from app.main import PRINTERS, MATERIALS
+    # Convert to simple name list for template (skip 'ANY')
+    printers = [{"name": p[1]} for p in PRINTERS if p[0] != "ANY"]
+    materials = [m[1] for m in MATERIALS if m[0] != "ANY"]
     
     return templates.TemplateResponse("user_profile.html", {
         "request": request,

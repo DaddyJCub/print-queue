@@ -488,42 +488,6 @@ def change_user_password(user_id: str, new_password: str) -> bool:
     return True
 
 
-def update_user_profile(user_id: str, name: str = None, email: str = None) -> bool:
-    """Update a user's profile information."""
-    conn = db()
-    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
-    
-    updates = ["updated_at = ?"]
-    params = [now]
-    
-    if name:
-        updates.append("name = ?")
-        params.append(name)
-    
-    if email:
-        # Check if email is already in use by another user
-        existing = conn.execute(
-            "SELECT id FROM users WHERE email = ? AND id != ?", 
-            (email.lower(), user_id)
-        ).fetchone()
-        if existing:
-            conn.close()
-            return False
-        updates.append("email = ?")
-        params.append(email.lower())
-    
-    params.append(user_id)
-    
-    conn.execute(f"""
-        UPDATE users SET {', '.join(updates)} WHERE id = ?
-    """, params)
-    conn.commit()
-    conn.close()
-    
-    logger.info(f"User {user_id} profile updated")
-    return True
-
-
 def delete_user(user_id: str) -> bool:
     """Delete a user account."""
     conn = db()
