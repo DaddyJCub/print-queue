@@ -1,0 +1,134 @@
+name: Generate Changelog on QA to Main Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  generate-changelog:
+    # Only run if the PR was merged and came from the qa branch
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'qa'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+      
+      - name: Get commit range
+        id: commit-range
+        run: |
+          # Get the merge commit
+          MERGE_COMMIT="${{ github.sha }}"
+          
+          # Find the previous merge from qa to main
+          # Match various merge commit patterns: PR merges and direct branch merges
+          PREVIOUS_MERGE=$(git log --grep="Merge pull request.*from.*qa" --grep="Merge branch.*qa.*into.*main" --oneline -2 --format="%H" | tail -1)
+          
+          # If no previous merge found, use the first commit
+          if [ -z "$PREVIOUS_MERGE" ]; then
+            PREVIOUS_MERGE=$(git rev-list --max-parents=0 HEAD)
+          fi
+          
+          echo "previous_merge=$PREVIOUS_MERGE" >> $GITHUB_OUTPUT
+          echo "merge_commit=$MERGE_COMMIT" >> $GITHUB_OUTPUT
+          
+          echo "Commit range: $PREVIOUS_MERGE..$MERGE_COMMIT"
+      
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREVIOUS_MERGE="${{ steps.commit-range.outputs.previous_merge }}"
+          MERGE_COMMIT="${{ steps.commit-range.outputs.merge_commit }}"
+          
+          # Get all commits in the range (excluding merge commits)
+          COMMITS=$(git log --no-merges --pretty=format:"- %s" ${PREVIOUS_MERGE}..${MERGE_COMMIT})
+          
+          # Create changelog file
+          CHANGELOG_FILE="CHANGELOG_$(date +%Y%m%d_%H%M%S).md"
+          
+          cat > $CHANGELOG_FILE << 'EOF'
+          # Changelog - Version TBD
+          
+          ## Overview / Highlights
+          
+          <!-- Summarize the main changes in this release -->
+          
+          ## Enhancements
+          
+          <!-- List new features, UX improvements, performance improvements, etc. -->
+          
+          EOF
+          
+          # Add commits to changelog
+          echo "$COMMITS" >> $CHANGELOG_FILE
+          
+          cat >> $CHANGELOG_FILE << 'EOF'
+          
+          ## Bug Fixes
+          
+          <!-- List fixed defects, stability improvements, regression fixes -->
+          
+          ## Notes / Things to Know
+          
+          <!-- List behavioral changes, migration steps, configuration changes, known limitations -->
+          
+          ---
+          
+          **Note:** This changelog was automatically generated from commit messages. Please review and update the sections accordingly.
+          EOF
+          
+          echo "changelog_file=$CHANGELOG_FILE" >> $GITHUB_OUTPUT
+          
+          echo "Generated changelog file: $CHANGELOG_FILE"
+          cat $CHANGELOG_FILE
+      
+      - name: Create changelog comment on PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const changelogFile = '${{ steps.changelog.outputs.changelog_file }}';
+            const changelogContent = fs.readFileSync(changelogFile, 'utf8');
+            
+            const comment = `## 📋 Changelog Generated
+            
+            A changelog has been generated for this QA → main merge:
+            
+            ${changelogContent}
+            
+            ---
+            
+            **Next Steps:**
+            1. Review the generated changelog
+            2. Organize commits into appropriate sections (Enhancements, Bug Fixes, Notes)
+            3. Add version number according to [VERSIONING.md](VERSIONING.md)
+            4. Update the Overview/Highlights section
+            `;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
+      
+      - name: Commit changelog to repository
+        run: |
+          CHANGELOG_FILE="${{ steps.changelog.outputs.changelog_file }}"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add $CHANGELOG_FILE
+          git commit -m "Add changelog for QA → main merge (PR #${{ github.event.pull_request.number }})"
+          git push origin main
