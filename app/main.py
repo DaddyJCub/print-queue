@@ -29,7 +29,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.10.2"
+APP_VERSION = "0.10.3"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -5195,7 +5195,7 @@ async def submit(
                 ("Material", _human_material(material)),
                 ("Colors", colors.strip()),
                 ("Link", (link_url.strip() if link_url else "—")),
-                ("File", (uploaded_name or "—")),
+                ("Files", (", ".join(uploaded_names) if uploaded_names else "—")),
             ],
             cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
             cta_label="View queue",
