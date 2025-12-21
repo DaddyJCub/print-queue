@@ -157,14 +157,24 @@ class PrintToLogger:
         self.buffer = ""
     
     def write(self, message):
-        if message and message.strip():
-            self.logger.log(self.level, message.rstrip())
+        try:
+            if message and message.strip():
+                self.logger.log(self.level, message.rstrip())
+        except Exception:
+            # Never let logging failures break stdout/stderr writes
+            pass
     
     def flush(self):
-        pass
+        try:
+            return
+        except Exception:
+            pass
     
     def isatty(self):
         return False  # Needed for log formatters that expect a real stream
+    
+    def fileno(self):
+        return 1  # Dummy fd for handlers that expect one
 
 # Redirect stdout/stderr to capture print() statements
 import sys
