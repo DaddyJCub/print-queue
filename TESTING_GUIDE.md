@@ -5,6 +5,15 @@
 - At least 2 test requests in the database (different statuses)
 - Admin password configured
 
+## Smoke Test Suite (pytest)
+- Run lightweight regression checks without a browser: `pytest tests/test_smoke_routes.py`
+- What it covers:
+  - Core public pages: home, queue (mobile + desktop containers), store, store item, feedback, changelog, offline page, service worker version markers
+  - Multi-build requester views: `/my-requests/view` and `/my/{rid}` with multiple builds, snapshots, and placeholders when photos are missing
+  - Push contracts: subscribe/unsubscribe/test endpoints always return JSON (even on bad payloads)
+  - Build start validation: starting a build without a specific printer returns a friendly 400, not a 500
+- The suite auto-initializes a sandbox SQLite DB under `tests/tmp_data/app.db` and runs in demo mode, so no real printer polling or network calls are required.
+
 ## Test Scenario 1: Print Timer Countdown
 
 ### Setup
