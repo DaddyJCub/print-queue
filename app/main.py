@@ -158,6 +158,9 @@ class PrintToLogger:
     
     def flush(self):
         pass
+    
+    def isatty(self):
+        return False  # Needed for log formatters that expect a real stream
 
 # Redirect stdout/stderr to capture print() statements
 import sys
