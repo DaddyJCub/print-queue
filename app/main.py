@@ -7641,14 +7641,20 @@ async def api_admin_push_cleanup(request: Request, _=Depends(require_admin)):
         email = data.get("email")
         
         if not email:
-            return JSONResponse(status_code=400, content={"success": False, "error": "Email required"})
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": "Email required", "success": False}
+            )
         
         removed = await _cleanup_subscriptions_for_email(email)
         
-        return {"success": True, "email": email, "removed": removed}
+        return {"ok": True, "error": None, "success": True, "email": email, "removed": removed}
     except Exception as e:
         print(f"[PUSH-CLEANUP] Error: {e}")
-        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": str(e), "success": False}
+        )
 
 
 @app.post("/api/admin/push/cleanup-all")
@@ -7676,10 +7682,13 @@ async def api_admin_push_cleanup_all(_=Depends(require_admin)):
                 print(f"[PUSH-CLEANUP] Removed stale subscription: {sub['endpoint'][:50]}...")
         
         print(f"[PUSH-CLEANUP] Cleaned up {removed} stale subscriptions out of {len(subs)}")
-        return {"success": True, "tested": len(subs), "removed": removed}
+        return {"ok": True, "error": None, "success": True, "tested": len(subs), "removed": removed}
     except Exception as e:
         print(f"[PUSH-CLEANUP] Error: {e}")
-        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": str(e), "success": False}
+        )
 
 
 @app.post("/api/admin/push/test-all")
@@ -7715,10 +7724,13 @@ async def api_admin_push_test_all(_=Depends(require_admin)):
                 print(f"[PUSH-TEST] Removed invalid subscription for {sub['email']}: {sub['endpoint'][:40]}...")
         
         print(f"[PUSH-TEST] Results: {valid} valid, {invalid} invalid, {removed} removed")
-        return {"success": True, "valid": valid, "invalid": invalid, "removed": removed}
+        return {"ok": True, "error": None, "success": True, "valid": valid, "invalid": invalid, "removed": removed}
     except Exception as e:
         print(f"[PUSH-TEST] Error: {e}")
-        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": str(e), "success": False}
+        )
 
 
 async def _test_subscription(endpoint: str) -> bool:
@@ -10338,6 +10350,9 @@ async def _parse_request_data(request: Request) -> dict:
         body_bytes = b""
         body_len = 0
         print(f"[PUSH_PARSE] Content-Type: {content_type}, Body: unreadable")
+
+    if body_len == 0:
+        return {}
     
     # Try JSON first
     if "application/json" in content_type:
@@ -10386,8 +10401,8 @@ async def _parse_request_data(request: Request) -> dict:
 def get_vapid_public_key():
     """Get the VAPID public key for push subscription"""
     if not VAPID_PUBLIC_KEY:
-        return {"error": "Push notifications not configured", "publicKey": None}
-    return {"publicKey": VAPID_PUBLIC_KEY}
+        return {"ok": False, "error": "Push notifications not configured", "publicKey": None}
+    return {"ok": True, "error": None, "publicKey": VAPID_PUBLIC_KEY}
 
 
 # Test push notification endpoint
@@ -10413,7 +10428,7 @@ async def test_push_notification(request: Request):
         if not email:
             return JSONResponse(
                 status_code=400,
-                content={"success": False, "error": "Missing email or invalid token", "status": "error"}
+                content={"ok": False, "error": "Missing email or invalid token", "success": False, "status": "error"}
             )
         
         print(f"[PUSH TEST] Testing push for email: {email}")
@@ -10425,16 +10440,28 @@ async def test_push_notification(request: Request):
         )
         
         if result.get("sent", 0) > 0:
-            return {"success": True, "status": "sent", "details": result}
+            return {"ok": True, "error": None, "success": True, "status": "sent", "details": result}
         elif result.get("errors"):
-            return {"success": False, "status": "error", "error": result.get("errors", [{}])[0].get("error", "Unknown error"), "details": result}
+            return {
+                "ok": False,
+                "error": result.get("errors", [{}])[0].get("error", "Unknown error"),
+                "success": False,
+                "status": "error",
+                "details": result
+            }
         else:
-            return {"success": False, "status": "no_subscriptions", "error": "No push subscriptions found for this email", "details": result}
+            return {
+                "ok": False,
+                "error": "No push subscriptions found for this email",
+                "success": False,
+                "status": "no_subscriptions",
+                "details": result
+            }
     except Exception as e:
         print(f"[PUSH TEST] Exception: {e}")
         return JSONResponse(
             status_code=500,
-            content={"success": False, "error": str(e), "status": "exception"}
+            content={"ok": False, "error": str(e), "success": False, "status": "exception"}
         )
 
 
@@ -10470,14 +10497,14 @@ async def subscribe_push(request: Request):
             print(f"[PUSH] ERROR: Missing email (token={token})")
             return JSONResponse(
                 status_code=400,
-                content={"success": False, "error": "Missing email or invalid token"}
+                content={"ok": False, "error": "Missing email or invalid token", "success": False}
             )
         
         if not subscription:
             print(f"[PUSH] ERROR: Missing subscription data")
             return JSONResponse(
                 status_code=400, 
-                content={"success": False, "error": "Missing subscription"}
+                content={"ok": False, "error": "Missing subscription", "success": False}
             )
         
         endpoint = subscription.get("endpoint")
@@ -10489,7 +10516,7 @@ async def subscribe_push(request: Request):
             print(f"[PUSH] ERROR: Invalid subscription data: {subscription}")
             return JSONResponse(
                 status_code=400,
-                content={"success": False, "error": "Invalid subscription data (missing endpoint/keys)"}
+                content={"ok": False, "error": "Invalid subscription data (missing endpoint/keys)", "success": False}
             )
         
         conn = db()
@@ -10509,7 +10536,7 @@ async def subscribe_push(request: Request):
                 conn.commit()
                 print(f"[PUSH] Updated subscription email: {endpoint}")
             conn.close()
-            return {"success": True, "status": "already_subscribed"}
+            return {"ok": True, "error": None, "success": True, "status": "already_subscribed"}
         
         conn.execute(
             """INSERT INTO push_subscriptions (id, email, endpoint, p256dh, auth, created_at)
@@ -10519,14 +10546,14 @@ async def subscribe_push(request: Request):
         conn.commit()
         conn.close()
         print(f"[PUSH] Subscribed: {email} -> {endpoint[:50]}...")
-        return {"success": True, "status": "subscribed"}
+        return {"ok": True, "error": None, "success": True, "status": "subscribed"}
     except Exception as e:
         print(f"[PUSH] ERROR: Exception in subscribe_push: {e}")
         import traceback
         traceback.print_exc()
         return JSONResponse(
             status_code=500,
-            content={"success": False, "error": str(e)}
+            content={"ok": False, "error": str(e), "success": False}
         )
 
 
@@ -10540,7 +10567,7 @@ def push_diagnostics(email: str):
         (email,)
     ).fetchall()
     conn.close()
-    return {"subscriptions": [dict(row) for row in subs]}
+    return {"ok": True, "error": None, "subscriptions": [dict(row) for row in subs]}
 
 
 @app.get("/api/push/health")
@@ -10604,6 +10631,7 @@ def push_health_check(_=Depends(require_admin)):
             health["ok"] = False
             health["errors"].append(f"VAPID JWT test failed: {e}")
     
+    health["error"] = "; ".join(health["errors"]) if health["errors"] else None
     return health
 
 
@@ -10697,7 +10725,7 @@ async def unsubscribe_push(request: Request):
         if not email:
             return JSONResponse(
                 status_code=400,
-                content={"success": False, "error": "Missing email or invalid token"}
+                content={"ok": False, "error": "Missing email or invalid token", "success": False}
             )
         
         conn = db()
@@ -10717,12 +10745,12 @@ async def unsubscribe_push(request: Request):
         conn.close()
         
         print(f"[PUSH] Unsubscribed {deleted} subscription(s) for {email}")
-        return {"success": True, "status": "unsubscribed", "deleted": deleted}
+        return {"ok": True, "error": None, "success": True, "status": "unsubscribed", "deleted": deleted}
     except Exception as e:
         print(f"[PUSH] ERROR in unsubscribe: {e}")
         return JSONResponse(
             status_code=500,
-            content={"success": False, "error": str(e)}
+            content={"ok": False, "error": str(e), "success": False}
         )
 
 
@@ -10741,7 +10769,7 @@ async def clear_all_push_subscriptions(request: Request):
         if not email:
             return JSONResponse(
                 status_code=400,
-                content={"success": False, "error": "Missing email or invalid token"}
+                content={"ok": False, "error": "Missing email or invalid token", "success": False}
             )
         
         conn = db()
@@ -10753,12 +10781,12 @@ async def clear_all_push_subscriptions(request: Request):
         conn.commit()
         conn.close()
         print(f"[PUSH] Cleared {deleted} subscriptions for {email}")
-        return {"success": True, "status": "cleared", "deleted": deleted}
+        return {"ok": True, "error": None, "success": True, "status": "cleared", "deleted": deleted}
     except Exception as e:
         print(f"[PUSH] ERROR in clear-all: {e}")
         return JSONResponse(
             status_code=500,
-            content={"success": False, "error": str(e)}
+            content={"ok": False, "error": str(e), "success": False}
         )
 
 

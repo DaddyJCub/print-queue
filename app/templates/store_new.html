@@ -10,7 +10,7 @@
 {% block content %}
 <!-- Page Header -->
 <div class="mb-6">
-  <h1 class="text-2xl font-bold">Print Store</h1>
+  <h1 class="text-3xl font-bold">Print Store</h1>
   <p class="text-zinc-400 text-sm mt-1">Pre-made prints ready to request</p>
 </div>
 
@@ -19,13 +19,13 @@
 <div class="mb-4 -mx-4 px-4 overflow-x-auto hide-scrollbar">
   <div class="flex gap-2 pb-2">
     <a href="/store" 
-       class="flex-shrink-0 rounded-full px-4 py-2 text-sm font-medium transition tap-highlight
+       class="flex-shrink-0 rounded-xl px-4 py-2 text-sm font-medium transition tap-highlight
               {% if not selected_category %}bg-indigo-600 text-white{% else %}bg-zinc-800 text-zinc-300 active:bg-zinc-700{% endif %}">
       All
     </a>
     {% for cat in categories %}
     <a href="/store?category={{ cat }}" 
-       class="flex-shrink-0 rounded-full px-4 py-2 text-sm font-medium transition tap-highlight
+       class="flex-shrink-0 rounded-xl px-4 py-2 text-sm font-medium transition tap-highlight
               {% if selected_category == cat %}bg-indigo-600 text-white{% else %}bg-zinc-800 text-zinc-300 active:bg-zinc-700{% endif %}">
       {{ cat }}
     </a>
