@@ -5033,7 +5033,7 @@ async def submit(
     rush_request: Optional[str] = Form(None),
     rush_payment_confirmed: Optional[str] = Form(None),
     turnstile_token: Optional[str] = Form(None, alias="cf-turnstile-response"),
-    upload: Optional[UploadFile] = File(None),
+    upload: List[UploadFile] = File(default=[]),
 ):
     form_state = {
         "requester_name": requester_name,
@@ -5067,7 +5067,9 @@ async def submit(
             return render_form(request, "Invalid link URL. Must start with http:// or https://", form_state)
 
     has_link = bool(link_url and link_url.strip())
-    has_file = bool(upload and upload.filename)
+    # Filter to only valid files with actual filenames
+    valid_files = [f for f in upload if f and f.filename]
+    has_file = len(valid_files) > 0
     if not has_link and not has_file:
         return render_form(request, "Please provide either a link OR upload a file (one is required).", form_state)
 
@@ -5131,39 +5133,40 @@ async def submit(
     )
     conn.commit()
 
-    uploaded_name = None
+    uploaded_names = []
+    max_bytes = MAX_UPLOAD_MB * 1024 * 1024
 
     if has_file:
-        ext = safe_ext(upload.filename)
-        if ext not in ALLOWED_EXTS:
-            conn.close()
-            return render_form(request, f"Only these file types are allowed: {', '.join(sorted(ALLOWED_EXTS))}", form_state)
+        for file in valid_files:
+            ext = safe_ext(file.filename)
+            if ext not in ALLOWED_EXTS:
+                conn.close()
+                return render_form(request, f"File '{file.filename}' not allowed. Only these file types are allowed: {', '.join(sorted(ALLOWED_EXTS))}", form_state)
 
-        max_bytes = MAX_UPLOAD_MB * 1024 * 1024
-        data = await upload.read()
-        if len(data) > max_bytes:
-            conn.close()
-            return render_form(request, f"File too large. Max size is {MAX_UPLOAD_MB}MB.", form_state)
+            data = await file.read()
+            if len(data) > max_bytes:
+                conn.close()
+                return render_form(request, f"File '{file.filename}' too large. Max size is {MAX_UPLOAD_MB}MB.", form_state)
 
-        stored = f"{uuid.uuid4()}{ext}"
-        out_path = os.path.join(UPLOAD_DIR, stored)
+            stored = f"{uuid.uuid4()}{ext}"
+            out_path = os.path.join(UPLOAD_DIR, stored)
 
-        sha = hashlib.sha256(data).hexdigest()
-        with open(out_path, "wb") as f:
-            f.write(data)
+            sha = hashlib.sha256(data).hexdigest()
+            with open(out_path, "wb") as f:
+                f.write(data)
 
-        # Parse 3D file metadata (dimensions, volume, etc.)
-        file_metadata = parse_3d_file_metadata(out_path, upload.filename)
-        file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
+            # Parse 3D file metadata (dimensions, volume, etc.)
+            file_metadata = parse_3d_file_metadata(out_path, file.filename)
+            file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
 
-        conn.execute(
-            """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (str(uuid.uuid4()), rid, now_iso(), upload.filename, stored, len(data), sha, file_metadata_json)
-        )
+            conn.execute(
+                """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (str(uuid.uuid4()), rid, now_iso(), file.filename, stored, len(data), sha, file_metadata_json)
+            )
+            uploaded_names.append(file.filename)
+        
         conn.commit()
-
-        uploaded_name = upload.filename
 
     conn.close()
 
@@ -5223,7 +5226,7 @@ async def submit(
                 ("Material", _human_material(material)),
                 ("Colors", colors.strip()),
                 ("Link", (link_url.strip() if link_url else "—")),
-                ("File", (uploaded_name or "—")),
+                ("Files", (", ".join(uploaded_names) if uploaded_names else "—")),
             ],
             cta_url=f"{BASE_URL}/admin/request/{rid}",
             cta_label="Open in admin",
