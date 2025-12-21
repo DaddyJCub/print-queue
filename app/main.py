@@ -134,8 +134,12 @@ root_logger.addHandler(buffer_handler)
 # File handler (optional, only if writable)
 try:
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+    # Avoid rotation to prevent file rename conflicts on Windows + reload workers
     file_handler = RotatingFileHandler(
-        LOG_FILE, maxBytes=10*1024*1024, backupCount=5  # 10MB per file, keep 5 backups
+        LOG_FILE,
+        maxBytes=0,  # 0 disables rotation
+        backupCount=0,
+        delay=True,
     )
     file_handler.setFormatter(log_format)
     file_handler.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
