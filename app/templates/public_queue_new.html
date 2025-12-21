@@ -9,20 +9,20 @@
 
 {% block content %}
 <!-- Quick Stats -->
-<div id="queue-stats" class="grid grid-cols-4 gap-2 mb-4">
-  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+<div id="queue-stats" class="grid grid-cols-4 gap-3 mb-6">
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 text-center">
     <div class="text-xl font-bold text-zinc-200">{{ counts["NEW"] }}</div>
     <div class="text-xs text-zinc-500">New</div>
   </div>
-  <div class="bg-indigo-900/30 border border-indigo-700/50 rounded-xl p-3 text-center">
+  <div class="bg-indigo-900/30 border border-indigo-700/50 rounded-2xl p-4 text-center">
     <div class="text-xl font-bold text-indigo-300">{{ counts["APPROVED"] }}</div>
     <div class="text-xs text-indigo-400">Queued</div>
   </div>
-  <div class="bg-emerald-900/30 border border-emerald-700/50 rounded-xl p-3 text-center">
+  <div class="bg-emerald-900/30 border border-emerald-700/50 rounded-2xl p-4 text-center">
     <div class="text-xl font-bold text-emerald-300">{{ counts["PRINTING_BUILDS"] or ((counts["PRINTING"] or 0) + (counts["IN_PROGRESS"] or 0)) }}</div>
     <div class="text-xs text-emerald-400">Printing</div>
   </div>
-  <div class="bg-amber-900/30 border border-amber-700/50 rounded-xl p-3 text-center">
+  <div class="bg-amber-900/30 border border-amber-700/50 rounded-2xl p-4 text-center">
     <div class="text-xl font-bold text-amber-300">{{ counts["DONE"] }}</div>
     <div class="text-xs text-amber-400">Done</div>
   </div>
@@ -66,7 +66,7 @@
 <!-- Printer Status Cards -->
 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
   <!-- Adventurer 4 -->
-  <div class="bg-zinc-900/60 border {% if printer_status.ADVENTURER_4.is_offline and printer_status.ADVENTURER_4.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-xl p-4">
+  <div class="bg-zinc-900/60 border {% if printer_status.ADVENTURER_4.is_offline and printer_status.ADVENTURER_4.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-2xl p-4">
     <div class="flex items-center justify-between mb-3">
       <span class="font-semibold text-sm">🖨 Adventurer 4</span>
       <span id="printer-status-ADVENTURER_4">
@@ -189,7 +189,7 @@
   </div>
 
   <!-- AD5X -->
-  <div class="bg-zinc-900/60 border {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-xl p-4">
+  <div class="bg-zinc-900/60 border {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-2xl p-4">
     <div class="flex items-center justify-between mb-3">
       <span class="font-semibold text-sm">🖨 AD5X</span>
       <span id="printer-status-AD5X">
@@ -313,9 +313,9 @@
 </div>
 
 <!-- Active Queue -->
-<div class="mb-4">
+<div class="mb-6">
   <div class="flex items-center justify-between mb-3">
-    <h2 class="font-semibold">Active Queue</h2>
+    <h2 class="text-xl font-semibold">Active Queue</h2>
     <div class="flex items-center gap-2 text-xs">
       <span id="refresh-indicator" class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-900/30 border border-emerald-800/50 text-emerald-300">
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -444,8 +444,8 @@
 </div>
 
 <!-- Done Items -->
-<div id="done-items" class="mb-4 {% if not done_items %}hidden{% endif %}">
-  <h2 class="font-semibold mb-3 text-amber-300">✅ Ready for Pickup</h2>
+<div id="done-items" class="mb-6 {% if not done_items %}hidden{% endif %}">
+  <h2 class="text-xl font-semibold mb-3 text-amber-300">✅ Ready for Pickup</h2>
   <div class="done-list space-y-2">
   {% if done_items %}
     {% for r in done_items %}

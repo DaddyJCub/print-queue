@@ -413,10 +413,10 @@
 <!-- Page Title -->
 <div class="flex items-center justify-between mb-6">
   <div>
-    <h1 class="text-2xl font-bold">My Prints</h1>
+    <h1 class="text-3xl font-bold">My Prints</h1>
     <p class="text-zinc-400 text-sm mt-1">Track your print requests</p>
   </div>
-  <a href="/" class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium transition tap-highlight">
+  <a href="/" class="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-medium transition tap-highlight">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
     </svg>
@@ -491,7 +491,7 @@
   {% set done_requests = requests_list | selectattr('status', 'equalto', 'DONE') | list %}
   {% if done_requests %}
   <div class="mb-6">
-    <h2 class="font-semibold text-green-400 mb-3 flex items-center gap-2">
+    <h2 class="text-xl font-semibold text-green-400 mb-3 flex items-center gap-2">
       <span>✅</span> Ready for Pickup
       <span class="text-xs px-2 py-0.5 rounded-full bg-green-600/20 text-green-300">{{ done_requests|length }}</span>
     </h2>
@@ -550,7 +550,7 @@
   {% set printing_requests = requests_list | selectattr('status', 'in', ['PRINTING', 'IN_PROGRESS']) | list %}
   {% if printing_requests %}
   <div class="mb-6">
-    <h2 class="font-semibold text-indigo-400 mb-3 flex items-center gap-2">
+    <h2 class="text-xl font-semibold text-indigo-400 mb-3 flex items-center gap-2">
       <span>🖨️</span> Printing Now
       <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-600/20 text-indigo-300">{{ printing_requests|length }}</span>
     </h2>
@@ -627,7 +627,7 @@
   <!-- Active Requests (NEW, NEEDS_INFO, APPROVED) -->
   {% if active_requests %}
   <div class="mb-6">
-    <h2 class="font-semibold text-zinc-400 mb-3 flex items-center gap-2">
+    <h2 class="text-xl font-semibold text-zinc-400 mb-3 flex items-center gap-2">
       📋 In Queue
       <span class="text-xs px-2 py-0.5 rounded-full bg-zinc-700/50 text-zinc-300">{{ active_requests|length }}</span>
     </h2>
