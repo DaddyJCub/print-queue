@@ -667,7 +667,13 @@ async function togglePushNotifications() {
       }
       
       const reg = await navigator.serviceWorker.ready;
-      const vapidKey = await fetch('/api/push/vapid-key').then(r => r.json()).then(d => d.publicKey);
+      const vapidResp = await fetch('/api/push/vapid-public-key');
+      const vapidData = await vapidResp.json();
+      if (!vapidData.ok || !vapidData.publicKey) {
+        console.error('[PUSH] Missing VAPID key');
+        return;
+      }
+      const vapidKey = vapidData.publicKey;
       
       pushSubscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,

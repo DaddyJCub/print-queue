@@ -1170,7 +1170,7 @@ async function subscribePush() {
     });
     
     const data = await response.json();
-    if (data.success) {
+    if (data.ok) {
       pushEnabled = true;
       showToast('Push notifications enabled!', 'success');
     } else {
@@ -1228,7 +1228,7 @@ async function testPushNotification() {
     });
     
     const data = await response.json();
-    if (data.success) {
+    if (data.ok) {
       showToast('Test notification sent!', 'success');
     } else {
       showToast(data.error || 'Failed to send test', 'error');
