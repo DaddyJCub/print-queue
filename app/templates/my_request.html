@@ -1497,7 +1497,7 @@
         const data = await resp.json();
         resultEl.classList.remove('hidden');
         
-        if (data.success) {
+        if (data.ok) {
           resultEl.className = 'mt-3 p-2 rounded-lg text-xs bg-emerald-600/20 text-emerald-300 border border-emerald-500/30';
           resultEl.innerHTML = '✅ Test notification sent! Check your device.';
         } else {

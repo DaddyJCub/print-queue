@@ -279,7 +279,7 @@
           body: JSON.stringify({ email })
         });
         const data = await resp.json();
-        if (data.success) {
+        if (data.ok) {
           showToast(`Cleaned up ${data.removed} invalid subscriptions`);
           setTimeout(() => location.reload(), 1000);
         } else {
@@ -294,9 +294,13 @@
       if (!confirm('Test all subscriptions and remove invalid ones?')) return;
       showToast('Testing subscriptions...');
       try {
-        const resp = await fetch('/api/admin/push/cleanup-all', { method: 'POST' });
+        const resp = await fetch('/api/admin/push/cleanup-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
         const data = await resp.json();
-        if (data.success) {
+        if (data.ok) {
           showToast(`Removed ${data.removed} stale subscriptions`);
           setTimeout(() => location.reload(), 1000);
         } else {
@@ -311,10 +315,18 @@
       if (!confirm('Send a silent test to all subscriptions to check validity?')) return;
       showToast('Testing...');
       try {
-        const resp = await fetch('/api/admin/push/test-all', { method: 'POST' });
+        const resp = await fetch('/api/admin/push/test-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
         const data = await resp.json();
-        showToast(`${data.valid} valid, ${data.invalid} invalid (${data.removed} removed)`);
-        setTimeout(() => location.reload(), 2000);
+        if (data.ok) {
+          showToast(`${data.valid} valid, ${data.invalid} invalid (${data.removed} removed)`);
+          setTimeout(() => location.reload(), 2000);
+        } else {
+          showToast(data.error || 'Test failed', 'error');
+        }
       } catch (e) {
         showToast('Network error', 'error');
       }

@@ -382,7 +382,7 @@
     <!-- Printer Status Cards -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="printer-status-cards">
       <!-- Adventurer 4 -->
-      <div id="card-adv4" class="bg-zinc-900/50 border {% if printer_status.ADVENTURER_4.is_offline and printer_status.ADVENTURER_4.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-xl p-4">
+      <div id="card-adv4" class="bg-zinc-900/50 border {% if printer_status.ADVENTURER_4.is_offline and printer_status.ADVENTURER_4.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-2xl p-6">
         <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold flex items-center gap-2">
             <span>🖨</span>
@@ -474,7 +474,7 @@
       </div>
       
       <!-- AD5X -->
-      <div id="card-ad5x" class="bg-zinc-900/50 border {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-xl p-4">
+      <div id="card-ad5x" class="bg-zinc-900/50 border {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-2xl p-6">
         <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold flex items-center gap-2">
             <span>🖨</span>
@@ -730,7 +730,7 @@
     <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
 
       <!-- NEW REQUESTS - Collapsible cards -->
-      <section id="new-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <section id="new-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <div class="flex items-center justify-between">
           <div>
             <div class="flex items-center gap-3">
@@ -899,7 +899,7 @@
     <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
 
       <!-- PRINTING NOW -->
-      <section id="printing-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <section id="printing-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <h2 class="text-xl font-semibold">Printing now</h2>
@@ -1027,7 +1027,7 @@
       </section>
 
       <!-- WAITING TO PRINT (APPROVED) -->
-      <section id="approved-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <section id="approved-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <h2 class="text-xl font-semibold">Waiting to print</h2>
@@ -1150,7 +1150,7 @@
       </section>
 
       <!-- READY FOR PICKUP -->
-      <section id="done-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <section id="done-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <h2 class="text-xl font-semibold">Ready for pickup</h2>
@@ -1249,7 +1249,7 @@
 
     <!-- Recently Closed - Collapsible -->
     <details class="mt-8 bg-zinc-900/40 border border-zinc-800 rounded-2xl group">
-      <summary class="p-5 cursor-pointer hover:bg-zinc-900/60 rounded-2xl transition list-none">
+      <summary class="p-6 cursor-pointer hover:bg-zinc-900/60 rounded-2xl transition list-none">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <h2 class="text-lg font-semibold">📦 Recently Closed</h2>
@@ -1266,7 +1266,7 @@
         </div>
       </summary>
 
-      <div class="px-5 pb-5">
+      <div class="px-6 pb-6">
         {% if closed|length == 0 %}
           <div class="text-sm text-zinc-400">No closed items yet.</div>
         {% else %}
