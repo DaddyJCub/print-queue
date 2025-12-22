@@ -71,6 +71,9 @@ async def requester_portal(request: Request, rid: str, token: str):
         conn.close()
         logger.warning(f"[REQUESTER_PORTAL] Request not found: {rid[:8]}")
         raise HTTPException(status_code=404, detail="Request not found")
+
+    # Normalize to dict for .get access
+    req = dict(req)
     
     # Verify access token
     if req["access_token"] != token:
@@ -766,7 +769,7 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
                         printing_started_at=printing_started_at or now_iso(),
                         current_layer=req_dict["printer_status"].get("current_layer") or 0,
                         total_layers=req_dict["printer_status"].get("total_layers") or 0,
-                        estimated_minutes=req.get("print_time_minutes") or req.get("slicer_estimate_minutes")
+                        estimated_minutes=req_dict.get("print_time_minutes") or req_dict.get("slicer_estimate_minutes")
                     )
                     req_dict["smart_eta_display"] = format_eta_display(eta_dt) if eta_dt else None
         
