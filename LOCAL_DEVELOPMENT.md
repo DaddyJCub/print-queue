@@ -47,11 +47,31 @@ run_local.bat demo
 | URL | Description |
 |-----|-------------|
 | http://localhost:3000 | Main site |
-| http://localhost:3000/admin/queue | Admin dashboard |
+| http://localhost:3000/admin | Admin dashboard |
 | http://localhost:3000/admin/store | Store management |
 | http://localhost:3000/store | Public store |
 
 **Admin Password:** `admin` (for local development only)
+
+## Manual Startup (Alternative)
+
+If the PowerShell script doesn't work due to execution policy restrictions, you can start the server manually:
+
+```powershell
+cd "E:\Github\Print Request\print-queue"
+$env:DB_PATH = "$PWD\local_data\demo.db"
+$env:UPLOAD_DIR = "$PWD\local_uploads"
+$env:BASE_URL = "http://localhost:3000"
+$env:ADMIN_PASSWORD = "admin"
+$env:DEMO_MODE = "true"
+& ".\.venv\Scripts\python.exe" -m uvicorn app.main:app --host 127.0.0.1 --port 3000
+```
+
+For normal mode (non-demo), omit `DEMO_MODE` and use `app.db`:
+```powershell
+$env:DB_PATH = "$PWD\local_data\app.db"
+# Remove or unset: $env:DEMO_MODE
+```
 
 ## Demo Mode API
 

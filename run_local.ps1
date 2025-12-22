@@ -88,7 +88,7 @@ Write-Host "========================================" -ForegroundColor Green
 Write-Host "  Starting server at:" -ForegroundColor Green
 Write-Host "  http://localhost:3000" -ForegroundColor White
 if ($Demo) {
-    Write-Host "  Admin: http://localhost:3000/admin/queue" -ForegroundColor White
+    Write-Host "  Admin: http://localhost:3000/admin" -ForegroundColor White
     Write-Host "  Reset Demo: POST /api/demo/reset" -ForegroundColor Gray
 }
 Write-Host "========================================" -ForegroundColor Green
