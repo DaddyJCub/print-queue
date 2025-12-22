@@ -306,6 +306,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     
     # First pass: build items and find printing index, fetch real progress for PRINTING
     for idx, r in enumerate(rows):
+        r = dict(r)
         short_id = r["id"][:8]
         
         # Fetch real printer progress if currently printing
@@ -314,11 +315,11 @@ async def public_queue(request: Request, mine: Optional[str] = None):
         smart_eta_display = None
         current_layer = None
         total_layers = None
-        printing_started_at = r["printing_started_at"] if "printing_started_at" in r.keys() else None
+        printing_started_at = r.get("printing_started_at")
         active_printer = r["printer"]  # Default to request printer
         
         # Handle IN_PROGRESS (multi-build) - get active build's printer
-        active_build_id = r["active_build_id"] if "active_build_id" in r.keys() else None
+        active_build_id = r.get("active_build_id")
         if r["status"] == "IN_PROGRESS" and active_build_id:
             conn_build = db()
             active_build = conn_build.execute(
@@ -680,16 +681,17 @@ async def queue_data_api(mine: Optional[str] = None):
     
     # Build items list
     for idx, r in enumerate(rows):
+        r = dict(r)
         short_id = r["id"][:8]
         printer_progress = None
         smart_eta_display = None
         current_layer = None
         total_layers = None
-        printing_started_at = r["printing_started_at"] if "printing_started_at" in r.keys() else None
+        printing_started_at = r.get("printing_started_at")
         active_printer = r["printer"]  # Default to request printer
         
         # Handle IN_PROGRESS (multi-build) - get active build's printer
-        active_build_id = r["active_build_id"] if "active_build_id" in r.keys() else None
+        active_build_id = r.get("active_build_id")
         if r["status"] == "IN_PROGRESS" and active_build_id:
             conn_build = db()
             active_build = conn_build.execute(
