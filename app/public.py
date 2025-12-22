@@ -427,6 +427,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     
     # Create printer card entries from PRINTING builds
     for build in printing_builds:
+        build = dict(build)
         build_printer = build["printer"]
         if build_printer in printing_by_printer and printing_by_printer[build_printer] is None:
             # Get the parent request item
@@ -778,6 +779,7 @@ async def queue_data_api(mine: Optional[str] = None):
     
     # Create printer card entries from PRINTING builds
     for build in printing_builds:
+        build = dict(build)
         build_printer = build["printer"]
         if build_printer in printing_by_printer and printing_by_printer[build_printer] is None:
             request_id = build["request_id"]
