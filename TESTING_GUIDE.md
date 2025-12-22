@@ -177,6 +177,16 @@
 
 ---
 
+## ETA Checks
+
+1. Start a multi-build request with one build printing and at least one queued
+2. Verify **This Build Done** and **All Builds Done** show times (not "Unknown")
+3. Click a progress notification (or visit `/my/{rid}?token=...#build-{id}`) and confirm the targeted build card shows ETA/progress
+4. Mark a build as **FAILED** or set request to **BLOCKED** and confirm ETA area shows "Blocked" instead of stale times
+5. On iOS PWA, ensure sticky header padding keeps ETA cards visible (not hidden behind the notch)
+
+---
+
 ## Debugging Tips
 
 ### Countdown Not Showing

@@ -193,7 +193,7 @@ async def requester_portal(request: Request, rid: str, token: str):
         "version": APP_VERSION,
         "printer_status": printer_status,
         "smart_eta_display": smart_eta_display,
-        "build_eta_info": get_request_eta_info(rid, dict(req)),
+        "build_eta_info": get_request_eta_info(rid, dict(req), printer_status=printer_status),
         "active_printer": active_printer,
         "builds_with_snapshots": builds_with_snapshots,
         "requester_email": requester_email,

@@ -2324,9 +2324,90 @@ def clear_print_match_suggestion(printer_code: str):
         del _print_match_suggestions[printer_code]
 
 
+
+
+def _estimate_total_seconds_from_progress(elapsed_seconds: float, progress_percent: float,
+                                          fallback_total_seconds: Optional[float] = None,
+                                          smoothing_weight: float = 0.65,
+                                          buffer_ratio: float = 0.05,
+                                          min_elapsed_seconds: int = 120) -> Optional[float]:
+    """
+    Blend progress-based timing with a fallback estimate to smooth jitter.
+    Returns an estimated total print time in seconds (not remaining).
+    """
+    if progress_percent is None or progress_percent <= 0:
+        return None
+    
+    if progress_percent >= 100:
+        return elapsed_seconds
+    
+    if elapsed_seconds < min_elapsed_seconds:
+        return None
+    
+    try:
+        progress_fraction = progress_percent / 100.0
+        total_from_progress = elapsed_seconds / progress_fraction
+        
+        if fallback_total_seconds:
+            total_seconds = (
+                smoothing_weight * total_from_progress
+                + (1 - smoothing_weight) * fallback_total_seconds
+            )
+        else:
+            total_seconds = total_from_progress
+        
+        total_seconds *= (1 + buffer_ratio)
+        
+        if 0 < total_seconds < 172800:  # cap at 48 hours
+            return total_seconds
+    except Exception as e:
+        print(f"[ETA] Error smoothing progress estimate: {e}")
+    
+    return None
+
+
+def _parse_start_time(start_iso: Optional[str]) -> Optional[datetime]:
+    """Parse ISO timestamp to naive datetime (UTC)."""
+    if not start_iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
+        return dt.replace(tzinfo=None) if dt.tzinfo else dt
+    except Exception:
+        return None
+
+
+def _get_history_average_minutes(printer: str = None) -> Optional[float]:
+    """Return average duration (minutes) from print_history, optionally scoped to printer."""
+    try:
+        conn = db()
+        if printer:
+            row = conn.execute(
+                "SELECT AVG(duration_minutes) as avg_duration, COUNT(*) as count FROM print_history WHERE printer = ?",
+                (printer,)
+            ).fetchone()
+            if row and row["count"] and row["count"] >= 2 and row["avg_duration"]:
+                avg_minutes = float(row["avg_duration"])
+                conn.close()
+                return avg_minutes
+        
+        row = conn.execute(
+            "SELECT AVG(duration_minutes) as avg_duration, COUNT(*) as count FROM print_history"
+        ).fetchone()
+        conn.close()
+        
+        if row and row["count"] and row["count"] >= 2 and row["avg_duration"]:
+            return float(row["avg_duration"])
+    except Exception as e:
+        print(f"[ETA] Error calculating from history: {e}")
+    return None
+
+
 def get_smart_eta(printer: str = None, material: str = None,
                   current_percent: int = None, printing_started_at: str = None,
-                  current_layer: int = None, total_layers: int = None) -> Optional[datetime]:
+                  current_layer: int = None, total_layers: int = None,
+                  estimated_minutes: Optional[float] = None,
+                  now: Optional[datetime] = None) -> Optional[datetime]:
     """
     Calculate a smart ETA based on:
     1. Layer progress + elapsed time (most accurate - layers are more linear than bytes)
@@ -2335,88 +2416,54 @@ def get_smart_eta(printer: str = None, material: str = None,
     
     Returns a datetime of estimated completion, or None if can't estimate.
     """
-    now = datetime.utcnow()
+    now = now or datetime.utcnow()
     
     # Parse start time if available
-    started_dt = None
     elapsed = 0
-    if printing_started_at:
-        try:
-            started_dt = datetime.fromisoformat(printing_started_at.replace("Z", "+00:00"))
-            if started_dt.tzinfo:
-                started_dt = started_dt.replace(tzinfo=None)
-            elapsed = (now - started_dt).total_seconds()
-        except Exception:
-            pass
+    started_dt = _parse_start_time(printing_started_at)
+    if started_dt:
+        elapsed = max((now - started_dt).total_seconds(), 0)
+    
+    # Prepare fallback totals for smoothing
+    fallback_total_seconds = (estimated_minutes * 60) if estimated_minutes else None
+    if not fallback_total_seconds:
+        history_minutes = _get_history_average_minutes(printer)
+        if history_minutes:
+            fallback_total_seconds = history_minutes * 60
     
     # Method 1: Layer-based calculation (most accurate for FDM printing)
     # Layers are more linear than byte progress since each layer takes similar time
-    if current_layer and total_layers and total_layers > 0 and elapsed >= 120:
+    if current_layer and total_layers and total_layers > 0:
         try:
             layer_percent = (current_layer / total_layers) * 100
-            if layer_percent > 0 and layer_percent < 100:
-                # Calculate based on layer progress
-                total_expected = elapsed / (layer_percent / 100)
-                remaining_seconds = total_expected - elapsed
-                
-                # Add small buffer (3% - layers are more accurate so less buffer needed)
-                remaining_seconds *= 1.03
-                
-                if 0 < remaining_seconds < 172800:  # < 48 hours
-                    eta = now + __import__('datetime').timedelta(seconds=remaining_seconds)
-                    return eta
+            total_seconds = _estimate_total_seconds_from_progress(
+                elapsed, layer_percent, fallback_total_seconds, smoothing_weight=0.75, buffer_ratio=0.03
+            )
+            if total_seconds is not None:
+                remaining_seconds = total_seconds - elapsed
+                if remaining_seconds <= 0:
+                    return now
+                return now + __import__('datetime').timedelta(seconds=remaining_seconds)
         except Exception as e:
             print(f"[ETA] Error calculating from layers: {e}")
     
     # Method 2: Percent-based calculation (fallback if no layer info)
-    if current_percent and current_percent > 0 and elapsed >= 120:
+    if current_percent and current_percent > 0:
         try:
-            if current_percent >= 100:
-                return now
-            
-            # Calculate total expected time based on current progress
-            total_expected = elapsed / (current_percent / 100)
-            remaining_seconds = total_expected - elapsed
-            
-            # Add a buffer (5% - byte progress less reliable than layers)
-            remaining_seconds *= 1.05
-            
-            if 0 < remaining_seconds < 172800:
-                eta = now + __import__('datetime').timedelta(seconds=remaining_seconds)
-                return eta
+            total_seconds = _estimate_total_seconds_from_progress(
+                elapsed, current_percent, fallback_total_seconds, smoothing_weight=0.65, buffer_ratio=0.05
+            )
+            if total_seconds is not None:
+                remaining_seconds = total_seconds - elapsed
+                if remaining_seconds <= 0:
+                    return now
+                return now + __import__('datetime').timedelta(seconds=remaining_seconds)
         except Exception as e:
             print(f"[ETA] Error calculating from progress: {e}")
     
-    # Method 2: Use historical average from print_history
-    try:
-        conn = db()
-        
-        # Try to find average for this specific printer
-        if printer:
-            rows = conn.execute("""
-                SELECT AVG(duration_minutes) as avg_duration, COUNT(*) as count
-                FROM print_history 
-                WHERE printer = ?
-            """, (printer,)).fetchone()
-            
-            if rows and rows["count"] and rows["count"] >= 2 and rows["avg_duration"]:
-                avg_minutes = int(rows["avg_duration"])
-                conn.close()
-                return datetime.now() + __import__('datetime').timedelta(minutes=avg_minutes)
-        
-        # Fall back to global average
-        rows = conn.execute("""
-            SELECT AVG(duration_minutes) as avg_duration, COUNT(*) as count
-            FROM print_history
-        """).fetchone()
-        conn.close()
-        
-        if rows and rows["count"] and rows["count"] >= 2 and rows["avg_duration"]:
-            avg_minutes = int(rows["avg_duration"])
-            return datetime.now() + __import__('datetime').timedelta(minutes=avg_minutes)
-            
-    except Exception as e:
-        print(f"[ETA] Error calculating from history: {e}")
+    # Method 3: Use fallback estimates (history or provided estimate)
+    if fallback_total_seconds:
+        return now + __import__('datetime').timedelta(seconds=fallback_total_seconds)
     
     return None
 
@@ -2451,7 +2498,11 @@ def format_eta_display(eta_dt: Optional[datetime]) -> str:
         return f"{eta_dt.strftime('%b %d')}, {format_time(eta_dt)}"
 
 
-def get_request_eta_info(request_id: str, req: Dict = None) -> Dict[str, Any]:
+
+
+def get_request_eta_info(request_id: str, req: Dict = None,
+                         printer_status: Dict = None,
+                         now: Optional[datetime] = None) -> Dict[str, Any]:
     """
     Get comprehensive ETA info for a request with multi-build support.
     Returns:
@@ -2471,112 +2522,146 @@ def get_request_eta_info(request_id: str, req: Dict = None) -> Dict[str, Any]:
         req = dict(req_row)
     
     total_builds = req.get("total_builds") or 1
-    completed_builds = req.get("completed_builds") or 0
+    now = now or datetime.utcnow()
     
     # For single-build requests, use existing logic
     if total_builds <= 1:
         conn.close()
+        completed_builds = req.get("completed_builds") or 0
         return {
             "is_multi_build": False,
             "total_builds": 1,
             "completed_builds": completed_builds,
             "current_build_num": 1 if req.get("status") == "PRINTING" else None,
+            "current_build_number": 1 if req.get("status") == "PRINTING" else None,
             "current_build_eta": None,
             "request_eta": None,
+            "total_eta": None,
             "builds_info": [],
+            "remaining_builds": 0,
+            "blocked": req.get("status") == "BLOCKED",
         }
     
     # Get all builds for this request
-    builds = conn.execute("""
+    builds = conn.execute(
+        """
         SELECT * FROM builds WHERE request_id = ? ORDER BY build_number
     """, (request_id,)).fetchall()
     conn.close()
     
     builds_list = [dict(b) for b in builds]
+    completed_builds_count = sum(1 for b in builds_list if b["status"] == "COMPLETED")
+    failed_builds_count = sum(1 for b in builds_list if b["status"] == "FAILED")
+    blocked = req.get("status") == "BLOCKED" or failed_builds_count > 0
     
-    # Find the currently printing build
-    current_build = None
+    # Calculate averages from completed builds to inform queued estimates
+    completed_durations = []
     for b in builds_list:
-        if b["status"] == "PRINTING":
-            current_build = b
-            break
+        if b["status"] == "COMPLETED" and b.get("started_at") and b.get("completed_at"):
+            try:
+                started = datetime.fromisoformat(b["started_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+                completed = datetime.fromisoformat(b["completed_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+                completed_durations.append((completed - started).total_seconds() / 60)
+            except Exception:
+                pass
+    avg_completed_minutes = sum(completed_durations) / len(completed_durations) if completed_durations else None
+    history_avg_minutes = _get_history_average_minutes(req.get("printer"))
+    default_build_minutes = (
+        avg_completed_minutes
+        or (req.get("print_time_minutes") / total_builds if req.get("print_time_minutes") else None)
+        or (req.get("slicer_estimate_minutes") / total_builds if req.get("slicer_estimate_minutes") else None)
+        or history_avg_minutes
+        or 60
+    )
     
-    # Calculate ETA for current build if printing
     current_build_eta_dt = None
     current_build_eta_display = None
-    
-    if current_build and current_build.get("printer"):
-        # Use get_smart_eta for the current build
-        current_build_eta_dt = get_smart_eta(
-            printer=current_build.get("printer"),
-            material=current_build.get("material") or req.get("material"),
-            current_percent=current_build.get("progress"),
-            printing_started_at=current_build.get("started_at"),
-            current_layer=None,
-            total_layers=None
-        )
-        if current_build_eta_dt:
-            current_build_eta_display = format_eta_display(current_build_eta_dt)
-    
-    # Calculate total request ETA (current build + remaining builds)
+    current_build_number = None
     request_eta_dt = None
     request_eta_display = None
-    remaining_builds = total_builds - completed_builds - (1 if current_build else 0)
-    
-    if current_build_eta_dt and remaining_builds >= 0:
-        # Estimate time for remaining builds using average of completed builds or estimates
-        avg_build_time_minutes = 0
-        
-        # Check completed builds for actual duration
-        completed_durations = []
-        for b in builds_list:
-            if b["status"] == "COMPLETED" and b.get("started_at") and b.get("completed_at"):
-                try:
-                    started = datetime.fromisoformat(b["started_at"].replace("Z", "+00:00")).replace(tzinfo=None)
-                    completed = datetime.fromisoformat(b["completed_at"].replace("Z", "+00:00")).replace(tzinfo=None)
-                    completed_durations.append((completed - started).total_seconds() / 60)
-                except:
-                    pass
-        
-        if completed_durations:
-            avg_build_time_minutes = sum(completed_durations) / len(completed_durations)
-        elif req.get("print_time_minutes"):
-            # Fall back to slicer estimate divided by builds
-            avg_build_time_minutes = req["print_time_minutes"] / total_builds
-        
-        # Total ETA = current build ETA + (remaining builds * avg time)
-        remaining_minutes = remaining_builds * avg_build_time_minutes
-        request_eta_dt = current_build_eta_dt + __import__('datetime').timedelta(minutes=remaining_minutes)
-        request_eta_display = format_eta_display(request_eta_dt)
-    
-    # Build summary info
+    request_remaining_seconds = 0
     builds_info = []
+    
     for b in builds_list:
+        status = b["status"]
+        est_minutes = b.get("print_time_minutes") or b.get("slicer_estimate_minutes") or default_build_minutes
+        if est_minutes is None:
+            est_minutes = default_build_minutes
+        build_eta_display = None
+        build_eta_dt = None
+        build_progress = b.get("progress")
+        build_remaining_seconds = 0
+        current_layer = None
+        total_layers = None
+        
+        if status == "PRINTING":
+            if printer_status:
+                build_progress = printer_status.get("progress", build_progress)
+                current_layer = printer_status.get("current_layer")
+                total_layers = printer_status.get("total_layers")
+            start_time = b.get("started_at") or req.get("printing_started_at")
+            build_eta_dt = get_smart_eta(
+                printer=b.get("printer") or req.get("printer"),
+                material=b.get("material") or req.get("material"),
+                current_percent=build_progress,
+                printing_started_at=start_time,
+                current_layer=current_layer,
+                total_layers=total_layers,
+                estimated_minutes=est_minutes,
+                now=now
+            )
+            if build_eta_dt:
+                build_eta_display = format_eta_display(build_eta_dt)
+                build_remaining_seconds = max((build_eta_dt - now).total_seconds(), 0)
+            else:
+                build_remaining_seconds = (est_minutes or default_build_minutes) * 60
+            request_remaining_seconds += build_remaining_seconds
+            if current_build_eta_dt is None:
+                current_build_eta_dt = build_eta_dt
+                current_build_eta_display = build_eta_display
+                current_build_number = b.get("build_number")
+        elif status in ["READY", "PENDING"]:
+            build_remaining_seconds = (est_minutes or default_build_minutes) * 60
+            request_remaining_seconds += build_remaining_seconds
+        elif status == "FAILED":
+            blocked = True
+        # COMPLETED/SKIPPED add no remaining time
+        
         builds_info.append({
             "id": b["id"],
             "build_number": b["build_number"],
-            "status": b["status"],
+            "status": status,
             "print_name": b.get("print_name") or f"Build {b['build_number']}",
             "printer": b.get("printer"),
-            "progress": b.get("progress"),
-            "is_current": b["id"] == current_build["id"] if current_build else False,
+            "progress": build_progress,
+            "is_current": status == "PRINTING",
+            "eta_display": build_eta_display,
         })
+    
+    remaining_builds = len([b for b in builds_list if b["status"] in ["PENDING", "READY", "PRINTING"]])
+    if blocked:
+        request_eta_display = "Blocked"
+    elif request_remaining_seconds > 0:
+        request_eta_dt = now + __import__('datetime').timedelta(seconds=request_remaining_seconds)
+        request_eta_display = format_eta_display(request_eta_dt)
     
     return {
         "is_multi_build": True,
         "total_builds": total_builds,
-        "completed_builds": completed_builds,
-        "current_build_num": current_build["build_number"] if current_build else None,
+        "completed_builds": completed_builds_count,
+        "current_build_num": current_build_number,
+        "current_build_number": current_build_number,
         "current_build_eta": current_build_eta_display,
         "current_build_eta_dt": current_build_eta_dt.isoformat() if current_build_eta_dt else None,
         "request_eta": request_eta_display,
         "request_eta_dt": request_eta_dt.isoformat() if request_eta_dt else None,
+        "total_eta": request_eta_display,
+        "total_eta_dt": request_eta_dt.isoformat() if request_eta_dt else None,
         "remaining_builds": remaining_builds,
         "builds_info": builds_info,
+        "blocked": blocked,
     }
 
-
-# ─────────────────────────── BUILD-LEVEL NOTIFICATIONS ───────────────────────────
 
 def send_build_start_notification(build: Dict, request: Dict):
     """

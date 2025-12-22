@@ -161,7 +161,7 @@
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <!-- Top Header Bar (consistent with pwa_base) -->
-  <header class="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-lg border-b border-zinc-800/50">
+  <header class="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-lg border-b border-zinc-800/50" style="padding-top: env(safe-area-inset-top);">
     <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
       <!-- Left: Logo -->
       <a href="/" class="flex items-center gap-2">
@@ -601,17 +601,24 @@
           
           <!-- Dual ETA for multi-build -->
           {% if build_eta_info and build_eta_info.is_multi_build %}
-            {% if build_eta_info.current_build_eta %}
-              <div class="bg-zinc-900/50 rounded-xl p-3">
-                <span class="text-zinc-500 text-xs">This Build Done</span>
-                <p class="font-semibold text-amber-300">{{ build_eta_info.current_build_eta }}</p>
+            {% if build_eta_info.blocked %}
+              <div class="bg-red-600/20 rounded-xl p-3 border border-red-500/30">
+                <span class="text-zinc-200 text-xs">Blocked</span>
+                <p class="font-semibold text-red-200">Admin attention needed</p>
               </div>
-            {% endif %}
-            {% if build_eta_info.total_eta %}
-              <div class="bg-zinc-900/50 rounded-xl p-3">
-                <span class="text-zinc-500 text-xs">All Builds Done</span>
-                <p class="font-semibold text-emerald-300">{{ build_eta_info.total_eta }}</p>
-              </div>
+            {% else %}
+              {% if build_eta_info.current_build_eta %}
+                <div class="bg-zinc-900/50 rounded-xl p-3">
+                  <span class="text-zinc-500 text-xs">This Build Done</span>
+                  <p class="font-semibold text-amber-300">{{ build_eta_info.current_build_eta }}</p>
+                </div>
+              {% endif %}
+              {% if build_eta_info.total_eta or build_eta_info.request_eta %}
+                <div class="bg-zinc-900/50 rounded-xl p-3">
+                  <span class="text-zinc-500 text-xs">All Builds Done</span>
+                  <p class="font-semibold text-emerald-300">{{ build_eta_info.total_eta or build_eta_info.request_eta }}</p>
+                </div>
+              {% endif %}
             {% endif %}
           {% elif smart_eta_display %}
             <div class="bg-zinc-900/50 rounded-xl p-3">
@@ -766,6 +773,11 @@
               'FAILED': 'Failed',
               'SKIPPED': 'Skipped'
             } %}
+            {% set eta_meta = None %}
+            {% if build_eta_info and build_eta_info.builds_info %}
+              {% set matches = build_eta_info.builds_info | selectattr('id', 'equalto', b.id) | list %}
+              {% if matches %}{% set eta_meta = matches[0] %}{% endif %}
+            {% endif %}
             <div id="build-{{ b.id }}" class="bg-zinc-950/50 rounded-xl p-4 {% if b.status == 'PRINTING' %}ring-1 ring-amber-500/50{% endif %} scroll-mt-20 target:ring-2 target:ring-indigo-500 target:bg-indigo-950/30 transition-all duration-300">
               <!-- Build header row -->
               <div class="flex items-center justify-between mb-2">
@@ -784,6 +796,12 @@
                   {{ status_labels.get(b.status, b.status) }}
                 </span>
               </div>
+              
+              {% if eta_meta and eta_meta.eta_display %}
+                <div class="text-xs text-amber-300 mb-2">ETA: {{ eta_meta.eta_display }}</div>
+              {% elif build_eta_info and build_eta_info.blocked and b.status == 'FAILED' %}
+                <div class="text-xs text-red-300 mb-2">Blocked until admin retries</div>
+              {% endif %}
               
               <!-- Build details grid -->
               {% if b.material or b.colors or b.slicer_estimate_minutes or b.print_time_minutes or b.total_layers or b.file_name %}
