@@ -2357,6 +2357,12 @@ def _estimate_total_seconds_from_progress(elapsed_seconds: float, progress_perce
             total_seconds = total_from_progress
         
         total_seconds *= (1 + buffer_ratio)
+
+        if fallback_total_seconds:
+            # Keep within a reasonable band around the provided estimate
+            lower = fallback_total_seconds * 0.5
+            upper = fallback_total_seconds * 2.5
+            total_seconds = min(max(total_seconds, lower), upper)
         
         if 0 < total_seconds < 172800:  # cap at 48 hours
             return total_seconds

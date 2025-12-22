@@ -355,7 +355,8 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                 current_percent=printer_progress,
                 printing_started_at=printing_started_at,
                 current_layer=current_layer,
-                total_layers=total_layers
+                total_layers=total_layers,
+                estimated_minutes=r.get("print_time_minutes") or r.get("slicer_estimate_minutes")
             )
             if eta_dt:
                 smart_eta = eta_dt.isoformat()
@@ -454,7 +455,8 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                             current_percent=build_progress,
                             printing_started_at=started_at,
                             current_layer=build_layer,
-                            total_layers=build_total_layers
+                            total_layers=build_total_layers,
+                            estimated_minutes=build.get("print_time_minutes") or build.get("slicer_estimate_minutes") or parent_item.get("print_time_minutes") or parent_item.get("slicer_estimate_minutes")
                         )
                         if eta_dt:
                             build_eta_display = format_eta_display(eta_dt)
@@ -717,7 +719,8 @@ async def queue_data_api(mine: Optional[str] = None):
                     current_percent=printer_progress or 0,
                     printing_started_at=printing_started_at,
                     current_layer=current_layer or 0,
-                    total_layers=total_layers or 0
+                    total_layers=total_layers or 0,
+                    estimated_minutes=r.get("print_time_minutes") or r.get("slicer_estimate_minutes")
                 )
                 if eta_dt:
                     smart_eta_display = format_eta_display(eta_dt)
@@ -800,7 +803,8 @@ async def queue_data_api(mine: Optional[str] = None):
                             current_percent=build_progress or 0,
                             printing_started_at=started_at,
                             current_layer=build_layer or 0,
-                            total_layers=build_total_layers or 0
+                            total_layers=build_total_layers or 0,
+                            estimated_minutes=build.get("print_time_minutes") or build.get("slicer_estimate_minutes") or parent_item.get("print_time_minutes") or parent_item.get("slicer_estimate_minutes")
                         )
                         if eta_dt:
                             build_eta_display = format_eta_display(eta_dt)

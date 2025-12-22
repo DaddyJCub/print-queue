@@ -193,6 +193,7 @@ def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
             f"""SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors, 
                       r.link_url, r.status, r.priority, r.special_notes, r.printing_started_at,
                       r.print_name, r.total_builds, r.completed_builds, r.failed_builds,
+                      r.print_time_minutes, r.slicer_estimate_minutes,
                       (SELECT COUNT(*) FROM files f WHERE f.request_id = r.id) as file_count,
                       (SELECT GROUP_CONCAT(f.original_filename, ', ') FROM files f WHERE f.request_id = r.id) as file_names,
                       (SELECT COUNT(*) FROM request_messages m WHERE m.request_id = r.id AND m.sender_type = 'requester' AND m.is_read = 0) as unread_replies
@@ -238,10 +239,11 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
         printing_started_at = r["printing_started_at"] if "printing_started_at" in r.keys() else None
         
         # Handle IN_PROGRESS (multi-build) - get active build's printer
+        active_est_minutes = None
         if r["status"] == "IN_PROGRESS":
             conn_build = db()
             active_build = conn_build.execute(
-                """SELECT b.printer, b.started_at FROM builds b 
+                """SELECT b.printer, b.started_at, b.print_time_minutes, b.slicer_estimate_minutes FROM builds b 
                    WHERE b.request_id = ? AND b.status = 'PRINTING' 
                    LIMIT 1""", 
                 (r["id"],)
@@ -251,6 +253,12 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
                 active_printer = active_build["printer"]
                 if active_build["started_at"]:
                     printing_started_at = active_build["started_at"]
+                active_est_minutes = active_build["print_time_minutes"] or active_build["slicer_estimate_minutes"]
+        else:
+            try:
+                active_est_minutes = r["print_time_minutes"]
+            except Exception:
+                active_est_minutes = None
         
         # Use cached printer status for consistency
         cached_status = await fetch_printer_status_with_cache(active_printer, timeout=3.0)
@@ -275,7 +283,8 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
             current_percent=printer_progress,
             printing_started_at=printing_started_at,
             current_layer=current_layer,
-            total_layers=total_layers
+            total_layers=total_layers,
+            estimated_minutes=active_est_minutes or r["print_time_minutes"] or r["slicer_estimate_minutes"]
         )
         
         # Convert to dict and add ETA fields
