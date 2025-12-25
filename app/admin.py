@@ -226,6 +226,8 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
     queued = _fetch_requests_by_status("APPROVED")
     # Include IN_PROGRESS for multi-build requests that have active builds
     printing_raw = _fetch_requests_by_status(["PRINTING", "IN_PROGRESS"], include_eta_fields=True)
+    # BLOCKED requests need attention (failed builds)
+    blocked = _fetch_requests_by_status("BLOCKED")
     done = _fetch_requests_by_status("DONE")
     
     # Enrich printing requests with smart ETA
@@ -320,6 +322,7 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
         "new_reqs": new_reqs,
         "queued": queued,
         "printing": printing,
+        "blocked": blocked,
         "done": done,
         "closed": closed,
         "printer_status": {
@@ -349,6 +352,7 @@ def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[s
         "notify_requester_picked_up": get_setting("notify_requester_picked_up", "1"),
         "notify_requester_rejected": get_setting("notify_requester_rejected", "1"),
         "notify_requester_cancelled": get_setting("notify_requester_cancelled", "1"),
+        "notify_requester_blocked": get_setting("notify_requester_blocked", "1"),
         # Per-status notifications for admins (default to enabled)
         "notify_admin_needs_info": get_setting("notify_admin_needs_info", "1"),
         "notify_admin_approved": get_setting("notify_admin_approved", "1"),
@@ -357,6 +361,7 @@ def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[s
         "notify_admin_picked_up": get_setting("notify_admin_picked_up", "1"),
         "notify_admin_rejected": get_setting("notify_admin_rejected", "1"),
         "notify_admin_cancelled": get_setting("notify_admin_cancelled", "1"),
+        "notify_admin_blocked": get_setting("notify_admin_blocked", "1"),
         # Rush settings
         "enable_rush_option": get_bool_setting("enable_rush_option", True),
         "rush_fee_amount": get_setting("rush_fee_amount", "5"),
@@ -382,6 +387,7 @@ def admin_settings_post(
     notify_requester_picked_up: Optional[str] = Form(None),
     notify_requester_rejected: Optional[str] = Form(None),
     notify_requester_cancelled: Optional[str] = Form(None),
+    notify_requester_blocked: Optional[str] = Form(None),
     # Per-status notifications for admins
     notify_admin_needs_info: Optional[str] = Form(None),
     notify_admin_approved: Optional[str] = Form(None),
@@ -390,6 +396,7 @@ def admin_settings_post(
     notify_admin_picked_up: Optional[str] = Form(None),
     notify_admin_rejected: Optional[str] = Form(None),
     notify_admin_cancelled: Optional[str] = Form(None),
+    notify_admin_blocked: Optional[str] = Form(None),
     # Rush settings
     enable_rush_option: Optional[str] = Form(None),
     rush_fee_amount: str = Form("5"),
@@ -410,6 +417,7 @@ def admin_settings_post(
     set_setting("notify_requester_picked_up", "1" if notify_requester_picked_up else "0")
     set_setting("notify_requester_rejected", "1" if notify_requester_rejected else "0")
     set_setting("notify_requester_cancelled", "1" if notify_requester_cancelled else "0")
+    set_setting("notify_requester_blocked", "1" if notify_requester_blocked else "0")
     # Per-status notifications for admins
     set_setting("notify_admin_needs_info", "1" if notify_admin_needs_info else "0")
     set_setting("notify_admin_approved", "1" if notify_admin_approved else "0")
@@ -418,6 +426,7 @@ def admin_settings_post(
     set_setting("notify_admin_picked_up", "1" if notify_admin_picked_up else "0")
     set_setting("notify_admin_rejected", "1" if notify_admin_rejected else "0")
     set_setting("notify_admin_cancelled", "1" if notify_admin_cancelled else "0")
+    set_setting("notify_admin_blocked", "1" if notify_admin_blocked else "0")
     # Rush settings
     set_setting("enable_rush_option", "1" if enable_rush_option else "0")
     set_setting("rush_fee_amount", (rush_fee_amount or "5").strip())
