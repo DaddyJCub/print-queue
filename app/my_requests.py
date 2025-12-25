@@ -142,7 +142,7 @@ async def requester_portal(request: Request, rid: str, token: str):
                     printing_started_at=printing_started_at or now_iso(),
                     current_layer=printer_status.get("current_layer") or 0,
                     total_layers=printer_status.get("total_layers") or 0,
-                    estimated_minutes=req.get("print_time_minutes") or req.get("slicer_estimate_minutes")
+                    estimated_minutes=req["print_time_minutes"] or req["slicer_estimate_minutes"]
                 )
                 if eta_dt:
                     smart_eta_display = format_eta_display(eta_dt)

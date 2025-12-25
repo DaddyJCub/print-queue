@@ -2304,6 +2304,7 @@ def admin_set_status(
         "PICKED_UP": "#8b5cf6", # Purple
         "REJECTED": "#ef4444",  # Red
         "CANCELLED": "#64748b", # Slate
+        "BLOCKED": "#ef4444",   # Red
     }
     status_titles = {
         "NEEDS_INFO": "⚠️ Info Needed",
@@ -2313,6 +2314,7 @@ def admin_set_status(
         "PICKED_UP": "✓ Completed",
         "REJECTED": "Request Rejected",
         "CANCELLED": "Request Cancelled",
+        "BLOCKED": "⚠️ Build Issue",
     }
     
     header_color = status_colors.get(to_status, "#4f46e5")
@@ -2354,6 +2356,7 @@ def admin_set_status(
         "PICKED_UP": get_bool_setting("notify_requester_picked_up", True),
         "REJECTED": get_bool_setting("notify_requester_rejected", True),
         "CANCELLED": get_bool_setting("notify_requester_cancelled", True),
+        "BLOCKED": get_bool_setting("notify_requester_blocked", True),
     }
     should_notify_requester = status_notify_settings.get(to_status, True)
     
@@ -2440,6 +2443,9 @@ def admin_set_status(
             subtitle = f"'{print_label}' could not be completed"
         elif to_status == "CANCELLED":
             subtitle = f"'{print_label}' has been cancelled"
+        elif to_status == "BLOCKED":
+            subtitle = f"'{print_label}' has encountered a build issue"
+            footer_note = "One or more builds have failed. An admin will review and take action. You'll be notified when printing resumes."
         
         # Generate direct my-requests link
         my_requests_token = get_or_create_my_requests_token(req["requester_email"])
@@ -2461,7 +2467,7 @@ def admin_set_status(
     # Send push notification for important status changes (if user wants push notifications)
     # NOTE: PRINTING is excluded because poll_printer_status_worker sends a better notification
     # with layer count and ETA once the printer reports those
-    push_statuses = ["NEEDS_INFO", "APPROVED", "DONE", "CANCELLED", "REJECTED"]
+    push_statuses = ["NEEDS_INFO", "APPROVED", "DONE", "CANCELLED", "REJECTED", "BLOCKED"]
     if to_status in push_statuses and user_wants_push:
         push_titles = {
             "NEEDS_INFO": "📝 Action Needed",
@@ -2469,6 +2475,7 @@ def admin_set_status(
             "DONE": "🎉 Print Complete!",
             "CANCELLED": "❌ Request Cancelled",
             "REJECTED": "❌ Request Rejected",
+            "BLOCKED": "⚠️ Print Issue",
         }
         push_bodies = {
             "NEEDS_INFO": f"We need more info about '{req['print_name'] or 'your request'}'",
@@ -2476,6 +2483,7 @@ def admin_set_status(
             "DONE": f"'{req['print_name'] or 'Your request'}' is ready for pickup!",
             "CANCELLED": f"'{req['print_name'] or 'Your request'}' has been cancelled.",
             "REJECTED": f"'{req['print_name'] or 'Your request'}' was rejected.",
+            "BLOCKED": f"'{req['print_name'] or 'Your request'}' has a build issue - awaiting admin action.",
         }
         try:
             send_push_notification(
@@ -2497,6 +2505,7 @@ def admin_set_status(
             "PICKED_UP": get_bool_setting("notify_admin_picked_up", True),
             "REJECTED": get_bool_setting("notify_admin_rejected", True),
             "CANCELLED": get_bool_setting("notify_admin_cancelled", True),
+            "BLOCKED": get_bool_setting("notify_admin_blocked", True),
         }
         should_notify_admin = admin_notify_settings.get(to_status, True)
         
@@ -2536,6 +2545,7 @@ def admin_set_status(
                 "APPROVED": "✓ Request Approved",
                 "PRINTING": "🖨️ Now Printing",
                 "NEEDS_INFO": "❓ Info Requested",
+                "BLOCKED": "⚠️ Build Failed",
             }
             admin_push_title = admin_push_titles.get(to_status, f"Status: {to_status}")
             send_push_notification_to_admins(

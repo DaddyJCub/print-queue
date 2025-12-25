@@ -138,6 +138,15 @@
                 Cancelled
               </span>
             </label>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_requester_blocked" class="scale-110"
+                     {% if s.notify_requester_blocked != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-red-400"></span>
+                Blocked (Build Failed)
+              </span>
+            </label>
           </div>
           
           <!-- Admin notifications by status -->
@@ -204,6 +213,15 @@
               <span class="flex items-center gap-2">
                 <span class="w-2 h-2 rounded-full bg-slate-400"></span>
                 Cancelled
+              </span>
+            </label>
+            
+            <label class="flex items-center gap-3">
+              <input type="checkbox" name="notify_admin_blocked" class="scale-110"
+                     {% if s.notify_admin_blocked != '0' %}checked{% endif %} />
+              <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-red-400"></span>
+                Blocked (Build Failed)
               </span>
             </label>
           </div>
@@ -315,7 +333,8 @@
       'notify_requester_done',
       'notify_requester_picked_up',
       'notify_requester_rejected',
-      'notify_requester_cancelled'
+      'notify_requester_cancelled',
+      'notify_requester_blocked'
     ];
     
     const adminStatusCheckboxes = [
@@ -325,7 +344,8 @@
       'notify_admin_done',
       'notify_admin_picked_up',
       'notify_admin_rejected',
-      'notify_admin_cancelled'
+      'notify_admin_cancelled',
+      'notify_admin_blocked'
     ];
     
     function setAllRequesterNotifications(enabled) {
