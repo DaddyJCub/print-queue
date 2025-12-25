@@ -740,28 +740,18 @@
           <h2 class="text-lg font-semibold mb-4">📝 Notes</h2>
           
           <!-- Work Notes (Private) -->
-          <form method="POST" action="/admin/request/{{ req['id'] }}/admin-notes" class="mb-4">
+          <form method="POST" action="/admin/request/{{ req['id'] }}/admin-notes">
             <div class="flex items-center justify-between mb-2">
               <label class="text-sm text-zinc-300 font-medium">🔒 Work Notes</label>
               <span class="text-xs text-zinc-500">Private • Admin only</span>
             </div>
-            <textarea name="admin_notes" rows="2" 
-              placeholder="Slicer profile, slicing notes, special handling, reprints..."
+            <textarea name="admin_notes" rows="3" 
+              placeholder="Slicer profile, slicing notes, special handling, reprints, rush info..."
               class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm">{{ req["admin_notes"] or "" }}</textarea>
             <button class="mt-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-3 py-1.5 text-xs font-semibold">Save</button>
           </form>
           
-          <!-- Special Notes (Public) -->
-          <form method="POST" action="/admin/request/{{ req['id'] }}/special-notes">
-            <div class="flex items-center justify-between mb-2">
-              <label class="text-sm text-zinc-300 font-medium">📢 Special Notes</label>
-              <span class="text-xs text-zinc-500">Public • Shown on queue</span>
-            </div>
-            <textarea name="special_notes" rows="2"
-              placeholder="e.g., 'Waiting on filament delivery' or 'Needs test fit'"
-              class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-3 text-sm">{{ req["special_notes"] or "" }}</textarea>
-            <button class="mt-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-3 py-1.5 text-xs font-semibold">Save</button>
-          </form>
+          <p class="text-xs text-zinc-500 mt-3">💡 Use the Messages tab to communicate with the requester</p>
         </div>
 
       </div>

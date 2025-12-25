@@ -118,18 +118,17 @@ async def submit(
     is_rush = rush_request and rush_payment_confirmed
     priority = 1 if is_rush else 3
     
-    # Build rush note with actual calculated price
+    # Build rush note for admin (stored in admin_notes, not special_notes)
+    admin_notes = None
     if is_rush:
         if is_brandon:
-            special_notes = f"🚀 RUSH REQUEST (${final_rush_price} paid - Brandon Tax™ x5) - Priority processing"
+            admin_notes = f"🚀 RUSH REQUEST (${final_rush_price} paid - Brandon Tax™ x5) - Priority processing"
         else:
-            special_notes = f"🚀 RUSH REQUEST (${final_rush_price} paid) - Priority processing"
-    else:
-        special_notes = None
+            admin_notes = f"🚀 RUSH REQUEST (${final_rush_price} paid) - Priority processing"
     
     # If rush requested but no payment, add note for admin
     if rush_request and not rush_payment_confirmed:
-        special_notes = f"⚠️ Rush requested (${final_rush_price}) but payment NOT confirmed - verify before prioritizing"
+        admin_notes = f"⚠️ Rush requested (${final_rush_price}) but payment NOT confirmed - verify before prioritizing"
         priority = 2  # Medium priority, admin can bump to P1 after verifying payment
 
     conn = db()
@@ -150,9 +149,9 @@ async def submit(
             link_url.strip() if link_url else None,
             notes,
             "NEW",
-            special_notes,
+            None,  # special_notes deprecated - use messages instead
             priority,
-            None,
+            admin_notes,  # Rush info goes here now
             access_token,
         )
     )
@@ -375,7 +374,6 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             "material": r["material"],
             "colors": r["colors"],
             "status": r["status"],
-            "special_notes": (r["special_notes"] or "").strip(),
             "is_mine": bool(mine and mine == short_id),
             "print_time_minutes": r["print_time_minutes"],
             "turnaround_minutes": r["turnaround_minutes"],

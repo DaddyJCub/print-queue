@@ -655,33 +655,6 @@ def admin_set_print_time(
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
 
-def admin_set_special_notes(
-    request: Request,
-    rid: str,
-    special_notes: Optional[str] = Form(None),
-    _=Depends(require_admin)
-):
-    conn = db()
-    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
-    if not req:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Not found")
-
-    cleaned = (special_notes or "").strip()
-    if cleaned == "":
-        cleaned = None
-
-    conn.execute("UPDATE requests SET special_notes = ?, updated_at = ? WHERE id = ?", (cleaned, now_iso(), rid))
-    conn.execute(
-        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
-        (str(uuid.uuid4()), rid, now_iso(), req["status"], req["status"], "Updated special notes")
-    )
-    conn.commit()
-    conn.close()
-
-    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
-
-
 @router.post("/admin/request/{rid}/admin-notes")
 def admin_set_admin_notes(
     request: Request,
@@ -2010,7 +1983,7 @@ def admin_duplicate_request(request: Request, rid: str, _=Depends(require_admin)
     """Duplicate a request directly into the queue (for batch printing)"""
     conn = db()
     original = conn.execute(
-        "SELECT requester_name, requester_email, print_name, printer, material, colors, link_url, notes, priority, special_notes FROM requests WHERE id = ?",
+        "SELECT requester_name, requester_email, print_name, printer, material, colors, link_url, notes, priority, admin_notes FROM requests WHERE id = ?",
         (rid,)
     ).fetchone()
     
@@ -2025,7 +1998,7 @@ def admin_duplicate_request(request: Request, rid: str, _=Depends(require_admin)
     
     conn.execute(
         """INSERT INTO requests
-           (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, priority, special_notes, access_token)
+           (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, priority, admin_notes, access_token)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             new_id,
@@ -2041,7 +2014,7 @@ def admin_duplicate_request(request: Request, rid: str, _=Depends(require_admin)
             original["notes"],
             "NEW",  # Start as NEW
             original["priority"] or 3,  # Keep original priority or default P3
-            original["special_notes"],  # Copy special notes too
+            original["admin_notes"],  # Copy admin notes (includes rush info)
             new_token,  # Generate access token
         )
     )
