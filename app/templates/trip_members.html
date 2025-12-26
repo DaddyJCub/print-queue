@@ -1,0 +1,108 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}Members - {{ trip.title }} | Printellect{% endblock %}
+
+{% block header_title %}Trip Members{% endblock %}
+
+{% block header_left %}
+<a href="/trips/{{ trip.id }}" class="flex items-center gap-2 tap-highlight text-zinc-400 hover:text-white">
+  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+  </svg>
+  <span class="hidden sm:inline">Back</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+  
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold">Trip Members</h1>
+    <p class="text-zinc-400 text-sm mt-1">{{ trip.title }}</p>
+  </div>
+  
+  <!-- Add Member Form (Owner only) -->
+  {% if can_manage %}
+  <form action="/trips/{{ trip.id }}/members/add" method="POST" class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 mb-6">
+    <h3 class="font-medium mb-3">Invite Member</h3>
+    <div class="flex gap-2">
+      <input type="email" name="email" required placeholder="Email address"
+             class="flex-1 px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:border-indigo-500 outline-none transition">
+      <select name="role" class="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:border-indigo-500 outline-none transition">
+        <option value="viewer">Viewer</option>
+        <option value="editor">Editor</option>
+      </select>
+      <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg font-medium transition">
+        Add
+      </button>
+    </div>
+    <p class="text-xs text-zinc-500 mt-2">The person must have a Printellect account with this email.</p>
+  </form>
+  {% endif %}
+  
+  <!-- Members List -->
+  <div class="space-y-2">
+    {% for member in members %}
+    <div class="flex items-center gap-3 p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+      <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white
+        {% if member.role.value == 'owner' %}bg-gradient-to-br from-amber-500 to-orange-600
+        {% elif member.role.value == 'editor' %}bg-gradient-to-br from-indigo-500 to-purple-600
+        {% else %}bg-zinc-700{% endif %}">
+        {{ (member.user_name or member.user_email)[0].upper() }}
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="font-medium truncate">{{ member.user_name or member.user_email.split('@')[0] }}</p>
+        <p class="text-sm text-zinc-500 truncate">{{ member.user_email }}</p>
+      </div>
+      <div class="flex items-center gap-2">
+        {% if can_manage and member.user_id != user.id and member.role.value != 'owner' %}
+        <form action="/trips/{{ trip.id }}/members/{{ member.user_id }}/role" method="POST" class="inline">
+          <select name="role" onchange="this.form.submit()" class="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded-lg text-sm focus:border-indigo-500 outline-none">
+            <option value="viewer" {% if member.role.value == 'viewer' %}selected{% endif %}>Viewer</option>
+            <option value="editor" {% if member.role.value == 'editor' %}selected{% endif %}>Editor</option>
+          </select>
+        </form>
+        <form action="/trips/{{ trip.id }}/members/{{ member.user_id }}/remove" method="POST" class="inline" onsubmit="return confirm('Remove this member?');">
+          <button type="submit" class="p-2 text-red-400 hover:bg-red-600/20 rounded-lg transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
+        </form>
+        {% else %}
+        <span class="px-3 py-1 text-xs rounded-lg
+          {% if member.role.value == 'owner' %}bg-amber-600/20 text-amber-300
+          {% elif member.role.value == 'editor' %}bg-indigo-600/20 text-indigo-300
+          {% else %}bg-zinc-700/50 text-zinc-400{% endif %}">
+          {{ member.role.value|capitalize }}
+        </span>
+        {% if member.user_id == user.id %}
+        <span class="text-xs text-zinc-500">(you)</span>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  
+  <!-- Role Legend -->
+  <div class="mt-8 p-4 bg-zinc-900/30 border border-zinc-800 rounded-xl">
+    <h4 class="text-sm font-medium mb-3">Role Permissions</h4>
+    <div class="space-y-2 text-sm text-zinc-400">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+        <span><strong class="text-amber-300">Owner</strong> — Full control, can delete trip and manage members</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
+        <span><strong class="text-indigo-300">Editor</strong> — Can add and edit events</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-zinc-500"></span>
+        <span><strong class="text-zinc-300">Viewer</strong> — Read-only access</span>
+      </div>
+    </div>
+  </div>
+  
+</div>
+{% endblock %}

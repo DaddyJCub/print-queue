@@ -76,6 +76,33 @@ class AuditAction(str, Enum):
     FILE_SYNC_STARTED = "file_sync_started"
     FILE_SYNC_COMPLETED = "file_sync_completed"
     FILE_AUTO_MATCHED = "file_auto_matched"
+    
+    # Trip actions
+    TRIP_CREATED = "trip_created"
+    TRIP_UPDATED = "trip_updated"
+    TRIP_DELETED = "trip_deleted"
+    TRIP_MEMBER_ADDED = "trip_member_added"
+    TRIP_MEMBER_REMOVED = "trip_member_removed"
+    TRIP_EVENT_CREATED = "trip_event_created"
+    TRIP_EVENT_UPDATED = "trip_event_updated"
+    TRIP_EVENT_DELETED = "trip_event_deleted"
+
+
+class TripMemberRole(str, Enum):
+    """Trip member permission levels"""
+    OWNER = "owner"      # Full access, can delete trip, manage members
+    EDITOR = "editor"    # Can add/edit events
+    VIEWER = "viewer"    # Read-only access
+
+
+class TripEventCategory(str, Enum):
+    """Trip event category types"""
+    FLIGHT = "flight"
+    HOTEL = "hotel"
+    ACTIVITY = "activity"
+    MEAL = "meal"
+    TRANSPORT = "transport"
+    OTHER = "other"
 
 
 # ─────────────────────────── PERMISSIONS ───────────────────────────
@@ -152,6 +179,9 @@ class User:
         "push_enabled": False,
         "push_progress": True,
         "push_milestones": [50, 75],
+        # Trip notification preferences
+        "trip_reminders_enabled": True,
+        "trip_default_reminder_minutes": 30,  # Default reminder offset
     })
     
     # Stats
@@ -369,6 +399,147 @@ class FileSyncConfig:
             'file_count': self.total_files_synced,
             'last_sync': self.last_sync_at,
             'created_at': self.created_at,
+        }
+
+
+# ─────────────────────────── TRIP DATA CLASSES ───────────────────────────
+
+@dataclass
+class Trip:
+    """A trip/travel itinerary (private feature)"""
+    id: str
+    title: str
+    destination: str
+    start_date: str  # ISO date (YYYY-MM-DD)
+    end_date: str    # ISO date (YYYY-MM-DD)
+    created_by_user_id: str
+    created_at: str
+    updated_at: str
+    
+    # Optional fields
+    timezone: str = "America/Los_Angeles"  # Default to Pacific for Vegas
+    description: Optional[str] = None
+    cover_image_url: Optional[str] = None
+    pdf_itinerary_path: Optional[str] = None  # Path to uploaded PDF
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'id': self.id,
+            'title': self.title,
+            'destination': self.destination,
+            'start_date': self.start_date,
+            'end_date': self.end_date,
+            'timezone': self.timezone,
+            'description': self.description,
+            'cover_image_url': self.cover_image_url,
+            'pdf_itinerary_path': self.pdf_itinerary_path,
+            'created_by_user_id': self.created_by_user_id,
+            'created_at': self.created_at,
+            'updated_at': self.updated_at,
+        }
+
+
+@dataclass
+class TripMember:
+    """A member of a trip with role-based access"""
+    id: str
+    trip_id: str
+    user_id: str
+    role: TripMemberRole
+    added_at: str
+    added_by_user_id: Optional[str] = None
+    
+    # Cached user info for display
+    user_email: Optional[str] = None
+    user_name: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'id': self.id,
+            'trip_id': self.trip_id,
+            'user_id': self.user_id,
+            'role': self.role.value if isinstance(self.role, TripMemberRole) else self.role,
+            'added_at': self.added_at,
+            'added_by_user_id': self.added_by_user_id,
+            'user_email': self.user_email,
+            'user_name': self.user_name,
+        }
+    
+    def can_edit(self) -> bool:
+        """Check if member can edit trip events"""
+        role = self.role if isinstance(self.role, TripMemberRole) else TripMemberRole(self.role)
+        return role in (TripMemberRole.OWNER, TripMemberRole.EDITOR)
+    
+    def can_manage_members(self) -> bool:
+        """Check if member can add/remove other members"""
+        role = self.role if isinstance(self.role, TripMemberRole) else TripMemberRole(self.role)
+        return role == TripMemberRole.OWNER
+
+
+@dataclass
+class TripEvent:
+    """An event within a trip (flight, hotel, activity, etc.)"""
+    id: str
+    trip_id: str
+    title: str
+    start_datetime: str  # ISO datetime or "all-day" marker
+    category: TripEventCategory
+    created_at: str
+    updated_at: str
+    
+    # Optional timing
+    end_datetime: Optional[str] = None
+    is_all_day: bool = False
+    
+    # Location info
+    location_name: Optional[str] = None
+    address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    
+    # Details
+    notes: Optional[str] = None
+    confirmation_number: Optional[str] = None
+    
+    # Links (stored as JSON)
+    links: Dict[str, str] = field(default_factory=dict)  # e.g., {"maps": "url", "tickets": "url"}
+    
+    # Ordering
+    sort_order: int = 0
+    
+    # For flight/transport
+    departure_location: Optional[str] = None
+    arrival_location: Optional[str] = None
+    flight_number: Optional[str] = None
+    
+    # Reminder settings
+    reminder_minutes: Optional[int] = 30  # Minutes before event (None = no reminder)
+    reminder_sent: bool = False  # True once reminder has been sent
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'id': self.id,
+            'trip_id': self.trip_id,
+            'title': self.title,
+            'start_datetime': self.start_datetime,
+            'end_datetime': self.end_datetime,
+            'is_all_day': self.is_all_day,
+            'category': self.category.value if isinstance(self.category, TripEventCategory) else self.category,
+            'location_name': self.location_name,
+            'address': self.address,
+            'latitude': self.latitude,
+            'longitude': self.longitude,
+            'notes': self.notes,
+            'confirmation_number': self.confirmation_number,
+            'links': self.links,
+            'sort_order': self.sort_order,
+            'departure_location': self.departure_location,
+            'arrival_location': self.arrival_location,
+            'flight_number': self.flight_number,
+            'reminder_minutes': self.reminder_minutes,
+            'reminder_sent': self.reminder_sent,
+            'created_at': self.created_at,
+            'updated_at': self.updated_at,
         }
 
 
@@ -610,6 +781,66 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 );
 """
 
+# ─────────────────────────── TRIP TABLES ───────────────────────────
+
+TRIPS_TABLE = """
+CREATE TABLE IF NOT EXISTS trips (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    destination TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    timezone TEXT DEFAULT 'America/Los_Angeles',
+    description TEXT,
+    cover_image_url TEXT,
+    pdf_itinerary_path TEXT,
+    created_by_user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(created_by_user_id) REFERENCES users(id)
+);
+"""
+
+TRIP_MEMBERS_TABLE = """
+CREATE TABLE IF NOT EXISTS trip_members (
+    id TEXT PRIMARY KEY,
+    trip_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'viewer',
+    added_at TEXT NOT NULL,
+    added_by_user_id TEXT,
+    FOREIGN KEY(trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    UNIQUE(trip_id, user_id)
+);
+"""
+
+TRIP_EVENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS trip_events (
+    id TEXT PRIMARY KEY,
+    trip_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    start_datetime TEXT NOT NULL,
+    end_datetime TEXT,
+    is_all_day INTEGER DEFAULT 0,
+    category TEXT NOT NULL DEFAULT 'other',
+    location_name TEXT,
+    address TEXT,
+    latitude REAL,
+    longitude REAL,
+    notes TEXT,
+    confirmation_number TEXT,
+    links TEXT DEFAULT '{}',
+    sort_order INTEGER DEFAULT 0,
+    departure_location TEXT,
+    arrival_location TEXT,
+    flight_number TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(trip_id) REFERENCES trips(id) ON DELETE CASCADE
+);
+"""
+
 # Index definitions for performance
 INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);",
@@ -622,6 +853,12 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token);",
     "CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);",
     "CREATE INDEX IF NOT EXISTS idx_file_sync_queue_status ON file_sync_queue(status);",
+    # Trip indexes
+    "CREATE INDEX IF NOT EXISTS idx_trips_created_by ON trips(created_by_user_id);",
+    "CREATE INDEX IF NOT EXISTS idx_trip_members_trip ON trip_members(trip_id);",
+    "CREATE INDEX IF NOT EXISTS idx_trip_members_user ON trip_members(user_id);",
+    "CREATE INDEX IF NOT EXISTS idx_trip_events_trip ON trip_events(trip_id);",
+    "CREATE INDEX IF NOT EXISTS idx_trip_events_start ON trip_events(start_datetime);",
 ]
 
 ALL_NEW_TABLES = [
@@ -632,4 +869,7 @@ ALL_NEW_TABLES = [
     FILE_SYNC_CONFIGS_TABLE,
     FILE_SYNC_QUEUE_TABLE,
     USER_SESSIONS_TABLE,
+    TRIPS_TABLE,
+    TRIP_MEMBERS_TABLE,
+    TRIP_EVENTS_TABLE,
 ]

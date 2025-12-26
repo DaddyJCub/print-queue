@@ -1,0 +1,234 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}Edit Event | Printellect{% endblock %}
+
+{% block header_title %}Edit Event{% endblock %}
+
+{% block header_left %}
+<a href="/trips/{{ trip.id }}/events/{{ event.id }}" class="flex items-center gap-2 tap-highlight text-zinc-400 hover:text-white">
+  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+  </svg>
+  <span class="hidden sm:inline">Back</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+  
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold">Edit Event</h1>
+    <p class="text-zinc-400 text-sm mt-1">{{ trip.title }}</p>
+  </div>
+  
+  <form action="/trips/{{ trip.id }}/events/{{ event.id }}/edit" method="POST" class="space-y-6">
+    
+    <!-- Event Title -->
+    <div>
+      <label class="block text-sm font-medium text-zinc-300 mb-2">Event Title *</label>
+      <input type="text" name="title" required value="{{ event.title }}"
+             class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+    </div>
+    
+    <!-- Category -->
+    <div>
+      <label class="block text-sm font-medium text-zinc-300 mb-2">Category *</label>
+      <div class="grid grid-cols-3 gap-2">
+        {% for cat in categories %}
+        <label class="cursor-pointer">
+          <input type="radio" name="category" value="{{ cat }}" class="sr-only peer" {% if event.category.value == cat %}checked{% endif %}>
+          <div class="flex flex-col items-center gap-1 p-3 bg-zinc-900 border border-zinc-700 rounded-xl peer-checked:border-indigo-500 peer-checked:bg-indigo-600/10 transition">
+            <span class="text-xl">
+              {% if cat == 'flight' %}✈️
+              {% elif cat == 'hotel' %}🏨
+              {% elif cat == 'activity' %}🎯
+              {% elif cat == 'meal' %}🍽️
+              {% elif cat == 'transport' %}🚗
+              {% else %}📍{% endif %}
+            </span>
+            <span class="text-xs">{{ cat|capitalize }}</span>
+          </div>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    
+    <!-- All Day Toggle -->
+    <div class="flex items-center gap-3">
+      <input type="checkbox" name="is_all_day" id="is_all_day" value="true" {% if event.is_all_day %}checked{% endif %} onchange="toggleTimeInputs()" class="w-5 h-5 rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-indigo-500">
+      <label for="is_all_day" class="text-sm">All-day event</label>
+    </div>
+    
+    <!-- Date/Time -->
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Start Date *</label>
+        <input type="date" name="start_date" required value="{{ event.start_datetime[:10] }}"
+               class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+      </div>
+      <div id="start-time-field" {% if event.is_all_day %}class="opacity-50"{% endif %}>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Start Time</label>
+        <input type="time" name="start_time" value="{{ event.start_datetime[11:16] if not event.is_all_day else '' }}" {% if event.is_all_day %}disabled{% endif %}
+               class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+      </div>
+    </div>
+    
+    <div class="grid grid-cols-2 gap-4" id="end-fields">
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">End Date</label>
+        <input type="date" name="end_date" value="{{ event.end_datetime[:10] if event.end_datetime else '' }}"
+               class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+      </div>
+      <div id="end-time-field" {% if event.is_all_day %}class="opacity-50"{% endif %}>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">End Time</label>
+        <input type="time" name="end_time" value="{{ event.end_datetime[11:16] if event.end_datetime and not event.is_all_day else '' }}" {% if event.is_all_day %}disabled{% endif %}
+               class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+      </div>
+    </div>
+    
+    <!-- Location -->
+    <div>
+      <label class="block text-sm font-medium text-zinc-300 mb-2">Location Name</label>
+      <input type="text" name="location_name" value="{{ event.location_name or '' }}"
+             placeholder="e.g., Bellagio Hotel & Casino"
+             class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+    </div>
+    
+    <div>
+      <label class="block text-sm font-medium text-zinc-300 mb-2">Address</label>
+      <input type="text" name="address" value="{{ event.address or '' }}"
+             placeholder="e.g., 3600 S Las Vegas Blvd"
+             class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+    </div>
+    
+    <!-- Flight-specific fields -->
+    <div id="flight-fields" class="space-y-4 {% if event.category.value not in ['flight', 'transport'] %}hidden{% endif %}">
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Flight Number</label>
+        <input type="text" name="flight_number" value="{{ event.flight_number or '' }}"
+               placeholder="e.g., AA 123"
+               class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-2">From</label>
+          <input type="text" name="departure_location" value="{{ event.departure_location or '' }}"
+                 placeholder="e.g., JFK"
+                 class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-300 mb-2">To</label>
+          <input type="text" name="arrival_location" value="{{ event.arrival_location or '' }}"
+                 placeholder="e.g., LAS"
+                 class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+        </div>
+      </div>
+    </div>
+    
+    <!-- Confirmation Number -->
+    <div>
+      <label class="block text-sm font-medium text-zinc-300 mb-2">Confirmation Number</label>
+      <input type="text" name="confirmation_number" value="{{ event.confirmation_number or '' }}"
+             placeholder="Booking reference"
+             class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+    </div>
+    
+    <!-- Notes -->
+    <div>
+      <label class="block text-sm font-medium text-zinc-300 mb-2">Notes</label>
+      <textarea name="notes" rows="3"
+                placeholder="Additional details..."
+                class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition resize-none">{{ event.notes or '' }}</textarea>
+    </div>
+    
+    <!-- Reminder (only for timed events) -->
+    <div id="reminder-field" {% if event.is_all_day %}class="hidden"{% endif %}>
+      <label class="block text-sm font-medium text-zinc-300 mb-2">
+        <span class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+          </svg>
+          Push Notification Reminder
+        </span>
+      </label>
+      <select name="reminder_minutes"
+              class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+        <option value="0" {% if event.reminder_minutes == 0 or event.reminder_minutes is none %}selected{% endif %}>No reminder</option>
+        {% for minutes, label in reminder_options %}
+        <option value="{{ minutes }}" {% if event.reminder_minutes == minutes %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <p class="text-xs text-zinc-500 mt-1">Receive a push notification before this event starts</p>
+      {% if event.reminder_sent %}
+      <p class="text-xs text-amber-500 mt-1">✓ Reminder already sent. Changing time will reset this.</p>
+      {% endif %}
+    </div>
+    
+    <!-- Links -->
+    <div class="space-y-4">
+      <h3 class="text-sm font-medium text-zinc-300">Links (optional)</h3>
+      <div>
+        <label class="block text-xs text-zinc-500 mb-1">Maps Link</label>
+        <input type="url" name="link_maps" value="{{ event.links.maps or '' }}"
+               placeholder="https://maps.google.com/..."
+               class="w-full px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 outline-none transition text-sm">
+      </div>
+      <div>
+        <label class="block text-xs text-zinc-500 mb-1">Tickets / Booking Link</label>
+        <input type="url" name="link_tickets" value="{{ event.links.tickets or '' }}"
+               placeholder="https://..."
+               class="w-full px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 outline-none transition text-sm">
+      </div>
+    </div>
+    
+    <!-- Submit -->
+    <div class="flex gap-3 pt-4">
+      <a href="/trips/{{ trip.id }}/events/{{ event.id }}" class="flex-1 px-6 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-medium text-center transition">
+        Cancel
+      </a>
+      <button type="submit" class="flex-1 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-medium transition">
+        Save Changes
+      </button>
+    </div>
+    
+  </form>
+  
+</div>
+
+<script>
+  function toggleTimeInputs() {
+    const isAllDay = document.getElementById('is_all_day').checked;
+    const startTime = document.getElementById('start-time-field');
+    const endTime = document.getElementById('end-time-field');
+    const reminderField = document.getElementById('reminder-field');
+    
+    if (isAllDay) {
+      startTime.classList.add('opacity-50');
+      endTime.classList.add('opacity-50');
+      startTime.querySelector('input').disabled = true;
+      endTime.querySelector('input').disabled = true;
+      // Hide reminder for all-day events
+      reminderField.classList.add('hidden');
+    } else {
+      startTime.classList.remove('opacity-50');
+      endTime.classList.remove('opacity-50');
+      startTime.querySelector('input').disabled = false;
+      endTime.querySelector('input').disabled = false;
+      // Show reminder for timed events
+      reminderField.classList.remove('hidden');
+    }
+  }
+  
+  // Show/hide flight fields based on category
+  document.querySelectorAll('input[name="category"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      const flightFields = document.getElementById('flight-fields');
+      if (e.target.value === 'flight' || e.target.value === 'transport') {
+        flightFields.classList.remove('hidden');
+      } else {
+        flightFields.classList.add('hidden');
+      }
+    });
+  });
+</script>
+{% endblock %}

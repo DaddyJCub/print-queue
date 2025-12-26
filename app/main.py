@@ -969,6 +969,80 @@ def init_db():
         );
     """)
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # TRIPS FEATURE - Private trip planning (not visible on public pages)
+    # ──────────────────────────────────────────────────────────────────────────
+    
+    # Trips table - main trip records
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS trips (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            destination TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            timezone TEXT DEFAULT 'America/Los_Angeles',
+            description TEXT,
+            cover_image_url TEXT,
+            pdf_itinerary_path TEXT,
+            created_by_user_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+    """)
+    
+    # Trip members - who can access each trip
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS trip_members (
+            id TEXT PRIMARY KEY,
+            trip_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'viewer',
+            added_at TEXT NOT NULL,
+            added_by_user_id TEXT NOT NULL,
+            UNIQUE(trip_id, user_id)
+        );
+    """)
+    
+    # Trip events - flights, hotels, activities, etc.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS trip_events (
+            id TEXT PRIMARY KEY,
+            trip_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'other',
+            start_datetime TEXT NOT NULL,
+            end_datetime TEXT,
+            is_all_day INTEGER DEFAULT 0,
+            timezone TEXT DEFAULT 'America/Los_Angeles',
+            location_name TEXT,
+            address TEXT,
+            latitude REAL,
+            longitude REAL,
+            confirmation_number TEXT,
+            notes TEXT,
+            links TEXT,
+            sort_order INTEGER DEFAULT 0,
+            departure_location TEXT,
+            arrival_location TEXT,
+            flight_number TEXT,
+            airline TEXT,
+            departure_airport TEXT,
+            arrival_airport TEXT,
+            cost_cents INTEGER,
+            reminder_minutes INTEGER DEFAULT 30,
+            reminder_sent INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+    """)
+    
+    # Indexes for efficient queries
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_trip_members_user ON trip_members(user_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_trip_events_trip ON trip_events(trip_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_trip_events_start ON trip_events(start_datetime);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_trip_events_reminder ON trip_events(reminder_sent, start_datetime);")
+
     conn.commit()
     conn.close()
 
@@ -1122,6 +1196,15 @@ def ensure_migrations():
     prefs_cols = {row[1] for row in cur.fetchall()}
     if prefs_cols and "progress_milestones" not in prefs_cols:
         cur.execute("ALTER TABLE user_notification_prefs ADD COLUMN progress_milestones TEXT DEFAULT '50,75'")
+
+    # Add reminder columns to trip_events if missing
+    cur.execute("PRAGMA table_info(trip_events)")
+    trip_event_cols = {row[1] for row in cur.fetchall()}
+    if trip_event_cols:
+        if "reminder_minutes" not in trip_event_cols:
+            cur.execute("ALTER TABLE trip_events ADD COLUMN reminder_minutes INTEGER DEFAULT 30")
+        if "reminder_sent" not in trip_event_cols:
+            cur.execute("ALTER TABLE trip_events ADD COLUMN reminder_sent INTEGER DEFAULT 0")
 
     conn.commit()
     conn.close()
@@ -1922,6 +2005,10 @@ def _startup():
         seed_demo_data(db)
     
     start_printer_polling()  # Start background printer status polling
+    
+    # Start trip reminder scheduler
+    from app.trips import start_trip_reminder_scheduler
+    start_trip_reminder_scheduler()
 
 # Mount auth routes
 from app.routes_auth import router as auth_router
@@ -4625,7 +4712,7 @@ def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Opt
 
 
 # ─────────────────────────── PUSH NOTIFICATIONS ───────────────────────────
-def send_push_notification(email: str, title: str, body: str, url: str = None, image_url: str = None, tag: str = None) -> dict:
+def send_push_notification(email: str, title: str, body: str, url: str = None, image_url: str = None, tag: str = None, data: dict = None) -> dict:
     """
     Send push notification to all subscriptions for a user (by email).
     Returns a dict with status and details for debugging.
@@ -4637,6 +4724,7 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
         url: Click-through URL (default: /my-requests/view)
         image_url: Optional image URL to display in notification (for progress updates)
         tag: Optional tag for notification grouping (allows replacing existing notifications)
+        data: Optional additional data to include in the notification payload
     """
     result = {"email": email, "sent": 0, "failed": 0, "errors": []}
     
@@ -4686,6 +4774,10 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
     # Add tag for notification grouping (allows replacing instead of stacking)
     if tag:
         payload_data["tag"] = tag
+    
+    # Add additional custom data
+    if data:
+        payload_data["data"] = data
     
     payload = json.dumps(payload_data)
     
@@ -5108,9 +5200,12 @@ from app.my_requests import router as my_requests_router
 from app.admin import router as admin_router
 from app.api_push import router as api_push_router
 from app.api_builds import router as api_builds_router
+from app.trips import router as trips_router
 
 app.include_router(public_router)
 app.include_router(my_requests_router)
 app.include_router(admin_router)
 app.include_router(api_push_router)
 app.include_router(api_builds_router)
+app.include_router(trips_router)
+

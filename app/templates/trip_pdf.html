@@ -1,0 +1,115 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}PDF Itinerary - {{ trip.title }} | Printellect{% endblock %}
+
+{% block header_title %}Itinerary PDF{% endblock %}
+
+{% block header_left %}
+<a href="/trips/{{ trip.id }}" class="flex items-center gap-2 tap-highlight text-zinc-400 hover:text-white">
+  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+  </svg>
+  <span class="hidden sm:inline">Back</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold">PDF Itinerary</h1>
+    <p class="text-zinc-400 text-sm mt-1">{{ trip.title }}</p>
+  </div>
+  
+  {% if trip.pdf_itinerary_path %}
+  <!-- PDF Viewer -->
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl overflow-hidden mb-6">
+    <div class="p-4 border-b border-zinc-800 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-red-600/20 rounded-lg flex items-center justify-center">
+          <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+        </div>
+        <div>
+          <p class="font-medium">{{ trip.title }} Itinerary</p>
+          <p class="text-xs text-zinc-500">PDF Document</p>
+        </div>
+      </div>
+      <a href="/trips/{{ trip.id }}/pdf/view" target="_blank" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium transition flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+        </svg>
+        Open
+      </a>
+    </div>
+    
+    <!-- PDF Preview iframe -->
+    <div class="aspect-[8.5/11] bg-zinc-950">
+      <iframe src="/trips/{{ trip.id }}/pdf/view" class="w-full h-full" title="PDF Preview"></iframe>
+    </div>
+  </div>
+  
+  <!-- Replace PDF -->
+  {% if can_edit %}
+  <div class="p-4 bg-zinc-900/30 border border-zinc-800 rounded-xl">
+    <h3 class="font-medium mb-3">Replace PDF</h3>
+    <form action="/trips/{{ trip.id }}/pdf/upload" method="POST" enctype="multipart/form-data" class="flex gap-2">
+      <input type="file" name="pdf_file" accept=".pdf" required
+             class="flex-1 px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-white file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:bg-indigo-600 file:text-white file:text-sm">
+      <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg font-medium transition">
+        Upload
+      </button>
+    </form>
+  </div>
+  {% endif %}
+  
+  {% else %}
+  <!-- No PDF Uploaded -->
+  <div class="text-center py-16">
+    <div class="w-20 h-20 mx-auto mb-6 bg-zinc-800 rounded-full flex items-center justify-center">
+      <svg class="w-10 h-10 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+    </div>
+    <h2 class="text-xl font-semibold mb-2">No PDF uploaded</h2>
+    <p class="text-zinc-400 mb-6">Upload your trip itinerary PDF to view it here</p>
+    
+    {% if can_edit %}
+    <form action="/trips/{{ trip.id }}/pdf/upload" method="POST" enctype="multipart/form-data" class="max-w-md mx-auto">
+      <div class="p-6 border-2 border-dashed border-zinc-700 rounded-xl hover:border-zinc-600 transition">
+        <input type="file" name="pdf_file" accept=".pdf" required id="pdf-input"
+               class="hidden" onchange="this.form.submit()">
+        <label for="pdf-input" class="cursor-pointer flex flex-col items-center gap-3">
+          <svg class="w-12 h-12 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+          </svg>
+          <span class="text-indigo-400 font-medium">Click to upload PDF</span>
+          <span class="text-xs text-zinc-500">or drag and drop</span>
+        </label>
+      </div>
+    </form>
+    {% else %}
+    <p class="text-zinc-500 text-sm">Only editors can upload PDF files.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+  
+  <!-- Manual Event Mapping Info -->
+  <div class="mt-8 p-4 bg-indigo-600/10 border border-indigo-600/30 rounded-xl">
+    <div class="flex items-start gap-3">
+      <svg class="w-5 h-5 text-indigo-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <div>
+        <h4 class="font-medium text-indigo-300">Manual Event Creation</h4>
+        <p class="text-sm text-zinc-400 mt-1">
+          You can reference this PDF while manually adding events to your trip timeline. 
+          View the PDF in one tab and add events from the <a href="/trips/{{ trip.id }}" class="text-indigo-400 hover:underline">trip overview page</a>.
+        </p>
+      </div>
+    </div>
+  </div>
+  
+</div>
+{% endblock %}

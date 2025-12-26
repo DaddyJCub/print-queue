@@ -1,0 +1,94 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}New Trip | Printellect{% endblock %}
+
+{% block header_title %}New Trip{% endblock %}
+
+{% block header_left %}
+<a href="/trips" class="flex items-center gap-2 tap-highlight text-zinc-400 hover:text-white">
+  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+  </svg>
+  <span class="hidden sm:inline">Back</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+  
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold flex items-center gap-2">
+      <span class="text-2xl">✈️</span>
+      Create New Trip
+    </h1>
+    <p class="text-zinc-400 text-sm mt-1">Plan your next adventure</p>
+  </div>
+  
+  <form action="/trips/new" method="POST" class="space-y-6">
+    
+    <!-- Trip Name -->
+    <div>
+      <label class="block text-sm font-medium text-zinc-300 mb-2">Trip Name *</label>
+      <input type="text" name="title" required
+             placeholder="e.g., Vegas Birthday Trip 2025"
+             class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+    </div>
+    
+    <!-- Destination -->
+    <div>
+      <label class="block text-sm font-medium text-zinc-300 mb-2">Destination *</label>
+      <input type="text" name="destination" required
+             placeholder="e.g., Las Vegas, Nevada"
+             class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+    </div>
+    
+    <!-- Dates -->
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">Start Date *</label>
+        <input type="date" name="start_date" required
+               class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-2">End Date *</label>
+        <input type="date" name="end_date" required
+               class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+      </div>
+    </div>
+    
+    <!-- Timezone -->
+    <div>
+      <label class="block text-sm font-medium text-zinc-300 mb-2">Timezone</label>
+      <select name="timezone" class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+        <option value="America/Los_Angeles">Pacific Time (Las Vegas)</option>
+        <option value="America/Denver">Mountain Time</option>
+        <option value="America/Chicago">Central Time</option>
+        <option value="America/New_York">Eastern Time</option>
+        <option value="Europe/London">London</option>
+        <option value="Europe/Paris">Paris</option>
+        <option value="Asia/Tokyo">Tokyo</option>
+      </select>
+    </div>
+    
+    <!-- Description -->
+    <div>
+      <label class="block text-sm font-medium text-zinc-300 mb-2">Description (optional)</label>
+      <textarea name="description" rows="3"
+                placeholder="Notes about the trip..."
+                class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition resize-none"></textarea>
+    </div>
+    
+    <!-- Submit -->
+    <div class="flex gap-3 pt-4">
+      <a href="/trips" class="flex-1 px-6 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-medium text-center transition">
+        Cancel
+      </a>
+      <button type="submit" class="flex-1 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-medium transition">
+        Create Trip
+      </button>
+    </div>
+    
+  </form>
+  
+</div>
+{% endblock %}
