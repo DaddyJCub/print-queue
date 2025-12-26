@@ -472,6 +472,11 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                 printer_entry["build_number"] = build["build_number"]
                 printer_entry["build_print_name"] = build["print_name"]
                 printing_by_printer[build_printer] = printer_entry
+                
+                # Also update the original item in the items list with the build number
+                # This ensures the Active Queue table shows the correct build number
+                if parent_item:
+                    parent_item["build_number"] = build["build_number"]
     
     # Fallback for single-build requests or legacy PRINTING status
     for pit in printing_items:
@@ -823,6 +828,11 @@ async def queue_data_api(mine: Optional[str] = None):
                 # Find queue_pos from parent item
                 printer_entry["queue_pos"] = parent_item.get("queue_pos", 1)
                 printing_by_printer[build_printer] = printer_entry
+                
+                # Also update the original item in the items list with the build number
+                # This ensures the Active Queue table shows the correct build number
+                if parent_item:
+                    parent_item["build_number"] = build["build_number"]
     
     # Fallback for single-build requests or legacy PRINTING status
     for pit in printing_items:
