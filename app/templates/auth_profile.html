@@ -88,7 +88,8 @@
     </a>
   </div>
 
-  <!-- Private Features (My Stuff) -->
+  <!-- Private Features (My Stuff) - Only shown if user has access to any private features -->
+  {% if trips_enabled %}
   <div class="mb-6">
     <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">My Stuff</h2>
     <a href="/trips" class="flex items-center gap-4 p-4 bg-gradient-to-r from-emerald-600/10 to-teal-600/5 border border-emerald-500/20 rounded-xl hover:border-emerald-500/40 transition tap-highlight">
@@ -104,6 +105,7 @@
       </svg>
     </a>
   </div>
+  {% endif %}
 
   <!-- Profile Settings Form -->
   <form action="/auth/profile" method="POST" class="space-y-6">

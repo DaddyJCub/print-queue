@@ -1693,6 +1693,9 @@ async def user_profile_page(
     printers = [{"name": p[1]} for p in PRINTERS if p[0] != "ANY"]
     materials = [m[1] for m in MATERIALS if m[0] != "ANY"]
     
+    # Check if trips feature is enabled for this user
+    trips_enabled = is_feature_enabled("trips", user_id=user.id, email=user.email)
+    
     return templates.TemplateResponse("user_profile.html", {
         "request": request,
         "user": user,
@@ -1702,6 +1705,7 @@ async def user_profile_page(
         "success": success,
         "error": error,
         "from_page": from_page,
+        "trips_enabled": trips_enabled,
     })
 
 

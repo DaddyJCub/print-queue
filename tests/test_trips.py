@@ -52,6 +52,14 @@ def init_sandbox_db():
     init_db()
     init_auth_tables()
     ensure_migrations()
+    
+    # Enable trips feature for test users
+    from app.auth import update_feature_flag
+    update_feature_flag(
+        "trips",
+        enabled=True,
+        rollout_percentage=100,  # Enable for everyone in tests
+    )
 
 
 def create_test_user(email: str = "trip-test@example.com", name: str = "Trip Tester"):

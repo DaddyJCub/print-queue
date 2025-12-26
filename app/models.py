@@ -623,6 +623,15 @@ DEFAULT_FEATURE_FLAGS = {
         enabled=True,  # Already implemented
         description="3D model preview with Three.js",
     ),
+    
+    # Private features (user-specific access)
+    "trips": FeatureFlag(
+        key="trips",
+        enabled=True,  # Enabled but restricted to allowed_emails
+        description="Private trips/itinerary feature (family use)",
+        rollout_percentage=0,  # Don't auto-enable for anyone
+        allowed_emails=[],  # Add specific emails in admin panel
+    ),
 }
 
 

@@ -28,7 +28,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.auth import (
     get_current_user, require_user, optional_user, get_user_by_id, get_user_by_email,
-    log_audit, db
+    log_audit, db, is_feature_enabled
 )
 from app.models import (
     Trip, TripMember, TripEvent, TripMemberRole, TripEventCategory, AuditAction
@@ -589,6 +589,10 @@ async def trips_list_page(request: Request):
     user = await get_current_user(request)
     if not user:
         return RedirectResponse(url="/auth/login?next=/trips", status_code=303)
+    
+    # Check feature flag - trips is gated to specific users
+    if not is_feature_enabled("trips", user_id=user.id, email=user.email):
+        raise HTTPException(status_code=403, detail="You don't have access to this feature")
     
     trips = get_user_trips(user.id)
     
