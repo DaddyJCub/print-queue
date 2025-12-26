@@ -4856,9 +4856,10 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
 
 def send_broadcast_notification(title: str, body: str, url: str = None, 
                                 broadcast_type: str = "custom", sent_by: str = None,
-                                metadata: dict = None, also_email: bool = False) -> dict:
+                                metadata: dict = None, also_email: bool = False,
+                                target_emails: list = None) -> dict:
     """
-    Send a push notification to ALL subscribed users.
+    Send a push notification to ALL or specific subscribed users.
     Used for system announcements, app updates, etc.
     
     Args:
@@ -4868,7 +4869,8 @@ def send_broadcast_notification(title: str, body: str, url: str = None,
         broadcast_type: Type of broadcast ('custom', 'app_update', 'announcement', 'maintenance')
         sent_by: Admin email or identifier who sent this
         metadata: Optional dict of additional metadata (e.g., version number)
-        also_email: If True, also send email to all subscribed users
+        also_email: If True, also send email to subscribed users
+        target_emails: List of specific emails to send to (None = all subscribers)
     
     Returns:
         dict with total_sent, total_failed, and details
@@ -4884,10 +4886,18 @@ def send_broadcast_notification(title: str, body: str, url: str = None,
     
     # Get all unique emails with push subscriptions
     conn = db()
-    emails = conn.execute(
+    all_emails = conn.execute(
         "SELECT DISTINCT email FROM push_subscriptions"
     ).fetchall()
     conn.close()
+    
+    # Filter to target emails if specified
+    if target_emails:
+        target_set = set(e.lower() for e in target_emails)
+        emails = [row for row in all_emails if row["email"].lower() in target_set]
+        print(f"[BROADCAST] Targeting {len(target_emails)} specific emails, {len(emails)} are subscribed")
+    else:
+        emails = all_emails
     
     result["unique_emails"] = len(emails)
     

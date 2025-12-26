@@ -100,7 +100,7 @@
     <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mb-6">
       <h2 class="text-lg font-semibold mb-4">✏️ Send Custom Broadcast</h2>
       
-      <form method="POST" action="/admin/broadcast/send" class="space-y-4">
+      <form method="POST" action="/admin/broadcast/send" class="space-y-4" onsubmit="return confirmBroadcast(this)">
         <div>
           <label class="block text-sm text-zinc-300 mb-1">Title</label>
           <input type="text" name="title" required
@@ -134,6 +134,30 @@
           </select>
         </div>
         
+        <!-- Target Audience -->
+        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
+          <p class="text-sm text-zinc-300 font-medium mb-3">🎯 Target Audience</p>
+          <div class="space-y-2">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="radio" name="target" value="all" checked class="scale-110" onchange="toggleTargetEmails()">
+              <span class="text-sm">👥 All Subscribers <span class="text-zinc-500">({{ subscriber_count }} users)</span></span>
+            </label>
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="radio" name="target" value="specific" class="scale-110" onchange="toggleTargetEmails()">
+              <span class="text-sm">📧 Specific Users</span>
+            </label>
+          </div>
+          
+          <!-- Specific Emails Input (hidden by default) -->
+          <div id="target-emails-container" class="hidden mt-3">
+            <label class="block text-xs text-zinc-400 mb-1">Email addresses (one per line or comma-separated)</label>
+            <textarea name="target_emails" id="target-emails" rows="3"
+                      class="w-full rounded-lg bg-zinc-900 border border-zinc-700 p-2 text-sm"
+                      placeholder="user1@example.com&#10;user2@example.com"></textarea>
+            <p class="text-xs text-zinc-600 mt-1">Only subscribed users will receive notifications</p>
+          </div>
+        </div>
+        
         <!-- Delivery Options -->
         <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
           <p class="text-sm text-zinc-300 font-medium mb-3">📬 Delivery Methods</p>
@@ -150,8 +174,7 @@
         </div>
         
         <button type="submit" 
-                class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-3 font-semibold"
-                onclick="return confirm('Send this notification to all {{ subscriber_count }} subscribers?')">
+                class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-3 font-semibold">
           📤 Send Broadcast
         </button>
       </form>
@@ -330,6 +353,32 @@
       } catch (e) {
         showToast('Network error', 'error');
       }
+    }
+    
+    function toggleTargetEmails() {
+      const container = document.getElementById('target-emails-container');
+      const isSpecific = document.querySelector('input[name="target"][value="specific"]').checked;
+      container.classList.toggle('hidden', !isSpecific);
+    }
+    
+    function confirmBroadcast(form) {
+      const target = form.querySelector('input[name="target"]:checked').value;
+      if (target === 'all') {
+        return confirm('Send this notification to all {{ subscriber_count }} subscribers?');
+      } else {
+        const emails = form.querySelector('#target-emails').value.trim();
+        if (!emails) {
+          alert('Please enter at least one email address');
+          return false;
+        }
+        const count = emails.split(/[\n,]/).filter(e => e.trim()).length;
+        return confirm(`Send this notification to ${count} specified user(s)?`);
+      }
+    }
+    
+    function updateVersionPreview(version) {
+      document.getElementById('preview-version').textContent = version;
+      document.getElementById('preview-anchor').textContent = version;
     }
   </script>
 </body>

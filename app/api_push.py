@@ -76,11 +76,23 @@ def admin_broadcast_send(
     url: str = Form(""),
     broadcast_type: str = Form("custom"),
     send_email: Optional[str] = Form(None),
+    target: str = Form("all"),
+    target_emails: str = Form(""),
     _=Depends(require_admin)
 ):
-    """Send a broadcast notification to all subscribers"""
+    """Send a broadcast notification to all or specific subscribers"""
     # Don't access session directly - just log as 'admin'
     admin_user = "admin"
+    
+    # Parse target emails if targeting specific users
+    specific_emails = None
+    if target == "specific" and target_emails.strip():
+        # Parse comma or newline separated emails
+        specific_emails = [
+            e.strip().lower() 
+            for e in target_emails.replace('\n', ',').split(',') 
+            if e.strip()
+        ]
     
     result = send_broadcast_notification(
         title=title,
@@ -88,7 +100,8 @@ def admin_broadcast_send(
         url=url if url.strip() else None,
         broadcast_type=broadcast_type,
         sent_by=admin_user,
-        also_email=bool(send_email)
+        also_email=bool(send_email),
+        target_emails=specific_emails
     )
     
     return RedirectResponse(

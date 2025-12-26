@@ -697,6 +697,50 @@ async def toggle_feature_flag(
         return JSONResponse({"success": False, "error": str(e)}, status_code=400)
 
 
+@router.post("/admin/features/{key}/allowed-emails")
+async def manage_feature_allowed_emails(
+    request: Request,
+    key: str,
+    admin: dict = Depends(require_permission("manage_settings"))
+):
+    """Add or remove emails from a feature flag's allowed list."""
+    try:
+        data = await request.json()
+        action = data.get("action")  # 'add' or 'remove'
+        email = data.get("email", "").strip().lower()
+        
+        if action not in ["add", "remove"]:
+            return JSONResponse({"success": False, "error": "Invalid action"}, status_code=400)
+        
+        if not email:
+            return JSONResponse({"success": False, "error": "Email required"}, status_code=400)
+        
+        # Get current flag
+        flag = get_feature_flag(key)
+        if not flag:
+            return JSONResponse({"success": False, "error": "Flag not found"}, status_code=404)
+        
+        current_emails = list(flag.allowed_emails) if flag.allowed_emails else []
+        
+        if action == "add":
+            if email not in current_emails:
+                current_emails.append(email)
+        elif action == "remove":
+            if email in current_emails:
+                current_emails.remove(email)
+        
+        update_feature_flag(
+            key,
+            allowed_emails=current_emails,
+            updated_by=admin.id if hasattr(admin, 'id') else None
+        )
+        
+        return JSONResponse({"success": True, "allowed_emails": current_emails})
+        
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=400)
+
+
 # ─────────────────────────── AUDIT LOG ROUTES ───────────────────────────
 
 @router.get("/admin/audit", response_class=HTMLResponse)
