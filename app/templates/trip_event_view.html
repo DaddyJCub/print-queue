@@ -1,0 +1,220 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}{{ event.title }} | Printellect{% endblock %}
+
+{% block header_title %}Event{% endblock %}
+
+{% block header_left %}
+<a href="/trips/{{ trip.id }}" class="flex items-center gap-2 tap-highlight text-zinc-400 hover:text-white">
+  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+  </svg>
+  <span class="hidden sm:inline">Back</span>
+</a>
+{% endblock %}
+
+{% block header_right %}
+{% if can_edit %}
+<a href="/trips/{{ trip.id }}/events/{{ event.id }}/edit" class="p-2 rounded-lg hover:bg-zinc-800 transition tap-highlight">
+  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+  </svg>
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+  
+  <!-- Event Header -->
+  <div class="mb-6">
+    <div class="flex items-center gap-3 mb-3">
+      <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl
+        {% if event.category.value == 'flight' %}bg-blue-600/30 text-blue-300
+        {% elif event.category.value == 'hotel' %}bg-purple-600/30 text-purple-300
+        {% elif event.category.value == 'activity' %}bg-amber-600/30 text-amber-300
+        {% elif event.category.value == 'meal' %}bg-orange-600/30 text-orange-300
+        {% elif event.category.value == 'transport' %}bg-cyan-600/30 text-cyan-300
+        {% else %}bg-zinc-700/50 text-zinc-300{% endif %}">
+        {% if event.category.value == 'flight' %}✈️
+        {% elif event.category.value == 'hotel' %}🏨
+        {% elif event.category.value == 'activity' %}🎯
+        {% elif event.category.value == 'meal' %}🍽️
+        {% elif event.category.value == 'transport' %}🚗
+        {% else %}📍{% endif %}
+      </div>
+      <div>
+        <span class="px-2 py-0.5 text-xs rounded-full
+          {% if event.category.value == 'flight' %}bg-blue-600/20 text-blue-300
+          {% elif event.category.value == 'hotel' %}bg-purple-600/20 text-purple-300
+          {% elif event.category.value == 'activity' %}bg-amber-600/20 text-amber-300
+          {% elif event.category.value == 'meal' %}bg-orange-600/20 text-orange-300
+          {% elif event.category.value == 'transport' %}bg-cyan-600/20 text-cyan-300
+          {% else %}bg-zinc-700/50 text-zinc-400{% endif %}">
+          {{ event.category.value|capitalize }}
+        </span>
+      </div>
+    </div>
+    <h1 class="text-2xl font-bold">{{ event.title }}</h1>
+  </div>
+  
+  <!-- Event Details -->
+  <div class="space-y-4">
+    
+    <!-- Date/Time -->
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+      <div class="flex items-center gap-3">
+        <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+        <div>
+          <p class="font-medium">{{ event.start_datetime[:10] }}</p>
+          <p class="text-sm text-zinc-400">
+            {% if event.is_all_day %}
+              All day
+            {% else %}
+              {{ event.start_datetime[11:16] }}{% if event.end_datetime %} — {{ event.end_datetime[11:16] }}{% endif %}
+            {% endif %}
+          </p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Reminder (only shown for timed events with reminder set) -->
+    {% if not event.is_all_day and event.reminder_minutes and event.reminder_minutes > 0 %}
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+      <div class="flex items-center gap-3">
+        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+        </svg>
+        <div>
+          <p class="font-medium">Reminder</p>
+          <p class="text-sm text-zinc-400">
+            {% if event.reminder_minutes == 5 %}5 minutes before
+            {% elif event.reminder_minutes == 15 %}15 minutes before
+            {% elif event.reminder_minutes == 30 %}30 minutes before
+            {% elif event.reminder_minutes == 60 %}1 hour before
+            {% elif event.reminder_minutes == 180 %}3 hours before
+            {% elif event.reminder_minutes == 1440 %}1 day before
+            {% else %}{{ event.reminder_minutes }} minutes before{% endif %}
+            {% if event.reminder_sent %}
+            <span class="text-emerald-400 ml-2">✓ Sent</span>
+            {% endif %}
+          </p>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    
+    <!-- Flight Info -->
+    {% if event.flight_number or event.departure_location %}
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+      <div class="flex items-center gap-3">
+        <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+        </svg>
+        <div>
+          {% if event.flight_number %}
+          <p class="font-medium">{{ event.flight_number }}</p>
+          {% endif %}
+          {% if event.departure_location and event.arrival_location %}
+          <p class="text-sm text-zinc-400">{{ event.departure_location }} → {{ event.arrival_location }}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    
+    <!-- Location -->
+    {% if event.location_name or event.address %}
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+      <div class="flex items-start gap-3">
+        <svg class="w-5 h-5 text-zinc-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <div>
+          {% if event.location_name %}
+          <p class="font-medium">{{ event.location_name }}</p>
+          {% endif %}
+          {% if event.address %}
+          <p class="text-sm text-zinc-400">{{ event.address }}</p>
+          {% endif %}
+        </div>
+      </div>
+      {% if event.links.maps %}
+      <a href="{{ event.links.maps }}" target="_blank" rel="noopener" class="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+        </svg>
+        Open in Maps
+      </a>
+      {% endif %}
+    </div>
+    {% endif %}
+    
+    <!-- Confirmation Number -->
+    {% if event.confirmation_number %}
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <div>
+            <p class="text-sm text-zinc-400">Confirmation</p>
+            <p class="font-mono font-medium">{{ event.confirmation_number }}</p>
+          </div>
+        </div>
+        <button onclick="copyToClipboard('{{ event.confirmation_number }}')" class="p-2 hover:bg-zinc-800 rounded-lg transition" title="Copy">
+          <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    {% endif %}
+    
+    <!-- Notes -->
+    {% if event.notes %}
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+      <h3 class="text-sm font-medium text-zinc-400 mb-2">Notes</h3>
+      <p class="whitespace-pre-wrap">{{ event.notes }}</p>
+    </div>
+    {% endif %}
+    
+    <!-- Links -->
+    {% if event.links.tickets %}
+    <a href="{{ event.links.tickets }}" target="_blank" rel="noopener" class="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-medium transition">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"/>
+      </svg>
+      View Tickets / Booking
+    </a>
+    {% endif %}
+    
+  </div>
+  
+  <!-- Delete Button -->
+  {% if can_edit %}
+  <div class="mt-8 pt-6 border-t border-zinc-800">
+    <form action="/trips/{{ trip.id }}/events/{{ event.id }}/delete" method="POST" onsubmit="return confirm('Delete this event?');">
+      <button type="submit" class="w-full px-4 py-3 bg-red-600/10 border border-red-600/30 text-red-400 hover:bg-red-600/20 rounded-xl font-medium transition">
+        Delete Event
+      </button>
+    </form>
+  </div>
+  {% endif %}
+  
+</div>
+
+<script>
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      // Could show a toast here
+      alert('Copied to clipboard!');
+    });
+  }
+  window.copyToClipboard = copyToClipboard;
+</script>
+{% endblock %}

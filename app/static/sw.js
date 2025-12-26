@@ -1,6 +1,6 @@
 // Service Worker for Printellect PWA
-const SW_VERSION = '2.2.0';
-const CACHE_NAME = 'print-queue-v4';
+const SW_VERSION = '2.4.0';
+const CACHE_NAME = 'print-queue-v6';
 const OFFLINE_URL = '/static/offline.html';
 
 // Log helper with timestamp
@@ -77,14 +77,18 @@ self.addEventListener('fetch', (event) => {
   // Skip admin routes (always need fresh data)
   if (event.request.url.includes('/admin')) return;
   
-  // Skip API routes
+  // Skip API routes (including trips API)
   if (event.request.url.includes('/api/')) return;
+  if (event.request.url.includes('/trips/api/')) return;
   
   // Skip my-requests routes (has dynamic redirect logic that shouldn't be cached)
   if (event.request.url.includes('/my-requests')) return;
   
   // Skip auth/user profile routes (has session-dependent content)
   if (event.request.url.includes('/auth/') || event.request.url.includes('/user/')) return;
+  
+  // Skip trip PDF download (dynamic file serving)
+  if (event.request.url.includes('/pdf/view')) return;
   
   event.respondWith(
     fetch(event.request)
@@ -98,6 +102,7 @@ self.addEventListener('fetch', (event) => {
           const shouldCache = 
             event.request.destination === 'document' ||
             url.pathname.startsWith('/static/') ||
+            url.pathname.startsWith('/trips') ||  // Cache trip pages for offline viewing
             url.pathname === '/queue' ||
             url.pathname === '/';
           
@@ -155,6 +160,8 @@ self.addEventListener('push', (event) => {
     renotify: true,
     data: {
       url: data.url || '/',
+      // Pass through any custom data from the push payload
+      ...(data.data || {}),
     },
   };
   
