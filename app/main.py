@@ -985,6 +985,8 @@ def init_db():
             description TEXT,
             cover_image_url TEXT,
             pdf_itinerary_path TEXT,
+            share_token TEXT,
+            budget_cents INTEGER DEFAULT 0,
             created_by_user_id TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -1034,6 +1036,19 @@ def init_db():
             reminder_sent INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
+        );
+    """)
+    
+    # Trip event comments - lightweight collaboration
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS trip_event_comments (
+            id TEXT PRIMARY KEY,
+            event_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(event_id) REFERENCES trip_events(id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
     """)
     
@@ -1205,6 +1220,37 @@ def ensure_migrations():
             cur.execute("ALTER TABLE trip_events ADD COLUMN reminder_minutes INTEGER DEFAULT 30")
         if "reminder_sent" not in trip_event_cols:
             cur.execute("ALTER TABLE trip_events ADD COLUMN reminder_sent INTEGER DEFAULT 0")
+        if "cost_cents" not in trip_event_cols:
+            cur.execute("ALTER TABLE trip_events ADD COLUMN cost_cents INTEGER DEFAULT 0")
+
+    # Trip sharing/budget columns
+    cur.execute("PRAGMA table_info(trips)")
+    trip_cols = {row[1] for row in cur.fetchall()}
+    if trip_cols:
+        if "share_token" not in trip_cols:
+            cur.execute("ALTER TABLE trips ADD COLUMN share_token TEXT")
+        if "budget_cents" not in trip_cols:
+            cur.execute("ALTER TABLE trips ADD COLUMN budget_cents INTEGER DEFAULT 0")
+        # Backfill share tokens for existing trips
+        existing_without_share = cur.execute("SELECT id FROM trips WHERE share_token IS NULL OR share_token = ''").fetchall()
+        import secrets
+        for row in existing_without_share:
+            cur.execute("UPDATE trips SET share_token = ? WHERE id = ?", (secrets.token_urlsafe(16), row[0]))
+
+    # Trip event comments table
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='trip_event_comments'")
+    if not cur.fetchone():
+        cur.execute("""
+            CREATE TABLE trip_event_comments (
+                id TEXT PRIMARY KEY,
+                event_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                body TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(event_id) REFERENCES trip_events(id) ON DELETE CASCADE,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
 
     conn.commit()
     conn.close()
@@ -5218,4 +5264,3 @@ app.include_router(admin_router)
 app.include_router(api_push_router)
 app.include_router(api_builds_router)
 app.include_router(trips_router)
-

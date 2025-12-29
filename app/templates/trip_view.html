@@ -41,6 +41,22 @@
     <span>PDF Itinerary</span>
   </a>
   {% if can_edit %}
+  <a href="/trips/{{ trip.id }}/import/ics" class="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800 transition">
+    <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9M4 4l16 16"/>
+    </svg>
+    <span>Import ICS</span>
+  </a>
+  {% endif %}
+  {% if can_manage %}
+  <a href="/trips/{{ trip.id }}/share" class="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800 transition">
+    <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h6a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+    </svg>
+    <span>Share & Calendar</span>
+  </a>
+  {% endif %}
+  {% if can_edit %}
   <a href="/trips/{{ trip.id }}/edit" class="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800 transition">
     <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
@@ -84,6 +100,17 @@
             </svg>
             {{ trip.start_date }} — {{ trip.end_date }}
           </span>
+          {% if trip.budget_cents %}
+          <span class="flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-12v2m0 10v2m-7-6h14"/>
+            </svg>
+            Budget: ${{ '%.2f' % (trip.budget_cents/100) }} · Spent ${{ '%.2f' % (total_cost_cents/100) }}{% if remaining_budget_cents is not none %} · Left ${{ '%.2f' % (remaining_budget_cents/100) }}{% endif %}
+          </span>
+          {% endif %}
+          {% if share_mode %}
+          <span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-full">Shared View</span>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -319,6 +346,13 @@
   
   // Scroll to today on load, or to specific event if coming from notification
   document.addEventListener('DOMContentLoaded', () => {
+    // Inform service worker which user owns this trip cache for isolation
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.active?.postMessage({ type: 'SET_ACTIVE_USER', userId: '{{ user.id }}' });
+      }).catch(() => {});
+    }
+    
     // Check for event query param (from notification click-through)
     const urlParams = new URLSearchParams(window.location.search);
     const eventId = urlParams.get('event');
@@ -365,10 +399,10 @@
   window.addEventListener('offline', updateOfflineStatus);
   updateOfflineStatus(); // Check on load
   
-  // Cache trip data for offline
-  if ('serviceWorker' in navigator && 'caches' in window) {
-    caches.open('trip-cache-v1').then(cache => {
-      cache.add(window.location.pathname);
+  // Warm the service worker cache for this trip after binding the user
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready.then(() => {
+      fetch(window.location.pathname, { credentials: 'include', cache: 'reload' }).catch(() => {});
     });
   }
 </script>

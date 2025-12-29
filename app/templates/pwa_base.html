@@ -443,6 +443,15 @@
       localStorage.removeItem('my_requests_token');
       localStorage.removeItem('user_session');
       localStorage.removeItem('user_email');
+      // Clear any trip caches and user binding
+      if ('serviceWorker' in navigator && 'caches' in window) {
+        navigator.serviceWorker.ready.then((reg) => {
+          reg.active?.postMessage({ type: 'CLEAR_ACTIVE_USER' });
+          return caches.keys().then(keys => {
+            return Promise.all(keys.filter(k => k.startsWith('trip-cache-')).map(k => caches.delete(k)));
+          });
+        }).catch(() => {});
+      }
       // Redirect to logout endpoint
       window.location.href = '/auth/logout';
     }

@@ -1,7 +1,8 @@
 // Service Worker for Printellect PWA
-const SW_VERSION = '2.4.0';
-const CACHE_NAME = 'print-queue-v6';
+const SW_VERSION = '2.5.0';
+const CACHE_NAME = 'print-queue-v7';
 const OFFLINE_URL = '/static/offline.html';
+let ACTIVE_TRIP_USER = null;
 
 // Log helper with timestamp
 function swLog(level, ...args) {
@@ -74,6 +75,9 @@ self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') return;
   
+  const url = new URL(event.request.url);
+  const isTripPage = url.pathname.startsWith('/trips');
+  
   // Skip admin routes (always need fresh data)
   if (event.request.url.includes('/admin')) return;
   
@@ -98,17 +102,29 @@ self.addEventListener('fetch', (event) => {
         
         // Cache successful responses for HTML pages and static assets
         if (response.ok) {
-          const url = new URL(event.request.url);
           const shouldCache = 
             event.request.destination === 'document' ||
             url.pathname.startsWith('/static/') ||
-            url.pathname.startsWith('/trips') ||  // Cache trip pages for offline viewing
             url.pathname === '/queue' ||
             url.pathname === '/';
           
           if (shouldCache) {
             caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone);
+              // For trip pages, only cache when we have an active user context
+              if (isTripPage) {
+                if (!ACTIVE_TRIP_USER) return;
+                const cacheCopy = responseClone.clone();
+                const headers = new Headers(cacheCopy.headers);
+                headers.set('X-Trip-User', ACTIVE_TRIP_USER);
+                const taggedResponse = new Response(cacheCopy.body, {
+                  status: cacheCopy.status,
+                  statusText: cacheCopy.statusText,
+                  headers,
+                });
+                cache.put(event.request, taggedResponse);
+              } else {
+                cache.put(event.request, responseClone);
+              }
             });
           }
         }
@@ -119,6 +135,12 @@ self.addEventListener('fetch', (event) => {
         // Network failed, try cache
         return caches.match(event.request).then((cachedResponse) => {
           if (cachedResponse) {
+            if (isTripPage) {
+              const owner = cachedResponse.headers.get('X-Trip-User');
+              if (!ACTIVE_TRIP_USER || owner !== ACTIVE_TRIP_USER) {
+                return caches.match(OFFLINE_URL);
+              }
+            }
             return cachedResponse;
           }
           
@@ -191,11 +213,30 @@ self.addEventListener('notificationclick', (event) => {
 
 // Message handler for diagnostics
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'GET_SW_STATUS') {
-    event.ports[0].postMessage({
+  if (!event.data) return;
+  
+  if (event.data.type === 'GET_SW_STATUS') {
+    event.ports[0]?.postMessage({
       version: SW_VERSION,
       cacheName: CACHE_NAME,
       state: 'active'
     });
+  }
+  
+  if (event.data.type === 'SET_ACTIVE_USER') {
+    ACTIVE_TRIP_USER = event.data.userId || null;
+    // Clean up any trip caches belonging to other users
+    caches.keys().then((names) => {
+      names
+        .filter((name) => name.startsWith('trip-cache-') && !name.endsWith(String(ACTIVE_TRIP_USER)))
+        .forEach((name) => caches.delete(name));
+    }).catch(() => {});
+  }
+  
+  if (event.data.type === 'CLEAR_ACTIVE_USER') {
+    ACTIVE_TRIP_USER = null;
+    caches.keys().then((names) => {
+      names.filter((name) => name.startsWith('trip-cache-')).forEach((name) => caches.delete(name));
+    }).catch(() => {});
   }
 });

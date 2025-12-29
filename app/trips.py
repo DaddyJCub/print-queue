@@ -17,13 +17,14 @@ import uuid
 import sqlite3
 import json
 import shutil
-from datetime import datetime, timedelta
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any, Tuple
 from functools import wraps
 import logging
 
 from fastapi import APIRouter, Request, Form, HTTPException, Depends, Query, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from app.auth import (
@@ -31,7 +32,7 @@ from app.auth import (
     log_audit, db, is_feature_enabled
 )
 from app.models import (
-    Trip, TripMember, TripEvent, TripMemberRole, TripEventCategory, AuditAction
+    Trip, TripMember, TripEvent, TripMemberRole, TripEventCategory, AuditAction, TripEventComment
 )
 
 logger = logging.getLogger("printellect.trips")
@@ -43,6 +44,7 @@ templates = Jinja2Templates(directory="app/templates")
 
 # Timezone for display
 DISPLAY_TIMEZONE = os.getenv("DISPLAY_TIMEZONE", "America/Los_Angeles")
+BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
 
 # Upload directory for trip files (PDFs, images)
 TRIP_UPLOADS_DIR = os.getenv("TRIP_UPLOADS_DIR", "/data/trip_uploads")
@@ -50,6 +52,234 @@ TRIP_UPLOADS_DIR = os.getenv("TRIP_UPLOADS_DIR", "/data/trip_uploads")
 def get_db_path():
     return os.getenv("DB_PATH", "/data/app.db")
 
+
+def _get_tz(tz_name: str):
+    """Return a ZoneInfo instance with safe fallback."""
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(tz_name or DISPLAY_TIMEZONE)
+    except Exception:
+        # Fallback to UTC to avoid crashing on bad tz strings
+        return timezone.utc
+
+
+def utc_now_iso() -> str:
+    """UTC timestamp with Z suffix and no microseconds."""
+    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+
+def ensure_trips_feature(user):
+    """Ensure trips feature is enabled for the user or raise 403."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if not is_feature_enabled("trips", user_id=getattr(user, "id", None), email=getattr(user, "email", None)):
+        raise HTTPException(status_code=403, detail="You don't have access to this feature")
+
+
+def validate_share_token(trip: Trip, token: str) -> bool:
+    return bool(trip and token and trip.share_token and secrets.compare_digest(trip.share_token, token))
+
+
+def normalize_link(url_value: Optional[str]) -> Optional[str]:
+    """Keep only http(s) links; drop everything else."""
+    if not url_value:
+        return None
+    from urllib.parse import urlparse
+    parsed = urlparse(url_value.strip())
+    if parsed.scheme in ("http", "https") and parsed.netloc:
+        return url_value.strip()
+    return None
+
+
+def build_event_datetimes(
+    start_date: str,
+    start_time: Optional[str],
+    end_date: Optional[str],
+    end_time: Optional[str],
+    is_all_day: bool,
+    tz_name: str,
+) -> Tuple[str, Optional[str], datetime, Optional[datetime]]:
+    """
+    Build UTC ISO datetimes (with Z) for storage and return both raw and parsed values.
+    """
+    tz = _get_tz(tz_name)
+    # Start
+    if is_all_day or not start_time:
+        local_start = datetime.fromisoformat(f"{start_date}T00:00:00")
+    else:
+        local_start = datetime.fromisoformat(f"{start_date}T{start_time}:00")
+    local_start = local_start.replace(tzinfo=tz)
+    start_utc = local_start.astimezone(timezone.utc)
+    start_iso = start_utc.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    
+    # End (optional)
+    end_utc = None
+    end_iso = None
+    if end_date:
+        if is_all_day or not end_time:
+            local_end = datetime.fromisoformat(f"{end_date}T23:59:59")
+        else:
+            local_end = datetime.fromisoformat(f"{end_date}T{end_time}:00")
+        local_end = local_end.replace(tzinfo=tz)
+        end_utc = local_end.astimezone(timezone.utc)
+        end_iso = end_utc.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    
+    return start_iso, end_iso, start_utc, end_utc
+
+
+def parse_event_start(event: TripEvent) -> Optional[datetime]:
+    """Parse an event's start_datetime into UTC."""
+    try:
+        raw = event.start_datetime
+        if isinstance(raw, datetime):
+            dt = raw
+        elif isinstance(raw, str):
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        else:
+            return None
+        
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_get_tz(getattr(event, "timezone", DISPLAY_TIMEZONE)))
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _format_ics_datetime(dt: datetime, all_day: bool) -> str:
+    if all_day:
+        return dt.strftime("%Y%m%d")
+    return dt.strftime("%Y%m%dT%H%M%SZ")
+
+
+def build_trip_ics(trip: Trip, events: List[TripEvent]) -> str:
+    """Generate a simple ICS feed for a trip."""
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        f"PRODID:-//Printellect Trips//EN",
+        f"X-WR-CALNAME:{trip.title}",
+    ]
+    for e in events:
+        start_dt = parse_event_start(e)
+        if not start_dt:
+            continue
+        end_dt = None
+        if e.end_datetime:
+            try:
+                end_dt = datetime.fromisoformat(e.end_datetime.replace("Z", "+00:00")).astimezone(timezone.utc)
+            except Exception:
+                end_dt = None
+        if e.is_all_day:
+            start_str = _format_ics_datetime(start_dt, True)
+            end_str = _format_ics_datetime(end_dt or start_dt, True)
+            dtstart_line = f"DTSTART;VALUE=DATE:{start_str}"
+            dtend_line = f"DTEND;VALUE=DATE:{end_str}"
+        else:
+            start_str = _format_ics_datetime(start_dt, False)
+            dtstart_line = f"DTSTART:{start_str}"
+            if end_dt:
+                end_str = _format_ics_datetime(end_dt, False)
+                dtend_line = f"DTEND:{end_str}"
+            else:
+                dtend_line = None
+        lines.extend([
+            "BEGIN:VEVENT",
+            f"UID:{e.id}",
+            dtstart_line,
+        ])
+        if dtend_line:
+            lines.append(dtend_line)
+        lines.extend([
+            f"SUMMARY:{e.title}",
+            f"DESCRIPTION:{(e.notes or '').replace('\\n', '\\\\n')}",
+            f"LOCATION:{e.location_name or ''}",
+            "END:VEVENT",
+        ])
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(lines)
+
+
+def parse_ics_events(ics_text: str, default_tz: str) -> List[Dict[str, Any]]:
+    """Very small ICS parser to pull VEVENT details without extra deps."""
+    events = []
+    current = {}
+    for raw_line in ics_text.splitlines():
+        line = raw_line.strip()
+        if line.upper() == "BEGIN:VEVENT":
+            current = {}
+        elif line.upper() == "END:VEVENT":
+            if current.get("SUMMARY") and current.get("DTSTART"):
+                events.append(current)
+            current = {}
+        else:
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            current[key.upper()] = value
+    
+    parsed = []
+    for item in events:
+        summary = item.get("SUMMARY")
+        dtstart = item.get("DTSTART")
+        dtend = item.get("DTEND")
+        location = item.get("LOCATION", "")
+        notes = item.get("DESCRIPTION", "")
+        is_all_day = False
+        start_iso = None
+        end_iso = None
+        
+        def parse_dt(val: str) -> Optional[datetime]:
+            if not val:
+                return None
+            try:
+                if val.endswith("Z"):
+                    return datetime.strptime(val, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+                if "T" in val:
+                    tz = _get_tz(default_tz)
+                    local = datetime.strptime(val, "%Y%m%dT%H%M%S").replace(tzinfo=tz)
+                    return local.astimezone(timezone.utc)
+                # Date-only
+                return datetime.strptime(val, "%Y%m%d").replace(tzinfo=timezone.utc)
+            except Exception:
+                return None
+        
+        start_dt = parse_dt(dtstart)
+        end_dt = parse_dt(dtend)
+        if start_dt and "T" not in dtstart:
+            is_all_day = True
+        if start_dt:
+            start_iso = start_dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        if end_dt:
+            end_iso = end_dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        
+        parsed.append({
+            "title": summary or "Untitled",
+            "start_datetime": start_iso,
+            "end_datetime": end_iso,
+            "is_all_day": is_all_day,
+            "location_name": location,
+            "notes": notes.replace("\\n", "\n"),
+        })
+    return parsed
+
+
+def validate_event_window(start_dt: datetime, end_dt: Optional[datetime], trip) -> None:
+    """Ensure event dates fall within trip window and are ordered."""
+    if end_dt and end_dt < start_dt:
+        raise HTTPException(status_code=400, detail="Event end time cannot be before start time")
+    
+    # Compare in trip timezone so date boundaries align with user expectation
+    tz = _get_tz(getattr(trip, "timezone", DISPLAY_TIMEZONE))
+    trip_start = datetime.strptime(trip.start_date, "%Y-%m-%d").replace(tzinfo=tz)
+    trip_end = datetime.strptime(trip.end_date, "%Y-%m-%d").replace(tzinfo=tz) + timedelta(days=1) - timedelta(seconds=1)
+    
+    start_local = start_dt.astimezone(tz)
+    if start_local < trip_start or start_local > trip_end:
+        raise HTTPException(status_code=400, detail="Event start is outside of the trip dates")
+    if end_dt:
+        end_local = end_dt.astimezone(tz)
+        if end_local < trip_start or end_local > trip_end:
+            raise HTTPException(status_code=400, detail="Event end is outside of the trip dates")
 
 def format_datetime_local(value, fmt="%b %d, %Y at %I:%M %p"):
     """Convert ISO datetime string to local timezone for display"""
@@ -89,6 +319,8 @@ def _row_to_trip(row: sqlite3.Row) -> Trip:
         description=row["description"],
         cover_image_url=row["cover_image_url"],
         pdf_itinerary_path=row["pdf_itinerary_path"],
+        share_token=row["share_token"] if "share_token" in row.keys() else None,
+        budget_cents=row["budget_cents"] if "budget_cents" in row.keys() and row["budget_cents"] is not None else 0,
         created_by_user_id=row["created_by_user_id"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -124,12 +356,15 @@ def _row_to_trip_event(row: sqlite3.Row) -> TripEvent:
     keys = row.keys()
     reminder_minutes = row["reminder_minutes"] if "reminder_minutes" in keys else 30
     reminder_sent = bool(row["reminder_sent"]) if "reminder_sent" in keys else False
+    timezone = row["timezone"] if "timezone" in keys and row["timezone"] else "America/Los_Angeles"
+    cost_cents = row["cost_cents"] if "cost_cents" in keys and row["cost_cents"] is not None else 0
     
     return TripEvent(
         id=row["id"],
         trip_id=row["trip_id"],
         title=row["title"],
         start_datetime=row["start_datetime"],
+        timezone=timezone,
         end_datetime=row["end_datetime"],
         is_all_day=bool(row["is_all_day"]),
         category=TripEventCategory(row["category"]) if row["category"] else TripEventCategory.OTHER,
@@ -146,6 +381,7 @@ def _row_to_trip_event(row: sqlite3.Row) -> TripEvent:
         flight_number=row["flight_number"],
         reminder_minutes=reminder_minutes,
         reminder_sent=reminder_sent,
+        cost_cents=cost_cents,
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -217,19 +453,21 @@ def create_trip(
     end_date: str,
     created_by_user_id: str,
     timezone: str = "America/Los_Angeles",
-    description: str = None
+    description: str = None,
+    budget_cents: int = 0
 ) -> Trip:
     """Create a new trip and add creator as owner."""
     conn = db()
     now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     trip_id = str(uuid.uuid4())
+    share_token = secrets.token_urlsafe(16)
     
     conn.execute("""
         INSERT INTO trips (id, title, destination, start_date, end_date, timezone, 
-                          description, created_by_user_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          description, share_token, budget_cents, created_by_user_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (trip_id, title, destination, start_date, end_date, timezone, 
-          description, created_by_user_id, now, now))
+          description, share_token, budget_cents, created_by_user_id, now, now))
     
     # Add creator as owner
     member_id = str(uuid.uuid4())
@@ -273,7 +511,8 @@ def get_user_trips(user_id: str) -> List[Trip]:
 def update_trip(trip_id: str, **kwargs) -> bool:
     """Update trip fields."""
     allowed_fields = {"title", "destination", "start_date", "end_date", "timezone", 
-                      "description", "cover_image_url", "pdf_itinerary_path"}
+                      "description", "cover_image_url", "pdf_itinerary_path",
+                      "share_token", "budget_cents"}
     updates = {k: v for k, v in kwargs.items() if k in allowed_fields and v is not None}
     
     if not updates:
@@ -295,12 +534,22 @@ def update_trip(trip_id: str, **kwargs) -> bool:
 def delete_trip(trip_id: str) -> bool:
     """Delete a trip and all associated data."""
     conn = db()
+    # Grab PDF path before deletion
+    trip_row = conn.execute("SELECT pdf_itinerary_path FROM trips WHERE id = ?", (trip_id,)).fetchone()
+    pdf_path = trip_row["pdf_itinerary_path"] if trip_row else None
+    
     # Delete events and members first (or rely on CASCADE)
     conn.execute("DELETE FROM trip_events WHERE trip_id = ?", (trip_id,))
     conn.execute("DELETE FROM trip_members WHERE trip_id = ?", (trip_id,))
     conn.execute("DELETE FROM trips WHERE id = ?", (trip_id,))
     conn.commit()
     conn.close()
+    
+    if pdf_path and os.path.exists(pdf_path):
+        try:
+            os.remove(pdf_path)
+        except Exception as exc:
+            logger.warning(f"Failed to remove PDF for trip {trip_id}: {exc}")
     
     logger.info(f"Trip deleted: {trip_id}")
     return True
@@ -386,6 +635,7 @@ def create_trip_event(
     title: str,
     start_datetime: str,
     category: TripEventCategory,
+    timezone: str = "America/Los_Angeles",
     **kwargs
 ) -> TripEvent:
     """Create a new trip event."""
@@ -409,15 +659,17 @@ def create_trip_event(
     conn.execute("""
         INSERT INTO trip_events (
             id, trip_id, title, start_datetime, end_datetime, is_all_day, category,
+            timezone,
             location_name, address, latitude, longitude, notes, confirmation_number,
-            links, sort_order, departure_location, arrival_location, flight_number,
+            links, sort_order, departure_location, arrival_location, flight_number, cost_cents,
             reminder_minutes, reminder_sent, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         event_id, trip_id, title, start_datetime,
         kwargs.get("end_datetime"),
         1 if is_all_day else 0,
         category.value,
+        timezone,
         kwargs.get("location_name"),
         kwargs.get("address"),
         kwargs.get("latitude"),
@@ -429,6 +681,7 @@ def create_trip_event(
         kwargs.get("departure_location"),
         kwargs.get("arrival_location"),
         kwargs.get("flight_number"),
+        kwargs.get("cost_cents", 0),
         reminder_minutes,
         0,  # reminder_sent defaults to false
         now, now
@@ -470,17 +723,21 @@ def get_trip_events(trip_id: str, limit: int = None) -> List[TripEvent]:
 def get_upcoming_events(trip_id: str, limit: int = 10) -> List[TripEvent]:
     """Get upcoming events for a trip (from now onwards)."""
     conn = db()
-    now = datetime.utcnow().isoformat()
-    
     rows = conn.execute("""
         SELECT * FROM trip_events 
-        WHERE trip_id = ? AND start_datetime >= ?
+        WHERE trip_id = ?
         ORDER BY start_datetime, sort_order
-        LIMIT ?
-    """, (trip_id, now, limit)).fetchall()
+    """, (trip_id,)).fetchall()
     conn.close()
     
-    return [_row_to_trip_event(row) for row in rows]
+    events = [_row_to_trip_event(row) for row in rows]
+    now_utc = datetime.utcnow().replace(tzinfo=timezone.utc)
+    upcoming = []
+    for e in events:
+        start = parse_event_start(e)
+        if start and start >= now_utc:
+            upcoming.append(e)
+    return upcoming[:limit]
 
 
 def get_events_by_date(trip_id: str, date: str) -> List[TripEvent]:
@@ -501,9 +758,10 @@ def update_trip_event(event_id: str, **kwargs) -> bool:
     """Update event fields."""
     allowed_fields = {
         "title", "start_datetime", "end_datetime", "is_all_day", "category",
-        "location_name", "address", "latitude", "longitude", "notes",
+        "timezone", "location_name", "address", "latitude", "longitude", "notes",
         "confirmation_number", "links", "sort_order", "departure_location",
-        "arrival_location", "flight_number", "reminder_minutes", "reminder_sent"
+        "arrival_location", "flight_number", "reminder_minutes", "reminder_sent",
+        "cost_cents"
     }
     updates = {}
     for k, v in kwargs.items():
@@ -560,9 +818,84 @@ def reorder_trip_events(trip_id: str, event_ids: List[str]) -> bool:
     return True
 
 
+# ─────────────────────────── COMMENTS ───────────────────────────
+
+def add_event_comment(event_id: str, user_id: str, body: str) -> TripEventComment:
+    conn = db()
+    now = utc_now_iso()
+    comment_id = str(uuid.uuid4())
+    conn.execute("""
+        INSERT INTO trip_event_comments (id, event_id, user_id, body, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (comment_id, event_id, user_id, body.strip(), now))
+    conn.commit()
+    conn.close()
+    return get_event_comment(comment_id)
+
+
+def get_event_comment(comment_id: str) -> Optional[TripEventComment]:
+    conn = db()
+    row = conn.execute("""
+        SELECT c.*, u.name as user_name, u.email as user_email
+        FROM trip_event_comments c
+        JOIN users u ON u.id = c.user_id
+        WHERE c.id = ?
+    """, (comment_id,)).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return TripEventComment(
+        id=row["id"],
+        event_id=row["event_id"],
+        user_id=row["user_id"],
+        body=row["body"],
+        created_at=row["created_at"],
+        user_name=row["user_name"],
+        user_email=row["user_email"],
+    )
+
+
+def get_event_comments(event_id: str) -> List[TripEventComment]:
+    conn = db()
+    rows = conn.execute("""
+        SELECT c.*, u.name as user_name, u.email as user_email
+        FROM trip_event_comments c
+        JOIN users u ON u.id = c.user_id
+        WHERE c.event_id = ?
+        ORDER BY c.created_at DESC
+    """, (event_id,)).fetchall()
+    conn.close()
+    results = []
+    for row in rows:
+        results.append(TripEventComment(
+            id=row["id"],
+            event_id=row["event_id"],
+            user_id=row["user_id"],
+            body=row["body"],
+            created_at=row["created_at"],
+            user_name=row["user_name"],
+            user_email=row["user_email"],
+        ))
+    return results
+
+
 # ─────────────────────────── FILE HANDLING ───────────────────────────
 
-def save_trip_pdf(trip_id: str, file: UploadFile) -> str:
+MAX_PDF_BYTES = 10 * 1024 * 1024  # 10MB
+
+def _validate_pdf_upload(pdf_file: UploadFile):
+    """Lightweight validation to reduce bad uploads."""
+    if not pdf_file.filename:
+        raise HTTPException(status_code=400, detail="Missing file name")
+    if pdf_file.content_type and pdf_file.content_type not in ("application/pdf", "application/x-pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF uploads are allowed")
+    head = pdf_file.file.read(5)
+    pdf_file.file.seek(0)
+    if head[:4] != b"%PDF":
+        raise HTTPException(status_code=400, detail="File does not look like a PDF")
+
+
+def save_trip_pdf(trip_id: str, file: UploadFile, existing_path: Optional[str] = None) -> str:
     """Save uploaded PDF itinerary and return the path."""
     os.makedirs(TRIP_UPLOADS_DIR, exist_ok=True)
     
@@ -571,8 +904,26 @@ def save_trip_pdf(trip_id: str, file: UploadFile) -> str:
     filename = f"{trip_id}_itinerary_{uuid.uuid4().hex[:8]}{ext}"
     filepath = os.path.join(TRIP_UPLOADS_DIR, filename)
     
+    # Remove old file if provided
+    if existing_path and os.path.exists(existing_path):
+        try:
+            os.remove(existing_path)
+        except Exception as exc:
+            logger.warning(f"Unable to remove old PDF for trip {trip_id}: {exc}")
+    
+    # Copy with size guard
+    total = 0
     with open(filepath, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        while True:
+            chunk = file.file.read(8192)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_PDF_BYTES:
+                f.close()
+                os.remove(filepath)
+                raise HTTPException(status_code=400, detail="PDF is too large (max 10MB)")
+            f.write(chunk)
     
     # Update trip record
     update_trip(trip_id, pdf_itinerary_path=filepath)
@@ -598,14 +949,14 @@ async def trips_list_page(request: Request):
     
     # Enrich trips with upcoming event counts
     enriched_trips = []
-    now = datetime.utcnow().isoformat()
+    now = datetime.utcnow().replace(tzinfo=timezone.utc)
     for trip in trips:
-        conn = db()
-        upcoming_count = conn.execute("""
-            SELECT COUNT(*) FROM trip_events 
-            WHERE trip_id = ? AND start_datetime >= ?
-        """, (trip.id, now)).fetchone()[0]
-        conn.close()
+        events = get_trip_events(trip.id)
+        upcoming_count = 0
+        for e in events:
+            start_dt = parse_event_start(e)
+            if start_dt and start_dt >= now:
+                upcoming_count += 1
         
         enriched_trips.append({
             **trip.to_dict(),
@@ -627,6 +978,8 @@ async def new_trip_page(request: Request):
     if not user:
         return RedirectResponse(url="/auth/login?next=/trips/new", status_code=303)
     
+    ensure_trips_feature(user)
+    
     return templates.TemplateResponse("trip_new.html", {
         "request": request,
         "user": user,
@@ -641,12 +994,20 @@ async def create_trip_submit(
     start_date: str = Form(...),
     end_date: str = Form(...),
     timezone: str = Form("America/Los_Angeles"),
-    description: str = Form(None)
+    description: str = Form(None),
+    budget: float = Form(0.0)
 ):
     """Handle new trip creation."""
     user = await get_current_user(request)
     if not user:
         return RedirectResponse(url="/auth/login", status_code=303)
+    
+    ensure_trips_feature(user)
+    
+    try:
+        budget_cents = int(float(budget) * 100)
+    except Exception:
+        budget_cents = 0
     
     trip = create_trip(
         title=title,
@@ -655,6 +1016,7 @@ async def create_trip_submit(
         end_date=end_date,
         timezone=timezone,
         description=description,
+        budget_cents=budget_cents,
         created_by_user_id=user.id
     )
     
@@ -680,6 +1042,8 @@ async def trip_view_page(request: Request, trip_id: str):
     if not user:
         return RedirectResponse(url=f"/auth/login?next=/trips/{trip_id}", status_code=303)
     
+    ensure_trips_feature(user)
+    
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership:
         raise HTTPException(status_code=403, detail="You don't have access to this trip")
@@ -692,10 +1056,20 @@ async def trip_view_page(request: Request, trip_id: str):
     all_events = get_trip_events(trip_id)
     
     # Get upcoming events (next event + coming up list)
-    now = datetime.utcnow()
-    upcoming_events = [e for e in all_events if e.start_datetime >= now.isoformat()]
+    now = datetime.utcnow().replace(tzinfo=timezone.utc)
+    upcoming_events = []
+    for e in all_events:
+        start_dt = parse_event_start(e)
+        if start_dt and start_dt >= now:
+            upcoming_events.append(e)
     next_event = upcoming_events[0] if upcoming_events else None
     coming_up = upcoming_events[1:11] if len(upcoming_events) > 1 else []
+    
+    # Budget + cost rollup
+    total_cost_cents = sum(e.cost_cents or 0 for e in all_events)
+    remaining_budget_cents = None
+    if trip.budget_cents:
+        remaining_budget_cents = max(trip.budget_cents - total_cost_cents, 0)
     
     # Group events by date for timeline
     events_by_date = {}
@@ -739,6 +1113,77 @@ async def trip_view_page(request: Request, trip_id: str):
         "can_edit": membership.can_edit(),
         "can_manage": membership.can_manage_members(),
         "categories": [c.value for c in TripEventCategory],
+        "total_cost_cents": total_cost_cents,
+        "remaining_budget_cents": remaining_budget_cents,
+        "share_mode": False,
+    })
+
+
+@router.get("/shared/{trip_id}", response_class=HTMLResponse)
+async def trip_view_shared(request: Request, trip_id: str, token: str = Query(...)):
+    """View-only trip page via share token (no login required)."""
+    trip = get_trip_by_id(trip_id)
+    if not trip or not validate_share_token(trip, token):
+        raise HTTPException(status_code=403, detail="Invalid or expired share link")
+    
+    all_events = get_trip_events(trip_id)
+    
+    # Group events by date for timeline (reuse logic)
+    events_by_date = {}
+    for event in all_events:
+        date_key = event.start_datetime[:10]
+        events_by_date.setdefault(date_key, []).append(event)
+    
+    from datetime import date as date_type
+    start = datetime.strptime(trip.start_date, "%Y-%m-%d").date()
+    end = datetime.strptime(trip.end_date, "%Y-%m-%d").date()
+    trip_dates = []
+    current = start
+    while current <= end:
+        date_str = current.strftime("%Y-%m-%d")
+        trip_dates.append({
+            "date": date_str,
+            "day_name": current.strftime("%a"),
+            "day_num": current.day,
+            "month": current.strftime("%b"),
+            "events": events_by_date.get(date_str, []),
+            "is_today": current == datetime.utcnow().date(),
+        })
+        current += timedelta(days=1)
+    
+    now = datetime.utcnow().replace(tzinfo=timezone.utc)
+    upcoming_events = []
+    for e in all_events:
+        start_dt = parse_event_start(e)
+        if start_dt and start_dt >= now:
+            upcoming_events.append(e)
+    next_event = upcoming_events[0] if upcoming_events else None
+    coming_up = upcoming_events[1:11] if len(upcoming_events) > 1 else []
+    
+    total_cost_cents = sum(e.cost_cents or 0 for e in all_events)
+    remaining_budget_cents = None
+    if trip.budget_cents:
+        remaining_budget_cents = max(trip.budget_cents - total_cost_cents, 0)
+    
+    members = get_trip_members(trip_id)
+    
+    return templates.TemplateResponse("trip_view.html", {
+        "request": request,
+        "user": None,
+        "trip": trip,
+        "membership": None,
+        "next_event": next_event,
+        "coming_up": coming_up,
+        "all_events": all_events,
+        "trip_dates": trip_dates,
+        "events_by_date": events_by_date,
+        "members": members,
+        "can_edit": False,
+        "can_manage": False,
+        "categories": [c.value for c in TripEventCategory],
+        "total_cost_cents": total_cost_cents,
+        "remaining_budget_cents": remaining_budget_cents,
+        "share_mode": True,
     })
 
 
@@ -748,6 +1193,8 @@ async def trip_edit_page(request: Request, trip_id: str):
     user = await get_current_user(request)
     if not user:
         return RedirectResponse(url=f"/auth/login?next=/trips/{trip_id}/edit", status_code=303)
+    
+    ensure_trips_feature(user)
     
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership or not membership.can_edit():
@@ -774,16 +1221,24 @@ async def trip_edit_submit(
     start_date: str = Form(...),
     end_date: str = Form(...),
     timezone: str = Form("America/Los_Angeles"),
-    description: str = Form(None)
+    description: str = Form(None),
+    budget: float = Form(0.0)
 ):
     """Handle trip edit."""
     user = await get_current_user(request)
     if not user:
         return RedirectResponse(url="/auth/login", status_code=303)
     
+    ensure_trips_feature(user)
+    
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership or not membership.can_edit():
         raise HTTPException(status_code=403, detail="You don't have edit access")
+    
+    try:
+        budget_cents = int(float(budget) * 100)
+    except Exception:
+        budget_cents = None
     
     update_trip(
         trip_id,
@@ -792,7 +1247,8 @@ async def trip_edit_submit(
         start_date=start_date,
         end_date=end_date,
         timezone=timezone,
-        description=description
+        description=description,
+        budget_cents=budget_cents
     )
     
     log_audit(
@@ -814,6 +1270,8 @@ async def trip_delete_submit(request: Request, trip_id: str):
     user = await get_current_user(request)
     if not user:
         return RedirectResponse(url="/auth/login", status_code=303)
+    
+    ensure_trips_feature(user)
     
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership or membership.role != TripMemberRole.OWNER:
@@ -844,6 +1302,8 @@ async def trip_members_page(request: Request, trip_id: str):
     if not user:
         return RedirectResponse(url=f"/auth/login?next=/trips/{trip_id}/members", status_code=303)
     
+    ensure_trips_feature(user)
+    
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership:
         raise HTTPException(status_code=403, detail="You don't have access to this trip")
@@ -862,6 +1322,51 @@ async def trip_members_page(request: Request, trip_id: str):
     })
 
 
+@router.get("/{trip_id}/share", response_class=HTMLResponse)
+async def trip_share_page(request: Request, trip_id: str):
+    """View/rotate share link for a trip (owner only)."""
+    user = await get_current_user(request)
+    if not user:
+        return RedirectResponse(url=f"/auth/login?next=/trips/{trip_id}/share", status_code=303)
+    
+    ensure_trips_feature(user)
+    
+    membership = get_user_trip_membership(user.id, trip_id)
+    if not membership or membership.role != TripMemberRole.OWNER:
+        raise HTTPException(status_code=403, detail="Only owners can manage sharing")
+    
+    trip = get_trip_by_id(trip_id)
+    share_url = f"{BASE_URL}/trips/shared/{trip.id}?token={trip.share_token}"
+    ics_url = f"{BASE_URL}/trips/{trip.id}/ics?token={trip.share_token}"
+    
+    return templates.TemplateResponse("trip_share.html", {
+        "request": request,
+        "user": user,
+        "trip": trip,
+        "share_url": share_url,
+        "ics_url": ics_url,
+    })
+
+
+@router.post("/{trip_id}/share/rotate")
+async def rotate_trip_share_token(request: Request, trip_id: str):
+    """Rotate the share token to invalidate old links."""
+    user = await get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/auth/login", status_code=303)
+    
+    ensure_trips_feature(user)
+    
+    membership = get_user_trip_membership(user.id, trip_id)
+    if not membership or membership.role != TripMemberRole.OWNER:
+        raise HTTPException(status_code=403, detail="Only owners can rotate share links")
+    
+    new_token = secrets.token_urlsafe(16)
+    update_trip(trip_id, share_token=new_token)
+    
+    return RedirectResponse(url=f"/trips/{trip_id}/share", status_code=303)
+
+
 @router.post("/{trip_id}/members/add")
 async def add_member_submit(
     request: Request,
@@ -874,6 +1379,8 @@ async def add_member_submit(
     if not user:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
     
+    ensure_trips_feature(user)
+    
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership or not membership.can_manage_members():
         return JSONResponse({"error": "Permission denied"}, status_code=403)
@@ -882,6 +1389,10 @@ async def add_member_submit(
     target_user = get_user_by_email(email)
     if not target_user:
         return JSONResponse({"error": f"No user found with email: {email}"}, status_code=404)
+    
+    # Enforce trips feature flag for invited user as well
+    if not is_feature_enabled("trips", user_id=target_user.id, email=target_user.email):
+        return JSONResponse({"error": "User is not eligible for trips feature"}, status_code=403)
     
     # Add member
     try:
@@ -919,6 +1430,8 @@ async def update_member_role_submit(
     if not user:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
     
+    ensure_trips_feature(user)
+    
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership or not membership.can_manage_members():
         return JSONResponse({"error": "Permission denied"}, status_code=403)
@@ -947,6 +1460,8 @@ async def remove_member_submit(
     user = await get_current_user(request)
     if not user:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    
+    ensure_trips_feature(user)
     
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership or not membership.can_manage_members():
@@ -984,6 +1499,8 @@ async def new_event_page(request: Request, trip_id: str, date: str = None):
     if not user:
         return RedirectResponse(url=f"/auth/login?next=/trips/{trip_id}/events/new", status_code=303)
     
+    ensure_trips_feature(user)
+    
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership or not membership.can_edit():
         raise HTTPException(status_code=403, detail="You don't have edit access")
@@ -1004,6 +1521,78 @@ async def new_event_page(request: Request, trip_id: str, date: str = None):
         "reminder_options": REMINDER_OPTIONS,
         "default_reminder": default_reminder,
     })
+
+
+@router.get("/{trip_id}/import/ics", response_class=HTMLResponse)
+async def import_ics_page(request: Request, trip_id: str):
+    """Upload ICS to import events."""
+    user = await get_current_user(request)
+    if not user:
+        return RedirectResponse(url=f"/auth/login?next=/trips/{trip_id}/import/ics", status_code=303)
+    
+    ensure_trips_feature(user)
+    
+    membership = get_user_trip_membership(user.id, trip_id)
+    if not membership or not membership.can_edit():
+        raise HTTPException(status_code=403, detail="You don't have edit access")
+    
+    trip = get_trip_by_id(trip_id)
+    
+    return templates.TemplateResponse("trip_import.html", {
+        "request": request,
+        "user": user,
+        "trip": trip,
+    })
+
+
+@router.post("/{trip_id}/import/ics")
+async def import_ics_submit(
+    request: Request,
+    trip_id: str,
+    ics_file: UploadFile = File(...)
+):
+    """Handle ICS upload and create events."""
+    user = await get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/auth/login", status_code=303)
+    
+    ensure_trips_feature(user)
+    
+    membership = get_user_trip_membership(user.id, trip_id)
+    if not membership or not membership.can_edit():
+        raise HTTPException(status_code=403, detail="You don't have edit access")
+    
+    trip = get_trip_by_id(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    
+    content = ics_file.file.read().decode(errors="ignore")
+    parsed = parse_ics_events(content, trip.timezone or DISPLAY_TIMEZONE)
+    
+    for item in parsed:
+        start_raw = item["start_datetime"]
+        end_raw = item["end_datetime"]
+        if not start_raw:
+            continue
+        start_dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
+        end_dt = datetime.fromisoformat(end_raw.replace("Z", "+00:00")) if end_raw else None
+        try:
+            validate_event_window(start_dt, end_dt, trip)
+        except HTTPException:
+            continue  # skip events outside trip window
+        create_trip_event(
+            trip_id=trip_id,
+            title=item["title"],
+            start_datetime=start_raw,
+            category=TripEventCategory.OTHER,
+            timezone=trip.timezone or DISPLAY_TIMEZONE,
+            end_datetime=end_raw,
+            is_all_day=item["is_all_day"],
+            location_name=item.get("location_name"),
+            notes=item.get("notes"),
+        )
+    
+    return RedirectResponse(url=f"/trips/{trip_id}", status_code=303)
 
 
 @router.post("/{trip_id}/events/new")
@@ -1027,49 +1616,64 @@ async def create_event_submit(
     link_maps: str = Form(None),
     link_tickets: str = Form(None),
     reminder_minutes: int = Form(30),
+    cost: float = Form(0.0),
 ):
     """Handle new event creation."""
     user = await get_current_user(request)
     if not user:
         return RedirectResponse(url="/auth/login", status_code=303)
     
+    ensure_trips_feature(user)
+    
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership or not membership.can_edit():
         raise HTTPException(status_code=403, detail="You don't have edit access")
     
-    # Build datetime strings
-    if is_all_day or not start_time:
-        start_datetime = f"{start_date}T00:00:00"
-    else:
-        start_datetime = f"{start_date}T{start_time}:00"
+    trip = get_trip_by_id(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
     
-    end_datetime = None
-    if end_date:
-        if is_all_day or not end_time:
-            end_datetime = f"{end_date}T23:59:59"
-        else:
-            end_datetime = f"{end_date}T{end_time}:00"
+    # Build datetime strings
+    try:
+        start_datetime, end_datetime, start_dt, end_dt = build_event_datetimes(
+            start_date, start_time, end_date, end_time, is_all_day, trip.timezone or DISPLAY_TIMEZONE
+        )
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid date or time provided")
+    validate_event_window(start_dt, end_dt, trip)
     
     # Build links dict
     links = {}
-    if link_maps:
-        links["maps"] = link_maps
-    if link_tickets:
-        links["tickets"] = link_tickets
+    safe_maps = normalize_link(link_maps)
+    safe_tickets = normalize_link(link_tickets)
+    if safe_maps:
+        links["maps"] = safe_maps
+    if safe_tickets:
+        links["tickets"] = safe_tickets
     
     try:
         cat = TripEventCategory(category)
     except:
         cat = TripEventCategory.OTHER
     
+    # Validate category-specific data
+    if cat in (TripEventCategory.FLIGHT, TripEventCategory.TRANSPORT):
+        if not (departure_location and arrival_location):
+            raise HTTPException(status_code=400, detail="Flights and transport events require departure and arrival locations")
+    
     # Handle reminder - use None for all-day events, 0 means no reminder
     effective_reminder = None if is_all_day else (reminder_minutes if reminder_minutes >= 0 else 30)
+    try:
+        cost_cents = int(float(cost) * 100)
+    except Exception:
+        cost_cents = 0
     
     event = create_trip_event(
         trip_id=trip_id,
         title=title,
         start_datetime=start_datetime,
         category=cat,
+        timezone=trip.timezone or DISPLAY_TIMEZONE,
         end_datetime=end_datetime,
         is_all_day=is_all_day,
         location_name=location_name,
@@ -1081,6 +1685,7 @@ async def create_event_submit(
         arrival_location=arrival_location,
         links=links,
         reminder_minutes=effective_reminder,
+        cost_cents=cost_cents,
     )
     
     log_audit(
@@ -1103,6 +1708,8 @@ async def event_view_page(request: Request, trip_id: str, event_id: str):
     if not user:
         return RedirectResponse(url=f"/auth/login?next=/trips/{trip_id}/events/{event_id}", status_code=303)
     
+    ensure_trips_feature(user)
+    
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership:
         raise HTTPException(status_code=403, detail="You don't have access to this trip")
@@ -1113,6 +1720,8 @@ async def event_view_page(request: Request, trip_id: str, event_id: str):
     if not event or event.trip_id != trip_id:
         raise HTTPException(status_code=404, detail="Event not found")
     
+    comments = get_event_comments(event_id)
+    
     return templates.TemplateResponse("trip_event_view.html", {
         "request": request,
         "user": user,
@@ -1120,6 +1729,7 @@ async def event_view_page(request: Request, trip_id: str, event_id: str):
         "event": event,
         "membership": membership,
         "can_edit": membership.can_edit(),
+        "comments": comments,
     })
 
 
@@ -1129,6 +1739,8 @@ async def event_edit_page(request: Request, trip_id: str, event_id: str):
     user = await get_current_user(request)
     if not user:
         return RedirectResponse(url=f"/auth/login?next=/trips/{trip_id}/events/{event_id}/edit", status_code=303)
+    
+    ensure_trips_feature(user)
     
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership or not membership.can_edit():
@@ -1148,6 +1760,36 @@ async def event_edit_page(request: Request, trip_id: str, event_id: str):
         "categories": [c.value for c in TripEventCategory],
         "reminder_options": REMINDER_OPTIONS,
     })
+
+
+@router.post("/{trip_id}/events/{event_id}/comments")
+async def add_event_comment_submit(
+    request: Request,
+    trip_id: str,
+    event_id: str,
+    body: str = Form(...)
+):
+    """Add a comment to an event."""
+    user = await get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    
+    ensure_trips_feature(user)
+    
+    membership = get_user_trip_membership(user.id, trip_id)
+    if not membership:
+        return JSONResponse({"error": "Access denied"}, status_code=403)
+    
+    if not body or not body.strip():
+        return JSONResponse({"error": "Comment cannot be empty"}, status_code=400)
+    
+    event = get_trip_event_by_id(event_id)
+    if not event or event.trip_id != trip_id:
+        return JSONResponse({"error": "Event not found"}, status_code=404)
+    
+    add_event_comment(event_id, user.id, body)
+    
+    return RedirectResponse(url=f"/trips/{trip_id}/events/{event_id}", status_code=303)
 
 
 @router.post("/{trip_id}/events/{event_id}/edit")
@@ -1172,50 +1814,64 @@ async def event_edit_submit(
     link_maps: str = Form(None),
     link_tickets: str = Form(None),
     reminder_minutes: int = Form(30),
+    cost: float = Form(0.0),
 ):
     """Handle event edit."""
     user = await get_current_user(request)
     if not user:
         return RedirectResponse(url="/auth/login", status_code=303)
     
+    ensure_trips_feature(user)
+    
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership or not membership.can_edit():
         raise HTTPException(status_code=403, detail="You don't have edit access")
     
-    # Build datetime strings
-    if is_all_day or not start_time:
-        start_datetime = f"{start_date}T00:00:00"
-    else:
-        start_datetime = f"{start_date}T{start_time}:00"
+    trip = get_trip_by_id(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
     
-    end_datetime = None
-    if end_date:
-        if is_all_day or not end_time:
-            end_datetime = f"{end_date}T23:59:59"
-        else:
-            end_datetime = f"{end_date}T{end_time}:00"
+    # Build datetime strings
+    try:
+        start_datetime, end_datetime, start_dt, end_dt = build_event_datetimes(
+            start_date, start_time, end_date, end_time, is_all_day, trip.timezone or DISPLAY_TIMEZONE
+        )
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid date or time provided")
+    validate_event_window(start_dt, end_dt, trip)
     
     # Build links dict
     links = {}
-    if link_maps:
-        links["maps"] = link_maps
-    if link_tickets:
-        links["tickets"] = link_tickets
+    safe_maps = normalize_link(link_maps)
+    safe_tickets = normalize_link(link_tickets)
+    if safe_maps:
+        links["maps"] = safe_maps
+    if safe_tickets:
+        links["tickets"] = safe_tickets
     
     try:
         cat = TripEventCategory(category)
     except:
         cat = TripEventCategory.OTHER
     
+    if cat in (TripEventCategory.FLIGHT, TripEventCategory.TRANSPORT):
+        if not (departure_location and arrival_location):
+            raise HTTPException(status_code=400, detail="Flights and transport events require departure and arrival locations")
+    
     # Handle reminder - use None for all-day events, 0 means no reminder
     # Reset reminder_sent to 0 if time changed so notification can be resent
     effective_reminder = None if is_all_day else (reminder_minutes if reminder_minutes >= 0 else 30)
+    try:
+        cost_cents = int(float(cost) * 100)
+    except Exception:
+        cost_cents = 0
     
     update_trip_event(
         event_id,
         title=title,
         start_datetime=start_datetime,
         category=cat,
+        timezone=trip.timezone or DISPLAY_TIMEZONE,
         end_datetime=end_datetime,
         is_all_day=is_all_day,
         location_name=location_name,
@@ -1228,6 +1884,7 @@ async def event_edit_submit(
         links=links,
         reminder_minutes=effective_reminder,
         reminder_sent=False,  # Reset so reminder can be sent for new time
+        cost_cents=cost_cents,
     )
     
     log_audit(
@@ -1249,6 +1906,8 @@ async def event_delete_submit(request: Request, trip_id: str, event_id: str):
     user = await get_current_user(request)
     if not user:
         return RedirectResponse(url="/auth/login", status_code=303)
+    
+    ensure_trips_feature(user)
     
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership or not membership.can_edit():
@@ -1280,6 +1939,8 @@ async def trip_pdf_page(request: Request, trip_id: str):
     if not user:
         return RedirectResponse(url=f"/auth/login?next=/trips/{trip_id}/pdf", status_code=303)
     
+    ensure_trips_feature(user)
+    
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership:
         raise HTTPException(status_code=403, detail="You don't have access to this trip")
@@ -1306,14 +1967,19 @@ async def upload_pdf_submit(
     if not user:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
     
+    ensure_trips_feature(user)
+    
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership or not membership.can_edit():
         return JSONResponse({"error": "Permission denied"}, status_code=403)
     
-    if not pdf_file.filename.lower().endswith('.pdf'):
-        return JSONResponse({"error": "Only PDF files are allowed"}, status_code=400)
+    _validate_pdf_upload(pdf_file)
     
-    filepath = save_trip_pdf(trip_id, pdf_file)
+    trip = get_trip_by_id(trip_id)
+    if not trip:
+        return JSONResponse({"error": "Trip not found"}, status_code=404)
+    
+    filepath = save_trip_pdf(trip_id, pdf_file, existing_path=trip.pdf_itinerary_path)
     
     return RedirectResponse(url=f"/trips/{trip_id}/pdf", status_code=303)
 
@@ -1324,6 +1990,8 @@ async def view_pdf(request: Request, trip_id: str):
     user = await get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    ensure_trips_feature(user)
     
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership:
@@ -1352,6 +2020,11 @@ async def api_get_events(request: Request, trip_id: str, date: str = None):
     if not user:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
     
+    try:
+        ensure_trips_feature(user)
+    except HTTPException as exc:
+        return JSONResponse({"error": exc.detail}, status_code=exc.status_code)
+    
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership:
         return JSONResponse({"error": "Access denied"}, status_code=403)
@@ -1373,6 +2046,11 @@ async def api_get_upcoming(request: Request, trip_id: str, limit: int = 10):
     if not user:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
     
+    try:
+        ensure_trips_feature(user)
+    except HTTPException as exc:
+        return JSONResponse({"error": exc.detail}, status_code=exc.status_code)
+    
     membership = get_user_trip_membership(user.id, trip_id)
     if not membership:
         return JSONResponse({"error": "Access denied"}, status_code=403)
@@ -1382,6 +2060,30 @@ async def api_get_upcoming(request: Request, trip_id: str, limit: int = 10):
     return JSONResponse({
         "events": [e.to_dict() for e in events]
     })
+
+
+@router.get("/{trip_id}/ics")
+async def trip_ics(request: Request, trip_id: str, token: str = Query(None)):
+    """Download ICS feed for a trip (member or share token)."""
+    trip = get_trip_by_id(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    
+    if token:
+        if not validate_share_token(trip, token):
+            raise HTTPException(status_code=403, detail="Invalid share token")
+    else:
+        user = await get_current_user(request)
+        if not user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        ensure_trips_feature(user)
+        membership = get_user_trip_membership(user.id, trip_id)
+        if not membership:
+            raise HTTPException(status_code=403, detail="Access denied")
+    
+    events = get_trip_events(trip_id)
+    ics_body = build_trip_ics(trip, events)
+    return Response(content=ics_body, media_type="text/calendar")
 
 
 # ─────────────────────────── TRIP REMINDERS ───────────────────────────
@@ -1408,11 +2110,9 @@ def get_pending_trip_reminders() -> List[Dict[str, Any]]:
     Returns list of dicts with event, trip, and member info.
     """
     conn = db()
-    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    now = datetime.utcnow().replace(tzinfo=timezone.utc)
     
-    # Get events that need reminders
-    # We calculate if reminder time has passed by checking:
-    # start_datetime - reminder_minutes <= current_time
+    # Get candidate events (filtering by reminder_sent/all-day; timing handled in Python for timezone safety)
     events = conn.execute("""
         SELECT 
             e.*,
@@ -1424,12 +2124,18 @@ def get_pending_trip_reminders() -> List[Dict[str, Any]]:
         WHERE e.reminder_minutes IS NOT NULL
           AND e.reminder_sent = 0
           AND e.is_all_day = 0
-          AND datetime(e.start_datetime, '-' || e.reminder_minutes || ' minutes') <= datetime(?)
-    """, (now,)).fetchall()
+    """).fetchall()
     
     results = []
     for event_row in events:
         event = _row_to_trip_event(event_row)
+        start_dt = parse_event_start(event)
+        if not start_dt:
+            continue
+        
+        reminder_at = start_dt - timedelta(minutes=event.reminder_minutes or 0)
+        if reminder_at > now:
+            continue
         
         # Get all members of this trip who have push enabled and trip reminders enabled
         members = conn.execute("""
@@ -1481,6 +2187,34 @@ def mark_reminder_sent(event_id: str) -> bool:
     conn.commit()
     conn.close()
     return True
+
+
+def reset_reminder(event_id: str) -> None:
+    """Reset reminder_sent so it can be retried."""
+    conn = db()
+    conn.execute(
+        "UPDATE trip_events SET reminder_sent = 0 WHERE id = ?",
+        (event_id,)
+    )
+    conn.commit()
+    conn.close()
+
+
+def claim_reminder_send(event_id: str) -> bool:
+    """
+    Attempt to atomically claim a reminder for sending by flipping reminder_sent to 1.
+    Returns True if this worker claimed it.
+    """
+    conn = db()
+    now = utc_now_iso()
+    cur = conn.execute(
+        "UPDATE trip_events SET reminder_sent = 1, updated_at = ? WHERE id = ? AND reminder_sent = 0",
+        (now, event_id)
+    )
+    conn.commit()
+    claimed = cur.rowcount > 0
+    conn.close()
+    return claimed
 
 
 def send_trip_event_reminder(event: TripEvent, trip_title: str, member_email: str) -> bool:
@@ -1542,6 +2276,10 @@ async def process_trip_reminders():
         trip_title = item["trip_title"]
         members = item["members"]
         
+        # Try to claim this reminder to avoid duplicate sends across workers
+        if not claim_reminder_send(event.id):
+            continue
+        
         sent_count = 0
         for member in members:
             try:
@@ -1551,8 +2289,11 @@ async def process_trip_reminders():
             except Exception as e:
                 logger.error(f"Failed to send trip reminder to {member['email']}: {e}")
         
-        # Mark as sent regardless of individual failures
-        mark_reminder_sent(event.id)
+        # If nothing was delivered, allow retry later
+        if sent_count == 0 and members:
+            reset_reminder(event.id)
+        else:
+            mark_reminder_sent(event.id)
         logger.info(f"Trip reminder processed: {event.title} ({sent_count}/{len(members)} sent)")
 
 

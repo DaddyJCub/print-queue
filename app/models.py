@@ -421,6 +421,8 @@ class Trip:
     description: Optional[str] = None
     cover_image_url: Optional[str] = None
     pdf_itinerary_path: Optional[str] = None  # Path to uploaded PDF
+    share_token: Optional[str] = None
+    budget_cents: int = 0  # total budget for the trip
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -433,6 +435,8 @@ class Trip:
             'description': self.description,
             'cover_image_url': self.cover_image_url,
             'pdf_itinerary_path': self.pdf_itinerary_path,
+            'share_token': self.share_token,
+            'budget_cents': self.budget_cents,
             'created_by_user_id': self.created_by_user_id,
             'created_at': self.created_at,
             'updated_at': self.updated_at,
@@ -483,6 +487,7 @@ class TripEvent:
     trip_id: str
     title: str
     start_datetime: str  # ISO datetime or "all-day" marker
+    timezone: str = "America/Los_Angeles"
     category: TripEventCategory
     created_at: str
     updated_at: str
@@ -515,6 +520,7 @@ class TripEvent:
     # Reminder settings
     reminder_minutes: Optional[int] = 30  # Minutes before event (None = no reminder)
     reminder_sent: bool = False  # True once reminder has been sent
+    cost_cents: int = 0  # Optional cost for budgeting
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -522,6 +528,7 @@ class TripEvent:
             'trip_id': self.trip_id,
             'title': self.title,
             'start_datetime': self.start_datetime,
+            'timezone': self.timezone,
             'end_datetime': self.end_datetime,
             'is_all_day': self.is_all_day,
             'category': self.category.value if isinstance(self.category, TripEventCategory) else self.category,
@@ -538,10 +545,33 @@ class TripEvent:
             'flight_number': self.flight_number,
             'reminder_minutes': self.reminder_minutes,
             'reminder_sent': self.reminder_sent,
+            'cost_cents': self.cost_cents,
             'created_at': self.created_at,
             'updated_at': self.updated_at,
         }
 
+
+@dataclass
+class TripEventComment:
+    """Lightweight comment on a trip event"""
+    id: str
+    event_id: str
+    user_id: str
+    body: str
+    created_at: str
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "event_id": self.event_id,
+            "user_id": self.user_id,
+            "body": self.body,
+            "created_at": self.created_at,
+            "user_name": self.user_name,
+            "user_email": self.user_email,
+        }
 
 # ─────────────────────────── DEFAULT FEATURE FLAGS ───────────────────────────
 
