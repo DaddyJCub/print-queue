@@ -64,8 +64,9 @@
     <div class="grid grid-cols-2 gap-4">
       <div>
         <label class="block text-sm font-medium text-zinc-300 mb-2">Start Date *</label>
-        <input type="date" name="start_date" required value="{{ default_date }}"
+        <input type="date" name="start_date" id="start_date" required value="{{ default_date }}"
                class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+        <p class="text-xs text-zinc-500 mt-1">Must be within {{ trip.start_date }} — {{ trip.end_date }}</p>
       </div>
       <div id="start-time-field">
         <label class="block text-sm font-medium text-zinc-300 mb-2">Start Time</label>
@@ -77,8 +78,9 @@
     <div class="grid grid-cols-2 gap-4" id="end-fields">
       <div>
         <label class="block text-sm font-medium text-zinc-300 mb-2">End Date</label>
-        <input type="date" name="end_date"
+        <input type="date" name="end_date" id="end_date"
                class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+        <p class="text-xs text-zinc-500 mt-1">Leave blank if unknown; otherwise within trip dates</p>
       </div>
       <div id="end-time-field">
         <label class="block text-sm font-medium text-zinc-300 mb-2">End Time</label>
@@ -191,11 +193,12 @@
     </div>
     
     <!-- Submit -->
+    <div id="form-error" class="hidden p-3 rounded-lg border border-red-500/30 bg-red-600/10 text-red-200 text-sm"></div>
     <div class="flex gap-3 pt-4">
       <a href="/trips/{{ trip.id }}" class="flex-1 px-6 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-medium text-center transition">
         Cancel
       </a>
-      <button type="submit" class="flex-1 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-medium transition">
+      <button type="submit" class="flex-1 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-medium transition" id="submit-btn">
         Add Event
       </button>
     </div>
@@ -239,5 +242,64 @@
       }
     });
   });
+  
+  // Client-side validation
+  (function setupValidation() {
+    const form = document.querySelector('form[action$="/events/new"]');
+    const errorBox = document.getElementById('form-error');
+    const startDate = document.getElementById('start_date');
+    const endDate = document.getElementById('end_date');
+    const categoryInputs = form.querySelectorAll('input[name="category"]');
+    const depart = form.querySelector('input[name="departure_location"]');
+    const arrive = form.querySelector('input[name="arrival_location"]');
+    
+    // Restrict to trip window
+    const tripStart = '{{ trip.start_date }}';
+    const tripEnd = '{{ trip.end_date }}';
+    startDate.min = tripStart;
+    startDate.max = tripEnd;
+    endDate.min = tripStart;
+    endDate.max = tripEnd;
+    
+    startDate.addEventListener('change', () => {
+      if (!endDate.value || endDate.value < startDate.value) {
+        endDate.value = startDate.value;
+      }
+    });
+    
+    form.addEventListener('submit', (e) => {
+      const errors = [];
+      const cat = Array.from(categoryInputs).find(r => r.checked)?.value;
+      const sd = startDate.value;
+      const ed = endDate.value;
+      
+      if (!sd) errors.push('Start date is required.');
+      if (sd && (sd < tripStart || sd > tripEnd)) {
+        errors.push('Start date must be within the trip dates.');
+      }
+      if (ed) {
+        if (ed < sd) errors.push('End date cannot be before start date.');
+        if (ed > tripEnd) errors.push('End date must be within the trip dates.');
+      }
+      if (cat === 'flight' || cat === 'transport') {
+        if (!depart.value.trim() || !arrive.value.trim()) {
+          errors.push('Flights and transport events need departure and arrival locations.');
+        }
+        // Make the fields required when the category demands it
+        depart.required = true;
+        arrive.required = true;
+      } else {
+        depart.required = false;
+        arrive.required = false;
+      }
+      
+      if (errors.length) {
+        e.preventDefault();
+        errorBox.innerHTML = errors.map(msg => `• ${msg}`).join('<br>');
+        errorBox.classList.remove('hidden');
+        errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+  })();
 </script>
 {% endblock %}
