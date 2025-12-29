@@ -487,12 +487,12 @@ class TripEvent:
     trip_id: str
     title: str
     start_datetime: str  # ISO datetime or "all-day" marker
-    timezone: str = "America/Los_Angeles"
     category: TripEventCategory
     created_at: str
     updated_at: str
     
     # Optional timing
+    timezone: str = "America/Los_Angeles"
     end_datetime: Optional[str] = None
     is_all_day: bool = False
     
