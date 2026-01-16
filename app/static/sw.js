@@ -193,6 +193,10 @@ self.addEventListener('push', (event) => {
     options.image = data.image;
     swLog('info', 'Including image in notification:', data.image);
   }
+  // Add actions (e.g., Report a problem) if provided
+  if (data.actions) {
+    options.actions = data.actions;
+  }
   
   event.waitUntil(
     self.registration.showNotification(data.title || 'Printellect', options)
@@ -206,8 +210,12 @@ self.addEventListener('notificationclick', (event) => {
   swLog('info', 'Notification clicked:', event.notification.tag);
   event.notification.close();
   
+  const target = (event.action === 'report-problem' && event.notification.data?.reportUrl)
+    ? event.notification.data.reportUrl
+    : (event.notification.data?.url || '/');
+  
   event.waitUntil(
-    clients.openWindow(event.notification.data.url || '/')
+    clients.openWindow(target)
   );
 });
 

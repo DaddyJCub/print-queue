@@ -2133,7 +2133,7 @@ DEFAULT_SETTINGS: Dict[str, str] = {
     # Progress notification settings
     # Comma-separated percentages to notify at (e.g., "50,75")
     "progress_notification_thresholds": "50,75",
-    # Enable progress notifications (push primarily, email at 50% only)
+    # Enable progress notifications (push primarily, email at 50% and 75%)
     "enable_progress_notifications": "1",
 }
 
@@ -2924,6 +2924,7 @@ def send_build_complete_notification(build: Dict, request: Dict, snapshot_b64: O
     
     print_label = request.get("print_name") or f"Request {request_id[:8]}"
     build_label = build.get("print_name") or f"Build {build_num}"
+    report_url = f"/open/{request_id}?token={request.get('access_token', '')}&build_id={build.get('id', '')}&report=1"
     
     # Build position string
     position_str = f"Build {build_num} of {total_builds}"
@@ -2969,10 +2970,10 @@ def send_build_complete_notification(build: Dict, request: Dict, snapshot_b64: O
             cta_url=f"{BASE_URL}/my/{request_id}?token={request.get('access_token', '')}",
             cta_label="View Progress",
             header_color="#10b981",  # Green for complete
-            footer_note=f"This is build {build_num} of {total_builds}. {remaining} build(s) remaining. You will receive a final notification when everything is ready for pickup.",
+            footer_note=f"This is build {build_num} of {total_builds}. {remaining} build(s) remaining. You will receive a final notification when everything is ready for pickup. If something looks off, click Report a Problem so we can intervene.",
             image_base64=snapshot_to_send,
-            secondary_cta_url=my_requests_url,
-            secondary_cta_label="All My Requests",
+            secondary_cta_url=f"{BASE_URL}{report_url}",
+            secondary_cta_label="Report a Problem",
         )
         send_email([request["requester_email"]], subject, text, html, image_base64=snapshot_to_send)
     
@@ -2982,7 +2983,9 @@ def send_build_complete_notification(build: Dict, request: Dict, snapshot_b64: O
             email=request["requester_email"],
             title=f"✓ {position_str} Complete",
             body=f"'{print_label}' - {completed_builds}/{total_builds} builds done, {remaining} remaining",
-            url=f"/my/{request_id}?token={request.get('access_token', '')}"
+            url=f"/my/{request_id}?token={request.get('access_token', '')}",
+            data={"reportUrl": report_url},
+            actions=[{"action": "report-problem", "title": "Report a problem"}]
         )
 
 
@@ -3087,6 +3090,7 @@ def send_request_complete_notification(request: Dict, snapshot_b64: Optional[str
     user_wants_push = user_prefs.get("status_push", True)
     
     print_label = request.get("print_name") or f"Request {request_id[:8]}"
+    report_url = f"/open/{request_id}?token={request.get('access_token', '')}&report=1"
     
     if user_wants_email and request.get("requester_email"):
         # Simple subject like the legacy notification
@@ -3126,8 +3130,9 @@ def send_request_complete_notification(request: Dict, snapshot_b64: Optional[str
             cta_label="View Request",
             header_color="#06b6d4",  # Cyan for done
             image_base64=snapshot_to_send,
-            secondary_cta_url=my_requests_url,
-            secondary_cta_label="All My Requests",
+            secondary_cta_url=f"{BASE_URL}{report_url}",
+            secondary_cta_label="Report a Problem",
+            footer_note=f"<a href=\"{BASE_URL}{my_requests_url}\">All My Requests</a> • If the snapshot looks off, report a problem so we can pause the job."
         )
         send_email([request["requester_email"]], subject, text, html, image_base64=snapshot_to_send)
     
@@ -3141,7 +3146,9 @@ def send_request_complete_notification(request: Dict, snapshot_b64: Optional[str
             email=request["requester_email"],
             title="Print Complete!",
             body=body,
-            url=f"/my/{request_id}?token={request.get('access_token', '')}"
+            url=f"/my/{request_id}?token={request.get('access_token', '')}",
+            data={"reportUrl": report_url},
+            actions=[{"action": "report-problem", "title": "Report a problem"}]
         )
 
 
@@ -3220,7 +3227,7 @@ def get_user_notification_prefs(email: str) -> dict:
     # Default preferences - push on, progress email off (to avoid spam)
     return {
         "progress_push": True,
-        "progress_email": False,
+        "progress_email": True,
         "progress_milestones": "50,75",
         "status_push": True,
         "status_email": True,
@@ -3268,7 +3275,7 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
     
     Rules:
     - PUSH notifications are sent for user-configured thresholds (if user has push enabled)
-    - EMAIL is sent ONLY at 50% threshold (if user has email enabled)
+    - EMAIL is sent at 50% and 75% (if user has email enabled) to surface mid-print issues
     - Message format: "Hey your print is XX% — check it out! (Build X of Y)"
     - Push notifications include a snapshot image URL when camera is available
     """
@@ -3297,16 +3304,20 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
     
     # Get user's configured thresholds (or defaults)
     user_milestones_str = user_prefs.get("progress_milestones", "50,75")
-    thresholds = []
+    thresholds_for_push = []
     for p in user_milestones_str.split(","):
         p = p.strip()
         if p.isdigit():
             pct = int(p)
             if 0 < pct < 100:
-                thresholds.append(pct)
-    thresholds = sorted(set(thresholds))
+                thresholds_for_push.append(pct)
+    thresholds_for_push = sorted(set(thresholds_for_push))
     
-    if not thresholds:
+    # Always evaluate 50% and 75% for email to ensure health-check checkpoints
+    required_email_milestones = {50, 75}
+    all_milestones = sorted(set(thresholds_for_push) | required_email_milestones)
+    
+    if not all_milestones:
         return
     
     # Get already-sent milestones
@@ -3314,7 +3325,7 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
     
     # Determine which milestones to fire (handles jumps like 49->80 firing both 50 and 75)
     milestones_to_send = []
-    for threshold in thresholds:
+    for threshold in all_milestones:
         if threshold <= current_percent and threshold not in sent_milestones:
             milestones_to_send.append(threshold)
     
@@ -3340,6 +3351,7 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
     
     # URL with anchor to specific build
     view_url = f"/my/{request_id}?token={access_token}&build_id={build_id}#build-{build_id}"
+    report_url = f"/open/{request_id}?token={access_token}&build_id={build_id}&report=1"
     
     # Try to get a camera snapshot URL for the notification image (best effort)
     # Only include if camera is configured for this printer
@@ -3370,21 +3382,25 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
         
         # Tag for this specific build's progress (allows replacing previous progress notification)
         notification_tag = f"progress-{build_id[:8]}"
+        sent_any = False
         
         # Send PUSH notification (if user enabled)
-        if user_wants_progress_push:
+        if user_wants_progress_push and (milestone in thresholds_for_push):
             send_push_notification(
                 email=requester_email,
                 title=notification_title,
                 body=notification_body,
                 url=view_url,
                 image_url=image_url,  # Include snapshot image if available
-                tag=notification_tag   # Use tag to replace previous progress notifications for this build
+                tag=notification_tag,   # Use tag to replace previous progress notifications for this build
+                data={"reportUrl": report_url},
+                actions=[{"action": "report-problem", "title": "Report a problem"}]
             )
             record_progress_milestone(build_id, milestone, "push")
+            sent_any = True
         
-        # Send EMAIL only at 50% threshold (to avoid spam)
-        if milestone == 50 and user_wants_progress_email:
+        # Send EMAIL at 50% and 75% thresholds for proactive health checks
+        if user_wants_progress_email and milestone in required_email_milestones:
             subject = f"[{APP_TITLE}] Print update - {print_label}"
             
             email_rows = [
@@ -3411,14 +3427,16 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
                 cta_url=f"{BASE_URL}{view_url}",
                 cta_label="View Progress",
                 header_color="#8b5cf6",  # Purple for progress updates
-                secondary_cta_url=my_requests_url,
-                secondary_cta_label="All My Requests",
+                secondary_cta_url=f"{BASE_URL}{report_url}",
+                secondary_cta_label="Report a Problem",
+                footer_note=f"<a href=\"{BASE_URL}{my_requests_url}\">All My Requests</a> • If something looks off, click Report a Problem so we can investigate."
             )
             send_email([requester_email], subject, text, html)
             record_progress_milestone(build_id, milestone, "email")
+            sent_any = True
         
         # Record milestone even if no notifications sent (prevents re-check)
-        if not user_wants_progress_push and not (milestone == 50 and user_wants_progress_email):
+        if not sent_any:
             record_progress_milestone(build_id, milestone, "none")
 
 
@@ -3901,15 +3919,10 @@ async def poll_printer_status_worker():
                         requester_email_on_status = get_bool_setting("requester_email_on_status", True)
                         should_notify_requester = get_bool_setting("notify_requester_printing", True)
                         
-                        # Parse user notification preferences
-                        user_prefs = {"email": True, "push": False}
-                        if req.get("notification_prefs"):
-                            try:
-                                user_prefs = json.loads(req["notification_prefs"])
-                            except:
-                                pass
-                        user_wants_email = user_prefs.get("email", True)
-                        user_wants_push = user_prefs.get("push", False)
+                        # Parse user notification preferences (user-level for consistency with manual status changes)
+                        user_prefs = get_user_notification_prefs(req.get("requester_email", ""))
+                        user_wants_email = user_prefs.get("status_email", True)
+                        user_wants_push = user_prefs.get("status_push", True)
                         
                         # Define print_label before conditional blocks
                         print_label = req["print_name"] or f"Request {rid[:8]}"
@@ -4126,15 +4139,10 @@ async def poll_printer_status_worker():
                     admin_email_on_status = get_bool_setting("admin_email_on_status", True)
                     requester_email_on_status = get_bool_setting("requester_email_on_status", True)
 
-                    # Parse user notification preferences
-                    user_prefs = {"email": True, "push": False}
-                    if req_row and req_row.get("notification_prefs"):
-                        try:
-                            user_prefs = json.loads(req_row["notification_prefs"])
-                        except:
-                            pass
-                    user_wants_email = user_prefs.get("email", True)
-                    user_wants_push = user_prefs.get("push", False)
+                    # Parse user notification preferences (user-level for consistency with manual updates)
+                    user_prefs = get_user_notification_prefs(req_row.get("requester_email", "") if req_row else "")
+                    user_wants_email = user_prefs.get("status_email", True)
+                    user_wants_push = user_prefs.get("status_push", True)
 
                     # Build email rows with completion data
                     email_rows = [("Request ID", rid[:8]), ("Status", "DONE")]
@@ -4142,6 +4150,7 @@ async def poll_printer_status_worker():
                         email_rows.append(("Final Temp", final_temp))
 
                     print_label = req_row["print_name"] if req_row else f"Request {rid[:8]}"
+                    report_url = f"{BASE_URL}/open/{rid}?token={req_row.get('access_token', '')}&report=1" if req_row else None
 
                     if requester_email_on_status and req_row and user_wants_email:
                         subject = f"[{APP_TITLE}] Print Complete! ({rid[:8]})"
@@ -4154,17 +4163,23 @@ async def poll_printer_status_worker():
                             cta_url=f"{BASE_URL}/queue?mine={rid[:8]}",
                             cta_label="View queue",
                             image_base64=snapshot_to_send,
+                            secondary_cta_url=report_url,
+                            secondary_cta_label="Report a Problem",
+                            footer_note="If the photo looks off, click Report a Problem so we can pause the job."
                         )
                         send_email([req_row["requester_email"]], subject, text, html, image_base64=snapshot_to_send)
                     
                     # Send push notification if user wants push
                     if user_wants_push and req_row and req_row.get("requester_email"):
                         print(f"[POLL] Sending push notification for completed print {rid[:8]}")
+                        report_url = f"/open/{rid}?token={req_row.get('access_token', '')}&report=1"
                         send_push_notification(
                             email=req_row["requester_email"],
                             title="✅ Print Complete!",
                             body=f"'{print_label}' is ready for pickup!",
-                            url=f"/my/{rid}?token={req_row.get('access_token', '')}"
+                            url=f"/my/{rid}?token={req_row.get('access_token', '')}",
+                            data={"reportUrl": report_url},
+                            actions=[{"action": "report-problem", "title": "Report a problem"}]
                         )
 
                     if admin_email_on_status and admin_emails and req_row:
@@ -4262,6 +4277,24 @@ async def poll_printer_status_worker():
                         conn.close()
                         
                         clear_print_match_suggestion(printer_code)
+                        
+                        # Immediately start the first READY/PENDING build so build-level notifications fire
+                        try:
+                            conn = db()
+                            next_build = conn.execute("""
+                                SELECT id FROM builds WHERE request_id = ? AND status IN ('READY', 'PENDING')
+                                ORDER BY build_number LIMIT 1
+                            """, (rid,)).fetchone()
+                            conn.close()
+                            
+                            if next_build:
+                                result = start_build(next_build["id"], printer_code, "Auto-matched to printer")
+                                if not result.get("success", True):
+                                    print(f"[AUTO-MATCH] Failed to start build {next_build['id'][:8]} for {rid[:8]}: {result.get('error')}")
+                            else:
+                                print(f"[AUTO-MATCH] No READY build found for {rid[:8]} after auto-match")
+                        except Exception as e:
+                            print(f"[AUTO-MATCH] Failed to start build for {rid[:8]}: {e}")
                         
                     else:
                         # Multiple matches or auto-match disabled - store suggestion for admin UI
@@ -4758,7 +4791,7 @@ def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Opt
 
 
 # ─────────────────────────── PUSH NOTIFICATIONS ───────────────────────────
-def send_push_notification(email: str, title: str, body: str, url: str = None, image_url: str = None, tag: str = None, data: dict = None) -> dict:
+def send_push_notification(email: str, title: str, body: str, url: str = None, image_url: str = None, tag: str = None, data: dict = None, actions: Optional[List[Dict[str, str]]] = None) -> dict:
     """
     Send push notification to all subscriptions for a user (by email).
     Returns a dict with status and details for debugging.
@@ -4771,6 +4804,7 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
         image_url: Optional image URL to display in notification (for progress updates)
         tag: Optional tag for notification grouping (allows replacing existing notifications)
         data: Optional additional data to include in the notification payload
+        actions: Optional list of notification actions (for quick responses)
     """
     result = {"email": email, "sent": 0, "failed": 0, "errors": []}
     
@@ -4824,6 +4858,10 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
     # Add additional custom data
     if data:
         payload_data["data"] = data
+    
+    # Add actions (e.g., report a problem)
+    if actions:
+        payload_data["actions"] = actions
     
     payload = json.dumps(payload_data)
     
