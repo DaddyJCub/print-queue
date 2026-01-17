@@ -413,6 +413,24 @@
       {% endif %}
     </div>
     
+    {% if req.requires_design %}
+      <div class="rounded-xl border border-teal-800 bg-teal-900/30 p-3 mb-4">
+        <div class="flex items-center justify-between">
+          <div class="font-semibold text-sm text-teal-100">
+            {% if req.design_completed_at %}Design completed{% else %}Design in progress{% endif %}
+          </div>
+          {% if designer_name %}
+            <div class="text-xs text-teal-100">Designer: {{ designer_name }}</div>
+          {% endif %}
+        </div>
+        {% if req.design_completed_at %}
+          <p class="text-xs text-teal-200 mt-1">Finished {{ req.design_completed_at|localtime }}. Let us know if anything needs adjustment.</p>
+        {% else %}
+          <p class="text-xs text-teal-200 mt-1">We’re preparing your model. We’ll notify you once design is done.</p>
+        {% endif %}
+      </div>
+    {% endif %}
+    
     <!-- Multi-Build Progress Summary (for IN_PROGRESS or multi-build requests not actively printing) -->
     {% if build_eta_info and build_eta_info.is_multi_build and req.status not in ['PRINTING', 'DONE', 'PICKED_UP', 'CANCELLED', 'REJECTED'] %}
       <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 mb-6">

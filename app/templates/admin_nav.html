@@ -13,12 +13,19 @@
         <a href="/admin" class="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-medium hover:bg-amber-500/30 transition">Admin</a>
       </div>
       
+      {% set can_design_nav = (current_admin_can_manage_designs if current_admin_can_manage_designs is defined else False) or ((current_admin.role == 'designer') if current_admin is defined else False) %}
+
       <!-- Desktop Navigation - Flat, simple links -->
       <div class="hidden md:flex items-center gap-1">
         <!-- Queue - Main view -->
         <a href="/admin" class="admin-nav-link {% if active_page == 'queue' %}active{% endif %}">
           📋 Queue
         </a>
+        {% if can_design_nav %}
+        <a href="/admin?design=1" class="admin-nav-link {% if active_page == 'design' %}active{% endif %}">
+          🎨 Design Queue
+        </a>
+        {% endif %}
         
         <!-- Printers -->
         <a href="/admin/printer-settings" class="admin-nav-link {% if active_page == 'printers' %}active{% endif %}">
@@ -132,6 +139,11 @@
       <a href="/admin/printer-settings" class="mobile-nav-link {% if active_page == 'printers' %}active{% endif %}">
         🖨️ Printers
       </a>
+      {% if can_design_nav %}
+      <a href="/admin?design=1" class="mobile-nav-link {% if active_page == 'design' %}active{% endif %}">
+        🎨 Design Queue
+      </a>
+      {% endif %}
       <a href="/admin/store" class="mobile-nav-link {% if active_page == 'store' %}active{% endif %}">
         🏪 Store
       </a>

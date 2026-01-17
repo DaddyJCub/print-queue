@@ -23,6 +23,7 @@ class AdminRole(str, Enum):
     SUPER_ADMIN = "super_admin"    # Full access: manage other admins, settings, everything
     ADMIN = "admin"                 # Manage queue, users, store, analytics
     OPERATOR = "operator"           # Manage queue only (approve, print, complete)
+    DESIGNER = "designer"           # Design-focused access (assign/track design work)
     VIEWER = "viewer"               # Read-only access to admin dashboard
 
 
@@ -113,6 +114,7 @@ ROLE_PERMISSIONS = {
         "manage_admins",      # Create, edit, delete other admins
         "manage_settings",    # System settings, feature flags
         "manage_queue",       # All queue operations
+        "manage_designs",     # Manage design workflow and assignments
         "manage_users",       # User accounts
         "manage_store",       # Store items
         "view_analytics",     # Analytics dashboard
@@ -125,6 +127,7 @@ ROLE_PERMISSIONS = {
     },
     AdminRole.ADMIN: {
         "manage_queue",
+        "manage_designs",
         "manage_users",
         "manage_store",
         "view_analytics",
@@ -136,6 +139,10 @@ ROLE_PERMISSIONS = {
     AdminRole.OPERATOR: {
         "manage_queue",       # Approve, print, complete requests
         "view_analytics",     # View-only analytics
+    },
+    AdminRole.DESIGNER: {
+        "manage_designs",     # Assign/complete design work
+        "view_analytics",     # Limited analytics visibility
     },
     AdminRole.VIEWER: {
         "view_analytics",     # View-only everything
@@ -640,6 +647,11 @@ DEFAULT_FEATURE_FLAGS = {
         key="auto_slicer",
         enabled=False,
         description="Automatic slicing of STL files",
+    ),
+    "designer_workflow": FeatureFlag(
+        key="designer_workflow",
+        enabled=True,
+        description="Enable designer role, design assignments, and design queue",
     ),
     
     # UI features

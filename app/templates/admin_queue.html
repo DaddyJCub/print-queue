@@ -5,11 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin Dashboard | Printellect</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .design-dim { opacity: 0.35; pointer-events: none; }
+  </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-7xl mx-auto p-6">
     <!-- Navigation -->
-    {% set active_page = 'queue' %}
+    {% set active_page = 'design' if request.query_params.get('design') else 'queue' %}
     {% include 'admin_nav.html' %}
     
     <!-- Page Header -->
@@ -17,6 +20,19 @@
       <h1 class="text-3xl font-bold">📋 Queue Dashboard</h1>
       <p class="text-zinc-400 mt-1">Manage your print queue efficiently.</p>
     </div>
+    
+    {% if current_admin_can_manage_designs %}
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+      <span class="text-xs text-zinc-500">Design filters:</span>
+      <button type="button" class="design-filter-btn px-3 py-1.5 rounded-lg bg-zinc-800 text-xs font-semibold border border-zinc-700"
+              data-filter="all">All</button>
+      <button type="button" class="design-filter-btn px-3 py-1.5 rounded-lg bg-zinc-900 text-xs font-semibold border border-teal-700 text-teal-200"
+              data-filter="needs">Needs Design</button>
+      <button type="button" class="design-filter-btn px-3 py-1.5 rounded-lg bg-zinc-900 text-xs font-semibold border border-teal-500 text-teal-200"
+              data-filter="mine">My Design Work</button>
+      <span class="text-[11px] text-zinc-500">Design requests dim when filtered out.</span>
+    </div>
+    {% endif %}
 
     <!-- Batch Edit Form (initially hidden) -->
     <div id="batch-edit-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -274,7 +290,7 @@
         sections.forEach(sectionId => {
           const section = document.getElementById(sectionId);
           if (section) {
-            const count = section.querySelectorAll('.request-item:not([style*="opacity: 0"])').length;
+            const count = section.querySelectorAll('.request-item:not([data-design-hidden="1"])').length;
             const countBadge = section.querySelector('.section-count');
             if (countBadge) {
               countBadge.textContent = count;
@@ -306,6 +322,32 @@
         if (e.target.id === 'batch-edit-modal') hideBatchEditModal();
       });
     </script>
+    
+    {% if current_admin_can_manage_designs %}
+    <script>
+      const currentDesignerId = "{{ current_admin.id if current_admin else '' }}";
+      const designButtons = document.querySelectorAll('.design-filter-btn');
+      function applyDesignFilter(filter) {
+        designButtons.forEach(btn => {
+          btn.classList.toggle('ring-2', btn.dataset.filter === filter);
+          btn.classList.toggle('ring-teal-400', btn.dataset.filter === filter);
+        });
+        document.querySelectorAll('.request-item').forEach(el => {
+          const needsDesign = el.dataset.requiresDesign === '1' && el.dataset.designComplete !== '1';
+          const isMine = needsDesign && currentDesignerId && el.dataset.designer === currentDesignerId;
+          let show = true;
+          if (filter === 'needs' && !needsDesign) show = false;
+          if (filter === 'mine' && !isMine) show = false;
+          
+          el.dataset.designHidden = show ? "0" : "1";
+          el.classList.toggle('design-dim', !show);
+        });
+      }
+      designButtons.forEach(btn => btn.addEventListener('click', () => applyDesignFilter(btn.dataset.filter)));
+      const initialFilter = (new URLSearchParams(window.location.search).get('design') === '1') ? 'needs' : 'all';
+      applyDesignFilter(initialFilter);
+    </script>
+    {% endif %}
 
     <!-- Helper macro-ish (simple patterns) -->
     {% macro badge(text) -%}
@@ -760,7 +802,10 @@
         {% else %}
           <div class="mt-4 space-y-2" id="new-list">
             {% for r in new_reqs[:3] %}
-              <details class="request-item group bg-zinc-950/60 border {% if r['status'] == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-xl overflow-hidden">
+              <details class="request-item group bg-zinc-950/60 border {% if r['status'] == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-xl overflow-hidden"
+                       data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+                       data-designer="{{ r['designer_admin_id'] or '' }}"
+                       data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
                 <summary class="p-3 cursor-pointer hover:bg-zinc-900/40 list-none">
                   <div class="flex items-center gap-3">
                     <input type="checkbox" data-request-id value="{{ r['id'] }}" onclick="event.stopPropagation()"
@@ -770,6 +815,11 @@
                         <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
                         {% if r["unread_replies"] and r["unread_replies"] > 0 %}
                           <span class="px-1.5 py-0.5 bg-red-600 text-white text-xs rounded-full animate-pulse">{{ r["unread_replies"] }}</span>
+                        {% endif %}
+                        {% if r["requires_design"] %}
+                          <span class="px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200 text-[11px]">
+                            Design {% if r["design_completed_at"] %}Ready{% else %}Needed{% endif %}{% if r["designer_admin_id"] and designer_lookup.get(r["designer_admin_id"]) %} · {{ designer_lookup.get(r["designer_admin_id"]) }}{% endif %}
+                          </span>
                         {% endif %}
                       </div>
                       <div class="text-xs text-zinc-500">{{ r["id"][:8] }} • {{ r["requester_name"] }}</div>
@@ -822,7 +872,10 @@
               </details>
             {% endfor %}
             {% for r in new_reqs[3:] %}
-              <details class="request-item hidden group bg-zinc-950/60 border {% if r['status'] == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-xl overflow-hidden">
+              <details class="request-item hidden group bg-zinc-950/60 border {% if r['status'] == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-xl overflow-hidden"
+                       data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+                       data-designer="{{ r['designer_admin_id'] or '' }}"
+                       data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
                 <summary class="p-3 cursor-pointer hover:bg-zinc-900/40 list-none">
                   <div class="flex items-center gap-3">
                     <input type="checkbox" data-request-id value="{{ r['id'] }}" onclick="event.stopPropagation()"
@@ -832,6 +885,11 @@
                         <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
                         {% if r["unread_replies"] and r["unread_replies"] > 0 %}
                           <span class="px-1.5 py-0.5 bg-red-600 text-white text-xs rounded-full animate-pulse">{{ r["unread_replies"] }}</span>
+                        {% endif %}
+                        {% if r["requires_design"] %}
+                          <span class="px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200 text-[11px]">
+                            Design {% if r["design_completed_at"] %}Ready{% else %}Needed{% endif %}{% if r["designer_admin_id"] and designer_lookup.get(r["designer_admin_id"]) %} · {{ designer_lookup.get(r["designer_admin_id"]) }}{% endif %}
+                          </span>
                         {% endif %}
                       </div>
                       <div class="text-xs text-zinc-500">{{ r["id"][:8] }} • {{ r["requester_name"] }}</div>
@@ -923,7 +981,10 @@
         {% else %}
           <div class="mt-4 space-y-2" id="printing-list">
             {% for r in printing[:3] %}
-              <div class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
+              <div class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3"
+                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+                   data-designer="{{ r['designer_admin_id'] or '' }}"
+                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
                 <div class="flex items-center gap-3">
                   <input type="checkbox" data-request-id value="{{ r['id'] }}" 
                          onchange="toggleRequestId(this.value); updateBatchUI('printing-section')" />
@@ -938,6 +999,11 @@
                       {% endif %}
                       {% if r.status == 'IN_PROGRESS' %}
                         <span class="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">Multi-Build</span>
+                      {% endif %}
+                      {% if r.requires_design %}
+                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
+                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
+                        </span>
                       {% endif %}
                     </div>
                     <div class="text-xs text-zinc-400 mt-0.5 truncate">
@@ -970,7 +1036,10 @@
               </div>
             {% endfor %}
             {% for r in printing[3:] %}
-              <div class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
+              <div class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3"
+                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+                   data-designer="{{ r['designer_admin_id'] or '' }}"
+                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
                 <div class="flex items-center gap-3">
                   <input type="checkbox" data-request-id value="{{ r['id'] }}" 
                          onchange="toggleRequestId(this.value); updateBatchUI('printing-section')" />
@@ -981,6 +1050,11 @@
                       {% if r.total_builds and r.total_builds > 1 %}
                         <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
                           {{ r.completed_builds or 0 }}/{{ r.total_builds }} builds
+                        </span>
+                      {% endif %}
+                      {% if r.requires_design %}
+                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
+                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
                         </span>
                       {% endif %}
                     </div>
@@ -1051,7 +1125,10 @@
         {% else %}
           <div class="mt-4 space-y-2" id="approved-list">
             {% for r in queued[:3] %}
-              <div class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
+              <div class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3"
+                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+                   data-designer="{{ r['designer_admin_id'] or '' }}"
+                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
                 <div class="flex items-center gap-3">
                   <input type="checkbox" data-request-id value="{{ r['id'] }}" 
                          onchange="toggleRequestId(this.value); updateBatchUI('approved-section')" />
@@ -1062,6 +1139,11 @@
                       {% if r.total_builds and r.total_builds > 1 %}
                         <span class="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">
                           {{ r.total_builds }} builds
+                        </span>
+                      {% endif %}
+                      {% if r.requires_design %}
+                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
+                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
                         </span>
                       {% endif %}
                     </div>
@@ -1098,7 +1180,10 @@
               </div>
             {% endfor %}
             {% for r in queued[3:] %}
-              <div class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
+              <div class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3"
+                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+                   data-designer="{{ r['designer_admin_id'] or '' }}"
+                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
                 <div class="flex items-center gap-3">
                   <input type="checkbox" data-request-id value="{{ r['id'] }}" 
                          onchange="toggleRequestId(this.value); updateBatchUI('approved-section')" />
@@ -1106,6 +1191,11 @@
                     <div class="flex items-center gap-2">
                       <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
                       <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
+                      {% if r.requires_design %}
+                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
+                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
+                        </span>
+                      {% endif %}
                     </div>
                     <div class="text-xs text-zinc-400 mt-0.5 truncate">
                       {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }}
@@ -1174,7 +1264,10 @@
         {% else %}
           <div class="mt-4 space-y-2" id="blocked-list">
             {% for r in blocked[:3] %}
-              <div class="request-item bg-zinc-950/60 border border-red-900/30 rounded-xl p-3">
+              <div class="request-item bg-zinc-950/60 border border-red-900/30 rounded-xl p-3"
+                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+                   data-designer="{{ r['designer_admin_id'] or '' }}"
+                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
                 <div class="flex items-center gap-3">
                   <input type="checkbox" data-request-id value="{{ r['id'] }}" 
                          onchange="toggleRequestId(this.value); updateBatchUI('blocked-section')" />
@@ -1182,6 +1275,11 @@
                     <div class="flex items-center gap-2">
                       <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
                       <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
+                      {% if r.requires_design %}
+                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
+                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
+                        </span>
+                      {% endif %}
                     </div>
                     <div class="text-xs text-zinc-400 mt-0.5 truncate">
                       {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }}
@@ -1204,7 +1302,10 @@
               </div>
             {% endfor %}
             {% for r in blocked[3:] %}
-              <div class="request-item hidden bg-zinc-950/60 border border-red-900/30 rounded-xl p-3">
+              <div class="request-item hidden bg-zinc-950/60 border border-red-900/30 rounded-xl p-3"
+                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+                   data-designer="{{ r['designer_admin_id'] or '' }}"
+                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
                 <div class="flex items-center gap-3">
                   <input type="checkbox" data-request-id value="{{ r['id'] }}" 
                          onchange="toggleRequestId(this.value); updateBatchUI('blocked-section')" />
@@ -1212,6 +1313,11 @@
                     <div class="flex items-center gap-2">
                       <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
                       <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
+                      {% if r.requires_design %}
+                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
+                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
+                        </span>
+                      {% endif %}
                     </div>
                     <div class="text-xs text-zinc-400 mt-0.5 truncate">
                       {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }}
@@ -1275,7 +1381,10 @@
         {% else %}
           <div class="mt-4 space-y-2" id="done-list">
             {% for r in done[:3] %}
-              <div class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
+              <div class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3"
+                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+                   data-designer="{{ r['designer_admin_id'] or '' }}"
+                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
                 <div class="flex items-center gap-3">
                   <input type="checkbox" data-request-id value="{{ r['id'] }}" 
                          onchange="toggleRequestId(this.value); updateBatchUI('done-section')" />
@@ -1283,6 +1392,11 @@
                     <div class="flex items-center gap-2">
                       <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
                       <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
+                      {% if r.requires_design %}
+                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
+                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
+                        </span>
+                      {% endif %}
                     </div>
                     <div class="text-xs text-zinc-400 mt-0.5 truncate">
                       {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }} {% if r["colors"] %}• {{ r["colors"] }}{% endif %}
@@ -1303,7 +1417,10 @@
               </div>
             {% endfor %}
             {% for r in done[3:] %}
-              <div class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3">
+              <div class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3"
+                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+                   data-designer="{{ r['designer_admin_id'] or '' }}"
+                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
                 <div class="flex items-center gap-3">
                   <input type="checkbox" data-request-id value="{{ r['id'] }}" 
                          onchange="toggleRequestId(this.value); updateBatchUI('done-section')" />
@@ -1311,6 +1428,11 @@
                     <div class="flex items-center gap-2">
                       <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
                       <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
+                      {% if r.requires_design %}
+                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
+                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
+                        </span>
+                      {% endif %}
                     </div>
                     <div class="text-xs text-zinc-400 mt-0.5 truncate">
                       {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }}
@@ -1371,13 +1493,21 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" id="closed-list">
             {% for r in closed[:4] %}
               <a href="/admin/request/{{ r['id'] }}" 
-                 class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3 hover:bg-zinc-900/60 hover:border-zinc-700 transition group/card">
+                 class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3 hover:bg-zinc-900/60 hover:border-zinc-700 transition group/card"
+                 data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+                 data-designer="{{ r['designer_admin_id'] or '' }}"
+                 data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0 flex-1">
                     <div class="font-medium text-sm truncate group-hover/card:text-indigo-300">
                       {{ r["print_name"] or ("Request " + r["id"][:8]) }}
                     </div>
                     <div class="text-xs text-zinc-500 mt-1 font-mono">{{ r["id"][:8] }}</div>
+                    {% if r.requires_design %}
+                      <div class="text-[11px] text-teal-200 mt-1">
+                        Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} • {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
+                      </div>
+                    {% endif %}
                   </div>
                   {{ badge(r["status"]) }}
                 </div>
@@ -1388,13 +1518,21 @@
             {% endfor %}
             {% for r in closed[4:] %}
               <a href="/admin/request/{{ r['id'] }}" 
-                 class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3 hover:bg-zinc-900/60 hover:border-zinc-700 transition group/card">
+                 class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3 hover:bg-zinc-900/60 hover:border-zinc-700 transition group/card"
+                 data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+                 data-designer="{{ r['designer_admin_id'] or '' }}"
+                 data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0 flex-1">
                     <div class="font-medium text-sm truncate group-hover/card:text-indigo-300">
                       {{ r["print_name"] or ("Request " + r["id"][:8]) }}
                     </div>
                     <div class="text-xs text-zinc-500 mt-1 font-mono">{{ r["id"][:8] }}</div>
+                    {% if r.requires_design %}
+                      <div class="text-[11px] text-teal-200 mt-1">
+                        Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} • {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
+                      </div>
+                    {% endif %}
                   </div>
                   {{ badge(r["status"]) }}
                 </div>

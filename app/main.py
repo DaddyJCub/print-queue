@@ -1159,6 +1159,16 @@ def ensure_migrations():
     if "notification_prefs" not in cols:
         cur.execute("ALTER TABLE requests ADD COLUMN notification_prefs TEXT DEFAULT '{\"email\": true, \"push\": false}'")
 
+    # Design workflow columns
+    if "requires_design" not in cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN requires_design INTEGER DEFAULT 0")
+    if "designer_admin_id" not in cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN designer_admin_id TEXT")
+    if "design_notes" not in cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN design_notes TEXT")
+    if "design_completed_at" not in cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN design_completed_at TEXT")
+
     # Multi-build support columns
     if "total_builds" not in cols:
         cur.execute("ALTER TABLE requests ADD COLUMN total_builds INTEGER DEFAULT 1")
@@ -1401,6 +1411,15 @@ def start_build(build_id: str, printer: str, comment: Optional[str] = None) -> D
     
     now = now_iso()
     old_status = build["status"]
+    
+    # Block starting if design is required but not completed
+    try:
+        req_row = conn.execute("SELECT requires_design, design_completed_at FROM requests WHERE id = ?", (build["request_id"],)).fetchone()
+        if req_row and req_row["requires_design"] == 1 and not req_row["design_completed_at"]:
+            conn.close()
+            return {"success": False, "error": "Design required. Mark design complete before starting this build."}
+    except Exception:
+        pass
     
     conn.execute("""
         UPDATE builds SET 

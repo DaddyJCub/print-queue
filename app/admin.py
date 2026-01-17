@@ -38,6 +38,7 @@ from app.main import (
     UPLOAD_DIR,
     DB_PATH,
 )
+from app.auth import get_all_admins
 from app.demo_data import DEMO_MODE, get_demo_status, reset_demo_data
 
 router = APIRouter()
@@ -193,6 +194,7 @@ def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
             f"""SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors, 
                       r.link_url, r.status, r.priority, r.special_notes, r.printing_started_at,
                       r.print_name, r.total_builds, r.completed_builds, r.failed_builds,
+                      r.requires_design, r.designer_admin_id, r.design_completed_at,
                       r.print_time_minutes, r.slicer_estimate_minutes,
                       (SELECT COUNT(*) FROM files f WHERE f.request_id = r.id) as file_count,
                       (SELECT GROUP_CONCAT(f.original_filename, ', ') FROM files f WHERE f.request_id = r.id) as file_names,
@@ -207,6 +209,7 @@ def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
             f"""SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors, 
                       r.link_url, r.status, r.priority, r.special_notes,
                       r.print_name, r.total_builds, r.completed_builds, r.failed_builds,
+                      r.requires_design, r.designer_admin_id, r.design_completed_at,
                       (SELECT COUNT(*) FROM files f WHERE f.request_id = r.id) as file_count,
                       (SELECT GROUP_CONCAT(f.original_filename, ', ') FROM files f WHERE f.request_id = r.id) as file_names,
                       (SELECT COUNT(*) FROM request_messages m WHERE m.request_id = r.id AND m.sender_type = 'requester' AND m.is_read = 0) as unread_replies
@@ -220,7 +223,7 @@ def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
 
 
 @router.get("/admin", response_class=HTMLResponse)
-async def admin_dashboard(request: Request, _=Depends(require_admin)):
+async def admin_dashboard(request: Request, admin=Depends(require_admin)):
     # Fetch NEW and NEEDS_INFO together for "needs attention" section
     new_reqs = _fetch_requests_by_status(["NEW", "NEEDS_INFO"])
     queued = _fetch_requests_by_status("APPROVED")
@@ -300,7 +303,8 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
     conn = db()
     closed = conn.execute(
         """SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors, 
-                  r.link_url, r.status, r.priority, r.special_notes, r.print_name
+                  r.link_url, r.status, r.priority, r.special_notes, r.print_name,
+                  r.requires_design, r.designer_admin_id, r.design_completed_at
            FROM requests r
            WHERE r.status IN (?, ?, ?) 
            ORDER BY r.updated_at DESC 
@@ -316,6 +320,14 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
 
     # Get print match suggestions
     print_match_suggestions = get_print_match_suggestions()
+    
+    # Admin context for design filters and permissions
+    current_admin = admin if hasattr(admin, "to_dict") else None
+    designer_lookup = {}
+    for a in get_all_admins():
+        designer_lookup[a.id] = a.display_name or a.username
+    can_manage_queue = current_admin.has_permission("manage_queue") if current_admin else True
+    can_manage_designs = current_admin.has_permission("manage_designs") if current_admin else False
 
     return templates.TemplateResponse("admin_queue.html", {
         "request": request,
@@ -333,6 +345,10 @@ async def admin_dashboard(request: Request, _=Depends(require_admin)):
         "printers": PRINTERS,
         "materials": MATERIALS,
         "version": APP_VERSION,
+        "current_admin": current_admin.to_dict() if current_admin else None,
+        "designer_lookup": designer_lookup,
+        "current_admin_can_manage_queue": can_manage_queue,
+        "current_admin_can_manage_designs": can_manage_designs,
     })
 
 
@@ -1120,5 +1136,3 @@ def admin_printer_settings_post(
     set_setting("enable_auto_print_match", "1" if enable_auto_print_match else "0")
 
     return RedirectResponse(url="/admin/printer-settings?saved=1", status_code=303)
-
-

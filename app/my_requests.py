@@ -153,6 +153,14 @@ async def requester_portal(request: Request, rid: str, token: str):
     # Find the currently printing build and its associated file (for 3D preview in print status)
     current_printing_build = None
     current_printing_file = None
+    designer_name = None
+    if req.get("designer_admin_id"):
+        designer = conn.execute(
+            "SELECT display_name, username FROM admins WHERE id = ?",
+            (req["designer_admin_id"],)
+        ).fetchone()
+        if designer:
+            designer_name = designer["display_name"] or designer["username"]
     for b in builds_with_snapshots:
         if b.get("status") == "PRINTING":
             current_printing_build = b
@@ -203,6 +211,7 @@ async def requester_portal(request: Request, rid: str, token: str):
         "requester_email": requester_email,
         "current_printing_build": current_printing_build,
         "current_printing_file": current_printing_file,
+        "designer_name": designer_name,
     })
 
 
@@ -1011,5 +1020,4 @@ def generate_sync_code(token: str = Form(...)):
     conn.close()
     
     return {"success": True, "code": short_code, "expires_in": 600}  # 10 minutes in seconds
-
 

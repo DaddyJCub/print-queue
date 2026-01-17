@@ -66,8 +66,9 @@ from app.main import (
     first_name_only,
     _human_printer,
     _human_material,
+    is_feature_enabled,
 )
-from app.auth import get_current_admin
+from app.auth import get_current_admin, require_permission, AdminRole, get_admin_by_id, get_all_admins
 from app.demo_data import (
     DEMO_MODE,
     get_demo_printer_status,
@@ -85,7 +86,7 @@ def admin_start_build(
     build_id: str,
     printer: str = Form(...),
     comment: Optional[str] = Form(None),
-    _=Depends(require_admin)
+    _=Depends(require_permission("manage_queue"))
 ):
     """Start printing a specific build."""
     conn = db()
@@ -107,7 +108,7 @@ def admin_fail_build(
     request: Request,
     build_id: str,
     comment: Optional[str] = Form(None),
-    _=Depends(require_admin)
+    _=Depends(require_permission("manage_queue"))
 ):
     """Mark a build as failed."""
     conn = db()
@@ -129,7 +130,7 @@ def admin_retry_build(
     request: Request,
     build_id: str,
     comment: Optional[str] = Form(None),
-    _=Depends(require_admin)
+    _=Depends(require_permission("manage_queue"))
 ):
     """Retry a failed build."""
     conn = db()
@@ -151,7 +152,7 @@ def admin_skip_build(
     request: Request,
     build_id: str,
     comment: Optional[str] = Form(None),
-    _=Depends(require_admin)
+    _=Depends(require_permission("manage_queue"))
 ):
     """Skip a build (mark as skipped)."""
     conn = db()
@@ -174,7 +175,7 @@ async def admin_complete_build(
     build_id: str,
     comment: Optional[str] = Form(None),
     capture_snapshot: Optional[str] = Form(None),
-    _=Depends(require_admin)
+    _=Depends(require_permission("manage_queue"))
 ):
     """Manually mark a build as completed (with optional snapshot capture)."""
     conn = db()
@@ -209,7 +210,7 @@ def admin_configure_builds(
     request: Request,
     rid: str,
     build_count: str = Form("1"),  # Accept as string to handle empty/invalid
-    _=Depends(require_admin)
+    _=Depends(require_permission("manage_queue"))
 ):
     """Configure the number of builds for a request. Adjusts builds up or down."""
     # Parse build_count with safe defaults
@@ -1903,7 +1904,8 @@ async def probe_printer_timelapse_access(printer_code: str, _=Depends(require_ad
     return results
 
 @router.get("/admin/request/{rid}", response_class=HTMLResponse)
-def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
+def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin)):
+    design_enabled = is_feature_enabled("designer_workflow")
     conn = db()
     req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
     if not req:
@@ -1947,6 +1949,9 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
         # Attach files assigned to this build
         b_dict["assigned_files"] = files_by_build.get(b["id"], [])
         builds_list.append(b_dict)
+    # Designer lookup for assignments
+    designers = get_all_admins() if design_enabled else []
+    designer_lookup = {a.id: a.display_name or a.username for a in designers} if design_enabled else {}
     conn.close()
     
     # Get camera URL for the printer if configured
@@ -1975,11 +1980,18 @@ def admin_request_detail(request: Request, rid: str, _=Depends(require_admin)):
         "now": datetime.now().timestamp(),  # For cache-busting
         "accuracy_info": accuracy_info,
         "version": APP_VERSION,
+        "designers": [a.to_dict() for a in designers],
+        "designer_lookup": designer_lookup,
+        "current_admin": admin.to_dict() if hasattr(admin, "to_dict") else None,
+        "current_admin_id": getattr(admin, "id", None) if hasattr(admin, "id") else None,
+        "current_admin_can_manage_queue": admin.has_permission("manage_queue") if hasattr(admin, "has_permission") else True,
+        "current_admin_can_manage_designs": admin.has_permission("manage_designs") if hasattr(admin, "has_permission") else False,
+        "design_enabled": design_enabled,
     })
 
 
 @router.post("/admin/request/{rid}/duplicate")
-def admin_duplicate_request(request: Request, rid: str, _=Depends(require_admin)):
+def admin_duplicate_request(request: Request, rid: str, _=Depends(require_permission("manage_queue"))):
     """Duplicate a request directly into the queue (for batch printing)"""
     conn = db()
     original = conn.execute(
@@ -2108,7 +2120,7 @@ def admin_match_print_to_request(
     request: Request,
     rid: str,
     printer: str = Form(...),
-    _=Depends(require_admin)
+    _=Depends(require_permission("manage_queue"))
 ):
     """
     Manually match a printing file to a request.
@@ -2159,7 +2171,7 @@ def admin_match_print_to_request(
 def admin_dismiss_match_suggestion(
     request: Request,
     printer: str,
-    _=Depends(require_admin)
+    _=Depends(require_permission("manage_queue"))
 ):
     """Dismiss a print match suggestion."""
     clear_print_match_suggestion(printer)
@@ -2175,7 +2187,7 @@ def admin_set_status(
     printer: Optional[str] = Form(None),
     material: Optional[str] = Form(None),
     colors: Optional[str] = Form(None),
-    _=Depends(require_admin)
+    _=Depends(require_permission("manage_queue"))
 ):
     if to_status not in STATUS_FLOW:
         raise HTTPException(status_code=400, detail="Invalid status")
@@ -2188,6 +2200,14 @@ def admin_set_status(
     
     req = dict(req_row)  # Convert to dict for .get() support
     from_status = req["status"]
+    
+    # Block moving into production states if design is required but not complete
+    if is_feature_enabled("designer_workflow"):
+        needs_design = bool(req.get("requires_design"))
+        design_done = bool(req.get("design_completed_at"))
+        if needs_design and not design_done and to_status in ["APPROVED", "PRINTING"]:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Design required. Mark design complete or remove design requirement before approving/printing.")
     
     # Validate printer selection when changing to PRINTING
     # Must have a specific printer selected (not "ANY" or empty)
@@ -2531,6 +2551,157 @@ def admin_set_status(
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
 
+@router.post("/admin/request/{rid}/design")
+def admin_update_design(
+    request: Request,
+    rid: str,
+    requires_design: Optional[List[str]] = Form(None),
+    designer_admin_id: Optional[str] = Form(None),
+    design_notes: Optional[str] = Form(None),
+    mark_complete: Optional[str] = Form(None),
+    admin=Depends(require_permission("manage_designs"))
+):
+    """Update design flags/assignment for a request."""
+    if not is_feature_enabled("designer_workflow"):
+        raise HTTPException(status_code=404, detail="Design workflow is disabled")
+    conn = db()
+    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    req = dict(req_row)
+    updates = []
+    params: list = []
+    now = now_iso()
+    old_designer = req.get("designer_admin_id")
+    new_assignment = None
+    design_completed = False
+    admin_id = getattr(admin, "id", None) if admin else None
+    admin_role = getattr(admin, "role", None) if admin else None
+    
+    # Toggle requires_design (handle checkbox + hidden fields)
+    if requires_design is not None:
+        requires_flag = None
+        if isinstance(requires_design, list):
+            requires_flag = "1" if "1" in requires_design else "0"
+        else:
+            requires_flag = str(requires_design)
+        requires_val = 1 if requires_flag == "1" else 0
+        updates.append("requires_design = ?")
+        params.append(requires_val)
+        if requires_val == 0:
+            # Clearing design requirement also clears assignment/completion
+            updates.append("designer_admin_id = ?")
+            params.append(None)
+            updates.append("design_completed_at = ?")
+            params.append(None)
+    
+    # Handle assignment
+    if designer_admin_id is not None:
+        desired = designer_admin_id.strip() or None
+        if admin_role == AdminRole.DESIGNER:
+            # Designers can self-assign; unassign only if currently assigned to them
+            if desired and desired != admin_id:
+                desired = admin_id
+            elif desired is None and old_designer and old_designer != admin_id:
+                desired = old_designer  # keep original if not owned
+        new_assignment = desired
+        if desired != old_designer:
+            updates.append("designer_admin_id = ?")
+            params.append(desired)
+            # Reset completion if reassigned
+            updates.append("design_completed_at = ?")
+            params.append(None)
+    
+    # Notes
+    if design_notes is not None:
+        updates.append("design_notes = ?")
+        params.append(design_notes.strip() or None)
+    
+    # Mark complete
+    if mark_complete == "1":
+        updates.append("design_completed_at = ?")
+        params.append(now)
+        # Ensure requires_design flag stays on for history, but mark as done
+        updates.append("requires_design = ?")
+        params.append(1)
+        design_completed = True
+    
+    if updates:
+        updates.append("updated_at = ?")
+        params.append(now)
+        params.append(rid)
+        conn.execute(f"UPDATE requests SET {', '.join(updates)} WHERE id = ?", params)
+        conn.commit()
+    
+    # Fetch updated row for notifications/context
+    updated = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    conn.close()
+    updated_req = dict(updated) if updated else req
+    
+    # Notify designer on assignment
+    if new_assignment and new_assignment != old_designer:
+        assigned_admin = get_admin_by_id(new_assignment)
+        if assigned_admin and assigned_admin.email:
+            print_label = updated_req.get("print_name") or f"Request {rid[:8]}"
+            subject = f"[{APP_TITLE}] New design assignment - {print_label}"
+            text = (
+                f"You have been assigned design work for '{print_label}'.\n\n"
+                f"Request: {rid[:8]}\n"
+                f"Requester: {updated_req.get('requester_name')}\n"
+                f"Design notes: {updated_req.get('design_notes') or '—'}\n"
+                f"Open in admin: {BASE_URL}/admin/request/{rid}\n"
+            )
+            html = build_email_html(
+                title="🎨 New Design Assignment",
+                subtitle=f"You've been assigned to '{print_label}'",
+                rows=[
+                    ("Requester", updated_req.get("requester_name") or "—"),
+                    ("Design Notes", updated_req.get("design_notes") or "—"),
+                ],
+                cta_url=f"{BASE_URL}/admin/request/{rid}",
+                cta_label="Open Request",
+                header_color="#14b8a6",
+            )
+            send_email([assigned_admin.email], subject, text, html)
+    
+    # Notify requester when design completes
+    if design_completed and updated_req.get("requester_email"):
+        requester_email = updated_req["requester_email"]
+        prefs = get_user_notification_prefs(requester_email)
+        print_label = updated_req.get("print_name") or f"Request {rid[:8]}"
+        view_url = f"{BASE_URL}/my/{rid}?token={updated_req.get('access_token', '')}"
+        subject = f"[{APP_TITLE}] Design complete - {print_label}"
+        text = (
+            f"Design work for your print '{print_label}' is complete.\n\n"
+            f"You can review the request here: {view_url}\n"
+        )
+        html = build_email_html(
+            title="Design Ready",
+            subtitle=f"'{print_label}' has completed design review",
+            rows=[
+                ("Request", print_label),
+                ("Status", updated_req.get("status")),
+            ],
+            cta_url=view_url,
+            cta_label="View Request",
+            header_color="#0ea5e9",
+            footer_note="If anything looks off, reply to this email or send a message in the portal.",
+        )
+        if prefs.get("status_email", True):
+            send_email([requester_email], subject, text, html)
+        if prefs.get("status_push", True):
+            send_push_notification(
+                email=requester_email,
+                title="Design Complete",
+                body=f"'{print_label}' design is ready for review.",
+                url=view_url
+            )
+    
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
 @router.post("/admin/request/{rid}/send-reminder")
 def admin_send_reminder(
     request: Request,
@@ -2641,5 +2812,3 @@ def admin_send_message(
                 print(f"[PUSH] Error sending message notification: {e}")
     
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
-
-
