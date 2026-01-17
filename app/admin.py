@@ -224,6 +224,7 @@ def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
 
 @router.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, admin=Depends(require_admin)):
+    design_enabled = is_feature_enabled("designer_workflow")
     # Fetch NEW and NEEDS_INFO together for "needs attention" section
     new_reqs = _fetch_requests_by_status(["NEW", "NEEDS_INFO"])
     queued = _fetch_requests_by_status("APPROVED")
@@ -324,8 +325,9 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
     # Admin context for design filters and permissions
     current_admin = admin if hasattr(admin, "to_dict") else None
     designer_lookup = {}
-    for a in get_all_admins():
-        designer_lookup[a.id] = a.display_name or a.username
+    if design_enabled:
+        for a in get_all_admins():
+            designer_lookup[a.id] = a.display_name or a.username
     can_manage_queue = current_admin.has_permission("manage_queue") if current_admin else True
     can_manage_designs = current_admin.has_permission("manage_designs") if current_admin else False
 
@@ -349,6 +351,7 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
         "designer_lookup": designer_lookup,
         "current_admin_can_manage_queue": can_manage_queue,
         "current_admin_can_manage_designs": can_manage_designs,
+        "design_enabled": design_enabled,
     })
 
 

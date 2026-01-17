@@ -21,7 +21,7 @@
       <p class="text-zinc-400 mt-1">Manage your print queue efficiently.</p>
     </div>
     
-    {% if current_admin_can_manage_designs %}
+    {% if current_admin_can_manage_designs and design_enabled %}
     <div class="mb-4 flex flex-wrap items-center gap-2">
       <span class="text-xs text-zinc-500">Design filters:</span>
       <button type="button" class="design-filter-btn px-3 py-1.5 rounded-lg bg-zinc-800 text-xs font-semibold border border-zinc-700"
@@ -323,7 +323,7 @@
       });
     </script>
     
-    {% if current_admin_can_manage_designs %}
+    {% if current_admin_can_manage_designs and design_enabled %}
     <script>
       const currentDesignerId = "{{ current_admin.id if current_admin else '' }}";
       const designButtons = document.querySelectorAll('.design-filter-btn');

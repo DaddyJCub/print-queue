@@ -13,7 +13,8 @@
         <a href="/admin" class="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-medium hover:bg-amber-500/30 transition">Admin</a>
       </div>
       
-      {% set can_design_nav = (current_admin_can_manage_designs if current_admin_can_manage_designs is defined else False) or ((current_admin.role == 'designer') if current_admin is defined else False) %}
+      {% set design_feature_on = design_enabled if design_enabled is defined else True %}
+      {% set can_design_nav = design_feature_on and ((current_admin_can_manage_designs if current_admin_can_manage_designs is defined else False) or ((current_admin.role == 'designer') if current_admin is defined else False)) %}
 
       <!-- Desktop Navigation - Flat, simple links -->
       <div class="hidden md:flex items-center gap-1">

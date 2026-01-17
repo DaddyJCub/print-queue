@@ -65,12 +65,42 @@
         </p>
       </div>
 
+      <!-- v0.10.6 -->
+      <div id="v0.10.6" class="bg-gradient-to-br from-zinc-900/80 via-teal-900/30 to-indigo-950/30 border border-teal-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-teal-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.10.6" class="px-3 py-1 bg-teal-600 text-white text-sm font-bold rounded-lg hover:bg-teal-500 transition">v0.10.6</a>
+          <span class="text-zinc-400 text-sm">January 05, 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Designer role & workflow</h3>
+        <p class="text-sm text-zinc-400 mb-4">Introduced a dedicated designer role with design-focused permissions, assignment workflow, and guardrails to keep prints out of production until design is done.</p>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
+            <h4 class="text-xs font-bold text-blue-400 mb-2">🚀 New</h4>
+            <ul class="list-disc list-inside text-sm text-zinc-200 space-y-1">
+              <li>Designer role with <code>manage_designs</code> permission and admin UI labels/forms.</li>
+              <li>Design flags on requests (requires design, assigned designer, notes, completed at) with dedicated panel on request details.</li>
+              <li>Design queue filters/badges plus requester-facing design status banner and designer attribution.</li>
+              <li>Notifications: designers get assignment emails; requesters get design-complete email/push.</li>
+            </ul>
+          </div>
+          <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
+            <h4 class="text-xs font-bold text-amber-400 mb-2">🔧 Guardrails</h4>
+            <ul class="list-disc list-inside text-sm text-zinc-200 space-y-1">
+              <li>Approval/printing/build start blocked until design is marked complete when design is required.</li>
+              <li>Feature-flagged under <code>designer_workflow</code> to allow controlled rollout.</li>
+              <li>Designers restricted to design actions; queue actions require manage_queue.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       <!-- v0.10.5 -->
       <div id="v0.10.5" class="bg-gradient-to-br from-zinc-900/80 to-amber-950/20 border border-amber-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-amber-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.10.5" class="px-3 py-1 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-500 transition">v0.10.5</a>
           <span class="text-zinc-400 text-sm">December 25, 2025</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">BLOCKED Status & UI Cleanup</h3>
