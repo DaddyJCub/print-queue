@@ -5,7 +5,7 @@ from datetime import datetime
 import httpx
 
 from fastapi import APIRouter, Request, Form, UploadFile, File, HTTPException, Depends
-from fastapi.responses import RedirectResponse, FileResponse, Response, StreamingResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, FileResponse, Response, StreamingResponse, HTMLResponse, JSONResponse
 
 from app.main import (
     templates,
@@ -261,6 +261,14 @@ def admin_configure_builds(
     conn.commit()
     conn.close()
     
+    accept = request.headers.get("accept", "").lower()
+    if "application/json" in accept:
+        return JSONResponse({
+            "success": True,
+            "design_completed": design_completed,
+            "requires_design": bool(updated_req.get("requires_design")),
+            "designer_admin_id": updated_req.get("designer_admin_id"),
+        })
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
 

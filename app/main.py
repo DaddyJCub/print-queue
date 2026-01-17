@@ -29,7 +29,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.10.6"
+APP_VERSION = "0.10.7"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -1158,6 +1158,12 @@ def ensure_migrations():
     # JSON format: {"email": true, "push": true} - defaults to email only
     if "notification_prefs" not in cols:
         cur.execute("ALTER TABLE requests ADD COLUMN notification_prefs TEXT DEFAULT '{\"email\": true, \"push\": false}'")
+
+    # User profile migrations
+    cur.execute("PRAGMA table_info(users)")
+    user_cols = {row[1] for row in cur.fetchall()}
+    if user_cols and "avatar_url" not in user_cols:
+        cur.execute("ALTER TABLE users ADD COLUMN avatar_url TEXT")
 
     # Design workflow columns
     if "requires_design" not in cols:
@@ -2830,10 +2836,6 @@ def send_build_start_notification(build: Dict, request: Dict):
     total_builds = request.get("total_builds") or 1
     request_id = request["id"]
     
-    # Skip notification for single-build requests (handled by legacy system)
-    if total_builds <= 1:
-        return
-    
     print(f"[BUILD-NOTIFY] Sending build start notification: Build {build_num}/{total_builds}")
     
     # Check notification settings
@@ -2850,23 +2852,24 @@ def send_build_start_notification(build: Dict, request: Dict):
     
     print_label = request.get("print_name") or f"Request {request_id[:8]}"
     build_label = build.get("print_name") or f"Build {build_num}"
+    is_multi_build = total_builds > 1
     
     # Build position string
-    position_str = f"Build {build_num} of {total_builds}"
-    remaining = total_builds - build_num
+    position_str = f"Build {build_num} of {total_builds}" if is_multi_build else "Print"
+    remaining = (total_builds - build_num) if is_multi_build else 0
     
     if user_wants_email and request.get("requester_email"):
         subject = f"[{APP_TITLE}] {position_str} Started - {print_label}"
         
         email_rows = [
             ("Print Name", print_label),
-            ("Build", position_str),
+            ("Build", position_str if is_multi_build else "Single build"),
             ("Status", "PRINTING"),
             ("Printer", _human_printer(build.get("printer") or request.get("printer") or "") or "—"),
             ("Material", _human_material(build.get("material") or request.get("material") or "") or "—"),
         ]
         
-        if remaining > 0:
+        if remaining > 0 and is_multi_build:
             email_rows.append(("Remaining", f"{remaining} build(s) after this one"))
         
         text = (
@@ -2874,8 +2877,12 @@ def send_build_start_notification(build: Dict, request: Dict):
             f"Print: {print_label}\n"
             f"Build: {build_label}\n"
             f"Request ID: {request_id[:8]}\n"
-            f"\n⚠️ This is NOT the final completion - {remaining} build(s) remain after this one.\n"
-            f"\nView progress: {BASE_URL}/my/{request_id}?token={request.get('access_token', '')}\n"
+            f"\n"
+        )
+        if remaining > 0 and is_multi_build:
+            text += f"⚠️ This is NOT the final completion - {remaining} build(s) remain after this one.\n\n"
+        text += (
+            f"View progress: {BASE_URL}/my/{request_id}?token={request.get('access_token', '')}\n"
         )
         
         # Generate my-requests link
@@ -2889,7 +2896,7 @@ def send_build_start_notification(build: Dict, request: Dict):
             cta_url=f"{BASE_URL}/my/{request_id}?token={request.get('access_token', '')}",
             cta_label="View Progress",
             header_color="#f59e0b",  # Amber for in-progress
-            footer_note=f"This is build {build_num} of {total_builds}. You will receive another notification when all builds are complete.",
+            footer_note=f"{'This is build ' + str(build_num) + ' of ' + str(total_builds) + '. ' if is_multi_build else ''}You will receive another notification when the print completes.",
             secondary_cta_url=my_requests_url,
             secondary_cta_label="All My Requests",
         )
@@ -2900,7 +2907,7 @@ def send_build_start_notification(build: Dict, request: Dict):
         send_push_notification(
             email=request["requester_email"],
             title=f"🖨️ {position_str} Started",
-            body=f"'{print_label}' - {build_label} is now printing ({remaining} more after this)",
+            body=f"'{print_label}' - {build_label} is now printing" + (f" ({remaining} more after this)" if remaining > 0 and is_multi_build else ""),
             url=f"/my/{request_id}?token={request.get('access_token', '')}"
         )
 
@@ -2914,16 +2921,13 @@ def send_build_complete_notification(build: Dict, request: Dict, snapshot_b64: O
     total_builds = request.get("total_builds") or 1
     request_id = request["id"]
     completed_builds = request.get("completed_builds", 0) + 1  # +1 because this build just completed
-    
-    # Skip notification for single-build requests (handled by legacy system)
-    if total_builds <= 1:
-        return
+    is_multi_build = total_builds > 1
     
     # Check if this is the FINAL build
     is_final = (completed_builds >= total_builds)
     
-    if is_final:
-        # Final build - send request completion notification instead
+    # If this is a single-build request, treat this as the authoritative completion notification
+    if not is_multi_build and is_final:
         send_request_complete_notification(request, snapshot_b64)
         return
     

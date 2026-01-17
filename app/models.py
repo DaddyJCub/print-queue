@@ -190,6 +190,7 @@ class User:
         "trip_reminders_enabled": True,
         "trip_default_reminder_minutes": 30,  # Default reminder offset
     })
+    avatar_url: Optional[str] = None
     
     # Stats
     total_requests: int = 0
@@ -218,6 +219,7 @@ class User:
             "total_requests": self.total_requests,
             "total_prints": self.total_prints,
             "credits": self.credits,
+            "avatar_url": self.avatar_url,
             "status": self.status.value if isinstance(self.status, UserStatus) else self.status,
             "email_verified": self.email_verified,
             "created_at": self.created_at,
@@ -698,6 +700,7 @@ CREATE TABLE IF NOT EXISTS users (
     preferred_colors TEXT,
     notes_template TEXT,
     notification_prefs TEXT DEFAULT '{}',
+    avatar_url TEXT,
     
     -- Stats
     total_requests INTEGER DEFAULT 0,

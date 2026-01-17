@@ -12,13 +12,14 @@ These routes handle:
 """
 
 import os
+import uuid
 import sqlite3
 from datetime import datetime
 from typing import Optional, List
 from urllib.parse import quote, unquote
 
-from fastapi import APIRouter, Request, Form, HTTPException, Depends, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi import APIRouter, Request, Form, HTTPException, Depends, Query, UploadFile, File
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import (
@@ -46,6 +47,7 @@ from app.auth import (
 )
 
 from app.models import AdminRole, AuditAction, UserStatus
+from app.main import UPLOAD_DIR
 
 # ─────────────────────────── SETUP ───────────────────────────
 
@@ -1792,6 +1794,117 @@ async def update_user_profile_route(
         url=f"/user/profile?{redirect_params}",
         status_code=303
     )
+
+
+@router.post("/user/profile/avatar")
+async def update_user_avatar(
+    request: Request,
+    token: str = Form(None),
+    remove: str = Form(None),
+    avatar: UploadFile = File(None)
+):
+    """Upload or remove a profile avatar."""
+    # Resolve user (token or session)
+    user = None
+    if token:
+        conn = db()
+        row = conn.execute("""
+            SELECT u.* FROM users u
+            JOIN email_lookup_tokens t ON LOWER(u.email) = LOWER(t.email)
+            WHERE t.token = ?
+        """, (token,)).fetchone()
+        conn.close()
+        if row:
+            user = _row_to_user(row)
+    if not user:
+        user = await get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/my-requests?error=not_logged_in", status_code=303)
+    
+    # Handle removal
+    if remove == "1":
+        if user.avatar_url:
+            try:
+                old_name = os.path.basename(user.avatar_url.split("?")[0])
+                old_path = os.path.join(UPLOAD_DIR, "avatars", old_name)
+                if os.path.isfile(old_path):
+                    os.remove(old_path)
+            except Exception:
+                pass
+        update_user_profile(user.id, avatar_url=None)
+        redirect_params = "success=Profile photo removed"
+        if token:
+            redirect_params = f"token={token}&{redirect_params}"
+        return RedirectResponse(url=f"/user/profile?{redirect_params}", status_code=303)
+    
+    if not avatar or not avatar.filename:
+        redirect_params = "error=Please choose an image to upload"
+        if token:
+            redirect_params = f"token={token}&{redirect_params}"
+        return RedirectResponse(url=f"/user/profile?{redirect_params}", status_code=303)
+    
+    # Basic validation
+    allowed_exts = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+    ext = os.path.splitext(avatar.filename)[1].lower() or ".jpg"
+    if ext not in allowed_exts and avatar.content_type:
+        # Derive from MIME if possible
+        if "jpeg" in avatar.content_type:
+            ext = ".jpg"
+        elif "png" in avatar.content_type:
+            ext = ".png"
+        elif "webp" in avatar.content_type:
+            ext = ".webp"
+    if ext not in allowed_exts:
+        redirect_params = "error=Unsupported image type"
+        if token:
+            redirect_params = f"token={token}&{redirect_params}"
+        return RedirectResponse(url=f"/user/profile?{redirect_params}", status_code=303)
+    
+    content = await avatar.read()
+    max_bytes = 5 * 1024 * 1024  # 5MB safety limit
+    if len(content) > max_bytes:
+        redirect_params = "error=Image too large (max 5MB)"
+        if token:
+            redirect_params = f"token={token}&{redirect_params}"
+        return RedirectResponse(url=f"/user/profile?{redirect_params}", status_code=303)
+    
+    # Persist file
+    avatars_dir = os.path.join(UPLOAD_DIR, "avatars")
+    os.makedirs(avatars_dir, exist_ok=True)
+    stored_name = f"{uuid.uuid4().hex}{ext}"
+    path = os.path.join(avatars_dir, stored_name)
+    with open(path, "wb") as f:
+        f.write(content)
+    
+    # Cleanup previous avatar (best-effort)
+    if user.avatar_url:
+        old_name = os.path.basename(user.avatar_url.split("?")[0])
+        old_path = os.path.join(avatars_dir, old_name)
+        if os.path.isfile(old_path):
+            try:
+                os.remove(old_path)
+            except Exception:
+                pass
+    
+    avatar_url = f"/user/avatar/{stored_name}?v={int(datetime.utcnow().timestamp())}"
+    update_user_profile(user.id, avatar_url=avatar_url)
+    
+    redirect_params = "success=Profile photo updated"
+    if token:
+        redirect_params = f"token={token}&{redirect_params}"
+    return RedirectResponse(url=f"/user/profile?{redirect_params}", status_code=303)
+
+
+@router.get("/user/avatar/{filename}")
+async def serve_user_avatar(filename: str):
+    """Serve stored avatar images from the avatars directory."""
+    safe_name = os.path.basename(filename)
+    avatars_dir = os.path.join(UPLOAD_DIR, "avatars")
+    path = os.path.join(avatars_dir, safe_name)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Avatar not found")
+    # Content type inference handled by FileResponse
+    return FileResponse(path)
 
 
 @router.post("/user/preferences")

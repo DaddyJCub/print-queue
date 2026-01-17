@@ -67,8 +67,9 @@
         <!-- User Account Menu -->
         <div class="relative" id="admin-account-container">
           <button id="admin-account-btn" onclick="toggleAdminAccountMenu()" class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 rounded-lg transition">
-            <div id="admin-account-avatar" class="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">
-              ?
+            <div id="admin-account-avatar" class="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold overflow-hidden">
+              <img id="admin-account-avatar-img" src="" alt="Avatar" class="hidden w-full h-full object-cover">
+              <span id="admin-account-avatar-initial">?</span>
             </div>
             <svg class="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
@@ -80,8 +81,9 @@
             <!-- Account Header -->
             <div class="p-4 border-b border-zinc-800 bg-zinc-950/50">
               <div class="flex items-center gap-3">
-                <div id="admin-account-avatar-lg" class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold">
-                  ?
+                <div id="admin-account-avatar-lg" class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold overflow-hidden">
+                  <img id="admin-account-avatar-lg-img" src="" alt="Avatar" class="hidden w-full h-full object-cover">
+                  <span id="admin-account-avatar-lg-initial">?</span>
                 </div>
                 <div class="flex-1 min-w-0">
                   <p id="admin-account-email" class="text-sm font-medium text-white truncate">Loading...</p>
@@ -327,11 +329,33 @@ async function loadAdminAccountInfo() {
         const initial = displayName[0].toUpperCase();
         
         const avatar = document.getElementById('admin-account-avatar');
+        const avatarImg = document.getElementById('admin-account-avatar-img');
+        const avatarInitial = document.getElementById('admin-account-avatar-initial');
         const avatarLg = document.getElementById('admin-account-avatar-lg');
+        const avatarLgImg = document.getElementById('admin-account-avatar-lg-img');
+        const avatarLgInitial = document.getElementById('admin-account-avatar-lg-initial');
         const emailEl = document.getElementById('admin-account-email');
         
-        if (avatar) avatar.textContent = initial;
-        if (avatarLg) avatarLg.textContent = initial;
+        if (avatarInitial) avatarInitial.textContent = initial;
+        if (avatarLgInitial) avatarLgInitial.textContent = initial;
+        if (data.user.avatar_url) {
+          const avatarUrl = data.user.avatar_url;
+          if (avatarImg) {
+            avatarImg.src = avatarUrl;
+            avatarImg.classList.remove('hidden');
+          }
+          if (avatarLgImg) {
+            avatarLgImg.src = avatarUrl;
+            avatarLgImg.classList.remove('hidden');
+          }
+          if (avatarInitial) avatarInitial.classList.add('hidden');
+          if (avatarLgInitial) avatarLgInitial.classList.add('hidden');
+        } else {
+          if (avatarImg) avatarImg.classList.add('hidden');
+          if (avatarLgImg) avatarLgImg.classList.add('hidden');
+          if (avatarInitial) avatarInitial.classList.remove('hidden');
+          if (avatarLgInitial) avatarLgInitial.classList.remove('hidden');
+        }
         if (emailEl) emailEl.textContent = data.user.email;
         
         // Update links with token

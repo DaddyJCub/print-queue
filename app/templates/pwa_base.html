@@ -213,8 +213,9 @@
         <div id="global-account-menu-container" class="hidden relative">
           <div class="w-px h-5 bg-zinc-700 mx-1 hidden sm:block"></div>
           <button id="global-account-btn" onclick="toggleGlobalAccountMenu()" class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 rounded-lg transition tap-highlight">
-            <div id="global-account-avatar" class="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">
-              ?
+            <div id="global-account-avatar" class="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold overflow-hidden">
+              <img id="global-account-avatar-img" src="" alt="Avatar" class="hidden w-full h-full object-cover">
+              <span id="global-account-avatar-initial">?</span>
             </div>
             <svg class="w-4 h-4 text-zinc-400 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
@@ -226,8 +227,9 @@
             <!-- Account Header -->
             <div class="p-4 border-b border-zinc-800 bg-zinc-950/50">
               <div class="flex items-center gap-3">
-                <div id="global-account-avatar-lg" class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold">
-                  ?
+                <div id="global-account-avatar-lg" class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold overflow-hidden">
+                  <img id="global-account-avatar-lg-img" src="" alt="Avatar" class="hidden w-full h-full object-cover">
+                  <span id="global-account-avatar-lg-initial">?</span>
                 </div>
                 <div class="flex-1 min-w-0">
                   <p id="global-account-email" class="text-sm font-medium text-white truncate">Loading...</p>
@@ -398,11 +400,33 @@
             const displayName = data.user.display_name || data.user.email;
             const initial = displayName[0].toUpperCase();
             const avatar = document.getElementById('global-account-avatar');
+            const avatarImg = document.getElementById('global-account-avatar-img');
+            const avatarInitial = document.getElementById('global-account-avatar-initial');
             const avatarLg = document.getElementById('global-account-avatar-lg');
+            const avatarLgImg = document.getElementById('global-account-avatar-lg-img');
+            const avatarLgInitial = document.getElementById('global-account-avatar-lg-initial');
             const emailEl = document.getElementById('global-account-email');
             
-            if (avatar) avatar.textContent = initial;
-            if (avatarLg) avatarLg.textContent = initial;
+            if (avatarInitial) avatarInitial.textContent = initial;
+            if (avatarLgInitial) avatarLgInitial.textContent = initial;
+            if (data.user.avatar_url) {
+              const avatarUrl = data.user.avatar_url;
+              if (avatarImg) {
+                avatarImg.src = avatarUrl;
+                avatarImg.classList.remove('hidden');
+              }
+              if (avatarLgImg) {
+                avatarLgImg.src = avatarUrl;
+                avatarLgImg.classList.remove('hidden');
+              }
+              if (avatarInitial) avatarInitial.classList.add('hidden');
+              if (avatarLgInitial) avatarLgInitial.classList.add('hidden');
+            } else {
+              if (avatarImg) avatarImg.classList.add('hidden');
+              if (avatarLgImg) avatarLgImg.classList.add('hidden');
+              if (avatarInitial) avatarInitial.classList.remove('hidden');
+              if (avatarLgInitial) avatarLgInitial.classList.remove('hidden');
+            }
             if (emailEl) emailEl.textContent = data.user.email;
             
             // Update profile link with token if available

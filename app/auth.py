@@ -189,6 +189,7 @@ def _row_to_user(row: sqlite3.Row) -> User:
         preferred_colors=row["preferred_colors"],
         notes_template=row["notes_template"],
         notification_prefs=notification_prefs,
+        avatar_url=row["avatar_url"] if "avatar_url" in row.keys() else None,
         total_requests=row["total_requests"] or 0,
         total_prints=row["total_prints"] or 0,
         credits=row["credits"] or 0,
@@ -298,7 +299,7 @@ def update_user_profile(user_id: str, **kwargs) -> bool:
     """Update user profile fields."""
     allowed_fields = {
         "name", "phone", "preferred_printer", "preferred_material",
-        "preferred_colors", "notes_template", "notification_prefs"
+        "preferred_colors", "notes_template", "notification_prefs", "avatar_url"
     }
     
     updates = {k: v for k, v in kwargs.items() if k in allowed_fields}

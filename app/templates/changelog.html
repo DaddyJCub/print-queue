@@ -54,7 +54,7 @@
 
     <!-- Changelog Entries -->
     <div class="space-y-6">
-      
+
       <!-- Versioning Note -->
       <div class="mb-6 p-4 bg-indigo-950/30 border border-indigo-800/50 rounded-xl">
         <p class="text-xs text-indigo-300">
@@ -65,12 +65,41 @@
         </p>
       </div>
 
+      <!-- v0.10.7 -->
+      <div id="v0.10.7" class="bg-gradient-to-br from-zinc-900/80 via-indigo-900/30 to-emerald-950/30 border border-indigo-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.10.7" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.10.7</a>
+          <span class="text-zinc-400 text-sm">January 12, 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+          <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Profile photos + sturdier notifications</h3>
+        <p class="text-sm text-zinc-400 mb-4">Add avatars you can edit from My Account, show them across the UI, and harden notification delivery for auto-start/auto-finish and design flows.</p>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
+            <h4 class="text-xs font-bold text-blue-400 mb-2">🚀 New</h4>
+            <ul class="list-disc list-inside text-sm text-zinc-200 space-y-1">
+              <li>Upload or remove a profile photo from My Account (5MB max) with instant avatar updates.</li>
+              <li>Avatars now render in global nav, request pages, and the admin header with graceful fallbacks.</li>
+            </ul>
+          </div>
+          <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
+            <h4 class="text-xs font-bold text-amber-400 mb-2">🔧 Reliability</h4>
+            <ul class="list-disc list-inside text-sm text-zinc-200 space-y-1">
+              <li>Auto-start and auto-finish notifications now fire for single-build prints, including 50%/75% email checkpoints.</li>
+              <li>Design update endpoint returns JSON for API callers instead of a 303 redirect to avoid client errors.</li>
+              <li>Progress and completion messages keep “Report a problem” hooks and snapshot attachments where available.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       <!-- v0.10.6 -->
       <div id="v0.10.6" class="bg-gradient-to-br from-zinc-900/80 via-teal-900/30 to-indigo-950/30 border border-teal-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-teal-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.10.6" class="px-3 py-1 bg-teal-600 text-white text-sm font-bold rounded-lg hover:bg-teal-500 transition">v0.10.6</a>
           <span class="text-zinc-400 text-sm">January 05, 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Designer role & workflow</h3>

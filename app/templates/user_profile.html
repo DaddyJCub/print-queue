@@ -37,8 +37,12 @@
   <!-- Account Overview -->
   <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mb-6">
     <div class="flex items-center gap-4 mb-6">
-      <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white">
-        {{ user.name[0]|upper if user.name else user.email[0]|upper }}
+      <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white overflow-hidden">
+        {% if user.avatar_url %}
+          <img src="{{ user.avatar_url }}" alt="Avatar" class="w-full h-full object-cover">
+        {% else %}
+          {{ user.name[0]|upper if user.name else user.email[0]|upper }}
+        {% endif %}
       </div>
       <div class="flex-1">
         <h1 class="text-xl font-bold">{{ user.name or 'Printellect User' }}</h1>
@@ -71,6 +75,34 @@
       <div class="bg-zinc-800/50 rounded-xl p-3">
         <div class="text-2xl font-bold text-amber-400">{{ user.credits or 0 }}</div>
         <div class="text-xs text-zinc-500">Credits</div>
+      </div>
+    </div>
+
+    <!-- Avatar controls -->
+    <div class="mt-6 border border-zinc-800 rounded-xl p-4 bg-zinc-900/60">
+      <div class="flex items-center gap-4">
+        <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xl font-bold text-white overflow-hidden">
+          {% if user.avatar_url %}
+            <img src="{{ user.avatar_url }}" alt="Avatar" class="w-full h-full object-cover">
+          {% else %}
+            {{ user.name[0]|upper if user.name else user.email[0]|upper }}
+          {% endif %}
+        </div>
+        <div class="flex-1">
+          <form action="/user/profile/avatar" method="POST" enctype="multipart/form-data" class="flex flex-col sm:flex-row sm:items-center gap-2">
+            <input type="hidden" name="token" value="{{ token }}">
+            <input type="file" name="avatar" accept="image/*" class="text-sm text-zinc-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white file:cursor-pointer">
+            <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold">Upload photo</button>
+          </form>
+          <p class="text-xs text-zinc-500 mt-1">Images up to 5MB. We'll crop and center them automatically.</p>
+          {% if user.avatar_url %}
+          <form action="/user/profile/avatar" method="POST" class="mt-2 inline-flex">
+            <input type="hidden" name="token" value="{{ token }}">
+            <input type="hidden" name="remove" value="1">
+            <button type="submit" class="text-xs text-zinc-400 hover:text-zinc-200 underline">Remove photo</button>
+          </form>
+          {% endif %}
+        </div>
       </div>
     </div>
   </div>
