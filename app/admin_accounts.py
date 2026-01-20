@@ -152,13 +152,24 @@ def get_account_count(
     status: Optional[str] = None,
     search: Optional[str] = None
 ) -> int:
-    """Get total count of accounts with filters."""
+    """Get total count of accounts with filters.
+    
+    Falls back to users table if accounts table is empty.
+    """
     conn = db()
     
-    query = "SELECT COUNT(*) as count FROM accounts WHERE 1=1"
+    # Check which table to use
+    try:
+        accounts_count = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+        table = "accounts" if accounts_count > 0 else "users"
+    except:
+        table = "users"
+    
+    query = f"SELECT COUNT(*) as count FROM {table} WHERE 1=1"
     params = []
     
-    if role:
+    # Role filter only applies to accounts table
+    if role and table == "accounts":
         query += " AND role = ?"
         params.append(role)
     
@@ -171,9 +182,13 @@ def get_account_count(
         term = f"%{search.lower()}%"
         params.extend([term, term])
     
-    result = conn.execute(query, params).fetchone()
-    conn.close()
-    return result["count"] if result else 0
+    try:
+        result = conn.execute(query, params).fetchone()
+        conn.close()
+        return result["count"] if result else 0
+    except:
+        conn.close()
+        return 0
 
 
 def get_accounts_paginated(
@@ -183,37 +198,60 @@ def get_accounts_paginated(
     status: Optional[str] = None,
     search: Optional[str] = None
 ) -> list:
-    """Get accounts with pagination and filters."""
+    """Get accounts with pagination and filters.
+    
+    Falls back to users table if accounts table is empty.
+    """
     conn = db()
     
-    query = """
-        SELECT a.*, 
-               (SELECT COUNT(*) FROM requests WHERE email = a.email OR account_id = a.id) as total_requests
-        FROM accounts a
-        WHERE 1=1
-    """
+    # Check which table to use
+    try:
+        accounts_count = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+        use_accounts = accounts_count > 0
+    except:
+        use_accounts = False
+    
+    if use_accounts:
+        query = """
+            SELECT a.*, 
+                   (SELECT COUNT(*) FROM requests WHERE LOWER(requester_email) = LOWER(a.email) OR account_id = a.id) as request_count
+            FROM accounts a
+            WHERE 1=1
+        """
+    else:
+        query = """
+            SELECT u.*, 'user' as role,
+                   (SELECT COUNT(*) FROM requests WHERE LOWER(requester_email) = LOWER(u.email)) as request_count
+            FROM users u
+            WHERE 1=1
+        """
+    
     params = []
     
-    if role:
-        query += " AND a.role = ?"
+    # Role filter only applies to accounts table
+    if role and use_accounts:
+        query += " AND role = ?"
         params.append(role)
     
     if status:
-        query += " AND a.status = ?"
+        query += " AND status = ?"
         params.append(status)
     
     if search:
-        query += " AND (LOWER(a.email) LIKE ? OR LOWER(a.name) LIKE ?)"
+        query += " AND (LOWER(email) LIKE ? OR LOWER(name) LIKE ?)"
         term = f"%{search.lower()}%"
         params.extend([term, term])
     
-    query += " ORDER BY a.created_at DESC LIMIT ? OFFSET ?"
+    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
     params.extend([per_page, (page - 1) * per_page])
     
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
-    
-    return [dict(row) for row in rows]
+    try:
+        rows = conn.execute(query, params).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+    except:
+        conn.close()
+        return []
 
 
 # ─────────────────────────── ACCOUNT LIST PAGE ───────────────────────────

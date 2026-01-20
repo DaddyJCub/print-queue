@@ -1297,30 +1297,67 @@ def create_account(
 
 
 def get_account_by_id(account_id: str) -> Optional[Account]:
-    """Get account by ID."""
+    """Get account by ID.
+    
+    Falls back to users table if accounts table doesn't have the record.
+    """
     conn = db()
-    row = conn.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+    
+    # Try accounts table first
+    try:
+        row = conn.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+        if row:
+            conn.close()
+            return _row_to_account(row)
+    except:
+        pass
+    
+    # Fall back to users table
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (account_id,)).fetchone()
+        if row:
+            conn.close()
+            return _user_row_to_account(row)
+    except:
+        pass
+    
     conn.close()
-    
-    if not row:
-        return None
-    
-    return _row_to_account(row)
+    return None
 
 
 def get_account_by_email(email: str) -> Optional[Account]:
-    """Get account by email (case-insensitive)."""
+    """Get account by email (case-insensitive).
+    
+    Falls back to users table if accounts table doesn't have the record.
+    """
     conn = db()
-    row = conn.execute(
-        "SELECT * FROM accounts WHERE LOWER(email) = LOWER(?)", 
-        (email.strip(),)
-    ).fetchone()
+    
+    # Try accounts table first
+    try:
+        row = conn.execute(
+            "SELECT * FROM accounts WHERE LOWER(email) = LOWER(?)", 
+            (email.strip(),)
+        ).fetchone()
+        if row:
+            conn.close()
+            return _row_to_account(row)
+    except:
+        pass
+    
+    # Fall back to users table
+    try:
+        row = conn.execute(
+            "SELECT * FROM users WHERE LOWER(email) = LOWER(?)", 
+            (email.strip(),)
+        ).fetchone()
+        if row:
+            conn.close()
+            return _user_row_to_account(row)
+    except:
+        pass
+    
     conn.close()
-    
-    if not row:
-        return None
-    
-    return _row_to_account(row)
+    return None
 
 
 def _row_to_account(row: sqlite3.Row) -> Account:
@@ -1363,6 +1400,49 @@ def _row_to_account(row: sqlite3.Row) -> Account:
         last_login=row["last_login"],
         migrated_from_user_id=row["migrated_from_user_id"],
         migrated_from_admin_id=row["migrated_from_admin_id"],
+    )
+
+
+def _user_row_to_account(row: sqlite3.Row) -> Account:
+    """Convert a users table row to Account object (for fallback when accounts table empty)."""
+    notification_prefs = {}
+    if row["notification_prefs"]:
+        try:
+            notification_prefs = json.loads(row["notification_prefs"])
+        except:
+            pass
+    
+    return Account(
+        id=row["id"],
+        email=row["email"],
+        name=row["name"],
+        role=AccountRole.USER,  # users table doesn't have role - default to user
+        status=UserStatus(row["status"]) if row["status"] else UserStatus.UNVERIFIED,
+        password_hash=row["password_hash"],
+        email_verified=bool(row["email_verified"]),
+        email_verified_at=row["email_verified_at"] if "email_verified_at" in row.keys() else None,
+        mfa_secret=None,
+        mfa_enabled=False,
+        phone=row["phone"] if "phone" in row.keys() else None,
+        preferred_printer=row["preferred_printer"] if "preferred_printer" in row.keys() else None,
+        preferred_material=row["preferred_material"] if "preferred_material" in row.keys() else None,
+        preferred_colors=row["preferred_colors"] if "preferred_colors" in row.keys() else None,
+        notes_template=row["notes_template"] if "notes_template" in row.keys() else None,
+        avatar_url=row["avatar_url"] if "avatar_url" in row.keys() else None,
+        notification_prefs=notification_prefs,
+        total_requests=row["total_requests"] if "total_requests" in row.keys() else 0,
+        total_prints=row["total_prints"] if "total_prints" in row.keys() else 0,
+        credits=row["credits"] if "credits" in row.keys() else 0,
+        login_count=0,
+        magic_link_token=row["magic_link_token"] if "magic_link_token" in row.keys() else None,
+        magic_link_expires=row["magic_link_expires"] if "magic_link_expires" in row.keys() else None,
+        reset_token=None,
+        reset_token_expires=None,
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        last_login=row["last_login"] if "last_login" in row.keys() else None,
+        migrated_from_user_id=None,
+        migrated_from_admin_id=None,
     )
 
 
@@ -1410,15 +1490,39 @@ def get_all_accounts(
     limit: int = 100,
     offset: int = 0
 ) -> List[Account]:
-    """Get all accounts with optional filtering."""
+    """Get all accounts with optional filtering.
+    
+    Falls back to users table if accounts table is empty (migration not run).
+    """
     conn = db()
     
-    query = "SELECT * FROM accounts WHERE 1=1"
-    params = []
+    # Try accounts table first
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+        if count > 0:
+            query = "SELECT * FROM accounts WHERE 1=1"
+            params = []
+            
+            if role:
+                query += " AND role = ?"
+                params.append(role.value)
+            
+            if status:
+                query += " AND status = ?"
+                params.append(status.value)
+            
+            query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            
+            rows = conn.execute(query, params).fetchall()
+            conn.close()
+            return [_row_to_account(row) for row in rows]
+    except:
+        pass
     
-    if role:
-        query += " AND role = ?"
-        params.append(role.value)
+    # Fall back to users table
+    query = "SELECT * FROM users WHERE 1=1"
+    params = []
     
     if status:
         query += " AND status = ?"
@@ -1427,26 +1531,52 @@ def get_all_accounts(
     query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
     
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
-    
-    return [_row_to_account(row) for row in rows]
+    try:
+        rows = conn.execute(query, params).fetchall()
+        conn.close()
+        # Convert User rows to Account-like objects
+        return [_user_row_to_account(row) for row in rows]
+    except:
+        conn.close()
+        return []
 
 
 def search_accounts(query: str, limit: int = 20) -> List[Account]:
-    """Search accounts by name or email."""
+    """Search accounts by name or email.
+    
+    Falls back to users table if accounts table is empty.
+    """
     conn = db()
     search_term = f"%{query.strip().lower()}%"
     
-    rows = conn.execute("""
-        SELECT * FROM accounts 
-        WHERE LOWER(email) LIKE ? OR LOWER(name) LIKE ?
-        ORDER BY name
-        LIMIT ?
-    """, (search_term, search_term, limit)).fetchall()
-    conn.close()
+    # Try accounts table first
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+        if count > 0:
+            rows = conn.execute("""
+                SELECT * FROM accounts 
+                WHERE LOWER(email) LIKE ? OR LOWER(name) LIKE ?
+                ORDER BY name
+                LIMIT ?
+            """, (search_term, search_term, limit)).fetchall()
+            conn.close()
+            return [_row_to_account(row) for row in rows]
+    except:
+        pass
     
-    return [_row_to_account(row) for row in rows]
+    # Fall back to users table
+    try:
+        rows = conn.execute("""
+            SELECT * FROM users 
+            WHERE LOWER(email) LIKE ? OR LOWER(name) LIKE ?
+            ORDER BY name
+            LIMIT ?
+        """, (search_term, search_term, limit)).fetchall()
+        conn.close()
+        return [_user_row_to_account(row) for row in rows]
+    except:
+        conn.close()
+        return []
 
 
 # ─────────────────────────── ACCOUNT AUTHENTICATION ───────────────────────────
