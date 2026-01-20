@@ -1,0 +1,341 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Account Management | Admin | Printellect</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-7xl mx-auto p-6">
+    <!-- Navigation -->
+    {% set active_page = 'accounts' %}
+    {% include 'admin_nav.html' %}
+
+    <!-- Page Header -->
+    <div class="mb-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-bold">👥 Account Management</h1>
+          <p class="text-zinc-400 text-sm mt-1">{{ total_count }} account(s) · Unified user directory</p>
+        </div>
+        <button onclick="showCreateModal()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold transition flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+          Add Account
+        </button>
+      </div>
+    </div>
+
+    {% if success %}
+    <div class="mb-4 bg-emerald-900/30 border border-emerald-700/50 text-emerald-200 rounded-xl p-4">{{ success }}</div>
+    {% endif %}
+    {% if error %}
+    <div class="mb-4 bg-red-900/30 border border-red-700/50 text-red-200 rounded-xl p-4">{{ error }}</div>
+    {% endif %}
+
+    <!-- Filters -->
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 mb-6">
+      <form method="GET" action="/admin/accounts" class="flex flex-col sm:flex-row gap-3">
+        <input type="text" name="search" value="{{ search or '' }}" placeholder="Search by name or email..."
+               class="flex-1 rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" />
+        <select name="role" class="rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5 text-sm">
+          <option value="">All Roles</option>
+          {% for r in all_roles %}
+          <option value="{{ r }}" {% if role_filter == r %}selected{% endif %}>{{ r|title }}</option>
+          {% endfor %}
+        </select>
+        <select name="status" class="rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5 text-sm">
+          <option value="">All Statuses</option>
+          {% for s in all_statuses %}
+          <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s|title }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition">Filter</button>
+        {% if search or role_filter or status_filter %}
+        <a href="/admin/accounts" class="px-4 py-2.5 text-zinc-400 hover:text-white text-sm transition">Clear</a>
+        {% endif %}
+      </form>
+    </div>
+
+    <!-- Role Stats -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+        <div class="text-2xl font-bold text-purple-400">{{ role_counts.get('owner', 0) }}</div>
+        <div class="text-xs text-zinc-400 uppercase tracking-wider mt-1">Owners</div>
+      </div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+        <div class="text-2xl font-bold text-indigo-400">{{ role_counts.get('admin', 0) }}</div>
+        <div class="text-xs text-zinc-400 uppercase tracking-wider mt-1">Admins</div>
+      </div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+        <div class="text-2xl font-bold text-cyan-400">{{ role_counts.get('staff', 0) }}</div>
+        <div class="text-xs text-zinc-400 uppercase tracking-wider mt-1">Staff</div>
+      </div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+        <div class="text-2xl font-bold text-emerald-400">{{ role_counts.get('user', 0) }}</div>
+        <div class="text-xs text-zinc-400 uppercase tracking-wider mt-1">Users</div>
+      </div>
+    </div>
+
+    <!-- Accounts Table -->
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+      {% if accounts %}
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="border-b border-zinc-800 text-left text-xs text-zinc-400 uppercase tracking-wider">
+              <th class="px-4 py-3">Account</th>
+              <th class="px-4 py-3">Role</th>
+              <th class="px-4 py-3">Status</th>
+              <th class="px-4 py-3">Requests</th>
+              <th class="px-4 py-3">Last Login</th>
+              <th class="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-800">
+            {% for account in accounts %}
+            <tr class="hover:bg-zinc-800/30 cursor-pointer" onclick="window.location='/admin/accounts/{{ account.id }}'" id="account-{{ account.id }}">
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl bg-gradient-to-br 
+                    {% if account.role == 'owner' %}from-purple-500 to-pink-600
+                    {% elif account.role == 'admin' %}from-indigo-500 to-blue-600
+                    {% elif account.role == 'staff' %}from-cyan-500 to-teal-600
+                    {% else %}from-emerald-500 to-green-600{% endif %}
+                    flex items-center justify-center text-white font-bold">
+                    {{ account.name[0]|upper if account.name else '?' }}
+                  </div>
+                  <div>
+                    <div class="font-medium">{{ account.name or 'No name' }}</div>
+                    <div class="text-sm text-zinc-400">{{ account.email }}</div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-4 py-3" onclick="event.stopPropagation()">
+                {% if account.role == 'owner' %}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-900/50 text-purple-300 border border-purple-700/50">
+                  👑 Owner
+                </span>
+                {% elif account.role == 'admin' %}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-900/50 text-indigo-300 border border-indigo-700/50">
+                  🔧 Admin
+                </span>
+                {% elif account.role == 'staff' %}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-cyan-900/50 text-cyan-300 border border-cyan-700/50">
+                  🎯 Staff
+                </span>
+                {% else %}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">
+                  👤 User
+                </span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3" onclick="event.stopPropagation()">
+                {% if account.status == 'active' %}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-900/50 text-emerald-300 border border-emerald-700/50">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>Active
+                </span>
+                {% elif account.status == 'suspended' %}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-900/50 text-red-300 border border-red-700/50">
+                  <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>Suspended
+                </span>
+                {% else %}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-900/50 text-amber-300 border border-amber-700/50">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Unverified
+                </span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 text-zinc-300">
+                <span class="font-medium">{{ account.total_requests or 0 }}</span>
+                <span class="text-zinc-500 text-xs ml-1">total</span>
+              </td>
+              <td class="px-4 py-3 text-zinc-400 text-sm">
+                {% if account.last_login %}
+                {{ account.last_login[:10] }}
+                {% else %}
+                <span class="text-zinc-600">Never</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 text-right" onclick="event.stopPropagation()">
+                <div class="flex items-center justify-end gap-1">
+                  <a href="/admin/accounts/{{ account.id }}" class="p-2 text-zinc-400 hover:text-indigo-400 hover:bg-zinc-800 rounded-lg" title="View Details">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                  </a>
+                  <button onclick="showRoleModal('{{ account.id }}', '{{ account.name }}', '{{ account.role }}')" class="p-2 text-zinc-400 hover:text-purple-400 hover:bg-zinc-800 rounded-lg" title="Change Role">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                  </button>
+                  {% if account.status == 'suspended' %}
+                  <button onclick="activateAccount('{{ account.id }}')" class="p-2 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 rounded-lg" title="Activate">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  </button>
+                  {% else %}
+                  <button onclick="suspendAccount('{{ account.id }}', '{{ account.name }}')" class="p-2 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 rounded-lg" title="Suspend">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                  </button>
+                  {% endif %}
+                  <button onclick="forceLogout('{{ account.id }}', '{{ account.name }}')" class="p-2 text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 rounded-lg" title="Force Logout All Sessions">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if total_pages > 1 %}
+      <div class="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
+        <span class="text-sm text-zinc-400">Page {{ page }} of {{ total_pages }}</span>
+        <div class="flex gap-2">
+          {% if has_prev %}
+          <a href="/admin/accounts?page={{ page - 1 }}{% if role_filter %}&role={{ role_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search %}&search={{ search }}{% endif %}" 
+             class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition">Previous</a>
+          {% endif %}
+          {% if has_next %}
+          <a href="/admin/accounts?page={{ page + 1 }}{% if role_filter %}&role={{ role_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search %}&search={{ search }}{% endif %}" 
+             class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition">Next</a>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+      {% else %}
+      <div class="p-12 text-center">
+        <div class="text-4xl mb-3">🔍</div>
+        <p class="text-zinc-400">No accounts found</p>
+        {% if search or role_filter or status_filter %}
+        <a href="/admin/accounts" class="text-indigo-400 hover:text-indigo-300 text-sm mt-2 inline-block">Clear filters</a>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Create Account Modal -->
+  <div id="create-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md">
+      <div class="px-6 py-4 border-b border-zinc-800 flex justify-between">
+        <h3 class="text-lg font-semibold">Create Account</h3>
+        <button onclick="hideCreateModal()" class="text-zinc-400 hover:text-white">✕</button>
+      </div>
+      <form action="/admin/accounts/create" method="POST" class="p-6 space-y-4">
+        {{ csrf_input(request) | safe }}
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1.5">Email</label>
+          <input type="email" name="email" required class="w-full rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1.5">Name</label>
+          <input type="text" name="name" required class="w-full rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1.5">Password</label>
+          <input type="password" name="password" class="w-full rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" placeholder="Leave blank for magic link only" />
+        </div>
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1.5">Role</label>
+          <select name="role" class="w-full rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5">
+            <option value="user">User</option>
+            <option value="staff">Staff</option>
+            <option value="admin">Admin</option>
+            <option value="owner">Owner</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1.5">Status</label>
+          <select name="status" class="w-full rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5">
+            <option value="active">Active</option>
+            <option value="unverified">Unverified</option>
+          </select>
+        </div>
+        <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition">Create Account</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Change Role Modal -->
+  <div id="role-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md">
+      <div class="px-6 py-4 border-b border-zinc-800 flex justify-between">
+        <h3 class="text-lg font-semibold">Change Role</h3>
+        <button onclick="hideRoleModal()" class="text-zinc-400 hover:text-white">✕</button>
+      </div>
+      <form id="role-form" method="POST" class="p-6 space-y-4">
+        {{ csrf_input(request) | safe }}
+        <div class="bg-zinc-800/50 border border-zinc-700 rounded-xl p-4">
+          <p class="text-zinc-300">Changing role for: <span id="role-account-name" class="font-semibold text-white"></span></p>
+        </div>
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1.5">New Role</label>
+          <select name="role" id="role-select" class="w-full rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5">
+            <option value="user">User - No admin access</option>
+            <option value="staff">Staff - Queue & analytics access</option>
+            <option value="admin">Admin - Full management access</option>
+            <option value="owner">Owner - Complete control</option>
+          </select>
+        </div>
+        <div class="bg-amber-900/20 border border-amber-700/50 rounded-xl p-3">
+          <p class="text-amber-200 text-sm">⚠️ Role changes take effect immediately on next request.</p>
+        </div>
+        <button type="submit" class="w-full py-3 bg-purple-600 hover:bg-purple-500 rounded-xl font-semibold transition">Update Role</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+  function showCreateModal() {
+    document.getElementById('create-modal').classList.remove('hidden');
+    document.getElementById('create-modal').classList.add('flex');
+  }
+  function hideCreateModal() {
+    document.getElementById('create-modal').classList.add('hidden');
+    document.getElementById('create-modal').classList.remove('flex');
+  }
+  
+  function showRoleModal(id, name, currentRole) {
+    document.getElementById('role-account-name').textContent = name;
+    document.getElementById('role-form').action = '/admin/accounts/' + id + '/role';
+    document.getElementById('role-select').value = currentRole;
+    document.getElementById('role-modal').classList.remove('hidden');
+    document.getElementById('role-modal').classList.add('flex');
+  }
+  function hideRoleModal() {
+    document.getElementById('role-modal').classList.add('hidden');
+    document.getElementById('role-modal').classList.remove('flex');
+  }
+  
+  async function suspendAccount(id, name) {
+    if (!confirm('Suspend account "' + name + '"? They will be logged out and unable to access the system.')) return;
+    const res = await fetch('/admin/accounts/' + id + '/suspend', { method: 'POST' });
+    if (res.ok) location.reload();
+    else alert('Error suspending account');
+  }
+  
+  async function activateAccount(id) {
+    const res = await fetch('/admin/accounts/' + id + '/activate', { method: 'POST' });
+    if (res.ok) location.reload();
+    else alert('Error activating account');
+  }
+  
+  async function forceLogout(id, name) {
+    if (!confirm('Force logout all sessions for "' + name + '"?')) return;
+    const res = await fetch('/admin/accounts/' + id + '/logout-all', { method: 'POST' });
+    if (res.ok) {
+      alert('All sessions terminated');
+      location.reload();
+    } else {
+      alert('Error terminating sessions');
+    }
+  }
+  
+  // Close modals on escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      hideCreateModal();
+      hideRoleModal();
+    }
+  });
+  </script>
+</body>
+</html>

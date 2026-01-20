@@ -118,9 +118,20 @@
           <div class="flex flex-wrap items-center gap-x-6 gap-y-2 pb-4 border-b border-zinc-800 mb-4">
             <div class="flex items-center gap-2">
               <span class="text-zinc-500">👤</span>
+              {% if req.get("account_id") %}
+              <a href="/admin/accounts/{{ req['account_id'] }}" class="font-medium text-indigo-400 hover:text-indigo-300 hover:underline">{{ req["requester_name"] }}</a>
+              {% else %}
               <span class="font-medium">{{ req["requester_name"] }}</span>
+              {% endif %}
             </div>
-            <a href="mailto:{{ req['requester_email'] }}" class="text-indigo-400 hover:underline text-sm">{{ req["requester_email"] }}</a>
+            <div class="flex items-center gap-2">
+              <a href="mailto:{{ req['requester_email'] }}" class="text-indigo-400 hover:underline text-sm">{{ req["requester_email"] }}</a>
+              {% if not req.get("account_id") %}
+              <a href="/admin/accounts?search={{ req['requester_email'] }}" class="text-xs text-zinc-400 hover:text-indigo-400 transition" title="Find account">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              </a>
+              {% endif %}
+            </div>
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-800 text-xs">
               P{{ req["priority"] or 3 }}{% if (req["priority"] or 3) == 1 %} ⚡{% endif %}
             </span>
@@ -838,6 +849,81 @@
           {% endif %}
         </div>
         {% endif %}
+
+        <!-- Assignees Card -->
+        <div id="assignees" class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+          <h2 class="text-lg font-semibold mb-4">👥 Assignees</h2>
+          
+          {% if assignments and assignments|length > 0 %}
+            <ul class="space-y-2 mb-4">
+              {% for a in assignments %}
+                <li class="flex items-center justify-between bg-zinc-950/60 border border-zinc-700 rounded-lg p-3">
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      {% if a.account_id %}
+                        <a href="/admin/accounts/{{ a.account_id }}" class="font-medium text-indigo-400 hover:underline truncate">
+                          {{ a.account_name or a.account_email or 'Unknown' }}
+                        </a>
+                      {% else %}
+                        <span class="font-medium truncate">{{ a.account_name or a.account_email or 'Unknown' }}</span>
+                      {% endif %}
+                      <span class="px-2 py-0.5 rounded text-xs border 
+                        {% if a.role == 'owner' or a.role == 'requester' %}bg-purple-900/30 border-purple-700 text-purple-300
+                        {% elif a.role == 'collaborator' %}bg-blue-900/30 border-blue-700 text-blue-300
+                        {% else %}bg-zinc-800 border-zinc-700 text-zinc-400{% endif %}">
+                        {{ a.role|capitalize }}
+                      </span>
+                    </div>
+                    {% if a.account_email and a.account_name %}
+                      <div class="text-xs text-zinc-500 truncate">{{ a.account_email }}</div>
+                    {% endif %}
+                    {% if a.notes %}
+                      <div class="text-xs text-zinc-400 mt-1">{{ a.notes }}</div>
+                    {% endif %}
+                  </div>
+                  {% if can_manage_queue %}
+                    <form method="POST" action="/admin/request/{{ req['id'] }}/unassign/{{ a.id }}" class="ml-2" onsubmit="return confirm('Remove this assignee?')">
+                      <button type="submit" class="text-red-400 hover:text-red-300 text-xs p-1" title="Remove">
+                        ✕
+                      </button>
+                    </form>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="text-sm text-zinc-500 mb-4">No accounts linked to this request.</p>
+          {% endif %}
+          
+          {% if can_manage_queue %}
+            <!-- Add assignee form -->
+            <form method="POST" action="/admin/request/{{ req['id'] }}/assign" class="space-y-3">
+              <div>
+                <label class="text-xs text-zinc-400">Account Email</label>
+                <input type="email" name="account_email" required 
+                       placeholder="user@example.com"
+                       class="w-full mt-1 rounded-lg bg-zinc-950 border border-zinc-800 p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+              </div>
+              <div>
+                <label class="text-xs text-zinc-400">Role</label>
+                <select name="role" class="w-full mt-1 rounded-lg bg-zinc-950 border border-zinc-800 p-2 text-sm">
+                  <option value="watcher">Watcher (view only)</option>
+                  <option value="collaborator">Collaborator (can update)</option>
+                  <option value="requester">Requester (original submitter)</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-xs text-zinc-400">Notes (optional)</label>
+                <input type="text" name="notes" 
+                       placeholder="Reason for assignment..."
+                       class="w-full mt-1 rounded-lg bg-zinc-950 border border-zinc-800 p-2 text-sm" />
+              </div>
+              <button type="submit" class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-2 text-sm font-semibold">
+                Add Assignee
+              </button>
+            </form>
+          {% endif %}
+        </div>
 
         <!-- Build Progress Card (ONLY for multi-build requests with 2+ builds) -->
         {% if builds and builds|length > 1 %}

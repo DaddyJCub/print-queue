@@ -1,0 +1,16 @@
+2026-01-20 08:57:27 | INFO     | printellect          | File logging enabled: /home/jacob/repos/print-queue/.test.log
+2026-01-20 08:57:27 | INFO     | printellect          | Logging initialized at level INFO - capturing all output
+2026-01-20 08:57:28 | INFO     | printellect.stdout   | CTA URL:
+2026-01-20 08:57:28 | INFO     | printellect.stdout   | http://localhost:3000/my/1234567890abcdef?token=testtoken
+2026-01-20 08:57:28 | INFO     | printellect.stdout   | Secondary URL:
+2026-01-20 08:57:28 | INFO     | printellect.stdout   | http://localhost:3000/admin/request/1234567890abcdef
+2026-01-20 08:57:28 | INFO     | printellect.stdout   | 
+First CTA present?
+2026-01-20 08:57:28 | INFO     | printellect.stdout   | True
+2026-01-20 08:57:28 | INFO     | printellect.stdout   | Admin link present?
+2026-01-20 08:57:28 | INFO     | printellect.stdout   | True
+2026-01-20 08:57:28 | INFO     | printellect.stdout   | 
+Snippet:
+2026-01-20 08:57:28 | INFO     | printellect.stdout   | <a href="http://localhost:3000/my/1234567890abcdef?token=testtoken"
+               style="display:inline-block;background:#14b8a6;color:#ffffff;text-decoration:none;
+                      padding:12px

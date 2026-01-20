@@ -68,7 +68,12 @@ from app.main import (
     _human_material,
     is_feature_enabled,
 )
-from app.auth import get_current_admin, require_permission, AdminRole, get_admin_by_id, get_all_admins
+from app.auth import (
+    get_current_admin, require_permission, AdminRole, get_admin_by_id, get_all_admins,
+    get_request_assignments, create_request_assignment, delete_request_assignment,
+    get_all_accounts, search_accounts,
+)
+from app.models import AssignmentRole
 from app.demo_data import (
     DEMO_MODE,
     get_demo_printer_status,
@@ -1971,6 +1976,10 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
     # Get multi-build ETA info
     build_eta_info = get_request_eta_info(rid, dict(req))
     
+    # Get request assignments (who is linked to this request)
+    assignments = get_request_assignments(rid)
+    assignments_list = [a.to_dict() if hasattr(a, 'to_dict') else a for a in assignments]
+    
     return templates.TemplateResponse("admin_request.html", {
         "request": request,
         "req": req,
@@ -1979,6 +1988,8 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         "messages": messages,
         "builds": builds_list,
         "build_eta_info": build_eta_info,
+        "assignments": assignments_list,
+        "assignment_roles": [r.value for r in AssignmentRole],
         "status_flow": STATUS_FLOW,
         "printers": PRINTERS,
         "materials": MATERIALS,
@@ -1996,6 +2007,92 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         "current_admin_can_manage_designs": admin.has_permission("manage_designs") if hasattr(admin, "has_permission") else False,
         "design_enabled": design_enabled,
     })
+
+
+# ─────────────────────────── REQUEST ASSIGNMENTS ───────────────────────────
+
+@router.post("/admin/request/{rid}/assign")
+def admin_assign_account_to_request(
+    request: Request,
+    rid: str,
+    account_email: str = Form(...),
+    role: str = Form("watcher"),
+    notes: Optional[str] = Form(None),
+    admin=Depends(require_admin)
+):
+    """Assign an account to a request"""
+    # Check request exists
+    conn = db()
+    req = conn.execute("SELECT id FROM requests WHERE id = ?", (rid,)).fetchone()
+    conn.close()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    # Find account by email
+    from app.auth import get_account_by_email
+    account = get_account_by_email(account_email.strip())
+    if not account:
+        raise HTTPException(status_code=400, detail=f"Account not found: {account_email}")
+    
+    # Validate role
+    try:
+        assignment_role = AssignmentRole(role)
+    except ValueError:
+        assignment_role = AssignmentRole.WATCHER
+    
+    # Check if already assigned
+    existing = get_request_assignments(rid)
+    if any(a.account_id == account.id for a in existing):
+        # Already assigned - could update role or just skip
+        return RedirectResponse(url=f"/admin/request/{rid}#assignees", status_code=303)
+    
+    # Create assignment
+    assigned_by = getattr(admin, "id", None) if hasattr(admin, "id") else None
+    create_request_assignment(
+        request_id=rid,
+        account_id=account.id,
+        role=assignment_role,
+        assigned_by_account_id=assigned_by,
+        notes=notes
+    )
+    
+    return RedirectResponse(url=f"/admin/request/{rid}#assignees", status_code=303)
+
+
+@router.post("/admin/request/{rid}/unassign/{assignment_id}")
+def admin_unassign_from_request(
+    request: Request,
+    rid: str,
+    assignment_id: str,
+    _=Depends(require_admin)
+):
+    """Remove an assignment from a request"""
+    delete_request_assignment(assignment_id)
+    return RedirectResponse(url=f"/admin/request/{rid}#assignees", status_code=303)
+
+
+@router.get("/api/admin/accounts/search")
+def api_search_accounts(
+    q: str = "",
+    limit: int = 10,
+    _=Depends(require_admin)
+):
+    """Search accounts by email or name for autocomplete"""
+    if len(q) < 2:
+        return {"accounts": []}
+    
+    accounts = search_accounts(q, limit=limit)
+    return {
+        "accounts": [
+            {
+                "id": a.id,
+                "email": a.email,
+                "name": a.name,
+                "role": a.role.value if hasattr(a.role, 'value') else a.role
+            }
+            for a in accounts
+        ]
+    }
 
 
 @router.post("/admin/request/{rid}/duplicate")
@@ -2653,12 +2750,14 @@ def admin_update_design(
         assigned_admin = get_admin_by_id(new_assignment)
         if assigned_admin and assigned_admin.email:
             print_label = updated_req.get("print_name") or f"Request {rid[:8]}"
+            pwa_link = f"{BASE_URL}/my/{rid}?token={updated_req.get('access_token', '')}"
             subject = f"[{APP_TITLE}] New design assignment - {print_label}"
             text = (
                 f"You have been assigned design work for '{print_label}'.\n\n"
                 f"Request: {rid[:8]}\n"
                 f"Requester: {updated_req.get('requester_name')}\n"
                 f"Design notes: {updated_req.get('design_notes') or '—'}\n"
+                f"View request (PWA-friendly): {pwa_link}\n"
                 f"Open in admin: {BASE_URL}/admin/request/{rid}\n"
             )
             html = build_email_html(
@@ -2668,9 +2767,11 @@ def admin_update_design(
                     ("Requester", updated_req.get("requester_name") or "—"),
                     ("Design Notes", updated_req.get("design_notes") or "—"),
                 ],
-                cta_url=f"{BASE_URL}/admin/request/{rid}",
-                cta_label="Open Request",
+                cta_url=pwa_link,
+                cta_label="View Request",
                 header_color="#14b8a6",
+                secondary_cta_url=f"{BASE_URL}/admin/request/{rid}",
+                secondary_cta_label="Open in Admin",
             )
             send_email([assigned_admin.email], subject, text, html)
     

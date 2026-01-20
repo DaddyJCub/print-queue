@@ -29,7 +29,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.10.7"
+APP_VERSION = "0.11.0"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -250,6 +250,20 @@ class ExceptionLoggingMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(ExceptionLoggingMiddleware)
 
+# Security middleware for CSRF, rate limiting, and security headers
+from app.security import (
+    CSRFMiddleware, RateLimitMiddleware, SecurityHeadersMiddleware,
+    get_csrf_token, csrf_input
+)
+
+# Add security middleware (order matters: first added = outermost)
+# SecurityHeaders should be outermost to add headers to all responses
+app.add_middleware(SecurityHeadersMiddleware)
+# Rate limiting should be before CSRF to block excessive requests early
+app.add_middleware(RateLimitMiddleware)
+# CSRF middleware adds tokens to requests
+app.add_middleware(CSRFMiddleware)
+
 # --- Serve /sw.js from site root for PWA ---
 from fastapi.responses import FileResponse
 templates = Jinja2Templates(directory="app/templates")
@@ -285,6 +299,10 @@ def format_datetime_local(value, fmt="%b %d, %Y at %I:%M %p"):
 
 # Register filter with Jinja
 templates.env.filters["localtime"] = format_datetime_local
+
+# Register CSRF helper function as a global for templates
+templates.env.globals["csrf_input"] = csrf_input
+templates.env.globals["get_csrf_token"] = get_csrf_token
 
 # NOTE: app/static must exist in your repo (can be empty with a .gitkeep)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -1268,6 +1286,17 @@ def ensure_migrations():
             )
         """)
 
+    # ─────────────────────────────────────────────────────────────────────────────
+    # UNIFIED ACCOUNTS MIGRATION - Add account_id to requests table
+    # ─────────────────────────────────────────────────────────────────────────────
+    cur.execute("PRAGMA table_info(requests)")
+    req_cols = {row[1] for row in cur.fetchall()}
+    
+    # Add account_id FK to requests table (nullable for legacy/anonymous requests)
+    if "account_id" not in req_cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN account_id TEXT")
+        logger.info("Added account_id column to requests table")
+
     conn.commit()
     conn.close()
 
@@ -2088,14 +2117,21 @@ app.include_router(auth_router)
 
 async def require_admin(request: Request):
     """
-    Require admin authentication. Supports both:
+    Require admin authentication. Supports (in order of preference):
+    - Unified accounts (session cookie) - NEW
     - Multi-admin sessions (admin_session cookie) 
     - Legacy single password (admin_pw cookie or X-Admin-Password header)
     """
-    # First, check for multi-admin session (new system)
+    # First, check for unified account session (newest system)
+    from app.auth import get_current_account, AccountRole
+    account = await get_current_account(request)
+    if account and account.is_admin_level():
+        return account  # Return account object for unified system
+    
+    # Second, check for multi-admin session (legacy multi-admin system)
     admin = await get_current_admin(request)
     if admin:
-        return admin  # Return admin object for new system
+        return admin  # Return admin object for old multi-admin system
     
     # Fall back to legacy password check
     pw = request.headers.get("X-Admin-Password") or request.cookies.get("admin_pw") or ""
@@ -5315,6 +5351,7 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any], us
 from app.public import router as public_router
 from app.my_requests import router as my_requests_router
 from app.admin import router as admin_router
+from app.admin_accounts import router as admin_accounts_router
 from app.api_push import router as api_push_router
 from app.api_builds import router as api_builds_router
 from app.trips import router as trips_router
@@ -5322,6 +5359,7 @@ from app.trips import router as trips_router
 app.include_router(public_router)
 app.include_router(my_requests_router)
 app.include_router(admin_router)
+app.include_router(admin_accounts_router)
 app.include_router(api_push_router)
 app.include_router(api_builds_router)
 app.include_router(trips_router)

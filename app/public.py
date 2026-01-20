@@ -4,7 +4,8 @@ from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 
-from app.auth import optional_user
+from app.auth import optional_user, create_request_assignment
+from app.models import AssignmentRole
 from app.main import (
     templates,
     db,
@@ -65,6 +66,9 @@ async def submit(
     turnstile_token: Optional[str] = Form(None, alias="cf-turnstile-response"),
     upload: List[UploadFile] = File(default=[]),
 ):
+    # Get current logged-in user if any (for account linking)
+    user = await optional_user(request)
+    
     form_state = {
         "requester_name": requester_name,
         "requester_email": requester_email,
@@ -134,8 +138,8 @@ async def submit(
     conn = db()
     conn.execute(
         """INSERT INTO requests
-           (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, special_notes, priority, admin_notes, access_token)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, special_notes, priority, admin_notes, access_token, account_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             rid,
             created,
@@ -153,6 +157,7 @@ async def submit(
             priority,
             admin_notes,  # Rush info goes here now
             access_token,
+            user.id if user else None,  # Link request to account if logged in
         )
     )
     conn.execute(
@@ -160,6 +165,11 @@ async def submit(
            VALUES (?, ?, ?, ?, ?, ?)""",
         (str(uuid.uuid4()), rid, created, None, "NEW", "Request submitted")
     )
+    
+    # Create request assignment for logged-in user as requester
+    if user:
+        create_request_assignment(conn, rid, user.id, AssignmentRole.REQUESTER)
+    
     conn.commit()
 
     uploaded_names = []

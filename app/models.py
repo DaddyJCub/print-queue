@@ -18,6 +18,14 @@ import json
 
 # ─────────────────────────── ENUMS ───────────────────────────
 
+class AccountRole(str, Enum):
+    """Unified account roles (replaces AdminRole for new system)"""
+    OWNER = "owner"          # Full access: manage other accounts, settings, destructive ops
+    ADMIN = "admin"          # Manage queue, users, store, analytics, printers
+    STAFF = "staff"          # Manage queue, view analytics (operators, designers)
+    USER = "user"            # Submit requests, view own requests, update profile
+
+
 class AdminRole(str, Enum):
     """Admin permission levels (hierarchical)"""
     SUPER_ADMIN = "super_admin"    # Full access: manage other admins, settings, everything
@@ -106,6 +114,14 @@ class TripEventCategory(str, Enum):
     OTHER = "other"
 
 
+class AssignmentRole(str, Enum):
+    """Roles for request assignments (many-to-many user↔request)"""
+    REQUESTER = "requester"      # Original submitter - full access
+    ASSIGNEE = "assignee"        # Delegated responsibility - can update status
+    COLLABORATOR = "collaborator"  # Shared access - can view and add notes
+    WATCHER = "watcher"          # Notifications only - view only
+
+
 # ─────────────────────────── PERMISSIONS ───────────────────────────
 
 # Define what each role can do
@@ -148,6 +164,55 @@ ROLE_PERMISSIONS = {
         "view_analytics",     # View-only everything
     },
 }
+
+# New unified account role permissions
+ACCOUNT_ROLE_PERMISSIONS = {
+    AccountRole.OWNER: {
+        "manage_accounts",    # Create, edit, delete other accounts (including admins)
+        "manage_settings",    # System settings, feature flags
+        "manage_queue",       # All queue operations
+        "manage_designs",     # Manage design workflow and assignments
+        "manage_users",       # User accounts (view, suspend, etc.)
+        "manage_store",       # Store items
+        "view_analytics",     # Analytics dashboard
+        "view_audit_log",     # Audit trail
+        "send_broadcasts",    # System notifications
+        "manage_printers",    # Printer configuration
+        "manage_files",       # File sync settings
+        "delete_requests",    # Delete requests permanently
+        "export_data",        # Export data (GDPR, backups)
+        "assign_requests",    # Assign requests to users
+    },
+    AccountRole.ADMIN: {
+        "manage_queue",
+        "manage_designs",
+        "manage_users",
+        "manage_store",
+        "view_analytics",
+        "view_audit_log",
+        "send_broadcasts",
+        "manage_printers",
+        "manage_files",
+        "assign_requests",
+    },
+    AccountRole.STAFF: {
+        "manage_queue",       # Approve, print, complete requests
+        "manage_designs",     # Design assignments
+        "view_analytics",     # View-only analytics
+    },
+    AccountRole.USER: set(),  # No admin permissions - only own resources
+}
+
+
+def account_has_permission(role: AccountRole, permission: str) -> bool:
+    """Check if an account role has a specific permission."""
+    return permission in ACCOUNT_ROLE_PERMISSIONS.get(role, set())
+
+
+def get_account_permissions(role: AccountRole) -> set:
+    """Get all permissions for an account role."""
+    return ACCOUNT_ROLE_PERMISSIONS.get(role, set())
+
 
 def has_permission(role: AdminRole, permission: str) -> bool:
     """Check if a role has a specific permission."""
@@ -230,6 +295,196 @@ class User:
     def display_name(self) -> str:
         """Return name or email prefix as display name."""
         return self.name or self.email.split('@')[0]
+
+
+@dataclass
+class Account:
+    """
+    Unified account model (replaces separate users + admins tables).
+    
+    This is the canonical user record for all users regardless of role.
+    Supports: owner, admin, staff, user roles in a single table.
+    """
+    id: str
+    email: str
+    name: str
+    role: AccountRole
+    status: UserStatus
+    created_at: str
+    updated_at: str
+    
+    # Auth
+    password_hash: Optional[str] = None  # bcrypt hash (None for magic-link-only)
+    email_verified: bool = False
+    email_verified_at: Optional[str] = None
+    
+    # 2FA (optional)
+    mfa_secret: Optional[str] = None
+    mfa_enabled: bool = False
+    
+    # Profile info
+    phone: Optional[str] = None
+    preferred_printer: Optional[str] = None
+    preferred_material: Optional[str] = None
+    preferred_colors: Optional[str] = None
+    notes_template: Optional[str] = None
+    avatar_url: Optional[str] = None
+    
+    # Notification preferences (JSON)
+    notification_prefs: Dict[str, Any] = field(default_factory=lambda: {
+        "email_status_updates": True,
+        "email_print_ready": True,
+        "push_enabled": False,
+        "push_progress": True,
+        "push_milestones": [50, 75],
+    })
+    
+    # Stats
+    total_requests: int = 0
+    total_prints: int = 0
+    credits: int = 0
+    login_count: int = 0
+    
+    # Tokens
+    magic_link_token: Optional[str] = None
+    magic_link_expires: Optional[str] = None
+    reset_token: Optional[str] = None
+    reset_token_expires: Optional[str] = None
+    
+    # Timestamps
+    last_login: Optional[str] = None
+    
+    # Legacy migration tracking
+    migrated_from_user_id: Optional[str] = None
+    migrated_from_admin_id: Optional[str] = None
+    
+    def has_permission(self, permission: str) -> bool:
+        """Check if this account has a specific permission."""
+        if self.status != UserStatus.ACTIVE:
+            return False
+        return account_has_permission(self.role, permission)
+    
+    def is_admin_level(self) -> bool:
+        """Check if account has any admin-level access."""
+        return self.role in (AccountRole.OWNER, AccountRole.ADMIN, AccountRole.STAFF)
+    
+    def to_dict(self, include_sensitive: bool = False) -> dict:
+        data = {
+            "id": self.id,
+            "email": self.email,
+            "name": self.name,
+            "role": self.role.value if isinstance(self.role, AccountRole) else self.role,
+            "status": self.status.value if isinstance(self.status, UserStatus) else self.status,
+            "email_verified": self.email_verified,
+            "mfa_enabled": self.mfa_enabled,
+            "phone": self.phone,
+            "preferred_printer": self.preferred_printer,
+            "preferred_material": self.preferred_material,
+            "preferred_colors": self.preferred_colors,
+            "notification_prefs": self.notification_prefs,
+            "avatar_url": self.avatar_url,
+            "total_requests": self.total_requests,
+            "total_prints": self.total_prints,
+            "credits": self.credits,
+            "login_count": self.login_count,
+            "last_login": self.last_login,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+        if include_sensitive:
+            data["magic_link_token"] = self.magic_link_token
+            data["reset_token"] = self.reset_token
+        return data
+    
+    @property
+    def display_name(self) -> str:
+        """Return name or email prefix as display name."""
+        return self.name or self.email.split('@')[0]
+
+
+@dataclass
+class Session:
+    """
+    Server-side session for authenticated accounts.
+    
+    Supports multi-device login with per-session revocation.
+    """
+    id: str
+    account_id: str
+    token: str
+    created_at: str
+    expires_at: str
+    
+    # Device info
+    device_info: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    
+    # Activity tracking
+    last_active: Optional[str] = None
+    
+    def is_expired(self) -> bool:
+        """Check if session has expired."""
+        from datetime import datetime
+        now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        return now > self.expires_at
+    
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "account_id": self.account_id,
+            "device_info": self.device_info,
+            "ip_address": self.ip_address,
+            "created_at": self.created_at,
+            "expires_at": self.expires_at,
+            "last_active": self.last_active,
+        }
+
+
+@dataclass
+class RequestAssignment:
+    """
+    Many-to-many relationship between requests and accounts.
+    
+    Allows multiple users to be associated with a request in different roles.
+    """
+    id: str
+    request_id: str
+    account_id: str
+    role: AssignmentRole
+    assigned_at: str
+    
+    # Who made the assignment
+    assigned_by_account_id: Optional[str] = None
+    
+    # Optional notes about the assignment
+    notes: Optional[str] = None
+    
+    # Cached account info for display
+    account_email: Optional[str] = None
+    account_name: Optional[str] = None
+    
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "request_id": self.request_id,
+            "account_id": self.account_id,
+            "role": self.role.value if isinstance(self.role, AssignmentRole) else self.role,
+            "assigned_at": self.assigned_at,
+            "assigned_by_account_id": self.assigned_by_account_id,
+            "notes": self.notes,
+            "account_email": self.account_email,
+            "account_name": self.account_name,
+        }
+    
+    def can_edit_request(self) -> bool:
+        """Check if this assignment grants edit access to the request."""
+        role = self.role if isinstance(self.role, AssignmentRole) else AssignmentRole(self.role)
+        return role in (AssignmentRole.REQUESTER, AssignmentRole.ASSIGNEE)
+    
+    def can_view_request(self) -> bool:
+        """All assignment roles can view the request."""
+        return True
 
 
 @dataclass
@@ -835,6 +1090,115 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 );
 """
 
+# ─────────────────────────── UNIFIED ACCOUNT TABLES (NEW) ───────────────────────────
+
+# Unified accounts table - replaces separate users + admins tables
+ACCOUNTS_TABLE = """
+CREATE TABLE IF NOT EXISTS accounts (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',
+    status TEXT NOT NULL DEFAULT 'unverified',
+    
+    -- Auth
+    password_hash TEXT,
+    email_verified INTEGER DEFAULT 0,
+    email_verified_at TEXT,
+    
+    -- 2FA
+    mfa_secret TEXT,
+    mfa_enabled INTEGER DEFAULT 0,
+    
+    -- Profile
+    phone TEXT,
+    preferred_printer TEXT,
+    preferred_material TEXT,
+    preferred_colors TEXT,
+    notes_template TEXT,
+    avatar_url TEXT,
+    notification_prefs TEXT DEFAULT '{}',
+    
+    -- Stats
+    total_requests INTEGER DEFAULT 0,
+    total_prints INTEGER DEFAULT 0,
+    credits INTEGER DEFAULT 0,
+    login_count INTEGER DEFAULT 0,
+    
+    -- Tokens
+    magic_link_token TEXT,
+    magic_link_expires TEXT,
+    reset_token TEXT,
+    reset_token_expires TEXT,
+    
+    -- Timestamps
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_login TEXT,
+    
+    -- Migration tracking
+    migrated_from_user_id TEXT,
+    migrated_from_admin_id TEXT
+);
+"""
+
+# Sessions table - replaces user_sessions and admin session columns
+SESSIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    
+    -- Device info
+    device_info TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    
+    -- Timestamps
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    last_active TEXT,
+    
+    FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+"""
+
+# Request assignments - many-to-many relationship between requests and accounts
+REQUEST_ASSIGNMENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS request_assignments (
+    id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'requester',
+    
+    -- Assignment metadata
+    assigned_at TEXT NOT NULL,
+    assigned_by_account_id TEXT,
+    notes TEXT,
+    
+    FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE,
+    FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY(assigned_by_account_id) REFERENCES accounts(id),
+    
+    UNIQUE(request_id, account_id)
+);
+"""
+
+# Admin notes on users - for internal admin communication
+ACCOUNT_NOTES_TABLE = """
+CREATE TABLE IF NOT EXISTS account_notes (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    author_account_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    
+    FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY(author_account_id) REFERENCES accounts(id)
+);
+"""
+
 # ─────────────────────────── TRIP TABLES ───────────────────────────
 
 TRIPS_TABLE = """
@@ -913,6 +1277,16 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_trip_members_user ON trip_members(user_id);",
     "CREATE INDEX IF NOT EXISTS idx_trip_events_trip ON trip_events(trip_id);",
     "CREATE INDEX IF NOT EXISTS idx_trip_events_start ON trip_events(start_datetime);",
+    # Unified accounts indexes (NEW)
+    "CREATE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);",
+    "CREATE INDEX IF NOT EXISTS idx_accounts_role ON accounts(role);",
+    "CREATE INDEX IF NOT EXISTS idx_accounts_status ON accounts(status);",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_account ON sessions(account_id);",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);",
+    "CREATE INDEX IF NOT EXISTS idx_request_assignments_request ON request_assignments(request_id);",
+    "CREATE INDEX IF NOT EXISTS idx_request_assignments_account ON request_assignments(account_id);",
+    "CREATE INDEX IF NOT EXISTS idx_account_notes_account ON account_notes(account_id);",
 ]
 
 ALL_NEW_TABLES = [
@@ -923,6 +1297,12 @@ ALL_NEW_TABLES = [
     FILE_SYNC_CONFIGS_TABLE,
     FILE_SYNC_QUEUE_TABLE,
     USER_SESSIONS_TABLE,
+    # Unified account tables (NEW)
+    ACCOUNTS_TABLE,
+    SESSIONS_TABLE,
+    REQUEST_ASSIGNMENTS_TABLE,
+    ACCOUNT_NOTES_TABLE,
+    # Trip tables
     TRIPS_TABLE,
     TRIP_MEMBERS_TABLE,
     TRIP_EVENTS_TABLE,

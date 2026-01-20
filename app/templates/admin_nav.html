@@ -44,8 +44,8 @@
         </a>
         
         <!-- Users (combined) -->
-        <a href="/admin/users" class="admin-nav-link {% if active_page == 'users' %}active{% endif %}">
-          👥 Users
+        <a href="/admin/accounts" class="admin-nav-link {% if active_page == 'accounts' or active_page == 'users' %}active{% endif %}">
+          👥 Accounts
         </a>
         
         <!-- Settings (contains everything else) -->
@@ -157,11 +157,11 @@
       <div class="border-t border-zinc-800 my-2"></div>
       
       <!-- People -->
-      <a href="/admin/users" class="mobile-nav-link {% if active_page == 'users' %}active{% endif %}">
-        👥 Users
+      <a href="/admin/accounts" class="mobile-nav-link {% if active_page == 'accounts' or active_page == 'users' %}active{% endif %}">
+        👥 Accounts
       </a>
       <a href="/admin/admins" class="mobile-nav-link {% if active_page == 'admins' %}active{% endif %}">
-        👔 Admins
+        👔 Admins (Legacy)
       </a>
       
       <div class="border-t border-zinc-800 my-2"></div>

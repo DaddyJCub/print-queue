@@ -1,0 +1,553 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ account.name or account.email }} | Account Management | Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-7xl mx-auto p-6">
+    <!-- Navigation -->
+    {% set active_page = 'accounts' %}
+    {% include 'admin_nav.html' %}
+
+    <!-- Breadcrumb -->
+    <nav class="mb-4 text-sm">
+      <ol class="flex items-center gap-2 text-zinc-400">
+        <li><a href="/admin/accounts" class="hover:text-white transition">Accounts</a></li>
+        <li>›</li>
+        <li class="text-white">{{ account.name or account.email }}</li>
+      </ol>
+    </nav>
+
+    {% if success %}
+    <div class="mb-4 bg-emerald-900/30 border border-emerald-700/50 text-emerald-200 rounded-xl p-4">{{ success }}</div>
+    {% endif %}
+    {% if error %}
+    <div class="mb-4 bg-red-900/30 border border-red-700/50 text-red-200 rounded-xl p-4">{{ error }}</div>
+    {% endif %}
+
+    <!-- Account Header -->
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mb-6">
+      <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+        <div class="flex items-start gap-4">
+          <div class="w-16 h-16 rounded-2xl bg-gradient-to-br 
+            {% if account.role == 'owner' %}from-purple-500 to-pink-600
+            {% elif account.role == 'admin' %}from-indigo-500 to-blue-600
+            {% elif account.role == 'staff' %}from-cyan-500 to-teal-600
+            {% else %}from-emerald-500 to-green-600{% endif %}
+            flex items-center justify-center text-white text-2xl font-bold shadow-lg">
+            {{ account.name[0]|upper if account.name else '?' }}
+          </div>
+          <div>
+            <h1 class="text-2xl font-bold">{{ account.name or 'Unnamed Account' }}</h1>
+            <p class="text-zinc-400">{{ account.email }}</p>
+            <div class="flex flex-wrap items-center gap-2 mt-2">
+              {% if account.role == 'owner' %}
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-purple-900/50 text-purple-300 border border-purple-700/50">👑 Owner</span>
+              {% elif account.role == 'admin' %}
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-indigo-900/50 text-indigo-300 border border-indigo-700/50">🔧 Admin</span>
+              {% elif account.role == 'staff' %}
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-cyan-900/50 text-cyan-300 border border-cyan-700/50">🎯 Staff</span>
+              {% else %}
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">👤 User</span>
+              {% endif %}
+              {% if account.status == 'active' %}
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-900/50 text-emerald-300 border border-emerald-700/50">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>Active
+              </span>
+              {% elif account.status == 'suspended' %}
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-red-900/50 text-red-300 border border-red-700/50">
+                <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>Suspended
+              </span>
+              {% else %}
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-amber-900/50 text-amber-300 border border-amber-700/50">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Unverified
+              </span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="flex flex-wrap gap-2">
+          <button onclick="showEditModal()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+            Edit
+          </button>
+          <button onclick="showResetPasswordModal()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+            Reset Password
+          </button>
+          <button onclick="forceLogout()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            Logout All
+          </button>
+          {% if account.status == 'suspended' %}
+          <form action="/admin/accounts/{{ account.id }}/activate" method="POST" class="inline">
+            {{ csrf_input(request) | safe }}
+            <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-sm font-medium transition flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              Activate
+            </button>
+          </form>
+          {% else %}
+          <button onclick="suspendAccount()" class="px-4 py-2 bg-amber-600/80 hover:bg-amber-500 rounded-xl text-sm font-medium transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+            Suspend
+          </button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+        <div class="text-3xl font-bold text-indigo-400">{{ request_stats.total }}</div>
+        <div class="text-xs text-zinc-400 uppercase tracking-wider mt-1">Total Requests</div>
+      </div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+        <div class="text-3xl font-bold text-amber-400">{{ request_stats.pending }}</div>
+        <div class="text-xs text-zinc-400 uppercase tracking-wider mt-1">Pending</div>
+      </div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+        <div class="text-3xl font-bold text-cyan-400">{{ request_stats.printing }}</div>
+        <div class="text-xs text-zinc-400 uppercase tracking-wider mt-1">Printing</div>
+      </div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+        <div class="text-3xl font-bold text-emerald-400">{{ request_stats.completed }}</div>
+        <div class="text-xs text-zinc-400 uppercase tracking-wider mt-1">Completed</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex gap-1 mb-6 border-b border-zinc-800 overflow-x-auto">
+      <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 transition {% if active_tab == 'requests' %}text-indigo-400 border-indigo-500{% else %}text-zinc-400 hover:text-white border-transparent{% endif %}" data-tab="requests">
+        📋 Requests ({{ request_stats.total }})
+      </button>
+      <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 transition {% if active_tab == 'assignments' %}text-indigo-400 border-indigo-500{% else %}text-zinc-400 hover:text-white border-transparent{% endif %}" data-tab="assignments">
+        🎯 Assignments ({{ assignments|length }})
+      </button>
+      <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 transition {% if active_tab == 'activity' %}text-indigo-400 border-indigo-500{% else %}text-zinc-400 hover:text-white border-transparent{% endif %}" data-tab="activity">
+        📊 Activity
+      </button>
+      <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 transition {% if active_tab == 'notes' %}text-indigo-400 border-indigo-500{% else %}text-zinc-400 hover:text-white border-transparent{% endif %}" data-tab="notes">
+        📝 Notes ({{ notes|length }})
+      </button>
+      <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 transition {% if active_tab == 'info' %}text-indigo-400 border-indigo-500{% else %}text-zinc-400 hover:text-white border-transparent{% endif %}" data-tab="info">
+        ℹ️ Info
+      </button>
+    </div>
+
+    <!-- Tab Content: Requests -->
+    <div class="tab-content {% if active_tab != 'requests' %}hidden{% endif %}" id="tab-requests">
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+        {% if requests %}
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="border-b border-zinc-800 text-left text-xs text-zinc-400 uppercase tracking-wider">
+                <th class="px-4 py-3">Request</th>
+                <th class="px-4 py-3">Status</th>
+                <th class="px-4 py-3">Files</th>
+                <th class="px-4 py-3">Created</th>
+                <th class="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-zinc-800">
+              {% for req in requests %}
+              <tr class="hover:bg-zinc-800/30">
+                <td class="px-4 py-3">
+                  <a href="/admin/request/{{ req.id }}" class="font-medium text-indigo-400 hover:text-indigo-300">#{{ req.id[:8] }}...</a>
+                  {% if req.file_name %}<div class="text-sm text-zinc-400 mt-0.5">{{ req.file_name }}</div>{% endif %}
+                </td>
+                <td class="px-4 py-3">
+                  {% if req.status == 'pending' %}
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-900/50 text-amber-300 border border-amber-700/50">⏳ Pending</span>
+                  {% elif req.status == 'printing' %}
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-900/50 text-blue-300 border border-blue-700/50">🖨️ Printing</span>
+                  {% elif req.status == 'ready' %}
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-cyan-900/50 text-cyan-300 border border-cyan-700/50">📦 Ready</span>
+                  {% elif req.status == 'completed' %}
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-900/50 text-emerald-300 border border-emerald-700/50">✅ Completed</span>
+                  {% elif req.status == 'cancelled' %}
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-900/50 text-red-300 border border-red-700/50">❌ Cancelled</span>
+                  {% else %}
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">{{ req.status }}</span>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3 text-zinc-300">{{ req.file_count or 1 }}</td>
+                <td class="px-4 py-3 text-zinc-400 text-sm">{{ req.created_at[:10] if req.created_at else 'Unknown' }}</td>
+                <td class="px-4 py-3 text-right">
+                  <a href="/admin/request/{{ req.id }}" class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition">View</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="p-12 text-center">
+          <div class="text-4xl mb-3">📭</div>
+          <p class="text-zinc-400">No requests from this account</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Tab Content: Assignments -->
+    <div class="tab-content hidden" id="tab-assignments">
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+        {% if assignments %}
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="border-b border-zinc-800 text-left text-xs text-zinc-400 uppercase tracking-wider">
+                <th class="px-4 py-3">Request</th>
+                <th class="px-4 py-3">Role</th>
+                <th class="px-4 py-3">Assigned</th>
+                <th class="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-zinc-800">
+              {% for a in assignments %}
+              <tr class="hover:bg-zinc-800/30">
+                <td class="px-4 py-3">
+                  <a href="/admin/request/{{ a.request_id }}" class="font-medium text-indigo-400 hover:text-indigo-300">#{{ a.request_id[:8] }}...</a>
+                </td>
+                <td class="px-4 py-3">
+                  {% if a.role == 'primary' %}
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-900/50 text-indigo-300 border border-indigo-700/50">⭐ Primary</span>
+                  {% elif a.role == 'helper' %}
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-cyan-900/50 text-cyan-300 border border-cyan-700/50">🤝 Helper</span>
+                  {% elif a.role == 'viewer' %}
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">👁️ Viewer</span>
+                  {% else %}
+                  <span class="text-zinc-400">{{ a.role }}</span>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3 text-zinc-400 text-sm">{{ a.assigned_at[:10] if a.assigned_at else 'Unknown' }}</td>
+                <td class="px-4 py-3 text-right">
+                  <a href="/admin/request/{{ a.request_id }}" class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition">View Request</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="p-12 text-center">
+          <div class="text-4xl mb-3">🎯</div>
+          <p class="text-zinc-400">No assigned requests</p>
+          <p class="text-zinc-500 text-sm mt-2">Staff/admins can be assigned to requests for tracking</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Tab Content: Activity -->
+    <div class="tab-content hidden" id="tab-activity">
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <h3 class="text-lg font-semibold mb-4">📅 Account Activity</h3>
+            <dl class="space-y-3">
+              <div class="flex justify-between py-2 border-b border-zinc-800">
+                <dt class="text-zinc-400">Created</dt>
+                <dd>{{ account.created_at[:19].replace('T', ' ') if account.created_at else 'Unknown' }}</dd>
+              </div>
+              <div class="flex justify-between py-2 border-b border-zinc-800">
+                <dt class="text-zinc-400">Last Login</dt>
+                <dd>{{ account.last_login[:19].replace('T', ' ') if account.last_login else 'Never' }}</dd>
+              </div>
+              <div class="flex justify-between py-2 border-b border-zinc-800">
+                <dt class="text-zinc-400">Active Sessions</dt>
+                <dd class="text-emerald-400 font-medium">{{ session_count }}</dd>
+              </div>
+              <div class="flex justify-between py-2 border-b border-zinc-800">
+                <dt class="text-zinc-400">Login Count</dt>
+                <dd>{{ account.login_count or 0 }}</dd>
+              </div>
+            </dl>
+          </div>
+          <div>
+            <h3 class="text-lg font-semibold mb-4">🔐 Security</h3>
+            <dl class="space-y-3">
+              <div class="flex justify-between py-2 border-b border-zinc-800">
+                <dt class="text-zinc-400">Password Set</dt>
+                <dd>{% if account.password_hash %}<span class="text-emerald-400">Yes</span>{% else %}<span class="text-amber-400">No (magic link only)</span>{% endif %}</dd>
+              </div>
+              <div class="flex justify-between py-2 border-b border-zinc-800">
+                <dt class="text-zinc-400">Role</dt>
+                <dd>{{ account.role|title }}</dd>
+              </div>
+              <div class="flex justify-between py-2 border-b border-zinc-800">
+                <dt class="text-zinc-400">Status</dt>
+                <dd>{{ account.status|title }}</dd>
+              </div>
+              <div class="flex justify-between py-2 border-b border-zinc-800">
+                <dt class="text-zinc-400">Permissions</dt>
+                <dd class="text-right">
+                  <span class="text-zinc-400 text-sm">{{ permissions|length }} enabled</span>
+                </dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+        
+        {% if permissions %}
+        <div class="mt-6 pt-6 border-t border-zinc-800">
+          <h3 class="text-lg font-semibold mb-4">🔑 Permissions</h3>
+          <div class="flex flex-wrap gap-2">
+            {% for perm in permissions %}
+            <span class="px-3 py-1.5 bg-zinc-800 rounded-lg text-sm text-zinc-300">{{ perm }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Tab Content: Notes -->
+    <div class="tab-content hidden" id="tab-notes">
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl">
+        <!-- Add Note Form -->
+        <form action="/admin/accounts/{{ account.id }}/notes" method="POST" class="p-4 border-b border-zinc-800">
+          {{ csrf_input(request) | safe }}
+          <div class="flex gap-3">
+            <input type="text" name="content" placeholder="Add a note about this account..." required
+                   class="flex-1 rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" />
+            <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-medium transition">Add Note</button>
+          </div>
+        </form>
+        
+        {% if notes %}
+        <div class="divide-y divide-zinc-800">
+          {% for note in notes %}
+          <div class="p-4 hover:bg-zinc-800/30">
+            <p class="text-zinc-200">{{ note.content }}</p>
+            <div class="flex items-center justify-between mt-2">
+              <span class="text-xs text-zinc-500">{{ note.created_at[:16].replace('T', ' ') }} · {{ note.created_by_name or 'System' }}</span>
+              <form action="/admin/accounts/{{ account.id }}/notes/{{ note.id }}/delete" method="POST" class="inline">
+                {{ csrf_input(request) | safe }}
+                <button type="submit" class="text-xs text-red-400 hover:text-red-300">Delete</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-12 text-center">
+          <div class="text-4xl mb-3">📝</div>
+          <p class="text-zinc-400">No notes yet</p>
+          <p class="text-zinc-500 text-sm mt-2">Add notes to track important information about this account</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Tab Content: Info -->
+    <div class="tab-content hidden" id="tab-info">
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <h3 class="text-lg font-semibold mb-4">📋 Account Details</h3>
+        <dl class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-zinc-800/30 rounded-xl p-4">
+            <dt class="text-xs text-zinc-500 uppercase tracking-wider">Account ID</dt>
+            <dd class="font-mono text-sm mt-1">{{ account.id }}</dd>
+          </div>
+          <div class="bg-zinc-800/30 rounded-xl p-4">
+            <dt class="text-xs text-zinc-500 uppercase tracking-wider">Email</dt>
+            <dd class="mt-1">{{ account.email }}</dd>
+          </div>
+          <div class="bg-zinc-800/30 rounded-xl p-4">
+            <dt class="text-xs text-zinc-500 uppercase tracking-wider">Name</dt>
+            <dd class="mt-1">{{ account.name or '(not set)' }}</dd>
+          </div>
+          <div class="bg-zinc-800/30 rounded-xl p-4">
+            <dt class="text-xs text-zinc-500 uppercase tracking-wider">Phone</dt>
+            <dd class="mt-1">{{ account.phone or '(not set)' }}</dd>
+          </div>
+        </dl>
+        
+        {% if account.metadata %}
+        <div class="mt-6 pt-6 border-t border-zinc-800">
+          <h4 class="text-sm font-semibold text-zinc-300 mb-3">📦 Metadata</h4>
+          <pre class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs font-mono text-zinc-300 overflow-x-auto">{{ account.metadata }}</pre>
+        </div>
+        {% endif %}
+        
+        <div class="mt-6 pt-6 border-t border-zinc-800">
+          <h4 class="text-sm font-semibold text-red-400 mb-3">⚠️ Danger Zone</h4>
+          <button onclick="showDeleteModal()" class="px-4 py-2 bg-red-600/80 hover:bg-red-500 rounded-xl text-sm font-medium transition">Delete Account</button>
+          <p class="text-xs text-zinc-500 mt-2">This action cannot be undone. All associated data will be permanently removed.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Account Modal -->
+  <div id="edit-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md">
+      <div class="px-6 py-4 border-b border-zinc-800 flex justify-between">
+        <h3 class="text-lg font-semibold">Edit Account</h3>
+        <button onclick="hideEditModal()" class="text-zinc-400 hover:text-white">✕</button>
+      </div>
+      <form action="/admin/accounts/{{ account.id }}/edit" method="POST" class="p-6 space-y-4">
+        {{ csrf_input(request) | safe }}
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1.5">Name</label>
+          <input type="text" name="name" value="{{ account.name or '' }}" class="w-full rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1.5">Email</label>
+          <input type="email" name="email" value="{{ account.email }}" required class="w-full rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1.5">Phone</label>
+          <input type="tel" name="phone" value="{{ account.phone or '' }}" class="w-full rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1.5">Role</label>
+          <select name="role" class="w-full rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5">
+            <option value="user" {% if account.role == 'user' %}selected{% endif %}>User</option>
+            <option value="staff" {% if account.role == 'staff' %}selected{% endif %}>Staff</option>
+            <option value="admin" {% if account.role == 'admin' %}selected{% endif %}>Admin</option>
+            <option value="owner" {% if account.role == 'owner' %}selected{% endif %}>Owner</option>
+          </select>
+        </div>
+        <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition">Save Changes</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Reset Password Modal -->
+  <div id="reset-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md">
+      <div class="px-6 py-4 border-b border-zinc-800 flex justify-between">
+        <h3 class="text-lg font-semibold">Reset Password</h3>
+        <button onclick="hideResetPasswordModal()" class="text-zinc-400 hover:text-white">✕</button>
+      </div>
+      <form action="/admin/accounts/{{ account.id }}/reset-password" method="POST" class="p-6 space-y-4">
+        {{ csrf_input(request) | safe }}
+        <div class="bg-amber-900/20 border border-amber-700/50 rounded-xl p-4">
+          <p class="text-amber-200 text-sm">⚠️ Setting a new password will immediately change the account's password. The user will need to use this new password to log in.</p>
+        </div>
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1.5">New Password</label>
+          <input type="password" name="password" required minlength="8" class="w-full rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" />
+          <p class="text-xs text-zinc-500 mt-1">Minimum 8 characters</p>
+        </div>
+        <button type="submit" class="w-full py-3 bg-amber-600 hover:bg-amber-500 rounded-xl font-semibold transition">Reset Password</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="delete-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-red-900/50 rounded-2xl w-full max-w-md">
+      <div class="px-6 py-4 border-b border-zinc-800">
+        <h3 class="text-lg font-semibold text-red-400">⚠️ Delete Account</h3>
+      </div>
+      <form action="/admin/accounts/{{ account.id }}/delete" method="POST" class="p-6 space-y-4">
+        {{ csrf_input(request) | safe }}
+        <p class="text-zinc-300">Are you sure you want to permanently delete this account?</p>
+        <p class="text-sm text-zinc-400">This will delete:</p>
+        <ul class="text-sm text-zinc-400 list-disc list-inside space-y-1">
+          <li>Account profile and credentials</li>
+          <li>All active sessions</li>
+          <li>Assignment history</li>
+          <li>Notes</li>
+        </ul>
+        <p class="text-sm text-amber-300">⚠️ Print requests will be preserved but unlinked from this account.</p>
+        <div>
+          <label class="block text-sm text-zinc-300 mb-1.5">Type the email to confirm</label>
+          <input type="email" name="confirm_email" placeholder="{{ account.email }}" required pattern="{{ account.email|replace('.', '\\.') }}"
+                 class="w-full rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none" />
+        </div>
+        <div class="flex gap-3">
+          <button type="button" onclick="hideDeleteModal()" class="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-semibold transition">Cancel</button>
+          <button type="submit" class="flex-1 py-3 bg-red-600 hover:bg-red-500 rounded-xl font-semibold transition">Delete</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+  // Tab switching
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      // Update tabs
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.remove('text-indigo-400', 'border-indigo-500');
+        b.classList.add('text-zinc-400', 'border-transparent');
+      });
+      btn.classList.remove('text-zinc-400', 'border-transparent');
+      btn.classList.add('text-indigo-400', 'border-indigo-500');
+      // Update content
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+      document.getElementById('tab-' + tab).classList.remove('hidden');
+      // Update URL
+      history.replaceState(null, '', '?tab=' + tab);
+    });
+  });
+
+  // Modal functions
+  function showEditModal() {
+    document.getElementById('edit-modal').classList.remove('hidden');
+    document.getElementById('edit-modal').classList.add('flex');
+  }
+  function hideEditModal() {
+    document.getElementById('edit-modal').classList.add('hidden');
+    document.getElementById('edit-modal').classList.remove('flex');
+  }
+  
+  function showResetPasswordModal() {
+    document.getElementById('reset-modal').classList.remove('hidden');
+    document.getElementById('reset-modal').classList.add('flex');
+  }
+  function hideResetPasswordModal() {
+    document.getElementById('reset-modal').classList.add('hidden');
+    document.getElementById('reset-modal').classList.remove('flex');
+  }
+  
+  function showDeleteModal() {
+    document.getElementById('delete-modal').classList.remove('hidden');
+    document.getElementById('delete-modal').classList.add('flex');
+  }
+  function hideDeleteModal() {
+    document.getElementById('delete-modal').classList.add('hidden');
+    document.getElementById('delete-modal').classList.remove('flex');
+  }
+  
+  async function suspendAccount() {
+    if (!confirm('Suspend this account? They will be logged out and unable to access the system.')) return;
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/admin/accounts/{{ account.id }}/suspend';
+    document.body.appendChild(form);
+    form.submit();
+  }
+  
+  async function forceLogout() {
+    if (!confirm('Force logout all sessions for this account?')) return;
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/admin/accounts/{{ account.id }}/logout-all';
+    document.body.appendChild(form);
+    form.submit();
+  }
+  
+  // Close modals on escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      hideEditModal();
+      hideResetPasswordModal();
+      hideDeleteModal();
+    }
+  });
+  </script>
+</body>
+</html>

@@ -28,6 +28,8 @@ from app.main import (
     build_email_html,
     send_push_notification_to_admins,
 )
+from app.auth import optional_user, create_request_assignment
+from app.models import AssignmentRole
 from app.auth import get_current_user, get_current_admin
 
 router = APIRouter()
@@ -520,12 +522,15 @@ def requester_resubmit(request: Request, rid: str, token: str):
     new_token = secrets.token_urlsafe(32)
     created = now_iso()
     
+    # Preserve account_id from original request if present
+    account_id = req["account_id"] if "account_id" in req.keys() else None
+    
     conn.execute("""
         INSERT INTO requests (
             id, created_at, updated_at, requester_name, requester_email,
             printer, material, colors, link_url, notes, print_name,
-            status, access_token, priority, special_notes, print_time_minutes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            status, access_token, priority, special_notes, print_time_minutes, account_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         new_id, created, created,
         req["requester_name"], req["requester_email"],
@@ -533,7 +538,8 @@ def requester_resubmit(request: Request, rid: str, token: str):
         req["link_url"], req["notes"], req["print_name"],
         "NEW", new_token, 3,  # Reset to default priority P3 for resubmitted requests
         None,  # Clear special_notes for fresh start
-        req["print_time_minutes"]  # Keep estimated print time
+        req["print_time_minutes"],  # Keep estimated print time
+        account_id,  # Preserve account link from original request
     ))
     
     # Copy files
@@ -552,6 +558,10 @@ def requester_resubmit(request: Request, rid: str, token: str):
         "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
         (str(uuid.uuid4()), new_id, created, None, "NEW", f"Resubmitted from request {rid[:8]}")
     )
+    
+    # Copy requester assignment from original request if the original had an account
+    if account_id:
+        create_request_assignment(conn, new_id, account_id, AssignmentRole.REQUESTER)
     
     conn.commit()
     conn.close()
