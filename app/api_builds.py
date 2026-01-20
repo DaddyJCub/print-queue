@@ -697,6 +697,45 @@ def admin_set_admin_notes(
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
 
+@router.post("/admin/request/{rid}/update-account")
+def admin_update_request_account(
+    request: Request,
+    rid: str,
+    account_id: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """Update or remove the account linked to a request."""
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # If account_id is empty string, treat as None (unlink)
+    if account_id == "" or account_id == "none":
+        account_id = None
+    
+    # Verify account exists if provided
+    if account_id:
+        from app.auth import get_account_by_id
+        account = get_account_by_id(account_id)
+        if not account:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Account not found")
+
+    conn.execute("UPDATE requests SET account_id = ?, updated_at = ? WHERE id = ?", 
+                 (account_id, now_iso(), rid))
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now_iso(), req["status"], req["status"], 
+         f"Account {'linked' if account_id else 'unlinked'}")
+    )
+    conn.commit()
+    conn.close()
+
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
 @router.post("/admin/request/{rid}/edit")
 def admin_edit_request(
     request: Request,

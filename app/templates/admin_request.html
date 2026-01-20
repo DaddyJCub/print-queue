@@ -120,9 +120,16 @@
               <span class="text-zinc-500">👤</span>
               {% if req["account_id"] %}
               <a href="/admin/accounts/{{ req['account_id'] }}" class="font-medium text-indigo-400 hover:text-indigo-300 hover:underline">{{ req["requester_name"] }}</a>
+              <span class="text-xs text-emerald-400 bg-emerald-900/30 px-1.5 py-0.5 rounded">linked</span>
               {% else %}
               <span class="font-medium">{{ req["requester_name"] }}</span>
+              <span class="text-xs text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">no account</span>
               {% endif %}
+              <button onclick="showLinkAccountModal()" class="text-zinc-400 hover:text-indigo-400 transition p-1" title="Link/change account">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+              </button>
             </div>
             <div class="flex items-center gap-2">
               <a href="mailto:{{ req['requester_email'] }}" class="text-indigo-400 hover:underline text-sm">{{ req["requester_email"] }}</a>
@@ -1551,6 +1558,119 @@
     <div class="mt-8 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
       <a href="/changelog" class="hover:text-indigo-400 transition">Printellect v{{ version }}</a>
     </div>
+    
+    <!-- Link Account Modal -->
+    <div id="link-account-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+      <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-md w-full">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold">🔗 Link Account</h3>
+          <button onclick="hideLinkAccountModal()" class="text-zinc-400 hover:text-zinc-200 text-2xl">&times;</button>
+        </div>
+        
+        <p class="text-sm text-zinc-400 mb-4">Link this request to a user account or remove the current link.</p>
+        
+        <form method="POST" action="/admin/request/{{ req['id'] }}/update-account" class="space-y-4">
+          {{ csrf_input() | safe }}
+          
+          <!-- Current status -->
+          <div class="p-3 rounded-lg bg-zinc-800/50 text-sm">
+            {% if req["account_id"] %}
+            <span class="text-emerald-400">✓ Currently linked to an account</span>
+            {% else %}
+            <span class="text-zinc-400">No account linked</span>
+            {% endif %}
+          </div>
+          
+          <!-- Account search -->
+          <div>
+            <label class="text-sm text-zinc-400 block mb-1">Search for account</label>
+            <input type="text" id="account-search-input" 
+                   placeholder="Search by name or email..." 
+                   autocomplete="off"
+                   class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm focus:border-indigo-500 focus:outline-none" />
+            <div id="account-search-results" class="mt-2 max-h-40 overflow-y-auto space-y-1"></div>
+          </div>
+          
+          <input type="hidden" name="account_id" id="selected-account-id" value="{{ req['account_id'] or '' }}" />
+          
+          <div id="selected-account-display" class="p-3 rounded-lg bg-indigo-900/30 border border-indigo-700/50 text-sm {% if not req['account_id'] %}hidden{% endif %}">
+            <span class="text-indigo-300">Selected: </span>
+            <span id="selected-account-name" class="font-medium">{% if req["account_id"] %}Account {{ req["account_id"][:8] }}...{% endif %}</span>
+          </div>
+          
+          <div class="flex gap-3">
+            <button type="submit" class="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 py-2.5 font-medium transition">
+              Save
+            </button>
+            <button type="button" onclick="clearAccountLink()" class="rounded-xl bg-red-900/50 hover:bg-red-900 text-red-300 px-4 py-2.5 transition">
+              Unlink
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <script>
+      function showLinkAccountModal() {
+        document.getElementById('link-account-modal').classList.remove('hidden');
+        document.getElementById('link-account-modal').classList.add('flex');
+      }
+      function hideLinkAccountModal() {
+        document.getElementById('link-account-modal').classList.add('hidden');
+        document.getElementById('link-account-modal').classList.remove('flex');
+      }
+      function clearAccountLink() {
+        document.getElementById('selected-account-id').value = 'none';
+        document.getElementById('selected-account-display').classList.add('hidden');
+        document.getElementById('account-search-input').value = '';
+        document.getElementById('account-search-results').innerHTML = '';
+      }
+      
+      // Account search
+      let searchTimeout;
+      document.getElementById('account-search-input')?.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        const query = this.value.trim();
+        if (query.length < 2) {
+          document.getElementById('account-search-results').innerHTML = '';
+          return;
+        }
+        searchTimeout = setTimeout(async () => {
+          try {
+            const resp = await fetch(`/api/admin/accounts/search?q=${encodeURIComponent(query)}`);
+            const data = await resp.json();
+            const accounts = data.accounts || [];
+            const results = document.getElementById('account-search-results');
+            if (accounts.length === 0) {
+              results.innerHTML = '<p class="text-sm text-zinc-500 p-2">No accounts found</p>';
+              return;
+            }
+            results.innerHTML = accounts.map(a => `
+              <button type="button" onclick="selectAccount('${a.id}', '${a.name} (${a.email})')" 
+                      class="w-full text-left p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm transition">
+                <span class="font-medium">${a.name}</span>
+                <span class="text-zinc-400 text-xs ml-2">${a.email}</span>
+              </button>
+            `).join('');
+          } catch(e) {
+            console.error('Account search failed:', e);
+          }
+        }, 300);
+      });
+      
+      function selectAccount(id, display) {
+        document.getElementById('selected-account-id').value = id;
+        document.getElementById('selected-account-name').textContent = display;
+        document.getElementById('selected-account-display').classList.remove('hidden');
+        document.getElementById('account-search-input').value = '';
+        document.getElementById('account-search-results').innerHTML = '';
+      }
+      
+      // Close modal on backdrop click
+      document.getElementById('link-account-modal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'link-account-modal') hideLinkAccountModal();
+      });
+    </script>
   </div>
 </body>
 </html>

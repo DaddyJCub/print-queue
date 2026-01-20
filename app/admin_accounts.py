@@ -62,7 +62,7 @@ def get_request_counts_for_account(account_id: str) -> dict:
     # Get counts by status
     rows = conn.execute("""
         SELECT status, COUNT(*) as count FROM requests
-        WHERE email = ? OR account_id = ?
+        WHERE LOWER(requester_email) = LOWER(?) OR account_id = ?
         GROUP BY status
     """, (email, account_id)).fetchall()
     conn.close()
@@ -71,11 +71,11 @@ def get_request_counts_for_account(account_id: str) -> dict:
     
     return {
         "total": sum(status_counts.values()),
-        "pending": status_counts.get("pending", 0),
-        "printing": status_counts.get("printing", 0),
-        "ready": status_counts.get("ready", 0),
-        "completed": status_counts.get("completed", 0),
-        "cancelled": status_counts.get("cancelled", 0),
+        "pending": status_counts.get("pending", 0) + status_counts.get("NEW", 0) + status_counts.get("APPROVED", 0),
+        "printing": status_counts.get("printing", 0) + status_counts.get("PRINTING", 0),
+        "ready": status_counts.get("ready", 0) + status_counts.get("READY", 0),
+        "completed": status_counts.get("completed", 0) + status_counts.get("PICKED_UP", 0),
+        "cancelled": status_counts.get("cancelled", 0) + status_counts.get("CANCELLED", 0) + status_counts.get("REJECTED", 0),
     }
 
 
@@ -87,10 +87,9 @@ def get_requests_for_account(account_id: str, limit: int = 50) -> list:
     
     conn = db()
     rows = conn.execute("""
-        SELECT id, email, name, file_name, status, created_at, 
-               (SELECT COUNT(*) FROM request_files WHERE request_id = requests.id) as file_count
+        SELECT id, requester_email, requester_name, print_name, status, created_at
         FROM requests
-        WHERE email = ? OR account_id = ?
+        WHERE LOWER(requester_email) = LOWER(?) OR account_id = ?
         ORDER BY created_at DESC
         LIMIT ?
     """, (account.email, account_id, limit)).fetchall()
@@ -102,15 +101,20 @@ def get_requests_for_account(account_id: str, limit: int = 50) -> list:
 def get_account_notes(account_id: str) -> list:
     """Get notes for an account."""
     conn = db()
-    rows = conn.execute("""
-        SELECT n.*, a.name as created_by_name
-        FROM account_notes n
-        LEFT JOIN accounts a ON n.created_by = a.id
-        WHERE n.account_id = ?
-        ORDER BY n.created_at DESC
-    """, (account_id,)).fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    try:
+        rows = conn.execute("""
+            SELECT n.*, a.name as created_by_name
+            FROM account_notes n
+            LEFT JOIN accounts a ON n.created_by = a.id
+            WHERE n.account_id = ?
+            ORDER BY n.created_at DESC
+        """, (account_id,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+    except:
+        # Table doesn't exist yet
+        conn.close()
+        return []
 
 
 def add_account_note(account_id: str, content: str, created_by: Optional[str] = None):
@@ -120,31 +124,54 @@ def add_account_note(account_id: str, content: str, created_by: Optional[str] = 
     now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     note_id = str(uuid.uuid4())
     
-    conn.execute("""
-        INSERT INTO account_notes (id, account_id, content, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?)
-    """, (note_id, account_id, content, created_by, now))
-    conn.commit()
-    conn.close()
-    return note_id
+    try:
+        conn.execute("""
+            INSERT INTO account_notes (id, account_id, content, created_by, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (note_id, account_id, content, created_by, now))
+        conn.commit()
+        conn.close()
+        return note_id
+    except:
+        conn.close()
+        return None
 
 
 def delete_account_note(note_id: str):
     """Delete an account note."""
     conn = db()
-    conn.execute("DELETE FROM account_notes WHERE id = ?", (note_id,))
-    conn.commit()
+    try:
+        conn.execute("DELETE FROM account_notes WHERE id = ?", (note_id,))
+        conn.commit()
+    except:
+        pass
     conn.close()
 
 
 def get_role_counts() -> dict:
     """Get count of accounts per role."""
     conn = db()
-    rows = conn.execute("""
-        SELECT role, COUNT(*) as count FROM accounts GROUP BY role
-    """).fetchall()
-    conn.close()
-    return {row["role"]: row["count"] for row in rows}
+    
+    # Try accounts table first
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+        if count > 0:
+            rows = conn.execute("""
+                SELECT role, COUNT(*) as count FROM accounts GROUP BY role
+            """).fetchall()
+            conn.close()
+            return {row["role"]: row["count"] for row in rows}
+    except:
+        pass
+    
+    # Fall back to counting users (all are 'user' role)
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        conn.close()
+        return {"user": count}
+    except:
+        conn.close()
+        return {}
 
 
 def get_account_count(

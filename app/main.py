@@ -1076,6 +1076,108 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_trip_events_start ON trip_events(start_datetime);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_trip_events_reminder ON trip_events(reminder_sent, start_datetime);")
 
+    # ─────────────────────────────────────────────────────────────────────────────
+    # UNIFIED ACCOUNTS TABLES (v0.11.0+)
+    # ─────────────────────────────────────────────────────────────────────────────
+    
+    # Unified accounts table - single source of truth for all user/admin accounts
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS accounts (
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user',
+            status TEXT NOT NULL DEFAULT 'unverified',
+            
+            -- Auth
+            password_hash TEXT,
+            email_verified INTEGER DEFAULT 0,
+            email_verified_at TEXT,
+            
+            -- 2FA
+            mfa_secret TEXT,
+            mfa_enabled INTEGER DEFAULT 0,
+            
+            -- Profile
+            phone TEXT,
+            preferred_printer TEXT,
+            preferred_material TEXT,
+            preferred_colors TEXT,
+            notes_template TEXT,
+            avatar_url TEXT,
+            notification_prefs TEXT DEFAULT '{}',
+            
+            -- Stats
+            total_requests INTEGER DEFAULT 0,
+            total_prints INTEGER DEFAULT 0,
+            credits INTEGER DEFAULT 0,
+            login_count INTEGER DEFAULT 0,
+            
+            -- Tokens
+            magic_link_token TEXT,
+            magic_link_expires TEXT,
+            reset_token TEXT,
+            reset_token_expires TEXT,
+            
+            -- Timestamps
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            last_login TEXT,
+            
+            -- Migration tracking
+            migrated_from_user_id TEXT,
+            migrated_from_admin_id TEXT
+        );
+    """)
+    
+    # Sessions table - unified session management
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            token TEXT NOT NULL UNIQUE,
+            
+            -- Device info
+            device_info TEXT,
+            ip_address TEXT,
+            user_agent TEXT,
+            
+            -- Timestamps
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            last_active TEXT,
+            
+            FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
+        );
+    """)
+    
+    # Request assignments - many-to-many for request collaboration
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS request_assignments (
+            id TEXT PRIMARY KEY,
+            request_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'requester',
+            
+            -- Assignment metadata
+            assigned_at TEXT NOT NULL,
+            assigned_by_account_id TEXT,
+            notes TEXT,
+            
+            FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE,
+            FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+            UNIQUE(request_id, account_id, role)
+        );
+    """)
+    
+    # Indexes for accounts system
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_accounts_role ON accounts(role);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_account ON sessions(account_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_request_assignments_request ON request_assignments(request_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_request_assignments_account ON request_assignments(account_id);")
+
     conn.commit()
     conn.close()
 
@@ -1296,6 +1398,144 @@ def ensure_migrations():
     if "account_id" not in req_cols:
         cur.execute("ALTER TABLE requests ADD COLUMN account_id TEXT")
         logger.info("Added account_id column to requests table")
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # MIGRATE USERS + ADMINS → ACCOUNTS (v0.11.0 one-time migration)
+    # ─────────────────────────────────────────────────────────────────────────────
+    
+    # Check if migration is needed (safely check each table exists)
+    accounts_count = cur.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+    
+    users_count = 0
+    try:
+        users_count = cur.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    except:
+        pass  # users table might not exist
+    
+    admins_count = 0
+    try:
+        admins_count = cur.execute("SELECT COUNT(*) FROM admins").fetchone()[0]
+    except:
+        pass  # admins table might not exist
+    
+    if accounts_count == 0 and (users_count > 0 or admins_count > 0):
+        logger.info(f"Migrating {users_count} users and {admins_count} admins to accounts table...")
+        now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        migrated_emails = set()
+        
+        # Role mapping for admins
+        admin_role_map = {
+            "super_admin": "owner",
+            "admin": "admin", 
+            "operator": "staff",
+            "designer": "staff",
+            "viewer": "staff",
+        }
+        
+        # 1. Migrate admins first (they get elevated roles)
+        if admins_count > 0:
+            try:
+                admins = cur.execute("SELECT * FROM admins").fetchall()
+                admin_cols = [desc[0] for desc in cur.description]
+                for admin_row in admins:
+                    admin = dict(zip(admin_cols, admin_row))
+                    email = admin.get("email", "").lower().strip()
+                    if not email or email in migrated_emails:
+                        continue
+                    
+                    account_id = str(uuid.uuid4())
+                    legacy_role = admin.get("role", "operator")
+                    new_role = admin_role_map.get(legacy_role, "staff")
+                    status = "active" if admin.get("is_active", 1) else "suspended"
+                    
+                    cur.execute("""
+                        INSERT INTO accounts (id, email, name, role, status, password_hash, 
+                                              created_at, updated_at, migrated_from_admin_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        account_id, email, admin.get("name", email.split("@")[0]),
+                        new_role, status, admin.get("password_hash"),
+                        admin.get("created_at", now), now, admin.get("id")
+                    ))
+                    migrated_emails.add(email)
+                    logger.info(f"  Migrated admin: {email} -> {new_role}")
+            except Exception as e:
+                logger.warning(f"Error migrating admins: {e}")
+        
+        # 2. Migrate users (check for email collisions with admins)
+        if users_count > 0:
+            users = cur.execute("SELECT * FROM users").fetchall()
+            user_cols = [desc[0] for desc in cur.description]
+            for user_row in users:
+                user = dict(zip(user_cols, user_row))
+                email = user.get("email", "").lower().strip()
+                if not email:
+                    continue
+                
+                if email in migrated_emails:
+                    # Email already migrated from admins - update with user preferences
+                    cur.execute("""
+                        UPDATE accounts SET 
+                            preferred_printer = ?,
+                            preferred_material = ?,
+                            preferred_colors = ?,
+                            notes_template = ?,
+                            notification_prefs = ?,
+                            migrated_from_user_id = ?
+                        WHERE email = ?
+                    """, (
+                        user.get("preferred_printer"),
+                        user.get("preferred_material"),
+                        user.get("preferred_colors"),
+                        user.get("notes_template"),
+                        user.get("notification_prefs", "{}"),
+                        user.get("id"),
+                        email
+                    ))
+                    logger.info(f"  Merged user preferences into existing account: {email}")
+                else:
+                    # New user account
+                    account_id = str(uuid.uuid4())
+                    status = "active" if user.get("email_verified", 0) else "unverified"
+                    
+                    cur.execute("""
+                        INSERT INTO accounts (id, email, name, role, status, password_hash,
+                                              email_verified, preferred_printer, preferred_material,
+                                              preferred_colors, notes_template, notification_prefs,
+                                              created_at, updated_at, migrated_from_user_id)
+                        VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        account_id, email, user.get("name", email.split("@")[0]),
+                        status, user.get("password_hash"),
+                        user.get("email_verified", 0),
+                        user.get("preferred_printer"),
+                        user.get("preferred_material"),
+                        user.get("preferred_colors"),
+                        user.get("notes_template"),
+                        user.get("notification_prefs", "{}"),
+                        user.get("created_at", now), now, user.get("id")
+                    ))
+                    migrated_emails.add(email)
+        
+        # 3. Link requests to accounts by email
+        unlinked = cur.execute("""
+            SELECT r.id, r.requester_email 
+            FROM requests r 
+            WHERE r.account_id IS NULL AND r.requester_email IS NOT NULL
+        """).fetchall()
+        
+        for req_id, req_email in unlinked:
+            if not req_email:
+                continue
+            account = cur.execute(
+                "SELECT id FROM accounts WHERE LOWER(email) = ?", 
+                (req_email.lower().strip(),)
+            ).fetchone()
+            if account:
+                cur.execute("UPDATE requests SET account_id = ? WHERE id = ?", 
+                           (account[0], req_id))
+        
+        logger.info(f"Migration complete: {len(migrated_emails)} accounts created")
 
     conn.commit()
     conn.close()
