@@ -1,6 +1,6 @@
 // Service Worker for Printellect PWA
-const SW_VERSION = '2.5.0';
-const CACHE_NAME = 'print-queue-v7';
+const SW_VERSION = '2.6.0';
+const CACHE_NAME = 'print-queue-v8';
 const OFFLINE_URL = '/static/offline.html';
 let ACTIVE_TRIP_USER = null;
 
@@ -10,10 +10,8 @@ function swLog(level, ...args) {
   console[level](`[SW ${SW_VERSION}] [${ts}]`, ...args);
 }
 
-// Assets to cache immediately
+// Assets to cache immediately (only truly static assets)
 const PRECACHE_ASSETS = [
-  '/',
-  '/queue',
   '/static/manifest.json',
   '/static/offline.html',
 ];
@@ -100,13 +98,13 @@ self.addEventListener('fetch', (event) => {
         // Clone the response before caching
         const responseClone = response.clone();
         
-        // Cache successful responses for HTML pages and static assets
+        // Cache successful responses for static assets only
+        // Do NOT cache HTML pages as they have user-specific content
         if (response.ok) {
           const shouldCache = 
-            event.request.destination === 'document' ||
             url.pathname.startsWith('/static/') ||
-            url.pathname === '/queue' ||
-            url.pathname === '/';
+            url.pathname === '/static/manifest.json' ||
+            url.pathname === '/static/offline.html';
           
           if (shouldCache) {
             caches.open(CACHE_NAME).then((cache) => {
