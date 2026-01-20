@@ -1570,7 +1570,7 @@
         <p class="text-sm text-zinc-400 mb-4">Link this request to a user account or remove the current link.</p>
         
         <form method="POST" action="/admin/request/{{ req['id'] }}/update-account" class="space-y-4">
-          {{ csrf_input() | safe }}
+          {{ csrf_input(request) | safe }}
           
           <!-- Current status -->
           <div class="p-3 rounded-lg bg-zinc-800/50 text-sm">
