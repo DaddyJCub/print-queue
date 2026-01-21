@@ -1305,6 +1305,24 @@ def ensure_migrations():
     if "active_build_id" not in cols:
         cur.execute("ALTER TABLE requests ADD COLUMN active_build_id TEXT")
 
+    # Notification log table
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='notification_log'")
+    if not cur.fetchone():
+        cur.execute("""
+            CREATE TABLE notification_log (
+                id TEXT PRIMARY KEY,
+                email TEXT NOT NULL,
+                channel TEXT NOT NULL,
+                subject TEXT,
+                body TEXT,
+                request_id TEXT,
+                build_id TEXT,
+                status TEXT,
+                error TEXT,
+                created_at TEXT NOT NULL
+            )
+        """)
+
     # Add build_id to files table to associate files with specific builds
     if files_cols and "build_id" not in files_cols:
         cur.execute("ALTER TABLE files ADD COLUMN build_id TEXT")
@@ -5021,6 +5039,48 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
 """
 
 
+def log_notification_event(email: str, channel: str, subject: str, body: Optional[str] = None,
+                           request_id: Optional[str] = None, build_id: Optional[str] = None,
+                           status: str = "sent", error: Optional[str] = None):
+    """Persist a notification event for debugging/delivery audits."""
+    try:
+        conn = db()
+        conn.execute("""
+            INSERT INTO notification_log (id, email, channel, subject, body, request_id, build_id, status, error, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            str(uuid.uuid4()),
+            email.lower() if email else "",
+            channel,
+            subject,
+            body,
+            request_id,
+            build_id,
+            status,
+            error,
+            now_iso(),
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[NOTIFY-LOG] Failed to log notification for {email}: {e}")
+
+
+def get_notification_log(email: str, limit: int = 50) -> List[dict]:
+    """Return recent notification events for an email."""
+    conn = db()
+    rows = conn.execute(
+        """SELECT email, channel, subject, body, request_id, build_id, status, error, created_at
+               FROM notification_log
+               WHERE LOWER(email) = LOWER(?)
+               ORDER BY created_at DESC
+               LIMIT ?""",
+        (email, limit)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def get_or_create_my_requests_token(email: str) -> str:
     """
     Get existing valid token or create new one for 'My Requests' magic link.
@@ -5104,6 +5164,11 @@ def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Opt
             except Exception as e:
                 print(f"[EMAIL] Failed to attach image: {e}")
 
+    # Best-effort logging regardless of send outcome
+    def _log_bulk(status: str, error: Optional[str] = None):
+        for addr in to_addrs:
+            log_notification_event(email=addr, channel="email", subject=subject, body=text_body[:500], status=status, error=error)
+
     context = ssl.create_default_context()
     try:
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
@@ -5113,8 +5178,10 @@ def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Opt
             if SMTP_USER:
                 server.login(SMTP_USER, SMTP_PASS)
             server.send_message(msg)
+        _log_bulk("sent")
     except Exception as e:
         print(f"[EMAIL] Failed to send '{subject}' to {to_addrs}: {e}")
+        _log_bulk("failed", str(e))
         return
 
 
@@ -5163,6 +5230,7 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
         msg = f"No push subscriptions found for email: {email}"
         print(f"[PUSH] {msg}")
         result["errors"].append(msg)
+        log_notification_event(email=email, channel="push", subject=title, body=body[:500], status="failed", error=msg)
         return result
         
     print(f"[PUSH] Found {len(subs)} subscription(s) for {email}")
@@ -5263,6 +5331,10 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
             result["failed"] += 1
             result["errors"].append(error_msg)
     
+    status = "sent" if result["sent"] > 0 else "failed"
+    err_msg = "; ".join(result["errors"]) if result["errors"] else None
+    log_notification_event(email=email, channel="push", subject=title, body=body[:500], status=status, error=err_msg)
+
     return result
 
 

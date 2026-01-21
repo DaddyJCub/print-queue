@@ -398,6 +398,30 @@
             <dd class="mt-2 text-sm text-zinc-400">No preference record; defaults apply (status email/push enabled, progress push on, progress email on at 50/75).</dd>
             {% endif %}
           </div>
+          
+          <div class="bg-zinc-800/30 rounded-xl p-4 md:col-span-2">
+            <dt class="text-xs text-zinc-500 uppercase tracking-wider">Recent Notifications</dt>
+            {% if notification_log %}
+            <div class="mt-3 space-y-2 max-h-64 overflow-y-auto pr-1">
+              {% for n in notification_log %}
+              <div class="border border-zinc-700/60 rounded-lg p-3 bg-zinc-900/60">
+                <div class="flex justify-between items-center text-xs text-zinc-400">
+                  <span class="inline-flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full {% if n.status == 'sent' %}bg-emerald-400{% else %}bg-red-400{% endif %}"></span>
+                    {{ n.channel|upper }} • {{ n.created_at[:19] }}
+                  </span>
+                  {% if n.request_id %}<span class="font-mono text-[11px] text-zinc-500">#{{ n.request_id[:8] }}</span>{% endif %}
+                </div>
+                <div class="text-sm text-white mt-1 font-medium">{{ n.subject or '(no subject)' }}</div>
+                <div class="text-xs text-zinc-400 mt-0.5 line-clamp-2">{{ n.body or '(no body)' }}</div>
+                {% if n.error %}<div class="text-xs text-red-400 mt-1">Error: {{ n.error }}</div>{% endif %}
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <dd class="mt-2 text-sm text-zinc-400">No notifications logged yet for this account.</dd>
+            {% endif %}
+          </div>
         </dl>
         
         {% if account.metadata %}

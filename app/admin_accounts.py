@@ -24,6 +24,7 @@ from app.main import (
     require_admin,
     APP_VERSION,
     get_user_notification_prefs,
+    get_notification_log,
 )
 from app.auth import (
     # Account CRUD
@@ -373,6 +374,12 @@ def admin_account_detail(
     except Exception:
         notification_prefs = {}
     
+    # Recent notifications
+    try:
+        notification_log = get_notification_log(account.email, limit=50)
+    except Exception:
+        notification_log = []
+    
     # Get notes
     notes = get_account_notes(account_id)
     
@@ -390,6 +397,7 @@ def admin_account_detail(
         "notes": notes,
         "permissions": permissions,
         "notification_prefs": notification_prefs,
+        "notification_log": notification_log,
         "active_tab": tab,
         "success": success,
         "error": error,

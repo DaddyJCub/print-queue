@@ -14,3 +14,125 @@ Snippet:
 2026-01-20 08:57:28 | INFO     | printellect.stdout   | <a href="http://localhost:3000/my/1234567890abcdef?token=testtoken"
                style="display:inline-block;background:#14b8a6;color:#ffffff;text-decoration:none;
                       padding:12px
+2026-01-21 15:32:52 | INFO     | printellect          | File logging enabled: /home/jacob/repos/print-queue/.test.log
+2026-01-21 15:32:52 | INFO     | printellect          | Logging initialized at level INFO - capturing all output
+2026-01-21 15:32:53 | INFO     | printellect.stdout   | def send_push_notification(email: str, title: str, body: str, url: str = None, image_url: str = None, tag: str = None, data: dict = None, actions: Optional[List[Dict[str, str]]] = None) -> dict:
+    """
+    Send push notification to all subscriptions for a user (by email).
+    Returns a dict with status and details for debugging.
+
+    Args:
+        email: User's email address
+        title: Notification title
+        body: Notification body text
+        url: Click-through URL (default: /my-requests/view)
+        image_url: Optional image URL to display in notification (for progress updates)
+        tag: Optional tag for notification grouping (allows replacing existing notifications)
+        data: Optional additional data to include in the notification payload
+        actions: Optional list of notification actions (for quick responses)
+    """
+    result = {"email": email, "sent": 0, "failed": 0, "errors": []}
+
+    if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
+        msg = "VAPID keys are not configured"
+        print(f"[PUSH] ERROR: {msg}")
+        result["errors"].append(msg)
+        return result
+
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        msg = "pywebpush not installed"
+        print(f"[PUSH] ERROR: {msg}")
+        result["errors"].append(msg)
+        return result
+
+    conn = db()
+    subs = conn.execute(
+        "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE LOWER(email) = LOWER(?)",
+        (email,)
+    ).fetchall()
+    conn.close()
+
+    result["subscriptions_found"] = len(subs)
+
+    if not subs:
+        msg = f"No push subscriptions found for email: {email}"
+        print(f"[PUSH] {msg}")
+        result["errors"].append(msg)
+        log_notification_event(email=email, channel="push", subject=title, body=body[:500], status="failed", error=msg)
+        return result
+
+    print(f"[PUSH] Found {len(subs)} subscription(s) for {email}")
+
+    # Build notification payload with optional image support
+    payload_data = {
+        "title": title,
+        "body": body,
+        "url": url or "/my-requests/view",
+        "icon": "/static/icons/icon-192.png",
+    }
+
+    # Add optional image URL for rich notifications (progress updates, etc.)
+    if image_url:
+        payload_data["image"] = image_url
+
+    # Add tag for notification grouping (allows replacing instead of stacking)
+    if tag:
+        payload_data["tag"] = tag
+
+    # Add additional custom data
+    if data:
+        payload_data["data"] = data
+
+    # Add actions (e.g., report a problem)
+    if actions:
+        payload_data["actions"] = actions
+
+    payload = json.dumps(payload_data)
+
+    for sub in subs:
+        endpoint = sub["endpoint"]
+        subscription_info = {
+            "endpoint": endpoint,
+            "keys": {
+                "p256dh": sub["p256dh"],
+                "auth": sub["auth"],
+            }
+        }
+
+        # Build VAPID claims per-endpoint for maximum compatibility
+        # Apple requires: sub (mailto:), aud (endpoint origin), exp (< 24h)
+        from urllib.parse import urlparse
+        import time
+
+        parsed = urlparse(endpoint)
+        aud = f"{parsed.scheme}://{parsed.netloc}"
+
+        vapid_email = VAPID_CLAIMS_EMAIL
+        if not vapid_email.startswith("mailto:"):
+            vapid_email = f"mailto:{vapid_email}"
+
+        # Use 12-hour exp to be safe with clock skew (Apple requires < 24h)
+        exp_12h = int(time.time()) + (12 * 3600)
+
+        vapid_claims = {
+            "sub": vapid_email,
+            "aud": aud,  # Explicitly set aud for the endpoint
+            "exp": exp_12h,  # 12 hours to avoid clock skew issues
+        }
+
+        try:
+            is_apple = 'apple.com' in endpoint
+            print(f"[PUSH] Sending to {'Apple' if is_apple else 'other'} endpoint: {endpoint[:60]}...")
+            print(f"[PUSH]   aud={aud}, exp_hours={12}, sub={vapid_email}")
+
+            webpush(
+                subscription_info=subscription_info,
+                data=payload,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims=vapid_claims,
+                ttl=43200,  # 12 hours - matches our exp
+            )
+            print(f"[PUSH] OK: Sent notification for {email}")
+            result["sent"] += 1
