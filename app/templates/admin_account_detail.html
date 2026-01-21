@@ -369,6 +369,35 @@
             <dt class="text-xs text-zinc-500 uppercase tracking-wider">Phone</dt>
             <dd class="mt-1">{{ account.phone or '(not set)' }}</dd>
           </div>
+          <div class="bg-zinc-800/30 rounded-xl p-4 md:col-span-2">
+            <dt class="text-xs text-zinc-500 uppercase tracking-wider">Notification Preferences</dt>
+            {% if notification_prefs %}
+            <dd class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full {% if notification_prefs.status_email %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                Status Email: {{ 'On' if notification_prefs.status_email else 'Off' }}
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full {% if notification_prefs.status_push %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                Status Push: {{ 'On' if notification_prefs.status_push else 'Off' }}
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full {% if notification_prefs.progress_email %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                Progress Email: {{ 'On' if notification_prefs.progress_email else 'Off' }} ({{ notification_prefs.progress_milestones or '50,75' }})
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full {% if notification_prefs.progress_push %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                Progress Push: {{ 'On' if notification_prefs.progress_push else 'Off' }}
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full {% if notification_prefs.broadcast_push %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                Broadcast Push: {{ 'On' if notification_prefs.broadcast_push else 'Off' }}
+              </div>
+            </dd>
+            {% else %}
+            <dd class="mt-2 text-sm text-zinc-400">No preference record; defaults apply (status email/push enabled, progress push on, progress email on at 50/75).</dd>
+            {% endif %}
+          </div>
         </dl>
         
         {% if account.metadata %}

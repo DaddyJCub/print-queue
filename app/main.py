@@ -1715,6 +1715,11 @@ def start_build(build_id: str, printer: str, comment: Optional[str] = None) -> D
         "UPDATE requests SET active_build_id = ?, updated_at = ? WHERE id = ?",
         (build_id, now, build["request_id"])
     )
+    # Reset printing email flag and persist printer selection for this build
+    conn.execute(
+        "UPDATE requests SET printing_email_sent = 0, printer = ? WHERE id = ?",
+        (printer, build["request_id"])
+    )
     
     conn.commit()
     conn.close()
@@ -4114,8 +4119,8 @@ async def poll_printer_status_worker():
 
             conn = db()
             printing_reqs = conn.execute(
-                "SELECT id, printer, printing_started_at, printing_email_sent, requester_email, requester_name, print_name, material, access_token, print_time_minutes, notification_prefs FROM requests WHERE status = ?",
-                ("PRINTING",)
+                "SELECT id, printer, printing_started_at, printing_email_sent, requester_email, requester_name, print_name, material, access_token, print_time_minutes, notification_prefs, active_build_id, status FROM requests WHERE status IN ('PRINTING', 'IN_PROGRESS')",
+                ()
             ).fetchall()
             conn.close()
             
@@ -4124,22 +4129,46 @@ async def poll_printer_status_worker():
             for req_row in printing_reqs:
                 req = dict(req_row)  # Convert to dict for .get() support
                 
-                # Check if polling is paused for this printer (e.g., during print send)
-                if is_polling_paused(req["printer"]):
+                # If printer not on request (e.g., multi-build IN_PROGRESS), try active build
+                effective_printer = req.get("printer")
+                if (not effective_printer) and req.get("active_build_id"):
+                    try:
+                        conn_tmp = db()
+                        build_row = conn_tmp.execute("SELECT printer, started_at FROM builds WHERE id = ?", (req["active_build_id"],)).fetchone()
+                        conn_tmp.close()
+                        if build_row:
+                            effective_printer = build_row["printer"]
+                            if not req.get("printing_started_at") and build_row["started_at"]:
+                                req["printing_started_at"] = build_row["started_at"]
+                    except Exception:
+                        pass
+
+                # Skip if still no printer
+                if not effective_printer:
                     add_poll_debug_log({
                         "type": "poll_skip",
                         "request_id": req["id"][:8],
-                        "printer": req["printer"],
+                        "printer": None,
+                        "message": "No printer assigned for active build"
+                    })
+                    continue
+
+                # Check if polling is paused for this printer (e.g., during print send)
+                if is_polling_paused(effective_printer):
+                    add_poll_debug_log({
+                        "type": "poll_skip",
+                        "request_id": req["id"][:8],
+                        "printer": effective_printer,
                         "message": "Polling paused (print operation in progress)"
                     })
                     continue
                 
-                printer_api = get_printer_api(req["printer"])
+                printer_api = get_printer_api(effective_printer)
                 if not printer_api:
                     add_poll_debug_log({
                         "type": "poll_skip",
                         "request_id": req["id"][:8],
-                        "printer": req["printer"],
+                        "printer": effective_printer,
                         "message": "No printer API configured"
                     })
                     continue
@@ -4152,7 +4181,7 @@ async def poll_printer_status_worker():
                 # Debug logging
                 status_info = await printer_api.get_status()
                 machine_status = status_info.get("MachineStatus", "?") if status_info else "?"
-                print(f"[POLL] {req['printer']}: status={machine_status}, printing={is_printing}, complete={is_complete}, progress={percent_complete}%")
+                print(f"[POLL] {effective_printer}: status={machine_status}, printing={is_printing}, complete={is_complete}, progress={percent_complete}%")
                 
                 # Add to debug log
                 add_poll_debug_log({
@@ -4362,7 +4391,7 @@ async def poll_printer_status_worker():
                     # Try to capture a final snapshot
                     if get_bool_setting("enable_camera_snapshot", False):
                         try:
-                            snapshot_data = await capture_camera_snapshot(req["printer"])
+                            snapshot_data = await capture_camera_snapshot(effective_printer)
                             if snapshot_data:
                                 completion_snapshot = base64.b64encode(snapshot_data).decode("utf-8")
                                 print(f"[PRINTER] Captured completion snapshot for {rid[:8]} ({len(snapshot_data)} bytes)")

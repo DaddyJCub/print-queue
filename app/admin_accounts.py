@@ -23,6 +23,7 @@ from app.main import (
     db,
     require_admin,
     APP_VERSION,
+    get_user_notification_prefs,
 )
 from app.auth import (
     # Account CRUD
@@ -365,6 +366,12 @@ def admin_account_detail(
         session_count = count_sessions_for_account(account_id)
     except:
         session_count = 0
+
+    # User-level notification preferences (for debugging delivery)
+    try:
+        notification_prefs = get_user_notification_prefs(account.email)
+    except Exception:
+        notification_prefs = {}
     
     # Get notes
     notes = get_account_notes(account_id)
@@ -382,6 +389,7 @@ def admin_account_detail(
         "session_count": session_count,
         "notes": notes,
         "permissions": permissions,
+        "notification_prefs": notification_prefs,
         "active_tab": tab,
         "success": success,
         "error": error,
