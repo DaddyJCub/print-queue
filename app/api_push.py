@@ -193,12 +193,10 @@ async def api_admin_push_cleanup_all(_=Depends(require_admin)):
     """
     try:
         conn = db()
-        subs = conn.execute("SELECT id, endpoint FROM push_subscriptions").fetchall()
+        subs = conn.execute("SELECT id, endpoint, email FROM push_subscriptions").fetchall()
         conn.close()
         
         removed = 0
-        
-        # Test each subscription
         for sub in subs:
             is_valid = await _test_subscription(sub["endpoint"])
             if not is_valid:
@@ -207,7 +205,8 @@ async def api_admin_push_cleanup_all(_=Depends(require_admin)):
                 conn.commit()
                 conn.close()
                 removed += 1
-                print(f"[PUSH-CLEANUP] Removed stale subscription: {sub['endpoint'][:50]}...")
+                print(f"[PUSH-CLEANUP] Removed stale subscription for {sub['email']}: {sub['endpoint'][:50]}...")
+            await asyncio.sleep(0)  # yield
         
         print(f"[PUSH-CLEANUP] Cleaned up {removed} stale subscriptions out of {len(subs)}")
         return {"ok": True, "error": None, "success": True, "tested": len(subs), "removed": removed}
@@ -332,14 +331,18 @@ async def _cleanup_subscriptions_for_email(email: str) -> int:
     """
     conn = db()
     subs = conn.execute(
-        "SELECT id, endpoint FROM push_subscriptions WHERE email = ?",
+        "SELECT id, endpoint FROM push_subscriptions WHERE LOWER(email) = LOWER(?)",
         (email,)
     ).fetchall()
     conn.close()
     
     removed = 0
     for sub in subs:
-        is_valid = await _test_subscription(sub["endpoint"])
+        try:
+            is_valid = await _test_subscription(sub["endpoint"])
+        except Exception as e:
+            print(f"[PUSH-CLEANUP] Test error for {email}: {e}")
+            is_valid = False
         if not is_valid:
             conn = db()
             conn.execute("DELETE FROM push_subscriptions WHERE id = ?", (sub["id"],))
@@ -347,6 +350,7 @@ async def _cleanup_subscriptions_for_email(email: str) -> int:
             conn.close()
             removed += 1
             print(f"[PUSH-CLEANUP] Removed stale subscription for {email}")
+        await asyncio.sleep(0)  # yield
     
     return removed
 
@@ -1047,5 +1051,3 @@ def get_rush_pricing(name: str = ""):
         "is_special": pricing["is_special"],
         "queue_size": queue_size,
     }
-
-

@@ -5331,6 +5331,16 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
             result["failed"] += 1
             result["errors"].append(error_msg)
     
+    # Deduplicate repeated errors to reduce log spam (common when all subs expired)
+    if result["errors"]:
+        unique_errors = []
+        seen = set()
+        for err in result["errors"]:
+            if err not in seen:
+                unique_errors.append(err)
+                seen.add(err)
+        result["errors"] = unique_errors
+
     status = "sent" if result["sent"] > 0 else "failed"
     err_msg = "; ".join(result["errors"]) if result["errors"] else None
     log_notification_event(email=email, channel="push", subject=title, body=body[:500], status=status, error=err_msg)
