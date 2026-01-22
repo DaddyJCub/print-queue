@@ -199,7 +199,7 @@ async def api_admin_push_cleanup_all(_=Depends(require_admin)):
         
         removed = 0
         for sub in subs:
-            is_valid = await _test_subscription(sub["endpoint"])
+            is_valid = await _test_subscription(sub["endpoint"], strict=True)
             if not is_valid:
                 conn = db()
                 conn.execute("DELETE FROM push_subscriptions WHERE id = ?", (sub["id"],))
@@ -261,13 +261,15 @@ async def api_admin_push_test_all(_=Depends(require_admin)):
         )
 
 
-async def _test_subscription(endpoint: str) -> bool:
+async def _test_subscription(endpoint: str, strict: bool = False) -> bool:
     """
     Test if a push subscription endpoint is still valid.
     Returns True if valid, False if expired/invalid.
+    
+    strict=True treats any error (including missing VAPID keys) as invalid so cleanup can be aggressive.
     """
     if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
-        return True  # Can't test without VAPID, assume valid
+        return False if strict else True  # Can't test without VAPID, assume valid unless strict
     
     try:
         from pywebpush import webpush, WebPushException
@@ -320,9 +322,9 @@ async def _test_subscription(endpoint: str) -> bool:
         if e.response and e.response.status_code in [404, 410]:
             return False
         # Other errors might be temporary, consider valid
-        return True
+        return False if strict else True
     except Exception:
-        return True  # Assume valid on other errors
+        return False if strict else True  # Assume valid on other errors unless strict
 
 
 async def _cleanup_subscriptions_for_email(email: str) -> int:
@@ -340,7 +342,7 @@ async def _cleanup_subscriptions_for_email(email: str) -> int:
     removed = 0
     for sub in subs:
         try:
-            is_valid = await _test_subscription(sub["endpoint"])
+            is_valid = await _test_subscription(sub["endpoint"], strict=True)
         except Exception as e:
             print(f"[PUSH-CLEANUP] Test error for {email}: {e}")
             is_valid = False  # treat errors as invalid to aggressively clean up
@@ -354,6 +356,35 @@ async def _cleanup_subscriptions_for_email(email: str) -> int:
         await asyncio.sleep(0)  # yield
     
     return removed
+
+
+@router.post("/api/admin/push/delete-email")
+async def api_admin_push_delete_email(request: Request, _=Depends(require_admin)):
+    """
+    Hard-delete all push subscriptions for a specific email (case-insensitive).
+    Use when cleanup fails and you need to purge stale endpoints.
+    """
+    try:
+        data = await _parse_request_data(request)
+        email = data.get("email")
+        if not email:
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": "Email required", "success": False}
+            )
+        conn = db()
+        cur = conn.execute("DELETE FROM push_subscriptions WHERE LOWER(email) = LOWER(?)", (email,))
+        deleted = cur.rowcount
+        conn.commit()
+        conn.close()
+        print(f"[PUSH-DELETE] Deleted {deleted} subscriptions for {email}")
+        return {"ok": True, "success": True, "deleted": deleted, "email": email}
+    except Exception as e:
+        print(f"[PUSH-DELETE] Error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": str(e), "success": False}
+        )
 
 
 
