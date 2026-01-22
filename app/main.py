@@ -1315,6 +1315,7 @@ def ensure_migrations():
                 channel TEXT NOT NULL,
                 subject TEXT,
                 body TEXT,
+                endpoint TEXT,
                 request_id TEXT,
                 build_id TEXT,
                 status TEXT,
@@ -1322,6 +1323,11 @@ def ensure_migrations():
                 created_at TEXT NOT NULL
             )
         """)
+    else:
+        cur.execute("PRAGMA table_info(notification_log)")
+        notif_cols = {row[1] for row in cur.fetchall()}
+        if "endpoint" not in notif_cols:
+            cur.execute("ALTER TABLE notification_log ADD COLUMN endpoint TEXT")
 
     # Add build_id to files table to associate files with specific builds
     if files_cols and "build_id" not in files_cols:
@@ -5041,19 +5047,20 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
 
 def log_notification_event(email: str, channel: str, subject: str, body: Optional[str] = None,
                            request_id: Optional[str] = None, build_id: Optional[str] = None,
-                           status: str = "sent", error: Optional[str] = None):
+                           endpoint: Optional[str] = None, status: str = "sent", error: Optional[str] = None):
     """Persist a notification event for debugging/delivery audits."""
     try:
         conn = db()
         conn.execute("""
-            INSERT INTO notification_log (id, email, channel, subject, body, request_id, build_id, status, error, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO notification_log (id, email, channel, subject, body, endpoint, request_id, build_id, status, error, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             str(uuid.uuid4()),
             email.lower() if email else "",
             channel,
             subject,
             body,
+            endpoint,
             request_id,
             build_id,
             status,
@@ -5327,6 +5334,14 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
             )
             print(f"[PUSH] OK: Sent notification for {email}")
             result["sent"] += 1
+            log_notification_event(
+                email=email,
+                channel="push",
+                subject=title,
+                body=body[:500],
+                status="sent",
+                endpoint=endpoint
+            )
         except WebPushException as e:
             error_msg = f"WebPush error: {e}"
             # Include response body if available for debugging
@@ -5338,6 +5353,15 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
             print(f"[PUSH] ✗ Failed: {error_msg}")
             result["failed"] += 1
             result["errors"].append(error_msg)
+            log_notification_event(
+                email=email,
+                channel="push",
+                subject=title,
+                body=body[:500],
+                status="failed",
+                error=error_msg,
+                endpoint=endpoint
+            )
             
             # Remove invalid subscriptions (410 Gone or 404)
             if e.response and e.response.status_code in [404, 410]:
@@ -5362,11 +5386,8 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
                 seen.add(err)
         result["errors"] = unique_errors
 
-    status = "sent" if result["sent"] > 0 else "failed"
-    err_msg = "; ".join(result["errors"]) if result["errors"] else None
-    log_notification_event(email=email, channel="push", subject=title, body=body[:500], status=status, error=err_msg)
-
     # If all pushes failed for this email, send a one-time alert email about disabled push
+    status = "sent" if result["sent"] > 0 else "failed"
     if status == "failed" and email and not _has_recent_push_alert(email):
         alert_subject = "[Push Disabled] Action needed to restore notifications"
         alert_text = (
