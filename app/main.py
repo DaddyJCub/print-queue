@@ -5081,6 +5081,27 @@ def get_notification_log(email: str, limit: int = 50) -> List[dict]:
     return [dict(r) for r in rows]
 
 
+def _has_recent_push_alert(email: str, hours: int = 24) -> bool:
+    """Check if we've already sent a push-failure alert email recently."""
+    try:
+        conn = db()
+        rows = conn.execute(
+            """SELECT created_at FROM notification_log
+               WHERE LOWER(email) = LOWER(?) AND channel = 'email' AND subject LIKE '[Push Disabled]%'
+               ORDER BY created_at DESC LIMIT 1""",
+            (email,)
+        ).fetchall()
+        conn.close()
+        if not rows:
+            return False
+        last = rows[0]["created_at"]
+        from datetime import datetime, timedelta
+        last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
+        return (datetime.utcnow() - last_dt) < timedelta(hours=hours)
+    except Exception:
+        return False
+
+
 def get_or_create_my_requests_token(email: str) -> str:
     """
     Get existing valid token or create new one for 'My Requests' magic link.
@@ -5344,6 +5365,31 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
     status = "sent" if result["sent"] > 0 else "failed"
     err_msg = "; ".join(result["errors"]) if result["errors"] else None
     log_notification_event(email=email, channel="push", subject=title, body=body[:500], status=status, error=err_msg)
+
+    # If all pushes failed for this email, send a one-time alert email about disabled push
+    if status == "failed" and email and not _has_recent_push_alert(email):
+        alert_subject = "[Push Disabled] Action needed to restore notifications"
+        alert_text = (
+            "We tried to send push notifications to your devices, but all subscriptions appear to be expired or blocked.\n\n"
+            "To restore push notifications:\n"
+            "1) Open the Printellect app/site on your device.\n"
+            "2) Go to My Account > Notification Settings.\n"
+            "3) Toggle Push Notifications off, then back on to re-register.\n\n"
+            "If you no longer want push, you can ignore this email."
+        )
+        alert_html = build_email_html(
+            title="Push notifications need attention",
+            subtitle="We couldn't reach any of your devices.",
+            rows=[
+                ("What happened", "All push subscriptions for your account failed."),
+                ("How to fix", "Open the app and toggle Push Notifications off/on in My Account."),
+            ],
+            cta_url=f"{BASE_URL}/user/profile",
+            cta_label="Open My Account",
+            header_color="#f59e0b",
+            footer_note="This alert is sent only once per day while push remains disabled.",
+        )
+        send_email([email], alert_subject, alert_text, alert_html)
 
     return result
 

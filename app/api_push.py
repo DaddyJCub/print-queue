@@ -343,7 +343,7 @@ async def _cleanup_subscriptions_for_email(email: str) -> int:
             is_valid = await _test_subscription(sub["endpoint"])
         except Exception as e:
             print(f"[PUSH-CLEANUP] Test error for {email}: {e}")
-            is_valid = False
+            is_valid = False  # treat errors as invalid to aggressively clean up
         if not is_valid:
             conn = db()
             conn.execute("DELETE FROM push_subscriptions WHERE id = ?", (sub["id"],))
