@@ -3747,6 +3747,19 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
             # Generate my-requests link
             my_requests_token = get_or_create_my_requests_token(requester_email)
             my_requests_url = f"{BASE_URL}/my-requests/view?token={my_requests_token}"
+
+            # Try to include a live snapshot inline if camera snapshots are enabled
+            snapshot_to_send = None
+            if get_bool_setting("enable_camera_snapshot", False) and printer_code:
+                try:
+                    # Use public snapshot endpoint so auth/certs match email links
+                    snap_url = f"{BASE_URL}/api/camera/{printer_code}/snapshot"
+                    r = httpx.get(snap_url, timeout=4)
+                    if r.status_code == 200 and r.content:
+                        snapshot_to_send = base64.b64encode(r.content).decode("utf-8")
+                        print(f"[PROGRESS-NOTIFY] Included snapshot for {request_id[:8]} {milestone}%")
+                except Exception as e:
+                    print(f"[PROGRESS-NOTIFY] Snapshot failed for {printer_code}: {e}")
             
             html = build_email_html(
                 title=notification_title,
@@ -3757,7 +3770,8 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
                 header_color="#8b5cf6",  # Purple for progress updates
                 secondary_cta_url=f"{BASE_URL}{report_url}",
                 secondary_cta_label="Report a Problem",
-                footer_note=f"<a href=\"{BASE_URL}{my_requests_url}\">All My Requests</a> • If something looks off, click Report a Problem so we can investigate."
+                footer_note=f"<a href=\"{BASE_URL}{my_requests_url}\">All My Requests</a> • If something looks off, click Report a Problem so we can investigate.",
+                image_base64=snapshot_to_send,
             )
             send_email([requester_email], subject, text, html)
             record_progress_milestone(build_id, milestone, "email")
@@ -4143,7 +4157,7 @@ async def poll_printer_status_worker():
 
             conn = db()
             printing_reqs = conn.execute(
-                "SELECT id, printer, printing_started_at, printing_email_sent, requester_email, requester_name, print_name, material, access_token, print_time_minutes, notification_prefs, active_build_id, status FROM requests WHERE status IN ('PRINTING', 'IN_PROGRESS')",
+                "SELECT id, printer, printing_started_at, printing_email_sent, requester_email, requester_name, print_name, material, access_token, print_time_minutes, notification_prefs, active_build_id, status, total_builds FROM requests WHERE status IN ('PRINTING', 'IN_PROGRESS')",
                 ()
             ).fetchall()
             conn.close()
@@ -4153,6 +4167,16 @@ async def poll_printer_status_worker():
             for req_row in printing_reqs:
                 req = dict(req_row)  # Convert to dict for .get() support
                 
+                # Skip multi-build requests here; build-level polling handles notifications to avoid duplicates
+                if req.get("total_builds") and req["total_builds"] > 1:
+                    add_poll_debug_log({
+                        "type": "poll_skip",
+                        "request_id": req["id"][:8],
+                        "printer": req.get("printer"),
+                        "message": "Multi-build handled by build-level polling"
+                    })
+                    continue
+
                 # If printer not on request (e.g., multi-build IN_PROGRESS), try active build
                 effective_printer = req.get("printer")
                 if (not effective_printer) and req.get("active_build_id"):
@@ -5077,7 +5101,7 @@ def get_notification_log(email: str, limit: int = 50) -> List[dict]:
     """Return recent notification events for an email."""
     conn = db()
     rows = conn.execute(
-        """SELECT email, channel, subject, body, request_id, build_id, status, error, created_at
+        """SELECT email, channel, subject, body, endpoint, request_id, build_id, status, error, created_at
                FROM notification_log
                WHERE LOWER(email) = LOWER(?)
                ORDER BY created_at DESC

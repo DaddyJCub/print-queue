@@ -317,9 +317,37 @@
       } catch (e) {}
     }
     initGlobalNav();
+
+    // Report-a-problem auto focus
+    const reportMode = {{ 'true' if report_mode else 'false' }};
+    if (reportMode) {
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const msgSection = document.querySelector('[data-section=\"messages\"]') || document.querySelector('.bg-zinc-900/60.border.border-zinc-800.rounded-2xl.p-5.mb-6');
+          const textarea = document.getElementById('reply-textarea');
+          if (msgSection && msgSection.scrollIntoView) msgSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          if (textarea) {
+            const preset = "I'm seeing an issue with this print: ";
+            if (!textarea.value) textarea.value = preset;
+            textarea.focus();
+            textarea.selectionStart = textarea.value.length;
+          }
+        }, 300);
+      });
+    }
   </script>
 
   <div class="max-w-2xl mx-auto p-6">
+    
+    {% if report_mode %}
+    <div class="mb-4 p-3 bg-amber-900/40 border border-amber-600/60 rounded-xl text-amber-100 flex items-start gap-2">
+      <span class="text-lg">⚠️</span>
+      <div>
+        <div class="font-semibold">Report a problem</div>
+        <div class="text-sm text-amber-200">Tell us what's wrong and we'll pause/inspect the print.</div>
+      </div>
+    </div>
+    {% endif %}
     
     <!-- Back Button -->
     <a href="/my-requests/view?token={{ token }}" class="inline-flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 text-sm mb-4 transition">
@@ -1074,7 +1102,7 @@
     {% endif %}
     
     <!-- Messages / Communication -->
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6" data-section="messages">
       <h2 class="font-semibold mb-4">💬 Messages</h2>
       
       {% if messages %}
@@ -1104,7 +1132,7 @@
       <!-- Reply Form (always show for active requests) -->
       {% if req.status not in ['PICKED_UP', 'REJECTED', 'CANCELLED'] %}
         <form method="POST" action="/my/{{ req.id }}/reply?token={{ token }}" class="space-y-3">
-          <textarea name="message" rows="3" 
+          <textarea id="reply-textarea" name="message" rows="3" 
                     placeholder="Type your message here..."
                     class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm resize-none focus:border-indigo-500 focus:outline-none"
                     required></textarea>

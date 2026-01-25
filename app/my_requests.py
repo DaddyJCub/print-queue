@@ -37,7 +37,7 @@ router = APIRouter()
 # ─────────────────────────── REQUESTER PORTAL ───────────────────────────
 
 @router.get("/open/{rid}", response_class=HTMLResponse)
-async def open_in_app_page(request: Request, rid: str, token: str):
+async def open_in_app_page(request: Request, rid: str, token: str, report: Optional[str] = None, build_id: Optional[str] = None):
     """
     Smart redirect page that helps users open links in the PWA.
     If viewing in PWA: redirects directly to the request.
@@ -51,6 +51,10 @@ async def open_in_app_page(request: Request, rid: str, token: str):
         raise HTTPException(status_code=403, detail="Invalid link")
     
     target_url = f"/my/{rid}?token={token}"
+    if build_id:
+        target_url += f"&build_id={build_id}"
+    if report:
+        target_url += "&report=1"
     return templates.TemplateResponse("open_in_app.html", {
         "request": request,
         "target_url": target_url,
@@ -61,7 +65,7 @@ async def open_in_app_page(request: Request, rid: str, token: str):
 
 
 @router.get("/my/{rid}", response_class=HTMLResponse)
-async def requester_portal(request: Request, rid: str, token: str):
+async def requester_portal(request: Request, rid: str, token: str, report: Optional[str] = None, build_id: Optional[str] = None):
     """Requester portal - view and interact with your request"""
     logger.debug(f"[REQUESTER_PORTAL] Loading request {rid[:8]}")
     conn = db()
@@ -214,6 +218,8 @@ async def requester_portal(request: Request, rid: str, token: str):
         "current_printing_build": current_printing_build,
         "current_printing_file": current_printing_file,
         "designer_name": designer_name,
+        "report_mode": bool(report),
+        "report_build_id": build_id,
     })
 
 
@@ -1030,4 +1036,3 @@ def generate_sync_code(token: str = Form(...)):
     conn.close()
     
     return {"success": True, "code": short_code, "expires_in": 600}  # 10 minutes in seconds
-
