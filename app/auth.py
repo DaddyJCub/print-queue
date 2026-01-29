@@ -1818,14 +1818,38 @@ def count_sessions_for_account(account_id: str) -> int:
 # ─────────────────────────── REQUEST ASSIGNMENTS ───────────────────────────
 
 def create_request_assignment(
-    request_id: str,
-    account_id: str,
+    conn_or_request_id,  # Can be a connection or request_id for backwards compat
+    request_id_or_account_id: str = None,
+    account_id_or_role = None,
     role: AssignmentRole = AssignmentRole.REQUESTER,
     assigned_by_account_id: Optional[str] = None,
     notes: Optional[str] = None
-) -> RequestAssignment:
-    """Create a request assignment (link account to request)."""
-    conn = db()
+) -> Optional[RequestAssignment]:
+    """Create a request assignment (link account to request).
+    
+    Supports two calling conventions:
+    - create_request_assignment(conn, request_id, account_id, role)  # with existing connection
+    - create_request_assignment(request_id=..., account_id=..., role=...)  # keyword args, creates own connection
+    """
+    import sqlite3
+    
+    # Detect calling convention
+    if isinstance(conn_or_request_id, sqlite3.Connection):
+        # Called with connection as first arg
+        conn = conn_or_request_id
+        request_id = request_id_or_account_id
+        account_id = account_id_or_role
+        own_connection = False
+    else:
+        # Called with request_id as first arg (keyword style)
+        conn = db()
+        request_id = conn_or_request_id
+        account_id = request_id_or_account_id
+        if account_id_or_role is not None and not isinstance(account_id_or_role, AssignmentRole):
+            # account_id was passed as third positional arg
+            account_id = account_id_or_role
+        own_connection = True
+    
     now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     assignment_id = str(uuid.uuid4())
     
@@ -1833,11 +1857,16 @@ def create_request_assignment(
         INSERT INTO request_assignments (id, request_id, account_id, role, assigned_at, assigned_by_account_id, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (assignment_id, request_id, account_id, role.value, now, assigned_by_account_id, notes))
-    conn.commit()
-    conn.close()
     
-    logger.info(f"Created assignment: account {account_id} -> request {request_id} as {role.value}")
-    return get_request_assignment_by_id(assignment_id)
+    if own_connection:
+        conn.commit()
+        conn.close()
+        logger.info(f"Created assignment: account {account_id} -> request {request_id} as {role.value}")
+        return get_request_assignment_by_id(assignment_id)
+    else:
+        # Let caller handle commit
+        logger.info(f"Created assignment: account {account_id} -> request {request_id} as {role.value}")
+        return None  # Caller should query if needed after commit
 
 
 def get_request_assignment_by_id(assignment_id: str) -> Optional[RequestAssignment]:

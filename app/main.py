@@ -427,7 +427,7 @@ Referer: {request.headers.get('referer', 'N/A')}
 Traceback:
 {tb_str[:2000]}"""
         
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=30)
         conn.row_factory = sqlite3.Row
         feedback_id = str(uuid.uuid4())
         conn.execute(

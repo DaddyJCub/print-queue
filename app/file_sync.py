@@ -38,7 +38,7 @@ def get_db_path():
     return os.getenv("DB_PATH", "/data/app.db")
 
 def db():
-    conn = sqlite3.connect(get_db_path())
+    conn = sqlite3.connect(get_db_path(), timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 
