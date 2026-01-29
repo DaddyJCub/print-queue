@@ -705,7 +705,7 @@ MATERIALS = [
 
 
 def db():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -713,6 +713,10 @@ def db():
 def init_db():
     conn = db()
     cur = conn.cursor()
+    
+    # Enable WAL mode for better concurrency (allows reads during writes)
+    cur.execute("PRAGMA journal_mode=WAL")
+    cur.execute("PRAGMA busy_timeout=30000")  # 30 second timeout
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS requests (
@@ -3868,6 +3872,8 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
                 data={"requestId": request_id, "buildId": build_id, "reportUrl": report_url},
                 actions=[{"action": "report-problem", "title": "Report a problem"}]
             )
+            # Record milestone so we don't keep re-sending admin alerts
+            record_progress_milestone(build_id, milestone, "admin")
             sent_any = True  # prevent milestone from being re-sent/recorded
         
         # Record milestone even if no notifications sent (prevents re-check)
@@ -5420,11 +5426,16 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
         
     print(f"[PUSH] Found {len(subs)} subscription(s) for {email}")
     
+    # Normalize URL to absolute for better PWA handling (iOS/Android)
+    resolved_url = url or "/my-requests/view"
+    if resolved_url.startswith("/"):
+        resolved_url = f"{BASE_URL}{resolved_url}"
+
     # Build notification payload with optional image support
     payload_data = {
         "title": title,
         "body": body,
-        "url": url or "/my-requests/view",
+        "url": resolved_url,
         "icon": "/static/icons/icon-192.png",
     }
     

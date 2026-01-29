@@ -43,7 +43,7 @@ def get_db_path():
 
 def db():
     """Get database connection."""
-    conn = sqlite3.connect(get_db_path())
+    conn = sqlite3.connect(get_db_path(), timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -1966,19 +1966,34 @@ def can_account_edit_request(account_id: str, request_id: str) -> bool:
 
 async def get_current_account(request: Request) -> Optional[Account]:
     """Get current account from session cookie (unified system)."""
+    # Primary: dedicated account session cookie
     token = request.cookies.get("session")
-    if not token:
-        return None
+    if token:
+        session = get_session_by_token(token)
+        if session:
+            account = get_account_by_id(session.account_id)
+            if account and account.status != UserStatus.SUSPENDED:
+                return account
     
-    session = get_session_by_token(token)
-    if not session:
-        return None
+    # Fallback: user session cookie (user_session) → map to account by email
+    user_token = request.cookies.get("user_session")
+    if user_token:
+        user = get_user_by_session(user_token)
+        if user:
+            account = get_account_by_email(user.email)
+            if account and account.status != UserStatus.SUSPENDED:
+                return account
     
-    account = get_account_by_id(session.account_id)
-    if not account or account.status == UserStatus.SUSPENDED:
-        return None
+    # Fallback: admin_session mapped to admin row then to account by email (migration aid)
+    admin_token = request.cookies.get("admin_session")
+    if admin_token:
+        admin = get_admin_by_session(admin_token)
+        if admin:
+            account = get_account_by_email(admin.email)
+            if account and account.status != UserStatus.SUSPENDED:
+                return account
     
-    return account
+    return None
 
 
 async def require_account(request: Request) -> Account:
