@@ -1498,50 +1498,7 @@ async def get_all_printers_status(_=Depends(require_admin)):
 @router.get("/api/printer/{printer_code}/raw/{command}")
 async def printer_raw_command(printer_code: str, command: str, _=Depends(require_admin)):
     """Send a raw M-code command to the printer and return the response"""
-    if printer_code not in ["ADVENTURER_4", "AD5X"]:
-        raise HTTPException(status_code=400, detail="Invalid printer code")
-    
-    if printer_code == "ADVENTURER_4":
-        ip = get_setting("printer_adventurer_4_ip", "192.168.0.198")
-    else:
-        ip = get_setting("printer_ad5x_ip", "192.168.0.157")
-    
-    import socket
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(5)
-        sock.connect((ip, 8899))
-        
-        # Send control request first
-        sock.send(b"~M601 S1\r\n")
-        control_resp = sock.recv(1024).decode('utf-8', errors='ignore')
-        
-        # Send the command (add ~ prefix if not present)
-        cmd = command if command.startswith("~") else f"~{command}"
-        sock.send(f"{cmd}\r\n".encode())
-        
-        # Read response
-        response = b""
-        while True:
-            try:
-                chunk = sock.recv(4096)
-                if not chunk:
-                    break
-                response += chunk
-                if b"ok\r\n" in response or b"ok\n" in response:
-                    break
-            except socket.timeout:
-                break
-        
-        sock.close()
-        return {
-            "command": cmd,
-            "control_response": control_resp.strip(),
-            "response": response.decode('utf-8', errors='ignore').strip(),
-            "response_lines": response.decode('utf-8', errors='ignore').strip().split('\n')
-        }
-    except Exception as e:
-        return {"command": command, "error": str(e)}
+    return _send_raw_command(printer_code, command)
 
 
 @router.get("/api/printer/{printer_code}/test-commands")
@@ -1625,8 +1582,81 @@ async def printer_test_commands(printer_code: str, _=Depends(require_admin)):
             }
         except Exception as e:
             results["commands"][cmd] = {"desc": desc, "error": str(e)}
-    
+
     return results
+
+
+@router.get("/api/admin/build/{build_id}/pause-open")
+def admin_pause_and_open(
+    build_id: str,
+    _=Depends(require_admin)
+):
+    """
+    Pause the printer running a build (M25) then redirect to admin request page.
+    Safe fallback if printer/build not found.
+    """
+    conn = db()
+    build = conn.execute("SELECT request_id, printer FROM builds WHERE id = ?", (build_id,)).fetchone()
+    req_id = build["request_id"] if build else None
+    printer_code = build["printer"] if build else None
+    conn.close()
+    
+    if printer_code:
+        try:
+            result = _send_raw_command(printer_code, "M25")
+            print(f"[ADMIN-PAUSE] Sent M25 to {printer_code} for build {build_id[:8]}: {result}")
+        except Exception as e:
+            print(f"[ADMIN-PAUSE] Failed to pause {printer_code}: {e}")
+    
+    target = f"/admin/request/{req_id}" if req_id else "/admin"
+    return RedirectResponse(url=target, status_code=303)
+
+
+def _send_raw_command(printer_code: str, command: str):
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    if printer_code == "ADVENTURER_4":
+        ip = get_setting("printer_adventurer_4_ip", "192.168.0.198")
+    else:
+        ip = get_setting("printer_ad5x_ip", "192.168.0.157")
+    
+    import socket
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        sock.connect((ip, 8899))
+        
+        # Send control request first
+        sock.send(b"~M601 S1\r\n")
+        control_resp = sock.recv(1024).decode('utf-8', errors='ignore')
+        
+        # Send the command (add ~ prefix if not present)
+        cmd = command if command.startswith("~") else f"~{command}"
+        sock.send(f"{cmd}\r\n".encode())
+        
+        # Read response
+        response = b""
+        while True:
+            try:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+                if b"ok\r\n" in response or b"ok\n" in response:
+                    break
+            except socket.timeout:
+                break
+        
+        sock.close()
+        return {
+            "command": cmd,
+            "control_response": control_resp.strip(),
+            "response": response.decode('utf-8', errors='ignore').strip(),
+            "response_lines": response.decode('utf-8', errors='ignore').strip().split('\n')
+        }
+    except Exception as e:
+        return {"command": command, "error": str(e)}
 
 
 @router.get("/api/print-history")
