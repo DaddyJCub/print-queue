@@ -225,6 +225,10 @@ async def submit(
             f"Request ID: {rid}\nStatus: NEW\n\n"
             f"Queue: {BASE_URL}/queue?mine={rid[:8]}\n"
         )
+        # Show account tip if user is not logged in (guest submission)
+        show_tip = user is None
+        register_url = f"{BASE_URL}/auth/register?email={urllib.parse.quote(requester_email.strip())}" if show_tip else None
+        
         html = build_email_html(
             title="Request received",
             subtitle="We got it — you’re in the queue.",
@@ -240,6 +244,8 @@ async def submit(
             cta_label="View queue",
             secondary_cta_url=f"{BASE_URL}/my-requests/view?token={get_or_create_my_requests_token(requester_email)}",
             secondary_cta_label="All My Requests",
+            show_account_tip=show_tip,
+            tip_register_url=register_url,
         )
         send_email([requester_email.strip()], subject, text, html)
 

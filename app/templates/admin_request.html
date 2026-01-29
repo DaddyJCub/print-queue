@@ -601,7 +601,7 @@
                         </form>
                         <button type="button"
                                 class="text-xs px-2 py-1 rounded bg-amber-700/80 hover:bg-amber-600 text-white transition"
-                                onclick="pauseBuildConfirm('{{ b.id }}', {{ b.build_number }}, '{{ b.printer or \"\" }}')">
+                                onclick="pauseBuildConfirm('{{ b.id }}', {{ b.build_number }}, '{{ b.printer|default("", true) }}')">
                           ⏸ Pause
                         </button>
                       {% elif b.status == 'FAILED' %}
