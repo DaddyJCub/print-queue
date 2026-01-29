@@ -11,6 +11,9 @@
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
+    const targetUrl = "{{ target_url }}";
+    const isReport = {{ 'true' if report_mode else 'false' }};
+
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js', {scope: '/'})
         .then(r => console.log('[SW] Registered:', r.scope))
@@ -201,7 +204,13 @@
     }
     
     // Run on page load
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', () => {
+      init();
+      if (!isInstalledPWA() && isReport) {
+        // For report links, auto-redirect to the request page even in browser
+        setTimeout(() => { window.location.href = targetUrl; }, 800);
+      }
+    });
   </script>
 </body>
 </html>

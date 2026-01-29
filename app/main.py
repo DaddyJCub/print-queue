@@ -2465,6 +2465,7 @@ DEFAULT_SETTINGS: Dict[str, str] = {
     "progress_notification_thresholds": "50,75",
     # Enable progress notifications (push primarily, email at 50% and 75%)
     "enable_progress_notifications": "1",
+    "admin_progress_notifications": "0",
 }
 
 
@@ -3643,7 +3644,8 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
     
     # Always evaluate 50% and 75% for email to ensure health-check checkpoints
     required_email_milestones = {50, 75}
-    all_milestones = sorted(set(thresholds_for_push) | required_email_milestones)
+    admin_milestones = {25, 75}  # Always evaluate admin checkpoints
+    all_milestones = sorted(set(thresholds_for_push) | required_email_milestones | admin_milestones)
     
     if not all_milestones:
         return
@@ -3688,7 +3690,7 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
         camera_url = get_camera_url(printer_code)
         if camera_url:
             # Use the public snapshot endpoint (with timestamp to avoid caching)
-            image_url = f"{BASE_URL}/api/camera/{printer_code}/snapshot"
+            image_url = f"{BASE_URL}/api/camera/{printer_code}/snapshot?ts={int(datetime.utcnow().timestamp())}"
             print(f"[PROGRESS-NOTIFY] Including camera snapshot URL: {image_url}")
     
     for milestone in milestones_to_send:
@@ -3773,9 +3775,61 @@ def send_progress_notification(build: Dict, request: Dict, current_percent: int)
                 footer_note=f"<a href=\"{BASE_URL}{my_requests_url}\">All My Requests</a> • If something looks off, click Report a Problem so we can investigate.",
                 image_base64=snapshot_to_send,
             )
-            send_email([requester_email], subject, text, html)
+            send_email([requester_email], subject, text, html, image_base64=snapshot_to_send)
             record_progress_milestone(build_id, milestone, "email")
             sent_any = True
+
+        # Admin progress alerts at 25% and 75% with snapshot/link (toggleable)
+        admin_progress_on = get_bool_setting("admin_progress_notifications", False)
+        admin_emails = parse_email_list(get_setting("admin_notify_emails", "")) if admin_progress_on else []
+        if admin_progress_on and admin_emails and milestone in admin_milestones:
+            snapshot_to_send_admin = None
+            snapshot_url = None
+            if get_bool_setting("enable_camera_snapshot", False) and printer_code:
+                snapshot_url = f"{BASE_URL}/api/camera/{printer_code}/snapshot"
+                try:
+                    r = httpx.get(snapshot_url, timeout=4)
+                    if r.status_code == 200 and r.content:
+                        snapshot_to_send_admin = base64.b64encode(r.content).decode("utf-8")
+                        print(f"[PROGRESS-NOTIFY] Admin snapshot included for {request_id[:8]} {milestone}%")
+                except Exception as e:
+                    print(f"[PROGRESS-NOTIFY] Admin snapshot fetch failed: {e}")
+
+            admin_subject = f"[{APP_TITLE}] Admin {milestone}% - {print_label} (Build {build_num})"
+            admin_text = (
+                f"{print_label} is {milestone}% complete{build_context}.\n"
+                f"Request: {request_id[:8]}\n"
+                f"Build: {build_num} of {total_builds}\n"
+                f"Link: {BASE_URL}/admin/request/{request_id}\n"
+            )
+            admin_html = build_email_html(
+                title=f"Admin {milestone}% checkpoint",
+                subtitle=f"'{print_label}' (Build {build_num}) is at {milestone}%",
+                rows=[
+                    ("Request", request_id[:8]),
+                    ("Build", f"{build_num} of {total_builds}"),
+                    ("Progress", f"{milestone}%"),
+                    ("Printer", _human_printer(printer_code) if printer_code else "—"),
+                ],
+                cta_url=f"{BASE_URL}/admin/request/{request_id}",
+                cta_label="Open in Admin",
+                header_color="#0ea5e9",
+                secondary_cta_url=snapshot_url,
+                secondary_cta_label="View Snapshot" if snapshot_url else None,
+                image_base64=snapshot_to_send_admin,
+            )
+            send_email(admin_emails, admin_subject, admin_text, admin_html, image_base64=snapshot_to_send_admin)
+            # Send admin push with snapshot (where supported)
+            send_push_notification_to_admins(
+                title=admin_subject,
+                body=notification_body,
+                url=f"/admin/request/{request_id}",
+                tag=f"admin-progress-{build_id[:8]}",
+                image_url=snapshot_url,
+                data={"requestId": request_id, "buildId": build_id, "reportUrl": report_url},
+                actions=[{"action": "report-problem", "title": "Report a problem"}]
+            )
+            sent_any = True  # prevent milestone from being re-sent/recorded
         
         # Record milestone even if no notifications sent (prevents re-check)
         if not sent_any:
@@ -5569,7 +5623,9 @@ def send_broadcast_notification(title: str, body: str, url: str = None,
     return result
 
 
-def send_push_notification_to_admins(title: str, body: str, url: str = None, tag: str = None) -> dict:
+def send_push_notification_to_admins(title: str, body: str, url: str = None, tag: str = None,
+                                     image_url: Optional[str] = None, data: Optional[dict] = None,
+                                     actions: Optional[List[Dict[str, str]]] = None) -> dict:
     """
     Send push notification to all admins who have push subscriptions.
     Uses the admin_notify_emails setting to determine which emails are admins.
@@ -5603,7 +5659,10 @@ def send_push_notification_to_admins(title: str, body: str, url: str = None, tag
             title=title,
             body=body,
             url=url or "/admin",
-            tag=tag
+            tag=tag,
+            image_url=image_url,
+            data=data,
+            actions=actions
         )
         result["total_sent"] += push_result.get("sent", 0)
         result["total_failed"] += push_result.get("failed", 0)

@@ -61,6 +61,7 @@ async def open_in_app_page(request: Request, rid: str, token: str, report: Optio
         "rid": rid,
         "print_name": req["print_name"],
         "email": req["requester_email"],
+        "report_mode": bool(report),
     })
 
 

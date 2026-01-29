@@ -99,6 +99,21 @@
     <!-- Send Custom Broadcast -->
     <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mb-6">
       <h2 class="text-lg font-semibold mb-4">✏️ Send Custom Broadcast</h2>
+
+      <div class="mb-4 p-3 bg-zinc-900 border border-zinc-800 rounded-xl">
+        <label class="flex items-center justify-between text-sm text-zinc-200">
+          <div>
+            <div class="font-semibold">Admin Progress Push Alerts</div>
+            <div class="text-xs text-zinc-500">Send 25% & 75% build checkpoints (with snapshots) to admin push subscribers.</div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="admin-progress-toggle" class="sr-only">
+            <div class="w-11 h-6 bg-zinc-700 rounded-full peer-focus:outline-none peer-checked:bg-emerald-500 transition"></div>
+            <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition peer-checked:translate-x-5"></span>
+          </label>
+        </label>
+        <p id="admin-progress-status" class="text-xs text-zinc-500 mt-1">Loading setting…</p>
+      </div>
       
       <form method="POST" action="/admin/broadcast/send" class="space-y-4" onsubmit="return confirmBroadcast(this)">
         <div>
@@ -376,10 +391,51 @@
       }
     }
     
-    function updateVersionPreview(version) {
-      document.getElementById('preview-version').textContent = version;
-      document.getElementById('preview-anchor').textContent = version;
+  function updateVersionPreview(version) {
+    document.getElementById('preview-version').textContent = version;
+    document.getElementById('preview-anchor').textContent = version;
+  }
+
+  // Admin progress toggle
+  async function loadAdminProgressToggle() {
+    try {
+      const resp = await fetch('/api/settings/admin_progress_notifications', { credentials: 'include' });
+      if (!resp.ok) throw new Error('Failed to load setting');
+      const data = await resp.json();
+      const toggle = document.getElementById('admin-progress-toggle');
+      const status = document.getElementById('admin-progress-status');
+      toggle.checked = data.enabled;
+      status.textContent = data.enabled ? 'Enabled for admin push subscribers' : 'Disabled';
+    } catch (e) {
+      document.getElementById('admin-progress-status').textContent = 'Could not load setting';
     }
+  }
+
+  async function saveAdminProgressToggle() {
+    const toggle = document.getElementById('admin-progress-toggle');
+    const status = document.getElementById('admin-progress-status');
+    status.textContent = 'Saving...';
+    try {
+      const resp = await fetch('/api/settings/admin_progress_notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ enabled: toggle.checked })
+      });
+      if (!resp.ok) throw new Error('Save failed');
+      status.textContent = toggle.checked ? 'Enabled for admin push subscribers' : 'Disabled';
+      showToast('Saved admin progress alerts');
+    } catch (e) {
+      status.textContent = 'Save failed';
+      toggle.checked = !toggle.checked;
+      showToast('Failed to save', 'error');
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadAdminProgressToggle();
+    document.getElementById('admin-progress-toggle').addEventListener('change', saveAdminProgressToggle);
+  });
   </script>
 </body>
 </html>

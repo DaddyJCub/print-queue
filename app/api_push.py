@@ -30,6 +30,24 @@ from app.auth import get_current_user
 router = APIRouter()
 
 # ─────────────────────────── BROADCAST NOTIFICATIONS ───────────────────────────
+@router.get("/api/settings/admin_progress_notifications")
+async def get_admin_progress_notifications():
+    enabled = get_bool_setting("admin_progress_notifications", False)
+    return {"enabled": enabled}
+
+
+@router.post("/api/settings/admin_progress_notifications")
+async def set_admin_progress_notifications(request: Request, _=Depends(require_admin)):
+    try:
+        data = await _parse_request_data(request)
+        enabled = bool(data.get("enabled", False))
+        set_setting("admin_progress_notifications", "1" if enabled else "0")
+        return {"success": True, "enabled": enabled}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
 
 @router.get("/admin/broadcast", response_class=HTMLResponse)
 def admin_broadcast_page(request: Request, _=Depends(require_admin)):
