@@ -65,12 +65,39 @@
         </p>
       </div>
 
+      <!-- v0.11.1 -->
+      <div id="v0.11.1" class="bg-gradient-to-br from-zinc-900/80 via-indigo-900/30 to-emerald-950/20 border border-indigo-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.11.1" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.11.1</a>
+          <span class="text-zinc-400 text-sm">January 29, 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+          <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Safer printer controls & admin progress alerts</h3>
+        <p class="text-sm text-zinc-400 mb-4">Adds guarded pause controls where admins watch cameras, fixes the admin progress toggle, and keeps printer cards in sync with the active build.</p>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Dashboard pause button with confirmation</strong> — Printer cards now surface a ⏸ control when a build is actively printing; clicking asks for confirmation then sends M25 to pause.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Active-build awareness</strong> — The dashboard fetches the live PRINTING build per printer so actions (like pause) target the correct job.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Admin progress toggle fix</strong> — The “Admin Progress Push Alerts” switch now reflects the saved setting and no longer throws missing import errors.</span>
+          </li>
+        </ul>
+      </div>
+
       <!-- v0.11.0 -->
       <div id="v0.11.0" class="bg-gradient-to-br from-zinc-900/80 via-purple-900/30 to-indigo-950/30 border border-purple-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-purple-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.11.0" class="px-3 py-1 bg-purple-600 text-white text-sm font-bold rounded-lg hover:bg-purple-500 transition">v0.11.0</a>
           <span class="text-zinc-400 text-sm">January 20, 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Major</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
           <span class="px-2 py-1 bg-purple-600/20 text-purple-300 text-xs rounded-lg border border-purple-500/50">🔒 Security</span>
         </div>
