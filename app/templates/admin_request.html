@@ -599,6 +599,11 @@
                             ✕ Fail
                           </button>
                         </form>
+                        <button type="button"
+                                class="text-xs px-2 py-1 rounded bg-amber-700/80 hover:bg-amber-600 text-white transition"
+                                onclick="pauseBuildConfirm('{{ b.id }}', {{ b.build_number }}, '{{ b.printer or \"\" }}')">
+                          ⏸ Pause
+                        </button>
                       {% elif b.status == 'FAILED' %}
                         <form action="/admin/build/{{ b.id }}/retry" method="POST" class="inline">
                           <button type="submit" class="text-xs px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white transition">
@@ -1661,10 +1666,17 @@
       function selectAccount(id, display) {
         document.getElementById('selected-account-id').value = id;
         document.getElementById('selected-account-name').textContent = display;
-        document.getElementById('selected-account-display').classList.remove('hidden');
-        document.getElementById('account-search-input').value = '';
-        document.getElementById('account-search-results').innerHTML = '';
-      }
+      document.getElementById('selected-account-display').classList.remove('hidden');
+      document.getElementById('account-search-input').value = '';
+      document.getElementById('account-search-results').innerHTML = '';
+    }
+    
+    // Pause confirmation helper for printing builds (sends M25)
+    function pauseBuildConfirm(buildId, buildNumber, printer) {
+      const label = printer ? ` on ${printer}` : '';
+      if (!confirm(`Pause build ${buildNumber}${label}? This will pause the active print (M25).`)) return;
+      window.location = `/api/admin/build/${buildId}/pause-open`;
+    }
       
       // Close modal on backdrop click
       document.getElementById('link-account-modal')?.addEventListener('click', (e) => {
