@@ -319,6 +319,19 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
     for printer_code in ["ADVENTURER_4", "AD5X"]:
         printer_status[printer_code] = await fetch_printer_status_with_cache(printer_code, timeout=3.0)
 
+    # Active build per printer (for pause button on dashboard)
+    active_builds_by_printer = {}
+    conn_active = db()
+    rows = conn_active.execute(
+        """SELECT b.id, b.build_number, b.printer, b.request_id, r.print_name
+           FROM builds b
+           JOIN requests r ON r.id = b.request_id
+           WHERE b.status = 'PRINTING' AND b.printer IN ('ADVENTURER_4', 'AD5X')"""
+    ).fetchall()
+    conn_active.close()
+    for row in rows:
+        active_builds_by_printer[row["printer"]] = dict(row)
+
     # Get print match suggestions
     print_match_suggestions = get_print_match_suggestions()
     
@@ -343,6 +356,7 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
             "ADVENTURER_4": printer_status.get("ADVENTURER_4", {}),
             "AD5X": printer_status.get("AD5X", {}),
         },
+        "active_builds_by_printer": active_builds_by_printer,
         "print_match_suggestions": print_match_suggestions,
         "printers": PRINTERS,
         "materials": MATERIALS,

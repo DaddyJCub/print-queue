@@ -489,6 +489,16 @@
             <div class="progress-bar h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500" 
                  style="width: {{ printer_status.ADVENTURER_4.progress or 0 }}%"></div>
           </div>
+          {% set active_build = active_builds_by_printer.get('ADVENTURER_4') %}
+          {% if active_build %}
+          <div class="mt-3 flex justify-end">
+            <button type="button"
+                    class="px-3 py-1.5 rounded-lg bg-amber-700/80 hover:bg-amber-600 text-white text-xs font-semibold transition"
+                    onclick="pausePrinterBuildConfirm('{{ active_build.id }}', '{{ active_build.build_number }}', 'ADVENTURER_4')">
+              ⏸ Pause Print
+            </button>
+          </div>
+          {% endif %}
         </div>
         
         <div class="flex items-center justify-between text-xs text-zinc-400">
@@ -581,6 +591,16 @@
             <div class="progress-bar h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500" 
                  style="width: {{ printer_status.AD5X.progress or 0 }}%"></div>
           </div>
+          {% set active_build = active_builds_by_printer.get('AD5X') %}
+          {% if active_build %}
+          <div class="mt-3 flex justify-end">
+            <button type="button"
+                    class="px-3 py-1.5 rounded-lg bg-amber-700/80 hover:bg-amber-600 text-white text-xs font-semibold transition"
+                    onclick="pausePrinterBuildConfirm('{{ active_build.id }}', '{{ active_build.build_number }}', 'AD5X')">
+              ⏸ Pause Print
+            </button>
+          </div>
+          {% endif %}
         </div>
         
         <div class="flex items-center justify-between text-xs text-zinc-400">
@@ -743,6 +763,17 @@
           if (status.target_temp) tempText += ` / ${status.target_temp}°C`;
           temp.innerHTML = tempText;
         }
+      }
+
+      // Pause active build from printer card (sends M25)
+      function pausePrinterBuildConfirm(buildId, buildNumber, printer) {
+        if (!buildId) {
+          alert('No active build id found for this printer.');
+          return;
+        }
+        const label = buildNumber ? `build ${buildNumber}` : 'the active build';
+        if (!confirm(`Pause ${label} on ${printer}? This will send M25 to the printer.`)) return;
+        window.location = `/api/admin/build/${buildId}/pause-open`;
       }
       
       function startAutoRefresh() {
