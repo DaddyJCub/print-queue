@@ -2618,6 +2618,13 @@ def admin_set_status(
         my_requests_token = get_or_create_my_requests_token(req["requester_email"])
         my_requests_url = f"{BASE_URL}/my-requests/view?token={my_requests_token}"
         
+        # Check if user has an account (show account tip if not)
+        show_account_tip = not bool(req.get("account_id"))
+        tip_register_url = None
+        if show_account_tip:
+            from urllib.parse import quote
+            tip_register_url = f"{BASE_URL}/auth/register?email={quote(req['requester_email'])}"
+        
         html = build_email_html(
             title=status_title,
             subtitle=subtitle,
@@ -2628,6 +2635,8 @@ def admin_set_status(
             footer_note=footer_note,
             secondary_cta_url=my_requests_url,
             secondary_cta_label="All My Requests",
+            show_account_tip=show_account_tip,
+            tip_register_url=tip_register_url,
         )
         send_email([req["requester_email"]], subject, text, html)
 
@@ -2855,6 +2864,14 @@ def admin_update_design(
             f"Design work for your print '{print_label}' is complete.\n\n"
             f"You can review the request here: {view_url}\n"
         )
+        
+        # Check if user has an account (show account tip if not)
+        show_account_tip = not bool(updated_req.get("account_id"))
+        tip_register_url = None
+        if show_account_tip:
+            from urllib.parse import quote
+            tip_register_url = f"{BASE_URL}/auth/register?email={quote(requester_email)}"
+        
         html = build_email_html(
             title="Design Ready",
             subtitle=f"'{print_label}' has completed design review",
@@ -2866,6 +2883,8 @@ def admin_update_design(
             cta_label="View Request",
             header_color="#0ea5e9",
             footer_note="If anything looks off, reply to this email or send a message in the portal.",
+            show_account_tip=show_account_tip,
+            tip_register_url=tip_register_url,
         )
         if prefs.get("status_email", True):
             send_email([requester_email], subject, text, html)
@@ -2913,6 +2932,18 @@ def admin_send_reminder(
         f"Please respond so we can continue processing your request:\n{portal_url}\n\n"
         f"Thanks!"
     )
+    
+    # Check if user has an account (show account tip if not)
+    # Need to fetch the full request to check account_id
+    conn2 = db()
+    full_req = conn2.execute("SELECT account_id FROM requests WHERE id = ?", (rid,)).fetchone()
+    conn2.close()
+    show_account_tip = not bool(full_req["account_id"]) if full_req else False
+    tip_register_url = None
+    if show_account_tip:
+        from urllib.parse import quote
+        tip_register_url = f"{BASE_URL}/auth/register?email={quote(req['requester_email'])}"
+    
     html = build_email_html(
         title="⏰ Reminder: Info Needed",
         subtitle=f"We're waiting on your response for '{print_label}'",
@@ -2924,6 +2955,8 @@ def admin_send_reminder(
         cta_label="Respond Now",
         header_color="#f97316",  # Orange
         footer_note="Please respond so we can continue processing your print request.",
+        show_account_tip=show_account_tip,
+        tip_register_url=tip_register_url,
     )
     send_email([req["requester_email"]], subject, text, html)
     
@@ -2960,6 +2993,17 @@ def admin_send_message(
         print_label = req["print_name"] or f"Request {rid[:8]}"
         subject = f"[{APP_TITLE}] New message about '{print_label}'"
         text = f"New message from admin:\n\n{message}\n\nRespond here: {BASE_URL}/open/{rid}?token={req['access_token']}"
+        
+        # Check if user has an account (show account tip if not)
+        conn2 = db()
+        full_req = conn2.execute("SELECT account_id FROM requests WHERE id = ?", (rid,)).fetchone()
+        conn2.close()
+        show_account_tip = not bool(full_req["account_id"]) if full_req else False
+        tip_register_url = None
+        if show_account_tip:
+            from urllib.parse import quote
+            tip_register_url = f"{BASE_URL}/auth/register?email={quote(req['requester_email'])}"
+        
         html = build_email_html(
             title="💬 New Message",
             subtitle=f"About your request '{print_label}'",
@@ -2969,6 +3013,8 @@ def admin_send_message(
             cta_url=f"{BASE_URL}/open/{rid}?token={req['access_token']}",
             cta_label="View & Reply",
             header_color="#6366f1",
+            show_account_tip=show_account_tip,
+            tip_register_url=tip_register_url,
         )
         send_email([req["requester_email"]], subject, text, html)
     

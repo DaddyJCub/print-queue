@@ -80,7 +80,7 @@
         <input type="email" id="email" name="email" required autocomplete="email"
                class="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
                placeholder="you@example.com"
-               value="{{ form_data.email if form_data else '' }}">
+               value="{{ email if email else (form_data.email if form_data else '') }}">
       </div>
 
       <div>

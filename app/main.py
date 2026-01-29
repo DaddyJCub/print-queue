@@ -29,7 +29,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.11.1"
+APP_VERSION = "0.12.0"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -41,6 +41,9 @@ APP_VERSION = "0.11.1"
 #   - 0.x.PATCH = Bug fixes only
 #
 # Changelog:
+# 0.12.0 - [FEATURE] Guest account creation tips in emails: subtle CTAs in all notification emails, pre-filled registration, auto-link existing requests
+# 0.11.1 - [PATCH] Safer printer controls & admin progress alerts
+# 0.11.0 - [FEATURE] Designer workflow with assignments and design completion tracking
 # 0.10.0 - [MAJOR] User accounts system: registration/login, profiles, multi-admin, feature flags, user management
 # 0.9.0 - [FEATURE] Admin PWA navigation: Admin tab in bottom nav, unified navigation on admin pages, My Prints pagination
 # --- Version scheme changed from 1.x.x to 0.x.x (Dec 2025) - all prior versions below are historical ---
@@ -3195,6 +3198,13 @@ def send_build_start_notification(build: Dict, request: Dict):
         my_requests_token = get_or_create_my_requests_token(request["requester_email"])
         my_requests_url = f"{BASE_URL}/my-requests/view?token={my_requests_token}"
         
+        # Check if user has an account (show account tip if not)
+        show_account_tip = not bool(request.get("account_id"))
+        tip_register_url = None
+        if show_account_tip:
+            from urllib.parse import quote
+            tip_register_url = f"{BASE_URL}/auth/register?email={quote(request['requester_email'])}"
+        
         html = build_email_html(
             title=f"🖨️ {position_str} Started",
             subtitle=f"'{print_label}' - {build_label} is now printing",
@@ -3205,6 +3215,8 @@ def send_build_start_notification(build: Dict, request: Dict):
             footer_note=f"{'This is build ' + str(build_num) + ' of ' + str(total_builds) + '. ' if is_multi_build else ''}You will receive another notification when the print completes.",
             secondary_cta_url=my_requests_url,
             secondary_cta_label="All My Requests",
+            show_account_tip=show_account_tip,
+            tip_register_url=tip_register_url,
         )
         send_email([request["requester_email"]], subject, text, html)
     
@@ -3292,6 +3304,13 @@ def send_build_complete_notification(build: Dict, request: Dict, snapshot_b64: O
         # Include snapshot if available
         snapshot_to_send = snapshot_b64 if get_bool_setting("enable_camera_snapshot", False) else None
         
+        # Check if user has an account (show account tip if not)
+        show_account_tip = not bool(request.get("account_id"))
+        tip_register_url = None
+        if show_account_tip:
+            from urllib.parse import quote
+            tip_register_url = f"{BASE_URL}/auth/register?email={quote(request['requester_email'])}"
+        
         html = build_email_html(
             title=f"✓ {position_str} Complete",
             subtitle=f"'{print_label}' - {build_label} finished successfully",
@@ -3303,6 +3322,8 @@ def send_build_complete_notification(build: Dict, request: Dict, snapshot_b64: O
             image_base64=snapshot_to_send,
             secondary_cta_url=f"{BASE_URL}{report_url}",
             secondary_cta_label="Report a Problem",
+            show_account_tip=show_account_tip,
+            tip_register_url=tip_register_url,
         )
         send_email([request["requester_email"]], subject, text, html, image_base64=snapshot_to_send)
     
@@ -3372,6 +3393,13 @@ def send_build_fail_notification(build: Dict, request: Dict, reason: Optional[st
         my_requests_token = get_or_create_my_requests_token(request["requester_email"])
         my_requests_url = f"{BASE_URL}/my-requests/view?token={my_requests_token}"
         
+        # Check if user has an account (show account tip if not)
+        show_account_tip = not bool(request.get("account_id"))
+        tip_register_url = None
+        if show_account_tip:
+            from urllib.parse import quote
+            tip_register_url = f"{BASE_URL}/auth/register?email={quote(request['requester_email'])}"
+        
         html = build_email_html(
             title=f"⚠️ Build Issue",
             subtitle=f"'{print_label}' - Build {build_num} needs attention",
@@ -3382,6 +3410,8 @@ def send_build_fail_notification(build: Dict, request: Dict, reason: Optional[st
             footer_note="Our team is handling this issue. No action needed from you.",
             secondary_cta_url=my_requests_url,
             secondary_cta_label="All My Requests",
+            show_account_tip=show_account_tip,
+            tip_register_url=tip_register_url,
         )
         send_email([request["requester_email"]], subject, text, html)
     
@@ -3451,6 +3481,13 @@ def send_request_complete_notification(request: Dict, snapshot_b64: Optional[str
         # Include snapshot if available
         snapshot_to_send = snapshot_b64 if get_bool_setting("enable_camera_snapshot", False) else None
         
+        # Check if user has an account (show account tip if not)
+        show_account_tip = not bool(request.get("account_id"))
+        tip_register_url = None
+        if show_account_tip:
+            from urllib.parse import quote
+            tip_register_url = f"{BASE_URL}/auth/register?email={quote(request['requester_email'])}"
+        
         html = build_email_html(
             title="Print Complete!",
             subtitle=f"'{print_label}' is ready for pickup",
@@ -3461,7 +3498,9 @@ def send_request_complete_notification(request: Dict, snapshot_b64: Optional[str
             image_base64=snapshot_to_send,
             secondary_cta_url=f"{BASE_URL}{report_url}",
             secondary_cta_label="Report a Problem",
-            footer_note=f"<a href=\"{BASE_URL}{my_requests_url}\">All My Requests</a> • If the snapshot looks off, report a problem so we can pause the job."
+            footer_note=f"<a href=\"{BASE_URL}{my_requests_url}\">All My Requests</a> • If the snapshot looks off, report a problem so we can pause the job.",
+            show_account_tip=show_account_tip,
+            tip_register_url=tip_register_url,
         )
         send_email([request["requester_email"]], subject, text, html, image_base64=snapshot_to_send)
     
@@ -4399,6 +4438,13 @@ async def poll_printer_status_worker():
                             my_requests_token = get_or_create_my_requests_token(req["requester_email"])
                             my_requests_url = f"{BASE_URL}/my-requests/view?token={my_requests_token}"
                             
+                            # Check if user has an account (show account tip if not)
+                            show_account_tip = not bool(req.get("account_id"))
+                            tip_register_url = None
+                            if show_account_tip:
+                                from urllib.parse import quote
+                                tip_register_url = f"{BASE_URL}/auth/register?email={quote(req['requester_email'])}"
+                            
                             html = build_email_html(
                                 title="Now Printing!",
                                 subtitle=f"'{print_label}' is now printing!",
@@ -4408,6 +4454,8 @@ async def poll_printer_status_worker():
                                 header_color="#f59e0b",  # Orange for printing
                                 secondary_cta_url=my_requests_url,
                                 secondary_cta_label="All My Requests",
+                                show_account_tip=show_account_tip,
+                                tip_register_url=tip_register_url,
                             )
                             send_email([req["requester_email"]], subject, text, html)
                         
@@ -4586,6 +4634,14 @@ async def poll_printer_status_worker():
                         subject = f"[{APP_TITLE}] Print Complete! ({rid[:8]})"
                         text = f"Your print is done and ready for pickup!\n\nRequest ID: {rid[:8]}\n\nView queue: {BASE_URL}/queue?mine={rid[:8]}\n"
                         snapshot_to_send = completion_snapshot if get_bool_setting("enable_camera_snapshot", False) else None
+                        
+                        # Check if user has an account (show account tip if not)
+                        show_account_tip = not bool(req_row.get("account_id"))
+                        tip_register_url = None
+                        if show_account_tip:
+                            from urllib.parse import quote
+                            tip_register_url = f"{BASE_URL}/auth/register?email={quote(req_row['requester_email'])}"
+                        
                         html = build_email_html(
                             title="Print Complete!",
                             subtitle="Your request is ready for pickup.",
@@ -4595,7 +4651,9 @@ async def poll_printer_status_worker():
                             image_base64=snapshot_to_send,
                             secondary_cta_url=report_url,
                             secondary_cta_label="Report a Problem",
-                            footer_note="If the photo looks off, click Report a Problem so we can pause the job."
+                            footer_note="If the photo looks off, click Report a Problem so we can pause the job.",
+                            show_account_tip=show_account_tip,
+                            tip_register_url=tip_register_url,
                         )
                         send_email([req_row["requester_email"]], subject, text, html, image_base64=snapshot_to_send)
                     
@@ -5031,7 +5089,7 @@ def _human_material(code: str) -> str:
     return code
 
 
-def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta_url: Optional[str] = None, cta_label: str = "Open", header_color: str = "#4f46e5", image_base64: Optional[str] = None, footer_note: Optional[str] = None, secondary_cta_url: Optional[str] = None, secondary_cta_label: str = "My Requests") -> str:
+def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta_url: Optional[str] = None, cta_label: str = "Open", header_color: str = "#4f46e5", image_base64: Optional[str] = None, footer_note: Optional[str] = None, secondary_cta_url: Optional[str] = None, secondary_cta_label: str = "My Requests", show_account_tip: bool = False, tip_register_url: Optional[str] = None) -> str:
     """Build HTML email with optional header color customization and embedded image"""
     def esc(s: str) -> str:
         return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -5076,6 +5134,26 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
           </div>
         """
 
+    # Account creation tip for guest users
+    account_tip_html = ""
+    if show_account_tip and tip_register_url:
+        account_tip_html = f"""
+          <div style="margin-top:20px;padding:14px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:8px;">
+            <div style="display:flex;align-items:start;gap:10px;">
+              <div style="flex-shrink:0;color:#3b82f6;font-size:18px;">👤</div>
+              <div style="flex:1;">
+                <div style="color:#1e40af;font-size:13px;font-weight:600;margin-bottom:4px;">Track all your requests in one place</div>
+                <div style="color:#1e3a8a;font-size:12px;margin-bottom:8px;">Create an account to manage all your print requests and save your preferences</div>
+                <a href="{esc(tip_register_url)}" 
+                   style="display:inline-block;background:#3b82f6;color:#ffffff;text-decoration:none;
+                          padding:8px 14px;border-radius:6px;font-weight:600;font-size:12px;border:0;">
+                  Create Account
+                </a>
+              </div>
+            </div>
+          </div>
+        """
+
     # Embedded snapshot image - use CID reference for email attachment
     image_html = ""
     if image_base64:
@@ -5108,6 +5186,7 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
             {note_html}
             {image_html}
             {cta}
+            {account_tip_html}
           </div>
         </div>
 

@@ -65,12 +65,59 @@
         </p>
       </div>
 
+      <!-- v0.12.0 -->
+      <div id="v0.12.0" class="bg-gradient-to-br from-zinc-900/80 via-blue-900/30 to-purple-950/20 border border-blue-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-blue-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.12.0" class="px-3 py-1 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-500 transition">v0.12.0</a>
+          <span class="text-zinc-400 text-sm">January 28, 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Guest user onboarding & account creation tips</h3>
+        <p class="text-sm text-zinc-400 mb-4">Encourages guest users to create accounts with subtle email notifications and seamless registration flow.</p>
+        
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">✨ Enhancements</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400">✓</span>
+            <span><strong>Account creation tips in emails</strong> — All notification emails sent to guest users (without accounts) now include a subtle, visually distinct tip suggesting account creation with benefits like tracking all requests in one place and saving preferences</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400">✓</span>
+            <span><strong>Pre-filled registration flow</strong> — Registration links in emails automatically pre-fill the user's email address, making account creation a seamless one-step process</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400">✓</span>
+            <span><strong>Automatic request linking</strong> — When a user registers with an email that has existing print requests, all those requests are automatically linked to their new account, providing instant access to their full history</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400">✓</span>
+            <span><strong>Success feedback on registration</strong> — After creating an account, users see a clear message indicating how many existing requests were linked (e.g., "Account created! 3 existing print requests linked to your account")</span>
+          </li>
+        </ul>
+        
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400">•</span>
+            <span><strong>Email coverage</strong> — Tips appear in all guest notification emails including status changes, print started/completed, progress updates, design completion, reminders, and admin messages</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400">•</span>
+            <span><strong>Subtle design</strong> — The account tip uses a light blue bordered box positioned after action buttons but before footer content, making it noticeable without being intrusive</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400">•</span>
+            <span><strong>No forced signup</strong> — Guest users can continue using the system without an account; this is purely an optional convenience enhancement</span>
+          </li>
+        </ul>
+      </div>
+
       <!-- v0.11.1 -->
       <div id="v0.11.1" class="bg-gradient-to-br from-zinc-900/80 via-indigo-900/30 to-emerald-950/20 border border-indigo-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.11.1" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.11.1</a>
           <span class="text-zinc-400 text-sm">January 29, 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
           <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
         </div>
@@ -88,6 +135,10 @@
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
             <span><strong>Admin progress toggle fix</strong> — The “Admin Progress Push Alerts” switch now reflects the saved setting and no longer throws missing import errors.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400">✓</span>
+            <span><strong>Owner/admin single-login</strong> — Signing in with an owner/admin account now grants admin access without the legacy admin code.</span>
           </li>
         </ul>
       </div>

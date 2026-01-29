@@ -1200,6 +1200,18 @@ async def get_current_admin(request: Request) -> Optional[Admin]:
         for admin in admins:
             if verify_password(legacy_pw, admin.password_hash):
                 return admin
+
+    # Unified accounts (owners/admins/staff) should also satisfy admin auth
+    account = await get_current_account(request)
+    if account and account.is_admin_level() and account.status == UserStatus.ACTIVE:
+        return _account_to_admin(account)
+
+    # Fallback: if a regular user session exists, map to an admin-level account by email
+    user = await get_current_user(request)
+    if user:
+        account_match = get_account_by_email(user.email)
+        if account_match and account_match.is_admin_level() and account_match.status == UserStatus.ACTIVE:
+            return _account_to_admin(account_match)
     
     return None
 
@@ -2016,3 +2028,26 @@ async def require_admin_account(request: Request) -> Account:
 async def optional_account(request: Request) -> Optional[Account]:
     """Get current account if logged in, None otherwise."""
     return await get_current_account(request)
+
+
+# Helper: map unified account to an Admin-like object for legacy admin dependencies
+def _account_to_admin(account: Account) -> Admin:
+    role_map = {
+        AccountRole.OWNER: AdminRole.SUPER_ADMIN,
+        AccountRole.ADMIN: AdminRole.ADMIN,
+        AccountRole.STAFF: AdminRole.OPERATOR,
+    }
+    mapped_role = role_map.get(account.role, AdminRole.VIEWER)
+    return Admin(
+        id=account.id,
+        username=account.name or account.email,
+        email=account.email,
+        password_hash="",
+        role=mapped_role,
+        created_at=account.created_at,
+        updated_at=account.updated_at,
+        display_name=account.name or account.email,
+        is_active=account.status == UserStatus.ACTIVE,
+        last_login=getattr(account, "last_login", None),
+        login_count=getattr(account, "login_count", 0),
+    )
