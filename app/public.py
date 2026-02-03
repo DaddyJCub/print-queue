@@ -39,6 +39,7 @@ from app.main import (
     format_eta_display,
     get_smart_eta,
     first_name_only,
+    logger,
 )
 
 router = APIRouter()
@@ -66,8 +67,16 @@ async def submit(
     turnstile_token: Optional[str] = Form(None, alias="cf-turnstile-response"),
     upload: List[UploadFile] = File(default=[]),
 ):
+    # Log submission attempt for debugging
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info(f"[SUBMIT] New request from {requester_email} ({client_ip}), print_name: {print_name}")
+    
     # Get current logged-in user if any (for account linking)
-    user = await optional_user(request)
+    try:
+        user = await optional_user(request)
+    except Exception as e:
+        logger.warning(f"[SUBMIT] Error getting user session: {e}")
+        user = None
     
     form_state = {
         "requester_name": requester_name,
@@ -82,8 +91,15 @@ async def submit(
         "rush_payment_confirmed": rush_payment_confirmed,
     }
 
-    ok = await verify_turnstile(turnstile_token or "", request.client.host if request.client else None)
+    try:
+        ok = await verify_turnstile(turnstile_token or "", client_ip)
+    except Exception as e:
+        logger.error(f"[SUBMIT] Turnstile verification exception: {e}", exc_info=True)
+        # Allow submission on error to avoid blocking users
+        ok = True
+    
     if not ok:
+        logger.warning(f"[SUBMIT] Turnstile failed for {requester_email} from {client_ip}")
         return render_form(request, "Human verification failed. Please try again.", form_state)
 
     if printer not in [p[0] for p in PRINTERS]:
@@ -136,30 +152,36 @@ async def submit(
         priority = 2  # Medium priority, admin can bump to P1 after verifying payment
 
     conn = db()
-    conn.execute(
-        """INSERT INTO requests
-           (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, special_notes, priority, admin_notes, access_token, account_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            rid,
-            created,
-            created,
-            requester_name.strip(),
-            requester_email.strip(),
-            print_name.strip() if print_name else None,
-            printer,
-            material,
-            colors.strip(),
-            link_url.strip() if link_url else None,
-            notes,
-            "NEW",
-            None,  # special_notes deprecated - use messages instead
-            priority,
-            admin_notes,  # Rush info goes here now
-            access_token,
-            user.id if user else None,  # Link request to account if logged in
+    try:
+        conn.execute(
+            """INSERT INTO requests
+               (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, special_notes, priority, admin_notes, access_token, account_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                rid,
+                created,
+                created,
+                requester_name.strip(),
+                requester_email.strip(),
+                print_name.strip() if print_name else None,
+                printer,
+                material,
+                colors.strip(),
+                link_url.strip() if link_url else None,
+                notes,
+                "NEW",
+                None,  # special_notes deprecated - use messages instead
+                priority,
+                admin_notes,  # Rush info goes here now
+                access_token,
+                user.id if user else None,  # Link request to account if logged in
+            )
         )
-    )
+    except Exception as e:
+        logger.error(f"[SUBMIT] Database error creating request {rid[:8]}: {e}", exc_info=True)
+        conn.close()
+        return render_form(request, "An error occurred while saving your request. Please try again.", form_state)
+    
     conn.execute(
         """INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment)
            VALUES (?, ?, ?, ?, ?, ?)""",
@@ -179,11 +201,19 @@ async def submit(
         for file in valid_files:
             ext = safe_ext(file.filename)
             if ext not in ALLOWED_EXTS:
+                logger.warning(f"[SUBMIT] Rejected file {file.filename} - extension not allowed")
                 conn.close()
                 return render_form(request, f"File '{file.filename}' not allowed. Only these file types are allowed: {', '.join(sorted(ALLOWED_EXTS))}", form_state)
 
-            data = await file.read()
+            try:
+                data = await file.read()
+            except Exception as e:
+                logger.error(f"[SUBMIT] Error reading uploaded file {file.filename}: {e}", exc_info=True)
+                conn.close()
+                return render_form(request, f"Error reading file '{file.filename}'. Please try again.", form_state)
+            
             if len(data) > max_bytes:
+                logger.warning(f"[SUBMIT] Rejected file {file.filename} - too large ({len(data)} bytes)")
                 conn.close()
                 return render_form(request, f"File '{file.filename}' too large. Max size is {MAX_UPLOAD_MB}MB.", form_state)
 
@@ -191,18 +221,29 @@ async def submit(
             out_path = os.path.join(UPLOAD_DIR, stored)
 
             sha = hashlib.sha256(data).hexdigest()
-            with open(out_path, "wb") as f:
-                f.write(data)
+            try:
+                with open(out_path, "wb") as f:
+                    f.write(data)
+            except Exception as e:
+                logger.error(f"[SUBMIT] Error writing file to disk: {e}", exc_info=True)
+                conn.close()
+                return render_form(request, "Error saving your file. Please try again.", form_state)
 
             # Parse 3D file metadata (dimensions, volume, etc.)
             file_metadata = parse_3d_file_metadata(out_path, file.filename)
             file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
 
-            conn.execute(
-                """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (str(uuid.uuid4()), rid, now_iso(), file.filename, stored, len(data), sha, file_metadata_json)
-            )
+            try:
+                conn.execute(
+                    """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (str(uuid.uuid4()), rid, now_iso(), file.filename, stored, len(data), sha, file_metadata_json)
+                )
+            except Exception as e:
+                logger.error(f"[SUBMIT] Error inserting file record: {e}", exc_info=True)
+                conn.close()
+                return render_form(request, "Error saving your file. Please try again.", form_state)
+            
             uploaded_names.append(file.filename)
         
         conn.commit()
@@ -276,16 +317,24 @@ async def submit(
             cta_url=f"{BASE_URL}/admin/request/{rid}",
             cta_label="Open in admin",
         )
-        send_email(admin_emails, subject, text, html)
+        try:
+            send_email(admin_emails, subject, text, html)
+        except Exception as e:
+            logger.error(f"[SUBMIT] Failed to send admin email: {e}", exc_info=True)
         
         # Also send admin push notification
-        send_push_notification_to_admins(
-            title="📥 New Request",
-            body=f"{requester_name.strip()} - {print_name or rid[:8]}",
-            url=f"/admin/request/{rid}",
-            tag="admin-new-request"
-        )
+        try:
+            send_push_notification_to_admins(
+                title="📥 New Request",
+                body=f"{requester_name.strip()} - {print_name or rid[:8]}",
+                url=f"/admin/request/{rid}",
+                tag="admin-new-request"
+            )
+        except Exception as e:
+            logger.error(f"[SUBMIT] Failed to send admin push: {e}", exc_info=True)
 
+    logger.info(f"[SUBMIT] Successfully created request {rid[:8]} for {requester_email}")
+    
     # Show thanks page with portal link
     return templates.TemplateResponse("thanks_new.html", {
         "request": request,

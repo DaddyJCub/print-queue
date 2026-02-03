@@ -29,7 +29,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.12.0"
+APP_VERSION = "0.12.1"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -41,6 +41,7 @@ APP_VERSION = "0.12.0"
 #   - 0.x.PATCH = Bug fixes only
 #
 # Changelog:
+# 0.12.1 - [PATCH] Auto-start next build after completion, auto-match IN_PROGRESS requests, improved error logging
 # 0.12.0 - [FEATURE] Guest account creation tips in emails: subtle CTAs in all notification emails, pre-filled registration, auto-link existing requests
 # 0.11.1 - [PATCH] Safer printer controls & admin progress alerts
 # 0.11.0 - [FEATURE] Designer workflow with assignments and design completion tracking
@@ -2681,7 +2682,8 @@ def get_filename_base(filename: str) -> str:
 
 def find_matching_requests_for_file(printer_file: str, printer_code: str) -> List[Dict]:
     """
-    Find QUEUED or APPROVED requests that match the filename being printed.
+    Find QUEUED, APPROVED, or IN_PROGRESS requests that match the filename being printed.
+    For IN_PROGRESS requests, checks if there are READY builds that match.
     Returns list of matching requests, sorted by priority (best match first).
     
     Matching priority:
@@ -2699,12 +2701,15 @@ def find_matching_requests_for_file(printer_file: str, printer_code: str) -> Lis
     
     conn = db()
     
-    # Get all QUEUED/APPROVED requests with their files
+    # Get all QUEUED/APPROVED requests AND IN_PROGRESS requests that have READY builds
+    # IN_PROGRESS means some builds are done but others are still pending
     requests = conn.execute("""
-        SELECT r.id, r.print_name, r.printer, r.priority, r.created_at, r.requester_name,
+        SELECT DISTINCT r.id, r.print_name, r.printer, r.priority, r.created_at, r.requester_name,
                r.status, r.material
         FROM requests r
+        LEFT JOIN builds b ON r.id = b.request_id
         WHERE r.status IN ('QUEUED', 'APPROVED')
+           OR (r.status = 'IN_PROGRESS' AND b.status = 'READY')
         ORDER BY 
             CASE WHEN r.printer = ? THEN 0 ELSE 1 END,  -- This printer first
             COALESCE(r.priority, 999),                   -- Then by priority
@@ -4747,28 +4752,32 @@ async def poll_printer_status_worker():
                         # Exactly one match - auto-assign!
                         match = matches[0]
                         rid = match["id"]
+                        old_status = match["status"]
                         
-                        print(f"[AUTO-MATCH] Auto-matching request {rid[:8]} to {printer_code} (file: {current_file})")
+                        print(f"[AUTO-MATCH] Auto-matching request {rid[:8]} (status: {old_status}) to {printer_code} (file: {current_file})")
                         add_poll_debug_log({
                             "type": "auto_match",
                             "request_id": rid[:8],
                             "printer": printer_code,
                             "file": current_file,
+                            "old_status": old_status,
                             "message": f"Auto-matched to {printer_code}"
                         })
                         
-                        conn = db()
-                        old_status = match["status"]
-                        conn.execute(
-                            "UPDATE requests SET status = 'PRINTING', printer = ?, printing_started_at = ?, updated_at = ? WHERE id = ?",
-                            (printer_code, now_iso(), now_iso(), rid)
-                        )
-                        conn.execute(
-                            "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
-                            (str(uuid.uuid4()), rid, now_iso(), old_status, "PRINTING", f"Auto-matched to printer (file: {get_filename_base(current_file)})")
-                        )
-                        conn.commit()
-                        conn.close()
+                        # For IN_PROGRESS requests, don't change status - just start the next build
+                        # For QUEUED/APPROVED, update to PRINTING
+                        if old_status != "IN_PROGRESS":
+                            conn = db()
+                            conn.execute(
+                                "UPDATE requests SET status = 'PRINTING', printer = ?, printing_started_at = ?, updated_at = ? WHERE id = ?",
+                                (printer_code, now_iso(), now_iso(), rid)
+                            )
+                            conn.execute(
+                                "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+                                (str(uuid.uuid4()), rid, now_iso(), old_status, "PRINTING", f"Auto-matched to printer (file: {get_filename_base(current_file)})")
+                            )
+                            conn.commit()
+                            conn.close()
                         
                         clear_print_match_suggestion(printer_code)
                         
@@ -4776,14 +4785,16 @@ async def poll_printer_status_worker():
                         try:
                             conn = db()
                             next_build = conn.execute("""
-                                SELECT id FROM builds WHERE request_id = ? AND status IN ('READY', 'PENDING')
+                                SELECT id, build_number FROM builds WHERE request_id = ? AND status IN ('READY', 'PENDING')
                                 ORDER BY build_number LIMIT 1
                             """, (rid,)).fetchone()
                             conn.close()
                             
                             if next_build:
-                                result = start_build(next_build["id"], printer_code, "Auto-matched to printer")
-                                if not result.get("success", True):
+                                result = start_build(next_build["id"], printer_code, f"Auto-matched to printer (file: {get_filename_base(current_file)})")
+                                if result.get("success"):
+                                    print(f"[AUTO-MATCH] Started build {next_build['build_number']} for {rid[:8]} on {printer_code}")
+                                else:
                                     print(f"[AUTO-MATCH] Failed to start build {next_build['id'][:8]} for {rid[:8]}: {result.get('error')}")
                             else:
                                 print(f"[AUTO-MATCH] No READY build found for {rid[:8]} after auto-match")
@@ -4996,6 +5007,41 @@ async def poll_builds_status_worker():
                         "message": f"Build {build_num}/{total_builds} completed"
                     })
                     
+                    # Auto-start next READY build if there is one
+                    # This ensures continuous printing without admin intervention
+                    if new_request_status == "IN_PROGRESS":
+                        try:
+                            conn_next = db()
+                            next_build = conn_next.execute("""
+                                SELECT id, build_number FROM builds 
+                                WHERE request_id = ? AND status = 'READY' 
+                                ORDER BY build_number LIMIT 1
+                            """, (request_id,)).fetchone()
+                            conn_next.close()
+                            
+                            if next_build:
+                                # Use the same printer that just finished
+                                completed_printer = build["printer"]
+                                if completed_printer:
+                                    result = start_build(
+                                        next_build["id"], 
+                                        completed_printer, 
+                                        f"Auto-started after build {build_num} completed"
+                                    )
+                                    if result.get("success"):
+                                        print(f"[BUILD-POLL] Auto-started build {next_build['build_number']} on {completed_printer} for request {request_id[:8]}")
+                                        add_poll_debug_log({
+                                            "type": "auto_start_next",
+                                            "request_id": request_id[:8],
+                                            "next_build_number": next_build["build_number"],
+                                            "printer": completed_printer,
+                                            "message": f"Auto-started build {next_build['build_number']} after {build_num} completed"
+                                        })
+                                    else:
+                                        print(f"[BUILD-POLL] Failed to auto-start build {next_build['build_number']}: {result.get('error')}")
+                        except Exception as e:
+                            print(f"[BUILD-POLL] Error auto-starting next build: {e}")
+                    
                     # Record to print history
                     if build["started_at"]:
                         try:
@@ -5070,11 +5116,29 @@ async def verify_turnstile(token: str, remoteip: Optional[str] = None) -> bool:
     if remoteip:
         data["remoteip"] = remoteip
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.post(url, data=data)
-        r.raise_for_status()
-        payload = r.json()
-        return bool(payload.get("success"))
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(url, data=data)
+            r.raise_for_status()
+            payload = r.json()
+            success = bool(payload.get("success"))
+            if not success:
+                # Log failed verification with error codes for debugging
+                error_codes = payload.get("error-codes", [])
+                logger.warning(f"Turnstile verification failed: {error_codes}, IP: {remoteip}")
+            return success
+    except httpx.TimeoutException:
+        logger.error(f"Turnstile verification timed out for IP: {remoteip}")
+        # On timeout, allow submission to avoid blocking users (fail open)
+        return True
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Turnstile HTTP error {e.response.status_code}: {e.response.text}")
+        # On HTTP error, allow submission to avoid blocking users
+        return True
+    except Exception as e:
+        logger.error(f"Turnstile verification error: {e}", exc_info=True)
+        # On unexpected error, allow submission to avoid blocking users
+        return True
 
 
 # ------------------------
