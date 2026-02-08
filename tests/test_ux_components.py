@@ -234,3 +234,150 @@ class TestAccessibilityAttributes:
         input_id_pattern = re.compile(r'<(?:input|textarea|select)[^>]+id="([^"]+)"')
         ids = input_id_pattern.findall(response.text)
         assert len(ids) >= 1, "Should have inputs with id attributes"
+
+
+class TestPhase5Accessibility:
+    """Test Phase 5 accessibility improvements."""
+    
+    def test_page_has_skip_link(self, client):
+        """Page should have skip to main content link."""
+        response = client.get("/")
+        assert response.status_code == 200
+        
+        # Check for skip link
+        assert 'href="#main-content"' in response.text
+        assert 'skip-link' in response.text
+        assert 'Skip to main content' in response.text
+    
+    def test_page_has_main_content_landmark(self, client):
+        """Page should have main content landmark with id."""
+        response = client.get("/")
+        assert response.status_code == 200
+        
+        # Check for main landmark with id
+        assert 'id="main-content"' in response.text
+        assert 'role="main"' in response.text
+    
+    def test_page_has_header_landmark(self, client):
+        """Page should have header banner landmark."""
+        response = client.get("/")
+        assert response.status_code == 200
+        
+        # Check for header with role
+        assert 'role="banner"' in response.text
+    
+    def test_navigation_has_aria_labels(self, client):
+        """Navigation areas should have ARIA labels."""
+        response = client.get("/")
+        assert response.status_code == 200
+        
+        # Check for labeled navigation
+        assert 'aria-label="Main navigation"' in response.text
+        assert 'aria-label="Mobile navigation"' in response.text
+    
+    def test_page_has_lang_attribute(self, client):
+        """HTML element should have lang attribute."""
+        response = client.get("/")
+        assert response.status_code == 200
+        
+        # Check for lang attribute
+        assert '<html lang="en">' in response.text
+    
+    def test_toast_container_has_aria_live(self, client):
+        """Toast container should have aria-live for announcements."""
+        response = client.get("/")
+        assert response.status_code == 200
+        
+        # Check for aria-live on toast container
+        assert 'id="toast-container"' in response.text
+        assert 'aria-live="polite"' in response.text
+    
+    def test_sr_only_class_exists(self, client):
+        """Screen reader only class should be defined."""
+        response = client.get("/")
+        assert response.status_code == 200
+        
+        # Check for sr-only class definition
+        assert '.sr-only' in response.text
+    
+    def test_focus_visible_styles(self, client):
+        """Focus visible styles should be defined."""
+        response = client.get("/")
+        assert response.status_code == 200
+        
+        # Check for focus-visible CSS
+        assert ':focus-visible' in response.text
+    
+    def test_account_menu_has_aria_attributes(self, client):
+        """Account menu button should have ARIA attributes."""
+        response = client.get("/")
+        assert response.status_code == 200
+        
+        # Check for aria-haspopup and aria-expanded on account button
+        assert 'aria-haspopup="true"' in response.text
+        assert 'aria-expanded="false"' in response.text
+        assert 'aria-controls="global-account-dropdown"' in response.text
+    
+    def test_dropdown_menu_has_role(self, client):
+        """Dropdown menu should have proper role."""
+        response = client.get("/")
+        assert response.status_code == 200
+        
+        # Check for menu role
+        assert 'role="menu"' in response.text
+        assert 'aria-label="Account options"' in response.text
+
+
+class TestPhase6Polish:
+    """Test Phase 6 polish improvements."""
+    
+    def test_reduced_motion_styles(self, client):
+        """Page should have reduced motion media query."""
+        response = client.get("/")
+        assert response.status_code == 200
+        
+        # Check for prefers-reduced-motion support
+        assert 'prefers-reduced-motion: reduce' in response.text
+    
+    def test_error_page_loads(self, client):
+        """Error pages should load correctly."""
+        response = client.get("/nonexistent-page-12345")
+        assert response.status_code == 404
+        
+        # Check for error page content
+        assert '404' in response.text
+        assert 'Go Home' in response.text or 'home' in response.text.lower()
+    
+    def test_error_page_has_animation(self, client):
+        """Error page should have animation styles."""
+        response = client.get("/nonexistent-page-12345")
+        assert response.status_code == 404
+        
+        # Check for error animation
+        assert 'error-bounce' in response.text or 'error-icon-animated' in response.text
+    
+    def test_offline_page_exists(self, client):
+        """Offline page should be accessible."""
+        response = client.get("/static/offline.html")
+        assert response.status_code == 200
+        
+        # Check for offline page content
+        assert "Offline" in response.text
+        assert "Try Again" in response.text
+    
+    def test_offline_page_has_reduced_motion(self, client):
+        """Offline page should support reduced motion."""
+        response = client.get("/static/offline.html")
+        assert response.status_code == 200
+        
+        # Check for reduced motion support
+        assert 'prefers-reduced-motion' in response.text
+    
+    def test_offline_page_has_main_landmark(self, client):
+        """Offline page should have proper main landmark."""
+        response = client.get("/static/offline.html")
+        assert response.status_code == 200
+        
+        # Check for accessibility
+        assert 'role="main"' in response.text
+        assert 'lang="en"' in response.text
