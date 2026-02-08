@@ -13,13 +13,12 @@
     {% include 'admin_nav.html' %}
 
     <!-- Breadcrumb -->
-    <nav class="mb-4 text-sm">
-      <ol class="flex items-center gap-2 text-zinc-400">
-        <li><a href="/admin/accounts" class="hover:text-white transition">Accounts</a></li>
-        <li>›</li>
-        <li class="text-white">{{ account.name or account.email }}</li>
-      </ol>
-    </nav>
+    {% set breadcrumbs = [
+      {'label': 'Admin', 'url': '/admin'},
+      {'label': 'Accounts', 'url': '/admin/accounts'},
+      {'label': account.name or account.email}
+    ] %}
+    {% include '_components/breadcrumb.html' %}
 
     {% if success %}
     <div class="mb-4 bg-emerald-900/30 border border-emerald-700/50 text-emerald-200 rounded-xl p-4">{{ success }}</div>

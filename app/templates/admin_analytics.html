@@ -29,7 +29,7 @@
       <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
         <div class="text-sm text-zinc-400 uppercase tracking-wide mb-2">Completed</div>
         <div class="text-3xl font-bold text-green-400">{{ stats.completed }}</div>
-        <div class="text-xs text-zinc-500 mt-2">{{ ((stats.completed / stats.total_requests * 100) | round(1)) }}% success rate</div>
+        <div class="text-xs text-zinc-500 mt-2">{% if stats.total_requests > 0 %}{{ ((stats.completed / stats.total_requests * 100) | round(1)) }}{% else %}0{% endif %}% success rate</div>
       </div>
       
       <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">

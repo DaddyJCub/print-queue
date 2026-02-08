@@ -234,8 +234,17 @@
 </style>
 
 <!-- PWA Bottom Navigation for Admin Pages (Mobile only) -->
+<!-- Admin-contextual nav: key admin functions + Submit for testing -->
 <nav class="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-lg border-t border-zinc-800 sm:hidden" style="padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);">
   <div class="grid grid-cols-5 gap-1 px-2 pt-2">
+    <a href="/admin" class="nav-item {% if active_page == 'queue' %}active{% endif %} flex flex-col items-center py-2 tap-highlight">
+      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
+        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+        </svg>
+      </div>
+      <span class="text-xs mt-1">Queue</span>
+    </a>
     <a href="/" class="nav-item flex flex-col items-center py-2 tap-highlight">
       <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -244,15 +253,7 @@
       </div>
       <span class="text-xs mt-1">Submit</span>
     </a>
-    <a href="/queue" class="nav-item flex flex-col items-center py-2 tap-highlight">
-      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
-        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-        </svg>
-      </div>
-      <span class="text-xs mt-1">Queue</span>
-    </a>
-    <a href="/store" class="nav-item flex flex-col items-center py-2 tap-highlight">
+    <a href="/admin/store" class="nav-item {% if active_page == 'store' %}active{% endif %} flex flex-col items-center py-2 tap-highlight">
       <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
@@ -260,23 +261,22 @@
       </div>
       <span class="text-xs mt-1">Store</span>
     </a>
-    <a href="/my-requests" id="admin-my-requests-nav" class="nav-item flex flex-col items-center py-2 tap-highlight">
+    <a href="/admin/printer-settings" class="nav-item {% if active_page == 'printers' %}active{% endif %} flex flex-col items-center py-2 tap-highlight">
       <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
         </svg>
       </div>
-      <span class="text-xs mt-1">My Prints</span>
+      <span class="text-xs mt-1">Printers</span>
     </a>
-    <a href="/admin" class="nav-item active flex flex-col items-center py-2 tap-highlight">
-      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
+    <button onclick="toggleMobileMenu()" class="nav-item flex flex-col items-center py-2 tap-highlight">
+      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all text-zinc-400">
         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
         </svg>
       </div>
-      <span class="text-xs mt-1">Admin</span>
-    </a>
+      <span class="text-xs mt-1 text-zinc-400">More</span>
+    </button>
   </div>
 </nav>
 

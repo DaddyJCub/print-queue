@@ -11,9 +11,16 @@
     {% set active_page = 'store' %}
     {% include 'admin_nav.html' %}
     
+    <!-- Breadcrumb Navigation -->
+    {% set breadcrumbs = [
+      {'label': 'Admin', 'url': '/admin'},
+      {'label': 'Store', 'url': '/admin/store'},
+      {'label': item.name}
+    ] %}
+    {% include '_components/breadcrumb.html' %}
+    
     <div class="flex items-center justify-between mb-6">
       <div>
-        <a href="/admin/store" class="text-zinc-400 hover:text-zinc-200 text-sm mb-2 inline-block">← Back to Store</a>
         <h1 class="text-2xl font-bold">{{ item.name }}</h1>
         {% if not item.is_active %}
           <span class="inline-block mt-1 px-2 py-0.5 rounded text-xs bg-zinc-700 text-zinc-400">Hidden from public store</span>

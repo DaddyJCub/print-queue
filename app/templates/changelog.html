@@ -65,12 +65,71 @@
         </p>
       </div>
 
+      <!-- v0.12.2 -->
+      <div id="v0.12.2" class="bg-gradient-to-br from-zinc-900/80 via-amber-900/20 to-zinc-900/80 border border-amber-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-amber-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.12.2" class="px-3 py-1 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-500 transition">v0.12.2</a>
+          <span class="text-zinc-400 text-sm">February 7, 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Navigation standardization & component system</h3>
+        <p class="text-sm text-zinc-400 mb-4">Introduces reusable navigation components for consistent UX across all pages.</p>
+        
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">✨ Enhancements</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">•</span>
+            <span><strong>Back button component:</strong> Reusable `_components/back_button.html` with link, button, and header styles</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">•</span>
+            <span><strong>Breadcrumb component:</strong> Reusable `_components/breadcrumb.html` for hierarchical navigation</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">•</span>
+            <span><strong>Trip page navigation:</strong> All 10 trip templates now use the back_button component</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">•</span>
+            <span><strong>Admin page breadcrumbs:</strong> Store item and account detail pages show navigation hierarchy</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">•</span>
+            <span><strong>Admin mobile nav:</strong> Bottom navigation now shows admin-contextual pages instead of public pages</span>
+          </li>
+        </ul>
+        
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🐛 Bug Fixes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-green-400 mt-0.5">•</span>
+            <span>Fixed analytics page division by zero when no requests exist</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-400 mt-0.5">•</span>
+            <span>Fixed Jinja2 template recursion in component documentation comments</span>
+          </li>
+        </ul>
+        
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🧪 Testing</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400 mt-0.5">•</span>
+            <span>Added 89+ tests covering public routes, admin routes, and trips</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400 mt-0.5">•</span>
+            <span>New shared test fixtures in conftest.py for consistent test data</span>
+          </li>
+        </ul>
+      </div>
+
       <!-- v0.12.0 -->
       <div id="v0.12.0" class="bg-gradient-to-br from-zinc-900/80 via-blue-900/30 to-purple-950/20 border border-blue-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-blue-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.12.0" class="px-3 py-1 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-500 transition">v0.12.0</a>
           <span class="text-zinc-400 text-sm">January 28, 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Guest user onboarding & account creation tips</h3>

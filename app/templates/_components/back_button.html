@@ -1,0 +1,74 @@
+{#
+  Back Button Component
+  
+  A consistent, reusable back navigation button/link.
+  
+  Usage:
+    set back_url = '/admin'
+    set back_label = 'Dashboard'
+    include '_components/back_button.html'
+  
+  Required context:
+    back_url: URL to navigate to
+    back_label: Text label for the button (optional, defaults to "Back")
+  
+  Optional context:
+    back_style: 'link' (default) | 'button' | 'header'
+                - link: inline text link with arrow
+                - button: styled button with background
+                - header: designed to replace header logo (use in header_left block)
+  
+  Examples:
+    Simple back link:
+      set back_url = '/admin'
+      set back_label = 'Dashboard'
+      include '_components/back_button.html'
+    
+    Button style:
+      set back_url = '/queue'
+      set back_label = 'Queue'
+      set back_style = 'button'
+      include '_components/back_button.html'
+    
+    Header style (use in header_left block):
+      block header_left
+        set back_url = '/trips'
+        set back_label = 'Trips'
+        set back_style = 'header'
+        include '_components/back_button.html'
+      endblock
+#}
+
+{% set style = back_style | default('link') %}
+{% set label = back_label | default('Back') %}
+
+{% if style == 'header' %}
+{# Header replacement style - used in header_left block #}
+<a href="{{ back_url }}" 
+   class="flex items-center gap-2 tap-highlight text-zinc-400 hover:text-white transition-colors">
+  <svg class="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+  </svg>
+  <span class="hidden sm:inline text-sm font-medium">{{ label }}</span>
+</a>
+
+{% elif style == 'button' %}
+{# Button style - more prominent #}
+<a href="{{ back_url }}" 
+   class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-lg transition tap-highlight">
+  <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+  </svg>
+  {{ label }}
+</a>
+
+{% else %}
+{# Default link style - subtle inline link #}
+<a href="{{ back_url }}" 
+   class="inline-flex items-center gap-1.5 text-zinc-400 hover:text-indigo-400 text-sm transition-colors group">
+  <svg class="w-4 h-4 flex-shrink-0 group-hover:-translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+  </svg>
+  {{ label }}
+</a>
+{% endif %}

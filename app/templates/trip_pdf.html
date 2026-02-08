@@ -5,12 +5,10 @@
 {% block header_title %}Itinerary PDF{% endblock %}
 
 {% block header_left %}
-<a href="/trips/{{ trip.id }}" class="flex items-center gap-2 tap-highlight text-zinc-400 hover:text-white">
-  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-  </svg>
-  <span class="hidden sm:inline">Back</span>
-</a>
+{% set back_url = '/trips/' ~ trip.id %}
+{% set back_label = trip.title %}
+{% set back_style = 'header' %}
+{% include '_components/back_button.html' %}
 {% endblock %}
 
 {% block content %}

@@ -1,0 +1,38 @@
+{#
+  Breadcrumb Navigation Component
+  
+  Usage:
+    include '_components/breadcrumb.html' with context
+  
+  Required context:
+    breadcrumbs: list of dicts with 'label' and optional 'url'
+                 Last item is considered current page (no link)
+  
+  Example:
+    set breadcrumbs = [
+      {'label': 'Admin', 'url': '/admin'},
+      {'label': 'Store', 'url': '/admin/store'},
+      {'label': 'Edit Item'}
+    ]
+    include '_components/breadcrumb.html'
+#}
+
+<nav aria-label="Breadcrumb" class="breadcrumb-nav mb-4">
+  <ol class="flex items-center gap-2 text-sm flex-wrap">
+    {% for crumb in breadcrumbs %}
+      <li class="flex items-center gap-2">
+        {% if not loop.last and crumb.url %}
+          <a href="{{ crumb.url }}" 
+             class="text-zinc-400 hover:text-indigo-400 transition-colors">
+            {{ crumb.label }}
+          </a>
+          <svg class="w-4 h-4 text-zinc-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        {% else %}
+          <span class="text-zinc-200 font-medium">{{ crumb.label }}</span>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ol>
+</nav>

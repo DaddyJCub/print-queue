@@ -25,6 +25,13 @@
     {% include 'admin_nav.html' %}
     {% set can_manage_queue = current_admin_can_manage_queue %}
 
+    <!-- Back Button & Breadcrumb -->
+    <div class="mb-4">
+      {% set back_url = '/admin' %}
+      {% set back_label = 'Back to Queue' %}
+      {% include '_components/back_button.html' %}
+    </div>
+
     <!-- Page Header with Request Info -->
     <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
       <div>
