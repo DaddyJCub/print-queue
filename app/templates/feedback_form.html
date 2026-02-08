@@ -1,4 +1,5 @@
 {% extends "pwa_base.html" %}
+{% from '_components/form_field.html' import text_input, textarea, error_banner, success_banner %}
 
 {% block title %}{{ "Bug Report" if feedback_type == "bug" else "Suggestion" }} | Printellect{% endblock %}
 
@@ -65,54 +66,42 @@
     </div>
   {% else %}
     <!-- Error Message -->
-    {% if error %}
-      <div class="bg-red-900/30 border border-red-600/50 rounded-xl p-4 mb-6">
-        <p class="text-red-300 text-sm">{{ error }}</p>
-      </div>
-    {% endif %}
+    {{ error_banner(error) }}
 
     <!-- Form -->
-    <form method="POST" action="/feedback" class="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6">
+    <form method="POST" action="/feedback" class="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6" data-loading="Submitting...">
       <input type="hidden" name="feedback_type" value="{{ feedback_type }}" />
       <input type="hidden" name="page_url" value="" id="page_url_input" />
       
       <div class="space-y-5">
         <!-- Name (optional) -->
-        <div>
-          <label class="block text-sm font-medium text-zinc-300 mb-2">
-            Your Name <span class="text-zinc-500">(optional)</span>
-          </label>
-          <input type="text" name="name" 
-                 value="{{ form_data.name if form_data else '' }}"
-                 class="w-full rounded-xl bg-zinc-950 border border-zinc-700 p-3 text-zinc-100 placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
-                 placeholder="John Doe" />
-        </div>
+        {{ text_input(
+            name='name',
+            label='Your Name',
+            value=form_data.name if form_data else '',
+            placeholder='John Doe'
+        ) }}
 
         <!-- Email (optional) -->
-        <div>
-          <label class="block text-sm font-medium text-zinc-300 mb-2">
-            Email <span class="text-zinc-500">(optional, for follow-up)</span>
-          </label>
-          <input type="email" name="email" 
-                 value="{{ form_data.email if form_data else '' }}"
-                 class="w-full rounded-xl bg-zinc-950 border border-zinc-700 p-3 text-zinc-100 placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
-                 placeholder="john@example.com" />
-        </div>
+        {{ text_input(
+            name='email',
+            type='email',
+            label='Email',
+            value=form_data.email if form_data else '',
+            placeholder='john@example.com',
+            help='Optional - only if you want us to follow up'
+        ) }}
 
         <!-- Message -->
-        <div>
-          <label class="block text-sm font-medium text-zinc-300 mb-2">
-            {% if feedback_type == "bug" %}
-              What happened? <span class="text-red-400">*</span>
-            {% else %}
-              Your suggestion <span class="text-red-400">*</span>
-            {% endif %}
-          </label>
-          <textarea name="message" rows="6" required
-                    class="w-full rounded-xl bg-zinc-950 border border-zinc-700 p-3 text-zinc-100 placeholder-zinc-500 focus:border-indigo-500 focus:outline-none resize-none"
-                    placeholder="{% if feedback_type == 'bug' %}Please describe what happened, what you expected to happen, and any steps to reproduce the issue...{% else %}Share your idea for improving the print queue system...{% endif %}">{{ form_data.message if form_data else '' }}</textarea>
-          <p class="text-xs text-zinc-500 mt-1">Minimum 10 characters</p>
-        </div>
+        {{ textarea(
+            name='message',
+            label='What happened?' if feedback_type == 'bug' else 'Your suggestion',
+            value=form_data.message if form_data else '',
+            required=true,
+            rows=6,
+            placeholder='Please describe what happened, what you expected to happen, and any steps to reproduce the issue...' if feedback_type == 'bug' else 'Share your idea for improving the print queue system...',
+            help='Minimum 10 characters'
+        ) }}
 
         <!-- Tips -->
         {% if feedback_type == "bug" %}

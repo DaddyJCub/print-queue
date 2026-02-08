@@ -90,13 +90,12 @@
 
     <!-- Feedback List -->
     {% if feedback|length == 0 %}
-      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
-        <div class="text-4xl mb-4">📭</div>
-        <h3 class="text-lg font-semibold text-zinc-300">No feedback</h3>
-        <p class="text-zinc-500 mt-2">
-          {% if status_filter %}No {{ status_filter }} feedback to show.{% else %}When users submit feedback, it will appear here.{% endif %}
-        </p>
-      </div>
+      {% from '_components/empty_state.html' import empty_state %}
+      {{ empty_state(
+          icon='notification',
+          title='No feedback',
+          message='When users submit feedback, it will appear here.' if not status_filter else 'No ' ~ status_filter ~ ' feedback to show.'
+      ) }}
     {% else %}
       <div class="space-y-3">
         {% for fb in feedback %}

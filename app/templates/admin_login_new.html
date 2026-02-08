@@ -33,7 +33,7 @@
         </div>
       {% endif %}
 
-      <form action="/admin/login/new" method="POST" class="space-y-4">
+      <form action="/admin/login/new" method="POST" class="space-y-4" data-loading="Signing in...">
         {% set next_url = next or request.query_params.get("next") %}
         {% if next_url %}
         <input type="hidden" name="next" value="{{ next_url }}" />

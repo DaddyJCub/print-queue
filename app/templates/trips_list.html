@@ -72,19 +72,14 @@
   </div>
   {% else %}
   <!-- Empty State -->
-  <div class="text-center py-16">
-    <div class="w-20 h-20 mx-auto mb-6 bg-zinc-800 rounded-full flex items-center justify-center">
-      <span class="text-4xl">✈️</span>
-    </div>
-    <h2 class="text-xl font-semibold mb-2">No trips yet</h2>
-    <p class="text-zinc-400 mb-6">Create your first trip to start planning your itinerary</p>
-    <a href="/trips/new" class="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-medium transition">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-      </svg>
-      Create Trip
-    </a>
-  </div>
+  {% from '_components/empty_state.html' import empty_state %}
+  {{ empty_state(
+      icon='plane',
+      title='No trips yet',
+      message='Create your first trip to start planning your itinerary',
+      action_url='/trips/new',
+      action_text='Create Trip'
+  ) }}
   {% endif %}
   
   <!-- Back to Account Link -->

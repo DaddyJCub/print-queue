@@ -1,4 +1,5 @@
 {% extends "pwa_base.html" %}
+{% from '_components/form_field.html' import text_input, textarea, select_field %}
 
 {% block title %}New Trip | Printellect{% endblock %}
 
@@ -22,70 +23,74 @@
     <p class="text-zinc-400 text-sm mt-1">Plan your next adventure</p>
   </div>
   
-  <form action="/trips/new" method="POST" class="space-y-6">
+  <form action="/trips/new" method="POST" class="space-y-5" data-loading="Creating trip...">
     
     <!-- Trip Name -->
-    <div>
-      <label class="block text-sm font-medium text-zinc-300 mb-2">Trip Name *</label>
-      <input type="text" name="title" required
-             placeholder="e.g., Vegas Birthday Trip 2025"
-             class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
-    </div>
+    {{ text_input(
+        name='title',
+        label='Trip Name',
+        required=true,
+        placeholder='e.g., Vegas Birthday Trip 2025'
+    ) }}
     
     <!-- Destination -->
-    <div>
-      <label class="block text-sm font-medium text-zinc-300 mb-2">Destination *</label>
-      <input type="text" name="destination" required
-             placeholder="e.g., Las Vegas, Nevada"
-             class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
-    </div>
+    {{ text_input(
+        name='destination',
+        label='Destination',
+        required=true,
+        placeholder='e.g., Las Vegas, Nevada'
+    ) }}
     
     <!-- Dates -->
     <div class="grid grid-cols-2 gap-4">
-      <div>
-        <label class="block text-sm font-medium text-zinc-300 mb-2">Start Date *</label>
-        <input type="date" name="start_date" required
-               class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-zinc-300 mb-2">End Date *</label>
-        <input type="date" name="end_date" required
-               class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
-      </div>
+      {{ text_input(
+          name='start_date',
+          label='Start Date',
+          type='date',
+          required=true
+      ) }}
+      {{ text_input(
+          name='end_date',
+          label='End Date',
+          type='date',
+          required=true
+      ) }}
     </div>
     
     <!-- Timezone -->
-    <div>
-      <label class="block text-sm font-medium text-zinc-300 mb-2">Timezone</label>
-      <select name="timezone" class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
-        <option value="America/Los_Angeles">Pacific Time (Las Vegas)</option>
-        <option value="America/Denver">Mountain Time</option>
-        <option value="America/Chicago">Central Time</option>
-        <option value="America/New_York">Eastern Time</option>
-        <option value="Europe/London">London</option>
-        <option value="Europe/Paris">Paris</option>
-        <option value="Asia/Tokyo">Tokyo</option>
-      </select>
-    </div>
+    {{ select_field(
+        name='timezone',
+        label='Timezone',
+        options=[
+          ('America/Los_Angeles', 'Pacific Time (Las Vegas)'),
+          ('America/Denver', 'Mountain Time'),
+          ('America/Chicago', 'Central Time'),
+          ('America/New_York', 'Eastern Time'),
+          ('Europe/London', 'London'),
+          ('Europe/Paris', 'Paris'),
+          ('Asia/Tokyo', 'Tokyo')
+        ]
+    ) }}
 
     <!-- Budget -->
-    <div>
-      <label class="block text-sm font-medium text-zinc-300 mb-2">Budget (optional)</label>
-      <div class="relative">
-        <span class="absolute left-3 top-3 text-zinc-500">$</span>
-        <input type="number" step="0.01" min="0" name="budget" placeholder="e.g., 1200"
-               class="w-full pl-7 pr-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
-      </div>
-      <p class="text-xs text-zinc-500 mt-1">Track total spend across events</p>
-    </div>
+    {{ text_input(
+        name='budget',
+        label='Budget',
+        type='number',
+        step='0.01',
+        min=0,
+        prefix='$',
+        placeholder='e.g., 1200',
+        help='Track total spend across events'
+    ) }}
     
     <!-- Description -->
-    <div>
-      <label class="block text-sm font-medium text-zinc-300 mb-2">Description (optional)</label>
-      <textarea name="description" rows="3"
-                placeholder="Notes about the trip..."
-                class="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition resize-none"></textarea>
-    </div>
+    {{ textarea(
+        name='description',
+        label='Description',
+        rows=3,
+        placeholder='Notes about the trip...'
+    ) }}
     
     <!-- Submit -->
     <div class="flex gap-3 pt-4">

@@ -1,0 +1,372 @@
+{# 
+  Form Field Components
+  Provides consistent, accessible form input styling with validation support
+  
+  Usage:
+    {% from '_components/form_field.html' import text_input, textarea, select_field, checkbox %}
+    
+    {{ text_input(
+        name='email',
+        label='Email Address',
+        type='email',
+        required=true,
+        value=form.email if form else '',
+        error=errors.email if errors else none,
+        placeholder='you@example.com',
+        help='We will never share your email.'
+    ) }}
+    
+    {{ textarea(
+        name='description',
+        label='Description',
+        value=form.description if form else '',
+        rows=4,
+        placeholder='Describe your request...'
+    ) }}
+    
+    {{ select_field(
+        name='printer',
+        label='Printer',
+        options=[('ANY', 'Any Printer'), ('P1', 'Printer 1')],
+        value=form.printer if form else '',
+        required=true
+    ) }}
+#}
+
+{# ─────────────────────────── TEXT INPUT ─────────────────────────── #}
+{% macro text_input(name, label='', type='text', value='', placeholder='', required=false, error=none, help='', disabled=false, readonly=false, autocomplete='', pattern='', minlength=none, maxlength=none, min=none, max=none, step=none, autofocus=false, prefilled=false, prefix='', suffix='', id='') %}
+{% set field_id = id or name %}
+<div class="form-field">
+  {% if label %}
+  <label for="{{ field_id }}" class="block text-sm font-medium text-zinc-300 mb-1.5">
+    {{ label }}
+    {% if required %}<span class="text-red-400 ml-0.5">*</span>{% endif %}
+    {% if prefilled %}<span class="text-emerald-400 text-xs ml-1">● from profile</span>{% endif %}
+    {% if not required and not prefilled %}<span class="text-zinc-500 text-xs font-normal ml-1">(optional)</span>{% endif %}
+  </label>
+  {% endif %}
+  
+  <div class="relative">
+    {% if prefix %}
+    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none">{{ prefix }}</span>
+    {% endif %}
+    
+    <input 
+      type="{{ type }}"
+      id="{{ field_id }}"
+      name="{{ name }}"
+      value="{{ value }}"
+      placeholder="{{ placeholder }}"
+      {% if required %}required aria-required="true"{% endif %}
+      {% if disabled %}disabled{% endif %}
+      {% if readonly %}readonly{% endif %}
+      {% if autocomplete %}autocomplete="{{ autocomplete }}"{% endif %}
+      {% if pattern %}pattern="{{ pattern }}"{% endif %}
+      {% if minlength is not none %}minlength="{{ minlength }}"{% endif %}
+      {% if maxlength is not none %}maxlength="{{ maxlength }}"{% endif %}
+      {% if min is not none %}min="{{ min }}"{% endif %}
+      {% if max is not none %}max="{{ max }}"{% endif %}
+      {% if step is not none %}step="{{ step }}"{% endif %}
+      {% if autofocus %}autofocus{% endif %}
+      {% if error %}aria-invalid="true" aria-describedby="{{ field_id }}-error"{% endif %}
+      {% if help and not error %}aria-describedby="{{ field_id }}-help"{% endif %}
+      class="w-full px-4 py-3 bg-zinc-900 border rounded-xl text-white placeholder-zinc-500 
+             transition-colors outline-none
+             {{ 'pl-7' if prefix else '' }}
+             {{ 'pr-10' if suffix else '' }}
+             {% if error %}
+             border-red-500/70 focus:border-red-500 focus:ring-1 focus:ring-red-500/50
+             {% elif prefilled %}
+             border-emerald-600/50 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30
+             {% else %}
+             border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50
+             {% endif %}
+             {{ 'opacity-50 cursor-not-allowed' if disabled else '' }}"
+    />
+    
+    {% if suffix %}
+    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none">{{ suffix }}</span>
+    {% endif %}
+  </div>
+  
+  {% if error %}
+  <p id="{{ field_id }}-error" class="mt-1.5 text-sm text-red-400 flex items-center gap-1" role="alert">
+    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    {{ error }}
+  </p>
+  {% elif help %}
+  <p id="{{ field_id }}-help" class="mt-1.5 text-xs text-zinc-500">{{ help }}</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# ─────────────────────────── TEXTAREA ─────────────────────────── #}
+{% macro textarea(name, label='', value='', placeholder='', required=false, error=none, help='', disabled=false, readonly=false, rows=4, maxlength=none, autofocus=false, id='') %}
+{% set field_id = id or name %}
+<div class="form-field">
+  {% if label %}
+  <label for="{{ field_id }}" class="block text-sm font-medium text-zinc-300 mb-1.5">
+    {{ label }}
+    {% if required %}<span class="text-red-400 ml-0.5">*</span>{% endif %}
+    {% if not required %}<span class="text-zinc-500 text-xs font-normal ml-1">(optional)</span>{% endif %}
+  </label>
+  {% endif %}
+  
+  <textarea
+    id="{{ field_id }}"
+    name="{{ name }}"
+    placeholder="{{ placeholder }}"
+    rows="{{ rows }}"
+    {% if required %}required aria-required="true"{% endif %}
+    {% if disabled %}disabled{% endif %}
+    {% if readonly %}readonly{% endif %}
+    {% if maxlength is not none %}maxlength="{{ maxlength }}"{% endif %}
+    {% if autofocus %}autofocus{% endif %}
+    {% if error %}aria-invalid="true" aria-describedby="{{ field_id }}-error"{% endif %}
+    {% if help and not error %}aria-describedby="{{ field_id }}-help"{% endif %}
+    class="w-full px-4 py-3 bg-zinc-900 border rounded-xl text-white placeholder-zinc-500 
+           transition-colors outline-none resize-none
+           {% if error %}
+           border-red-500/70 focus:border-red-500 focus:ring-1 focus:ring-red-500/50
+           {% else %}
+           border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50
+           {% endif %}
+           {{ 'opacity-50 cursor-not-allowed' if disabled else '' }}"
+  >{{ value }}</textarea>
+  
+  {% if maxlength is not none %}
+  <div class="mt-1 flex justify-between items-center">
+    {% if error %}
+    <p id="{{ field_id }}-error" class="text-sm text-red-400 flex items-center gap-1" role="alert">
+      <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      {{ error }}
+    </p>
+    {% elif help %}
+    <p id="{{ field_id }}-help" class="text-xs text-zinc-500">{{ help }}</p>
+    {% else %}
+    <span></span>
+    {% endif %}
+    <span class="text-xs text-zinc-500" id="{{ field_id }}-counter">
+      <span class="char-count">{{ value|length }}</span>/{{ maxlength }}
+    </span>
+  </div>
+  <script>
+    (function() {
+      const textarea = document.getElementById('{{ field_id }}');
+      const counter = document.querySelector('#{{ field_id }}-counter .char-count');
+      if (textarea && counter) {
+        textarea.addEventListener('input', () => counter.textContent = textarea.value.length);
+      }
+    })();
+  </script>
+  {% else %}
+  {% if error %}
+  <p id="{{ field_id }}-error" class="mt-1.5 text-sm text-red-400 flex items-center gap-1" role="alert">
+    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    {{ error }}
+  </p>
+  {% elif help %}
+  <p id="{{ field_id }}-help" class="mt-1.5 text-xs text-zinc-500">{{ help }}</p>
+  {% endif %}
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# ─────────────────────────── SELECT ─────────────────────────── #}
+{% macro select_field(name, label='', options=[], value='', required=false, error=none, help='', disabled=false, id='') %}
+{% set field_id = id or name %}
+<div class="form-field">
+  {% if label %}
+  <label for="{{ field_id }}" class="block text-sm font-medium text-zinc-300 mb-1.5">
+    {{ label }}
+    {% if required %}<span class="text-red-400 ml-0.5">*</span>{% endif %}
+    {% if not required %}<span class="text-zinc-500 text-xs font-normal ml-1">(optional)</span>{% endif %}
+  </label>
+  {% endif %}
+  
+  <select
+    id="{{ field_id }}"
+    name="{{ name }}"
+    {% if required %}required aria-required="true"{% endif %}
+    {% if disabled %}disabled{% endif %}
+    {% if error %}aria-invalid="true" aria-describedby="{{ field_id }}-error"{% endif %}
+    {% if help and not error %}aria-describedby="{{ field_id }}-help"{% endif %}
+    class="w-full px-4 py-3 bg-zinc-900 border rounded-xl text-white 
+           transition-colors outline-none appearance-none
+           bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke%3D%22%239ca3af%22%20stroke-width%3D%222%22%3E%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M19%209l-7%207-7-7%22/%3E%3C/svg%3E')]
+           bg-[length:1.25rem] bg-[right_0.75rem_center] bg-no-repeat pr-10
+           {% if error %}
+           border-red-500/70 focus:border-red-500 focus:ring-1 focus:ring-red-500/50
+           {% else %}
+           border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50
+           {% endif %}
+           {{ 'opacity-50 cursor-not-allowed' if disabled else '' }}"
+  >
+    {% for opt_value, opt_label in options %}
+    <option value="{{ opt_value }}" {% if opt_value == value %}selected{% endif %}>{{ opt_label }}</option>
+    {% endfor %}
+  </select>
+  
+  {% if error %}
+  <p id="{{ field_id }}-error" class="mt-1.5 text-sm text-red-400 flex items-center gap-1" role="alert">
+    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    {{ error }}
+  </p>
+  {% elif help %}
+  <p id="{{ field_id }}-help" class="mt-1.5 text-xs text-zinc-500">{{ help }}</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# ─────────────────────────── CHECKBOX ─────────────────────────── #}
+{% macro checkbox(name, label='', checked=false, value='1', error=none, help='', disabled=false, id='') %}
+{% set field_id = id or name %}
+<div class="form-field">
+  <label class="flex items-start gap-3 cursor-pointer group">
+    <input 
+      type="checkbox"
+      id="{{ field_id }}"
+      name="{{ name }}"
+      value="{{ value }}"
+      {% if checked %}checked{% endif %}
+      {% if disabled %}disabled{% endif %}
+      {% if error %}aria-invalid="true" aria-describedby="{{ field_id }}-error"{% endif %}
+      class="mt-0.5 w-5 h-5 rounded border-zinc-600 bg-zinc-900 text-indigo-600 
+             focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-zinc-900
+             transition-colors cursor-pointer
+             {{ 'opacity-50 cursor-not-allowed' if disabled else '' }}"
+    />
+    <span class="text-sm text-zinc-300 group-hover:text-white transition-colors">{{ label }}</span>
+  </label>
+  
+  {% if error %}
+  <p id="{{ field_id }}-error" class="mt-1.5 ml-8 text-sm text-red-400 flex items-center gap-1" role="alert">
+    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    {{ error }}
+  </p>
+  {% elif help %}
+  <p id="{{ field_id }}-help" class="mt-1 ml-8 text-xs text-zinc-500">{{ help }}</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# ─────────────────────────── ERROR BANNER ─────────────────────────── #}
+{% macro error_banner(message, title='', dismissible=false, help_tip='') %}
+{% if message %}
+<div class="mb-6 bg-red-900/30 border border-red-500/50 rounded-xl p-4 {% if dismissible %}relative{% endif %}" role="alert">
+  {% if dismissible %}
+  <button type="button" onclick="this.parentElement.remove()" 
+          class="absolute top-3 right-3 text-red-400/60 hover:text-red-300 transition-colors"
+          aria-label="Dismiss">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+    </svg>
+  </button>
+  {% endif %}
+  
+  <div class="flex items-start gap-3 {{ 'pr-8' if dismissible else '' }}">
+    <svg class="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <div>
+      {% if title %}
+      <p class="font-medium text-red-200 mb-1">{{ title }}</p>
+      {% endif %}
+      <p class="text-sm text-red-200">{{ message }}</p>
+      {% if help_tip %}
+      <p class="text-xs text-red-300/70 mt-2">{{ help_tip }}</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{# ─────────────────────────── SUCCESS BANNER ─────────────────────────── #}
+{% macro success_banner(message, title='', dismissible=true) %}
+{% if message %}
+<div class="mb-6 bg-emerald-900/30 border border-emerald-500/50 rounded-xl p-4 {% if dismissible %}relative{% endif %}" role="status">
+  {% if dismissible %}
+  <button type="button" onclick="this.parentElement.remove()" 
+          class="absolute top-3 right-3 text-emerald-400/60 hover:text-emerald-300 transition-colors"
+          aria-label="Dismiss">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+    </svg>
+  </button>
+  {% endif %}
+  
+  <div class="flex items-start gap-3 {{ 'pr-8' if dismissible else '' }}">
+    <svg class="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+    </svg>
+    <div>
+      {% if title %}
+      <p class="font-medium text-emerald-200 mb-1">{{ title }}</p>
+      {% endif %}
+      <p class="text-sm text-emerald-200">{{ message }}</p>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{# ─────────────────────────── FILE INPUT ─────────────────────────── #}
+{% macro file_input(name, label='', accept='', required=false, error=none, help='', multiple=false, id='') %}
+{% set field_id = id or name %}
+<div class="form-field">
+  {% if label %}
+  <label for="{{ field_id }}" class="block text-sm font-medium text-zinc-300 mb-1.5">
+    {{ label }}
+    {% if required %}<span class="text-red-400 ml-0.5">*</span>{% endif %}
+    {% if not required %}<span class="text-zinc-500 text-xs font-normal ml-1">(optional)</span>{% endif %}
+  </label>
+  {% endif %}
+  
+  <input 
+    type="file"
+    id="{{ field_id }}"
+    name="{{ name }}"
+    {% if accept %}accept="{{ accept }}"{% endif %}
+    {% if required %}required aria-required="true"{% endif %}
+    {% if multiple %}multiple{% endif %}
+    {% if error %}aria-invalid="true" aria-describedby="{{ field_id }}-error"{% endif %}
+    {% if help and not error %}aria-describedby="{{ field_id }}-help"{% endif %}
+    class="w-full text-sm text-zinc-400
+           file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 
+           file:bg-indigo-600 file:text-white file:font-medium file:cursor-pointer
+           file:hover:bg-indigo-500 file:transition-colors
+           cursor-pointer
+           {% if error %}
+           border border-red-500/70 rounded-xl p-2
+           {% endif %}"
+  />
+  
+  {% if error %}
+  <p id="{{ field_id }}-error" class="mt-1.5 text-sm text-red-400 flex items-center gap-1" role="alert">
+    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    {{ error }}
+  </p>
+  {% elif help %}
+  <p id="{{ field_id }}-help" class="mt-1.5 text-xs text-zinc-500">{{ help }}</p>
+  {% endif %}
+</div>
+{% endmacro %}

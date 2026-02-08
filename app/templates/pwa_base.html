@@ -83,10 +83,26 @@
       -ms-overflow-style: none;
       scrollbar-width: none;
     }
+    
+    /* Update banner animations */
+    @keyframes slideUp {
+      from { transform: translateY(100%); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes slideDown {
+      from { transform: translateY(0); opacity: 1; }
+      to { transform: translateY(100%); opacity: 0; }
+    }
+    .animate-slide-up {
+      animation: slideUp 0.3s ease-out forwards;
+    }
+    .animate-slide-down {
+      animation: slideDown 0.3s ease-out forwards;
+    }
   </style>
   
   <script>
-    // Register service worker with logging
+    // Register service worker with logging and update notifications
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async () => {
         try {
@@ -98,17 +114,85 @@
             waiting: reg.waiting?.state
           });
           
+          // Check if there's already a waiting SW (update ready)
+          if (reg.waiting) {
+            showUpdateNotification(reg.waiting);
+          }
+          
           // Listen for updates
           reg.addEventListener('updatefound', () => {
             const newSW = reg.installing;
             console.log('[SW] Update found, new SW installing:', newSW?.state);
             newSW?.addEventListener('statechange', () => {
               console.log('[SW] New SW state:', newSW.state);
+              // When the new SW is installed and waiting, show update notification
+              if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                showUpdateNotification(newSW);
+              }
             });
+          });
+          
+          // Handle controller change (when new SW takes over)
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            console.log('[SW] Controller changed, reloading page');
+            window.location.reload();
           });
         } catch (err) {
           console.error('[SW] Registration failed:', err);
         }
+      });
+    }
+    
+    // Show update available notification
+    function showUpdateNotification(waitingSW) {
+      // Don't show if already shown
+      if (document.getElementById('sw-update-banner')) return;
+      
+      const banner = document.createElement('div');
+      banner.id = 'sw-update-banner';
+      banner.className = 'fixed bottom-20 md:bottom-4 left-4 right-4 md:left-auto md:right-4 md:max-w-sm z-[9998] animate-slide-up';
+      banner.innerHTML = `
+        <div class="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl shadow-2xl p-4 text-white">
+          <div class="flex items-start gap-3">
+            <div class="flex-shrink-0 w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="font-semibold">Update Available</p>
+              <p class="text-sm text-white/80 mt-0.5">A new version is ready to install</p>
+            </div>
+            <button id="sw-update-dismiss" class="text-white/60 hover:text-white transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <div class="flex gap-2 mt-3">
+            <button id="sw-update-later" class="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
+              Later
+            </button>
+            <button id="sw-update-now" class="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-white hover:bg-white/90 text-blue-600 transition-colors">
+              Update Now
+            </button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(banner);
+      
+      // Handle dismiss/later
+      const dismissBanner = () => {
+        banner.classList.add('animate-slide-down');
+        setTimeout(() => banner.remove(), 300);
+      };
+      
+      document.getElementById('sw-update-dismiss').addEventListener('click', dismissBanner);
+      document.getElementById('sw-update-later').addEventListener('click', dismissBanner);
+      
+      // Handle update now
+      document.getElementById('sw-update-now').addEventListener('click', () => {
+        waitingSW.postMessage({ type: 'SKIP_WAITING' });
       });
     }
     
@@ -601,6 +685,138 @@
   function dismissToast(toast) { toast.classList.remove('toast-visible'); setTimeout(() => toast.remove(), 300); }
   window.showToast = showToast;
   window.dismissToast = dismissToast;
+  
+  // Button loading state helpers
+  const loadingSpinnerSVG = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+  
+  function setButtonLoading(button, loadingText = 'Loading...') {
+    if (!button || button.dataset.loading === 'true') return;
+    button.dataset.originalContent = button.innerHTML;
+    button.dataset.originalDisabled = button.disabled;
+    button.dataset.loading = 'true';
+    button.disabled = true;
+    button.innerHTML = `<span class="flex items-center justify-center gap-2">${loadingSpinnerSVG}<span>${loadingText}</span></span>`;
+    button.classList.add('opacity-75', 'cursor-wait');
+  }
+  
+  function resetButton(button) {
+    if (!button || button.dataset.loading !== 'true') return;
+    button.innerHTML = button.dataset.originalContent;
+    button.disabled = button.dataset.originalDisabled === 'true';
+    button.classList.remove('opacity-75', 'cursor-wait');
+    delete button.dataset.loading;
+    delete button.dataset.originalContent;
+    delete button.dataset.originalDisabled;
+  }
+  
+  // Auto-loading for forms with data-loading attribute
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('form[data-loading]').forEach(form => {
+      form.addEventListener('submit', (e) => {
+        const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
+        if (submitBtn && !submitBtn.disabled) {
+          setButtonLoading(submitBtn, form.dataset.loading || 'Submitting...');
+        }
+      });
+    });
+    
+    // Real-time validation feedback for inputs with data-validate attribute
+    document.querySelectorAll('input[data-validate], textarea[data-validate]').forEach(input => {
+      const validateType = input.dataset.validate;
+      
+      input.addEventListener('blur', () => validateInput(input, validateType));
+      input.addEventListener('input', () => {
+        // Clear error styling on input if currently in error state
+        if (input.classList.contains('border-red-500/70')) {
+          clearInputError(input);
+        }
+      });
+    });
+  });
+  
+  // Input validation helpers
+  function validateInput(input, type) {
+    const value = input.value.trim();
+    let isValid = true;
+    let errorMsg = '';
+    
+    switch(type) {
+      case 'email':
+        if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+          isValid = false;
+          errorMsg = 'Please enter a valid email address';
+        }
+        break;
+      case 'required':
+        if (!value) {
+          isValid = false;
+          errorMsg = 'This field is required';
+        }
+        break;
+      case 'min':
+        const minLen = parseInt(input.dataset.minLength || input.minLength || 0);
+        if (value && value.length < minLen) {
+          isValid = false;
+          errorMsg = `Must be at least ${minLen} characters`;
+        }
+        break;
+      case 'url':
+        if (value && !/^https?:\/\/.+/.test(value)) {
+          isValid = false;
+          errorMsg = 'Please enter a valid URL (starting with http:// or https://)';
+        }
+        break;
+    }
+    
+    if (!isValid) {
+      showInputError(input, errorMsg);
+    } else if (value) {
+      showInputSuccess(input);
+    }
+    
+    return isValid;
+  }
+  
+  function showInputError(input, message) {
+    input.classList.remove('border-zinc-700', 'border-emerald-500/70');
+    input.classList.add('border-red-500/70');
+    
+    // Add or update error message
+    let errorEl = input.parentElement.querySelector('.input-error');
+    if (!errorEl) {
+      errorEl = document.createElement('p');
+      errorEl.className = 'input-error mt-1.5 text-sm text-red-400 flex items-center gap-1';
+      errorEl.innerHTML = `<svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span></span>`;
+      input.parentElement.appendChild(errorEl);
+    }
+    errorEl.querySelector('span').textContent = message;
+    input.setAttribute('aria-invalid', 'true');
+  }
+  
+  function showInputSuccess(input) {
+    clearInputError(input);
+    input.classList.add('border-emerald-500/70');
+    setTimeout(() => {
+      if (!input.classList.contains('border-red-500/70')) {
+        input.classList.remove('border-emerald-500/70');
+        input.classList.add('border-zinc-700');
+      }
+    }, 1500);
+  }
+  
+  function clearInputError(input) {
+    input.classList.remove('border-red-500/70', 'border-emerald-500/70');
+    input.classList.add('border-zinc-700');
+    input.removeAttribute('aria-invalid');
+    const errorEl = input.parentElement.querySelector('.input-error');
+    if (errorEl) errorEl.remove();
+  }
+  
+  window.setButtonLoading = setButtonLoading;
+  window.resetButton = resetButton;
+  window.validateInput = validateInput;
+  window.showInputError = showInputError;
+  window.clearInputError = clearInputError;
   </script>
 
   {% block scripts %}{% endblock %}

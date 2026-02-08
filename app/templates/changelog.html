@@ -65,12 +65,114 @@
         </p>
       </div>
 
+      <!-- v0.12.4 -->
+      <div id="v0.12.4" class="bg-gradient-to-br from-zinc-900/80 via-purple-900/20 to-zinc-900/80 border border-purple-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-purple-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.12.4" class="px-3 py-1 bg-purple-600 text-white text-sm font-bold rounded-lg hover:bg-purple-500 transition">v0.12.4</a>
+          <span class="text-zinc-400 text-sm">February 8, 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-purple-600/20 text-purple-300 text-xs rounded-lg border border-purple-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Form UX improvements & validation</h3>
+        <p class="text-sm text-zinc-400 mb-4">Phase 4 of UX redesign: Consistent form styling, better validation feedback, and improved file uploads.</p>
+        
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">✨ New Features</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-purple-400 mt-0.5">•</span>
+            <span><strong>Form field components:</strong> New `_components/form_field.html` with text_input, textarea, select_field, checkbox, and file_input macros</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-purple-400 mt-0.5">•</span>
+            <span><strong>Error/success banners:</strong> Reusable error_banner and success_banner components with dismiss option</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-purple-400 mt-0.5">•</span>
+            <span><strong>Real-time validation:</strong> Email, URL, and required field validation on blur with visual feedback</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-purple-400 mt-0.5">•</span>
+            <span><strong>File type icons:</strong> Different emoji icons for STL, 3MF, OBJ, GCODE, STEP, FPP, and ZIP files</span>
+          </li>
+        </ul>
+        
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🔧 Improvements</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">•</span>
+            <span><strong>File upload validation:</strong> Client-side checks for file type and 200MB size limit before upload</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">•</span>
+            <span><strong>Accessible forms:</strong> ARIA attributes for required fields, invalid states, and help text</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">•</span>
+            <span><strong>Updated templates:</strong> feedback_form, trip_new now use form field components</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">•</span>
+            <span><strong>Consistent styling:</strong> Standardized input borders, focus rings, and error states</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v0.12.3 -->
+      <div id="v0.12.3" class="bg-gradient-to-br from-zinc-900/80 via-blue-900/20 to-zinc-900/80 border border-blue-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-blue-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.12.3" class="px-3 py-1 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-500 transition">v0.12.3</a>
+          <span class="text-zinc-400 text-sm">February 8, 2026</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">State management & loading UX improvements</h3>
+        <p class="text-sm text-zinc-400 mb-4">Phase 3 of UX redesign: Better empty states, loading feedback, and app update notifications.</p>
+        
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">✨ New Features</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400 mt-0.5">•</span>
+            <span><strong>App update notification:</strong> Users now see a banner when a new version is available with "Update Now" option</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400 mt-0.5">•</span>
+            <span><strong>Form loading states:</strong> Submit buttons now show loading spinner during form submission</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400 mt-0.5">•</span>
+            <span><strong>Empty state component:</strong> Reusable component with icons for empty lists (feedback, store, trips)</span>
+          </li>
+        </ul>
+        
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🔧 Improvements</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">•</span>
+            <span><strong>Service worker v2.7.0:</strong> Added SKIP_WAITING message handler for controlled updates</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">•</span>
+            <span><strong>Admin feedback page:</strong> Now uses empty state component with envelope icon</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">•</span>
+            <span><strong>Admin store page:</strong> Empty store shows shopping bag icon with add item CTA</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">•</span>
+            <span><strong>Trips list:</strong> Empty trips list shows plane icon with create trip CTA</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">•</span>
+            <span><strong>Global button loading:</strong> Added setButtonLoading/resetButton helpers to pwa_base.html</span>
+          </li>
+        </ul>
+      </div>
+
       <!-- v0.12.2 -->
       <div id="v0.12.2" class="bg-gradient-to-br from-zinc-900/80 via-amber-900/20 to-zinc-900/80 border border-amber-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-amber-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.12.2" class="px-3 py-1 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-500 transition">v0.12.2</a>
           <span class="text-zinc-400 text-sm">February 7, 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Navigation standardization & component system</h3>

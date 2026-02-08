@@ -77,14 +77,14 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="text-center py-16 bg-zinc-900/40 border border-zinc-800 rounded-2xl">
-        <div class="text-5xl mb-4">🏪</div>
-        <h3 class="text-lg font-semibold mb-2">No store items yet</h3>
-        <p class="text-zinc-400 text-sm mb-6">Add pre-made prints that users can request directly</p>
-        <button onclick="showAddModal()" class="rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-6 py-3 font-semibold">
-          Add Your First Item
-        </button>
-      </div>
+      {% from '_components/empty_state.html' import empty_state %}
+      {{ empty_state(
+          icon='cart',
+          title='No store items yet',
+          message='Add pre-made prints that users can request directly',
+          action_url='javascript:showAddModal()',
+          action_text='Add Your First Item'
+      ) }}
     {% endif %}
     
     <div class="mt-8 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">

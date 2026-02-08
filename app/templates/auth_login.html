@@ -57,7 +57,7 @@
     </div>
 
     <!-- Password Login Form -->
-    <form id="form-password" action="/auth/login" method="POST" class="space-y-4">
+    <form id="form-password" action="/auth/login" method="POST" class="space-y-4" data-loading="Signing in...">
       <input type="hidden" name="next" value="{{ next or '' }}">
       
       <div>
@@ -94,7 +94,7 @@
     </form>
 
     <!-- Magic Link Form -->
-    <form id="form-magic" action="/auth/magic-link" method="POST" class="space-y-4 hidden">
+    <form id="form-magic" action="/auth/magic-link" method="POST" class="space-y-4 hidden" data-loading="Sending link...">
       <input type="hidden" name="next" value="{{ next or '' }}">
       
       <div>

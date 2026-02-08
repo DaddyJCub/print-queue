@@ -179,7 +179,8 @@
 
 <!-- Request Form -->
 <form id="request-form" action="/submit" method="POST" enctype="multipart/form-data" 
-      class="space-y-4 bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 sm:p-6">
+      class="space-y-4 bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 sm:p-6"
+      data-loading="Submitting...">
   
   <!-- Contact Info -->
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -407,6 +408,13 @@
 {% block scripts %}
 <script>
   // File upload handlers
+  const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
+  const ALLOWED_EXTENSIONS = ['.stl', '.3mf', '.obj', '.gcode', '.step', '.stp', '.fpp', '.zip'];
+  const FILE_ICONS = {
+    '.stl': '🧊', '.3mf': '📦', '.obj': '🎲', '.gcode': '📜',
+    '.step': '⚙️', '.stp': '⚙️', '.fpp': '🖨️', '.zip': '📁'
+  };
+  
   function handleDragOver(e) {
     e.preventDefault();
     document.getElementById('file-drop-zone').classList.add('border-indigo-500', 'bg-indigo-500/10');
@@ -420,13 +428,47 @@
     handleDragLeave(e);
     const files = e.dataTransfer.files;
     if (files.length > 0) {
-      document.getElementById('file-input').files = files;
-      showFilePreview(files);
+      const validFiles = validateFiles(files);
+      if (validFiles) {
+        document.getElementById('file-input').files = files;
+        showFilePreview(files);
+      }
     }
   }
   function handleFileSelect(input) {
-    if (input.files.length > 0) showFilePreview(input.files);
+    if (input.files.length > 0) {
+      const validFiles = validateFiles(input.files);
+      if (validFiles) {
+        showFilePreview(input.files);
+      } else {
+        input.value = '';
+      }
+    }
   }
+  
+  function validateFiles(files) {
+    let totalSize = 0;
+    const errors = [];
+    
+    for (const file of files) {
+      totalSize += file.size;
+      const ext = '.' + file.name.split('.').pop().toLowerCase();
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        errors.push(`"${file.name}" has unsupported type. Use: STL, 3MF, OBJ, GCODE, STEP, FPP, or ZIP.`);
+      }
+    }
+    
+    if (totalSize > MAX_FILE_SIZE) {
+      errors.push(`Total file size (${(totalSize / 1024 / 1024).toFixed(1)} MB) exceeds 200 MB limit.`);
+    }
+    
+    if (errors.length > 0) {
+      showToast(errors[0], 'error', 5000);
+      return false;
+    }
+    return true;
+  }
+  
   function showFilePreview(files) {
     document.getElementById('drop-zone-content').classList.add('hidden');
     document.getElementById('file-preview').classList.remove('hidden');
@@ -435,18 +477,27 @@
     let totalSize = 0;
     for (const file of files) {
       totalSize += file.size;
+      const ext = '.' + file.name.split('.').pop().toLowerCase();
+      const icon = FILE_ICONS[ext] || '📄';
       const item = document.createElement('div');
-      item.className = 'flex items-center gap-2';
-      item.innerHTML = `<span class="text-indigo-400">📄</span><span class="text-zinc-200 text-sm">${file.name}</span><span class="text-zinc-500 text-xs">(${(file.size / 1024 / 1024).toFixed(2)} MB)</span>`;
+      item.className = 'flex items-center gap-2 bg-zinc-800/50 rounded-lg px-3 py-2';
+      item.innerHTML = `<span class="text-lg">${icon}</span><span class="text-zinc-200 text-sm truncate flex-1">${file.name}</span><span class="text-zinc-500 text-xs">${formatFileSize(file.size)}</span>`;
       list.appendChild(item);
     }
     if (files.length > 1) {
       const summary = document.createElement('div');
-      summary.className = 'text-xs text-zinc-400 mt-2 pt-2 border-t border-zinc-700';
-      summary.textContent = `${files.length} files selected • ${(totalSize / 1024 / 1024).toFixed(2)} MB total`;
+      summary.className = 'text-xs text-zinc-400 mt-2 pt-2 border-t border-zinc-700 flex items-center justify-between';
+      summary.innerHTML = `<span>${files.length} files selected</span><span class="font-medium">${formatFileSize(totalSize)} total</span>`;
       list.appendChild(summary);
     }
   }
+  
+  function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+  }
+  
   function clearFile(e) {
     e.stopPropagation();
     document.getElementById('file-input').value = '';

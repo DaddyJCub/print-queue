@@ -1,6 +1,6 @@
 // Service Worker for Printellect PWA
-const SW_VERSION = '2.6.0';
-const CACHE_NAME = 'print-queue-v8';
+const SW_VERSION = '2.7.0';
+const CACHE_NAME = 'print-queue-v9';
 const OFFLINE_URL = '/static/offline.html';
 let ACTIVE_TRIP_USER = null;
 
@@ -227,6 +227,12 @@ self.addEventListener('message', (event) => {
       cacheName: CACHE_NAME,
       state: 'active'
     });
+  }
+  
+  // Allow page to trigger skipWaiting for controlled updates
+  if (event.data.type === 'SKIP_WAITING') {
+    swLog('info', 'SKIP_WAITING message received, activating new SW');
+    self.skipWaiting();
   }
   
   if (event.data.type === 'SET_ACTIVE_USER') {

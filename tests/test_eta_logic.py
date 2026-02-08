@@ -33,21 +33,23 @@ def _reset_db():
     """Ensure a clean schema and empty tables for ETA-focused tests."""
     init_db()
     ensure_migrations()
-    conn = sqlite3.connect(DB_FILE)
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn = sqlite3.connect(DB_FILE, timeout=30)
+    # Disable foreign keys to allow deletion in any order
+    conn.execute("PRAGMA foreign_keys = OFF")
     tables = [
-        "builds",
-        "requests",
-        "status_events",
-        "build_status_events",
         "build_snapshots",
+        "build_status_events",
+        "builds",
+        "status_events",
         "print_history",
+        "requests",
     ]
     for table in tables:
         try:
             conn.execute(f"DELETE FROM {table}")
         except sqlite3.OperationalError:
             pass
+    conn.execute("PRAGMA foreign_keys = ON")
     conn.commit()
     conn.close()
 
@@ -74,7 +76,7 @@ def _seed_request_with_builds(builds_payload, request_status="IN_PROGRESS", prin
     active_build_id = str(uuid.uuid4()) if active_build else None
     printing_started_at = active_build.get("started_at") if active_build else None
 
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute(
         """
