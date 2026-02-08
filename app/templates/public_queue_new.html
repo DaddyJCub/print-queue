@@ -144,6 +144,34 @@
       {% endif %}
     {% endif %}
     </div>
+    
+    <!-- Temperature and Camera row -->
+    <div class="flex items-center justify-between text-xs pt-2 border-t border-zinc-700/50 mt-2">
+      <span class="text-zinc-400">
+        {% if printer_status.ADVENTURER_4.temp %}
+        🌡 <span class="text-zinc-200">{{ printer_status.ADVENTURER_4.temp }}°C</span>
+        {% if printer_status.ADVENTURER_4.target_temp %}
+        <span class="text-zinc-500">/ {{ printer_status.ADVENTURER_4.target_temp }}°C</span>
+        {% endif %}
+        {% else %}
+        <span class="text-zinc-600">—</span>
+        {% endif %}
+      </span>
+      {% if printer_status.ADVENTURER_4.camera_url %}
+      <button type="button" onclick="toggleCamera('ADVENTURER_4')" id="cam-btn-ADVENTURER_4" 
+              class="inline-flex items-center gap-1.5 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition">
+        <span>📷</span> <span class="btn-text">Show Camera</span>
+      </button>
+      {% endif %}
+    </div>
+    
+    <!-- Camera preview (hidden by default) -->
+    {% if printer_status.ADVENTURER_4.camera_url %}
+    <div id="cam-ADVENTURER_4" class="hidden mt-2">
+      <img id="cam-img-ADVENTURER_4" class="w-full rounded-lg bg-zinc-800 border border-zinc-700" alt="Camera" />
+      <div class="text-xs text-zinc-500 mt-1 text-center">Updates every 10 seconds</div>
+    </div>
+    {% endif %}
   </div>
 
   <!-- AD5X -->
@@ -190,6 +218,34 @@
       {% endif %}
     {% endif %}
     </div>
+    
+    <!-- Temperature and Camera row -->
+    <div class="flex items-center justify-between text-xs pt-2 border-t border-zinc-700/50 mt-2">
+      <span class="text-zinc-400">
+        {% if printer_status.AD5X.temp %}
+        🌡 <span class="text-zinc-200">{{ printer_status.AD5X.temp }}°C</span>
+        {% if printer_status.AD5X.target_temp %}
+        <span class="text-zinc-500">/ {{ printer_status.AD5X.target_temp }}°C</span>
+        {% endif %}
+        {% else %}
+        <span class="text-zinc-600">—</span>
+        {% endif %}
+      </span>
+      {% if printer_status.AD5X.camera_url %}
+      <button type="button" onclick="toggleCamera('AD5X')" id="cam-btn-AD5X" 
+              class="inline-flex items-center gap-1.5 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition">
+        <span>📷</span> <span class="btn-text">Show Camera</span>
+      </button>
+      {% endif %}
+    </div>
+    
+    <!-- Camera preview (hidden by default) -->
+    {% if printer_status.AD5X.camera_url %}
+    <div id="cam-AD5X" class="hidden mt-2">
+      <img id="cam-img-AD5X" class="w-full rounded-lg bg-zinc-800 border border-zinc-700" alt="Camera" />
+      <div class="text-xs text-zinc-500 mt-1 text-center">Updates every 10 seconds</div>
+    </div>
+    {% endif %}
   </div>
   </div><!-- Close grid -->
 </details>
