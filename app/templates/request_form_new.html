@@ -9,79 +9,281 @@
 
 {% block head_extra %}
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<style>
+  /* Animated printer icon - subtle bounce */
+  .printer-icon {
+    animation: printerBounce 3s ease-in-out infinite;
+  }
+  @keyframes printerBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+  
+  /* Confetti for form submission */
+  .confetti-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9999;
+    overflow: hidden;
+  }
+  .confetti {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    opacity: 0;
+  }
+  .confetti.active {
+    animation: confettiFall 3s ease-out forwards;
+  }
+  @keyframes confettiFall {
+    0% { transform: translateY(-100px) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+  }
+  
+  /* Color swatch styles */
+  .color-swatch {
+    transition: transform 0.15s ease;
+  }
+  .color-swatch:hover {
+    transform: scale(1.2);
+  }
+  
+  @media (prefers-reduced-motion: reduce) {
+    .printer-icon, .confetti { animation: none !important; }
+  }
+</style>
 {% endblock %}
 
 {% block content %}
-<!-- Page Header -->
-<div class="mb-6">
-  <h1 class="text-3xl font-bold">New Print Request</h1>
-  <p class="text-zinc-400 text-sm mt-1">Submit your print job — we'll take it from here.</p>
+<!-- Hero Section -->
+<div class="relative mb-8 -mx-4 -mt-4 px-4 pt-8 pb-6 bg-gradient-to-br from-indigo-950/80 via-zinc-900 to-purple-950/50 border-b border-indigo-500/20 overflow-hidden">
+  <!-- Background decoration -->
+  <div class="absolute inset-0 overflow-hidden pointer-events-none">
+    <div class="absolute -top-24 -right-24 w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl"></div>
+    <div class="absolute -bottom-24 -left-24 w-72 h-72 bg-purple-500/10 rounded-full blur-3xl"></div>
+  </div>
+  
+  <div class="relative">
+    <div class="flex items-center gap-3 mb-3">
+      <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 printer-icon">
+        <span class="text-2xl">🖨️</span>
+      </div>
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-white to-zinc-300 bg-clip-text text-transparent">New Print Request</h1>
+        <p class="text-zinc-400 text-sm">Submit your design — we'll bring it to life</p>
+      </div>
+    </div>
+    
+    <!-- Quick Stats -->
+    {% if queue_stats %}
+    <div class="flex flex-wrap gap-3 mt-4">
+      <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-900/80 border border-zinc-700/50 rounded-full text-sm">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span class="text-zinc-400">{{ queue_stats.printing or 0 }} printing</span>
+      </div>
+      <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-900/80 border border-zinc-700/50 rounded-full text-sm">
+        <span class="text-zinc-500">📋</span>
+        <span class="text-zinc-400">{{ queue_stats.queued or 0 }} in queue</span>
+      </div>
+      {% if queue_stats.avg_wait %}
+      <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-900/80 border border-zinc-700/50 rounded-full text-sm">
+        <span class="text-zinc-500">⏱️</span>
+        <span class="text-zinc-400">~{{ queue_stats.avg_wait }} avg wait</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+    
+    <!-- Live Printer Status (compact) -->
+    {% if printer_status %}
+    <div class="mt-5 pt-4 border-t border-zinc-700/30">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="text-sm font-medium text-zinc-400">🖨️ Printer Status</span>
+        <span class="text-xs text-zinc-600">• Live</span>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        {% for pname, pdata in printer_status.items() %}
+        <div class="flex items-center justify-between px-3 py-2 bg-zinc-950/50 border border-zinc-800/50 rounded-xl">
+          <span class="text-sm font-medium text-zinc-300">{{ pname|replace('_', ' ') }}</span>
+          {% if pdata.is_offline or not pdata.status %}
+          <span class="px-2 py-0.5 text-xs rounded bg-zinc-800 text-zinc-500">Offline</span>
+          {% elif pdata.is_printing %}
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div class="h-full bg-emerald-500 transition-all" style="width: {{ pdata.progress or 0 }}%"></div>
+            </div>
+            <span class="text-xs font-medium text-emerald-400">{{ pdata.progress or 0 }}%</span>
+          </div>
+          {% elif pdata.status == 'READY' %}
+          <span class="px-2 py-0.5 text-xs rounded bg-green-500/20 border border-green-500/30 text-green-400">Ready</span>
+          {% else %}
+          <span class="px-2 py-0.5 text-xs rounded bg-amber-500/20 border border-amber-500/30 text-amber-400">{{ pdata.status }}</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <a href="/queue" class="mt-2 block text-center text-xs text-indigo-400 hover:text-indigo-300 transition">View full queue →</a>
+    </div>
+    {% endif %}
+  </div>
 </div>
+
+<!-- Fun Stats Banner -->
+{% if fun_stats and fun_stats.total_prints > 0 %}
+<div class="mb-6 bg-gradient-to-r from-zinc-900/80 via-indigo-950/30 to-zinc-900/80 border border-zinc-800/50 rounded-2xl p-4 overflow-hidden relative">
+  <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAgTSAwIDIwIEwgNDAgMjAgTSAyMCAwIEwgMjAgNDAgTSAwIDMwIEwgNDAgMzAgTSAzMCAwIEwgMzAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzMzMyIgb3BhY2l0eT0iMC4wNSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-50"></div>
+  <div class="relative flex items-center justify-around text-center">
+    <div>
+      <div class="text-2xl sm:text-3xl font-bold text-indigo-300">{{ fun_stats.total_prints }}</div>
+      <div class="text-xs text-zinc-500">prints completed</div>
+    </div>
+    <div class="w-px h-10 bg-zinc-800"></div>
+    <div>
+      <div class="text-2xl sm:text-3xl font-bold text-emerald-300">{{ fun_stats.est_hours }}+</div>
+      <div class="text-xs text-zinc-500">print hours</div>
+    </div>
+    <div class="w-px h-10 bg-zinc-800"></div>
+    <div>
+      <div class="text-2xl sm:text-3xl font-bold text-purple-300">{{ fun_stats.est_meters|int }}m</div>
+      <div class="text-xs text-zinc-500">of filament</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Recently Completed (mini showcase) -->
+{% if recent_prints and recent_prints|length > 0 %}
+<div class="mb-6">
+  <div class="flex items-center justify-between mb-3">
+    <h3 class="text-sm font-medium text-zinc-400 flex items-center gap-2">
+      <span>✨</span> Recently Completed
+    </h3>
+    <a href="/queue" class="text-xs text-indigo-400 hover:text-indigo-300">See all →</a>
+  </div>
+  <div class="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 hide-scrollbar">
+    {% for print in recent_prints %}
+    <div class="flex-shrink-0 px-3 py-2 bg-zinc-900/60 border border-zinc-800 rounded-xl text-sm">
+      <span class="text-zinc-300">{{ print.name[:20] }}{% if print.name|length > 20 %}...{% endif %}</span>
+      {% if print.colors %}
+      <span class="ml-2 text-xs text-zinc-500">{{ print.colors.split(',')[0] }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- 3D Printing Tips (rotating) -->
+<div class="mb-6 bg-zinc-900/40 border border-zinc-800/50 rounded-xl p-4">
+  <div class="flex items-start gap-3">
+    <span class="text-xl">💡</span>
+    <div>
+      <p class="text-sm font-medium text-zinc-300" id="tip-text">PLA is great for beginners — it's easy to print and eco-friendly!</p>
+      <p class="text-xs text-zinc-600 mt-1">Did you know?</p>
+    </div>
+  </div>
+</div>
+<script>
+  const tips = [
+    "PLA is great for beginners — it's easy to print and eco-friendly!",
+    "PETG is stronger than PLA and more heat-resistant 🔥",
+    "Layer height affects detail: smaller = finer, larger = faster",
+    "Supports are scaffolding that help print overhangs",
+    "Infill % controls how solid your print is (20% is usually fine)",
+    "STL is the most common 3D print file format",
+    "3MF files can include color and material info 🎨",
+    "First layer is crucial — make sure your bed is level!",
+    "Cooling fans help PLA but can cause warping with ABS",
+    "Print orientation affects strength — layers are weakest points"
+  ];
+  const tipEl = document.getElementById('tip-text');
+  if (tipEl) {
+    // Random tip on load
+    tipEl.textContent = tips[Math.floor(Math.random() * tips.length)];
+    // Rotate every 10 seconds
+    setInterval(() => {
+      tipEl.style.opacity = 0;
+      setTimeout(() => {
+        tipEl.textContent = tips[Math.floor(Math.random() * tips.length)];
+        tipEl.style.opacity = 1;
+      }, 300);
+    }, 10000);
+  }
+</script>
+<style>
+  #tip-text { transition: opacity 0.3s ease; }
+  .hide-scrollbar::-webkit-scrollbar { display: none; }
+  .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+</style>
 
 <!-- User Account Card (when logged in) -->
 {% if user %}
-<div class="mb-6 bg-gradient-to-br from-emerald-600/20 to-teal-600/10 border border-emerald-500/30 rounded-2xl p-4">
+<div class="mb-6 bg-gradient-to-br from-emerald-600/20 to-teal-600/10 border border-emerald-500/30 rounded-2xl p-5 shadow-lg shadow-emerald-900/20">
   <div class="flex items-start gap-4">
-    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center flex-shrink-0 text-white text-xl font-bold">
+    <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center flex-shrink-0 text-white text-2xl font-bold shadow-lg shadow-emerald-500/30">
       {{ user.display_name[0]|upper if user.display_name else '?' }}
     </div>
     <div class="flex-1 min-w-0">
-      <h3 class="font-semibold text-emerald-100">Welcome back, {{ user.display_name }}!</h3>
-      <p class="text-xs text-emerald-300/70 mt-0.5">Form fields below have been auto-filled from your profile</p>
+      <h3 class="font-bold text-lg text-emerald-100">Welcome back, {{ user.display_name }}!</h3>
+      <p class="text-sm text-emerald-300/70 mt-0.5">Your details are auto-filled below</p>
       
       <!-- Show which fields are pre-filled -->
       <div class="mt-3 flex flex-wrap gap-2">
-        <span class="inline-flex items-center gap-1 px-2 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
           <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
           {{ user.display_name }}
         </span>
-        <span class="inline-flex items-center gap-1 px-2 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
           <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
           {{ user.email }}
         </span>
         {% if user.preferred_printer %}
-        <span class="inline-flex items-center gap-1 px-2 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
           <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
           🖨️ {{ user.preferred_printer }}
         </span>
         {% endif %}
         {% if user.preferred_material %}
-        <span class="inline-flex items-center gap-1 px-2 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
           <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
           🧵 {{ user.preferred_material }}
         </span>
         {% endif %}
         {% if user.preferred_colors %}
-        <span class="inline-flex items-center gap-1 px-2 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
           <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
           🎨 {{ user.preferred_colors }}
         </span>
         {% endif %}
       </div>
     </div>
-    <a href="/user/profile?from=submit" class="px-3 py-1.5 bg-emerald-600/50 hover:bg-emerald-600 border border-emerald-500/50 rounded-lg text-xs font-medium transition tap-highlight whitespace-nowrap">
+    <a href="/user/profile?from=submit" class="px-4 py-2 bg-emerald-600/50 hover:bg-emerald-600 border border-emerald-500/50 rounded-xl text-sm font-medium transition tap-highlight whitespace-nowrap shadow-lg shadow-emerald-900/20">
       Edit Profile
     </a>
   </div>
 </div>
 {% elif user_accounts_enabled %}
 <!-- Sign In Prompt (when user accounts enabled but not logged in) -->
-<div class="mb-6 bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+<div class="mb-6 bg-gradient-to-br from-zinc-900/80 to-zinc-800/50 border border-zinc-700/50 rounded-2xl p-5 shadow-lg">
   <div class="flex items-center gap-4">
-    <div class="w-12 h-12 rounded-xl bg-zinc-800 flex items-center justify-center flex-shrink-0">
-      <svg class="w-6 h-6 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-zinc-700 to-zinc-800 flex items-center justify-center flex-shrink-0 shadow-lg">
+      <svg class="w-7 h-7 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
       </svg>
     </div>
     <div class="flex-1 min-w-0">
-      <h3 class="font-semibold text-zinc-200">Create an account</h3>
-      <p class="text-xs text-zinc-400">Save your preferences and track all your prints in one place</p>
+      <h3 class="font-bold text-lg text-zinc-200">Create an account</h3>
+      <p class="text-sm text-zinc-400">Save your preferences and track all your prints</p>
     </div>
     <div class="flex gap-2">
-      <a href="/auth/login" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl text-sm font-semibold transition tap-highlight">
+      <a href="/auth/login" class="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-xl text-sm font-semibold transition tap-highlight">
         Sign In
       </a>
-      <a href="/auth/register" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold transition tap-highlight">
+      <a href="/auth/register" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold transition tap-highlight shadow-lg shadow-indigo-900/30">
         Register
       </a>
     </div>
@@ -179,11 +381,16 @@
 
 <!-- Request Form -->
 <form id="request-form" action="/submit" method="POST" enctype="multipart/form-data" 
-      class="space-y-4 bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 sm:p-6"
+      class="space-y-5 bg-gradient-to-b from-zinc-900/80 to-zinc-900/40 border border-zinc-700/50 rounded-2xl p-5 sm:p-6 shadow-xl"
       data-loading="Submitting...">
   
-  <!-- Contact Info -->
-  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  <!-- Section: Your Info -->
+  <div class="pb-4 border-b border-zinc-800">
+    <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+      <span class="w-6 h-6 rounded-lg bg-indigo-600/30 flex items-center justify-center text-indigo-400 text-xs">1</span>
+      Your Info
+    </h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
     <div>
       <label class="block text-sm font-medium text-zinc-300 mb-1.5">
         Name
@@ -205,13 +412,21 @@
              class="w-full rounded-xl bg-zinc-950 border {% if user %}border-emerald-600/50 ring-1 ring-emerald-600/20{% else %}border-zinc-700{% endif %} focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
     </div>
   </div>
+  </div>
+
+  <!-- Section: Print Details -->
+  <div class="pb-4 border-b border-zinc-800">
+    <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+      <span class="w-6 h-6 rounded-lg bg-indigo-600/30 flex items-center justify-center text-indigo-400 text-xs">2</span>
+      Print Details
+    </h2>
 
   <!-- Print Name -->
-  <div>
+  <div class="mb-4">
     <label class="block text-sm font-medium text-zinc-300 mb-1.5">What are you printing?</label>
     <input name="print_name" required placeholder="e.g., Dragon Statue, Phone Holder..."
            value="{{ (form.print_name if form is defined else '') }}"
-           class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
+           class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 text-lg transition" />
   </div>
 
   <!-- Printer & Material -->
@@ -257,24 +472,62 @@
       Colors
       {% if user and user.preferred_colors %}<span class="text-emerald-400 text-xs ml-1">● from profile</span>{% endif %}
     </label>
-    <input name="colors" placeholder="Black / White / Red (comma-separated)" required
+    <input name="colors" id="colors-input" placeholder="Black / White / Red (comma-separated)" required
            value="{{ (form.colors if form is defined else '') }}"
            class="w-full rounded-xl bg-zinc-950 border {% if user and user.preferred_colors %}border-emerald-600/50 ring-1 ring-emerald-600/20{% else %}border-zinc-700{% endif %} focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
+    <!-- Quick color picker -->
+    <div class="mt-2 flex flex-wrap gap-1.5">
+      <span class="text-xs text-zinc-500 mr-1">Quick pick:</span>
+      <button type="button" onclick="addColor('Black')" class="color-swatch w-6 h-6 rounded-full bg-zinc-900 border-2 border-zinc-600 hover:border-white" title="Black"></button>
+      <button type="button" onclick="addColor('White')" class="color-swatch w-6 h-6 rounded-full bg-white border-2 border-zinc-400 hover:border-indigo-400" title="White"></button>
+      <button type="button" onclick="addColor('Red')" class="color-swatch w-6 h-6 rounded-full bg-red-500 border-2 border-red-400 hover:border-white" title="Red"></button>
+      <button type="button" onclick="addColor('Blue')" class="color-swatch w-6 h-6 rounded-full bg-blue-500 border-2 border-blue-400 hover:border-white" title="Blue"></button>
+      <button type="button" onclick="addColor('Green')" class="color-swatch w-6 h-6 rounded-full bg-green-500 border-2 border-green-400 hover:border-white" title="Green"></button>
+      <button type="button" onclick="addColor('Yellow')" class="color-swatch w-6 h-6 rounded-full bg-yellow-400 border-2 border-yellow-300 hover:border-white" title="Yellow"></button>
+      <button type="button" onclick="addColor('Orange')" class="color-swatch w-6 h-6 rounded-full bg-orange-500 border-2 border-orange-400 hover:border-white" title="Orange"></button>
+      <button type="button" onclick="addColor('Purple')" class="color-swatch w-6 h-6 rounded-full bg-purple-500 border-2 border-purple-400 hover:border-white" title="Purple"></button>
+      <button type="button" onclick="addColor('Pink')" class="color-swatch w-6 h-6 rounded-full bg-pink-400 border-2 border-pink-300 hover:border-white" title="Pink"></button>
+      <button type="button" onclick="addColor('Gray')" class="color-swatch w-6 h-6 rounded-full bg-gray-400 border-2 border-gray-300 hover:border-white" title="Gray"></button>
+    </div>
   </div>
+  </div>
+  <script>
+    function addColor(color) {
+      const input = document.getElementById('colors-input');
+      const current = input.value.trim();
+      if (current) {
+        // Check if color already exists
+        const colors = current.split(/[,\/]/).map(c => c.trim().toLowerCase());
+        if (!colors.includes(color.toLowerCase())) {
+          input.value = current + ', ' + color;
+        }
+      } else {
+        input.value = color;
+      }
+      input.focus();
+    }
+  </script>
+
+  <!-- Section: Files & Notes -->
+  <div class="pb-4 border-b border-zinc-800">
+    <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+      <span class="w-6 h-6 rounded-lg bg-indigo-600/30 flex items-center justify-center text-indigo-400 text-xs">3</span>
+      Files & Notes
+    </h2>
 
   <!-- Link -->
-  <div>
-    <label class="block text-sm font-medium text-zinc-300 mb-1.5">Link <span class="text-zinc-500 font-normal">(optional)</span></label>
-    <input name="link_url" placeholder="https://printables.com/..."
+  <div class="mb-4">
+    <label class="block text-sm font-medium text-zinc-300 mb-1.5">Model Link <span class="text-zinc-500 font-normal">(optional)</span></label>
+    <input name="link_url" placeholder="https://printables.com/model/..."
            value="{{ (form.link_url if form is defined else '') }}"
            class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
   </div>
 
   <!-- File Upload -->
-  <div>
-    <label class="block text-sm font-medium text-zinc-300 mb-1.5">Upload file <span class="text-zinc-500 font-normal">(optional)</span></label>
+  <div class="mb-4">
+    <label class="block text-sm font-medium text-zinc-300 mb-1.5">Upload Files <span class="text-zinc-500 font-normal">(optional)</span></label>
     <div id="file-drop-zone" 
-         class="w-full border-2 border-dashed border-zinc-700 hover:border-indigo-500 rounded-xl p-6 text-center cursor-pointer transition-all tap-highlight"
+         class="w-full border-2 border-dashed border-zinc-700 hover:border-indigo-500 hover:bg-indigo-500/5 rounded-xl p-8 text-center cursor-pointer transition-all tap-highlight"
          ondrop="handleDrop(event)" 
          ondragover="handleDragOver(event)" 
          ondragleave="handleDragLeave(event)"
@@ -301,27 +554,28 @@
 
   <!-- Notes -->
   <div>
-    <label class="block text-sm font-medium text-zinc-300 mb-1.5">Notes <span class="text-zinc-500 font-normal">(optional)</span></label>
+    <label class="block text-sm font-medium text-zinc-300 mb-1.5">Special Instructions <span class="text-zinc-500 font-normal">(optional)</span></label>
     <textarea name="notes" rows="3"
               placeholder="Color placement, scale, infill needs, supports, deadlines..."
               class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition resize-none">{{ (form.notes if form is defined else '') }}</textarea>
   </div>
+  </div>
 
   <!-- Priority Rush -->
   {% if rush_settings and rush_settings.enabled %}
-  <div class="bg-gradient-to-r from-amber-900/30 to-orange-900/20 border border-amber-700/50 rounded-xl p-4">
-    <label class="flex items-start gap-3 cursor-pointer tap-highlight">
+  <div class="bg-gradient-to-r from-amber-900/40 to-orange-900/30 border border-amber-600/50 rounded-2xl p-5 shadow-lg shadow-amber-900/20">
+    <label class="flex items-start gap-4 cursor-pointer tap-highlight">
       <input type="checkbox" name="rush_request" id="rush-checkbox" value="1" 
              {% if form is defined and form.rush_request %}checked{% endif %}
              onchange="toggleRushPayment()"
-             class="mt-1 w-5 h-5 rounded border-amber-600 text-amber-500 focus:ring-amber-500" />
+             class="mt-1 w-6 h-6 rounded-lg border-amber-600 text-amber-500 focus:ring-amber-500" />
       <div class="flex-1">
         <div class="flex items-center gap-2 flex-wrap">
-          <span class="font-semibold text-amber-200">🚀 Priority Rush</span>
-          <span id="rush-price-badge" class="px-2 py-0.5 bg-amber-600/30 border border-amber-500/50 text-amber-200 text-xs rounded-lg">${{ rush_settings.fee }}</span>
+          <span class="font-bold text-lg text-amber-200">🚀 Priority Rush</span>
+          <span id="rush-price-badge" class="px-2.5 py-1 bg-amber-600/40 border border-amber-500/50 text-amber-200 text-sm font-semibold rounded-lg">${{ rush_settings.fee }}</span>
         </div>
-        <p class="text-xs text-zinc-400 mt-1">
-          Skip the queue! 
+        <p class="text-sm text-zinc-400 mt-1">
+          Skip the queue and get your print started first! 
           <span id="rush-queue-reason" class="text-amber-400/70">({{ rush_settings.queue_reason }}{% if rush_settings.queue_addon > 0 %} +${{ rush_settings.queue_addon }}{% endif %})</span>
         </p>
       </div>
@@ -361,16 +615,16 @@
   {% endif %}
 
   <!-- Submit -->
-  <div class="flex gap-3 pt-2">
-    <button type="submit" id="submit-btn" class="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition py-3.5 font-semibold tap-highlight flex items-center justify-center gap-2">
-      <span id="submit-text">Submit Request</span>
+  <div class="flex gap-3 pt-4">
+    <button type="submit" id="submit-btn" class="flex-1 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 active:from-indigo-700 active:to-indigo-600 transition py-4 text-lg font-bold tap-highlight flex items-center justify-center gap-2 shadow-xl shadow-indigo-900/30">
+      <span id="submit-text">🖨️ Submit Request</span>
       <svg id="submit-spinner" class="hidden w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
       </svg>
     </button>
     <button type="button" onclick="showSaveTemplateModal()" 
-            class="rounded-xl bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-900 transition px-4 py-3.5 font-semibold tap-highlight"
+            class="rounded-2xl bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-900 border border-zinc-700 transition px-5 py-4 font-semibold tap-highlight"
             title="Save as template">
       💾
     </button>
@@ -598,6 +852,28 @@
       setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
     }
   }
+  
+  // Fun confetti effect on submit
+  function launchConfetti() {
+    const container = document.createElement('div');
+    container.className = 'confetti-container';
+    document.body.appendChild(container);
+    
+    const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#ef4444'];
+    for (let i = 0; i < 50; i++) {
+      const confetti = document.createElement('div');
+      confetti.className = 'confetti';
+      confetti.style.left = Math.random() * 100 + '%';
+      confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+      confetti.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+      confetti.style.width = (Math.random() * 10 + 5) + 'px';
+      confetti.style.height = confetti.style.width;
+      confetti.style.animationDelay = Math.random() * 0.5 + 's';
+      container.appendChild(confetti);
+      setTimeout(() => confetti.classList.add('active'), 10);
+    }
+    setTimeout(() => container.remove(), 4000);
+  }
 
   // Form submission with loading state
   document.getElementById('request-form')?.addEventListener('submit', function(e) {
@@ -607,6 +883,9 @@
     
     // Validate form before showing loading
     if (!this.checkValidity()) return;
+    
+    // 🎉 Launch confetti!
+    launchConfetti();
     
     // Show loading state
     btn.disabled = true;

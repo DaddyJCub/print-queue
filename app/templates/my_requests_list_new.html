@@ -497,7 +497,7 @@
     </h2>
     <div class="space-y-3" id="done-list">
       {% for req in done_requests[:3] %}
-      <div class="request-item bg-zinc-900/60 border border-green-500/50 rounded-xl overflow-hidden card-interactive">
+      <div class="request-item stagger-item bg-zinc-900/60 border border-green-500/50 rounded-xl overflow-hidden card-interactive">
         {% if req.completion_snapshot %}
         <div class="relative cursor-pointer" onclick="showSnapshot('{{ req.completion_snapshot }}')">
           <img src="data:image/jpeg;base64,{{ req.completion_snapshot }}" 
@@ -557,7 +557,7 @@
     <div class="space-y-3" id="printing-list">
       {% for req in printing_requests[:3] %}
       <a href="/my/{{ req.id }}?token={{ req.access_token }}" 
-         class="request-item block bg-zinc-900/60 border {% if req.printer_status and req.printer_status.is_offline %}border-amber-500/50{% else %}border-indigo-500/50{% endif %} rounded-xl overflow-hidden card-interactive">
+         class="request-item stagger-item block bg-zinc-900/60 border {% if req.printer_status and req.printer_status.is_offline %}border-amber-500/50{% else %}border-indigo-500/50{% endif %} rounded-xl overflow-hidden card-interactive">
         {% if req.printer_status %}
         <div class="{% if req.printer_status.is_offline %}bg-amber-950/40 border-b border-amber-500/30{% else %}bg-indigo-950/40 border-b border-indigo-500/30{% endif %} p-3">
           <div class="flex items-center justify-between text-sm mb-2">
@@ -634,7 +634,7 @@
     <div class="space-y-3" id="active-list">
       {% for req in active_requests[:3] %}
       <a href="/my/{{ req.id }}?token={{ req.access_token }}" 
-         class="request-item block bg-zinc-900/60 border {% if req.status == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-xl p-4 card-interactive">
+         class="request-item stagger-item block bg-zinc-900/60 border {% if req.status == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-xl p-4 card-interactive">
         <div class="flex items-center justify-between">
           <div>
             <h3 class="font-semibold">{{ req.print_name or 'Untitled' }}</h3>

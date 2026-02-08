@@ -4,12 +4,73 @@
 
 {% block header_title %}Submitted{% endblock %}
 
+{% block head_extra %}
+<style>
+  @keyframes successPop {
+    0% { transform: scale(0); opacity: 0; }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes checkDraw {
+    0% { stroke-dashoffset: 24; }
+    100% { stroke-dashoffset: 0; }
+  }
+  @keyframes cardSlide {
+    0% { transform: translateY(20px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes confetti {
+    0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(-100px) rotate(720deg); opacity: 0; }
+  }
+  .success-icon {
+    animation: successPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .success-icon svg path {
+    stroke-dasharray: 24;
+    stroke-dashoffset: 24;
+    animation: checkDraw 0.4s ease-out 0.3s forwards;
+  }
+  .success-card {
+    animation: cardSlide 0.4s ease-out forwards;
+  }
+  .action-card {
+    animation: cardSlide 0.4s ease-out 0.15s forwards;
+    opacity: 0;
+  }
+  .info-card {
+    animation: cardSlide 0.4s ease-out 0.25s forwards;
+    opacity: 0;
+  }
+  .pwa-card {
+    animation: cardSlide 0.4s ease-out 0.35s forwards;
+    opacity: 0;
+  }
+  .confetti-particle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    animation: confetti 1s ease-out forwards;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .success-icon, .success-icon svg path, .success-card, .action-card, .info-card, .pwa-card {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+      stroke-dashoffset: 0 !important;
+    }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="max-w-lg mx-auto">
+<div class="max-w-lg mx-auto relative" id="success-container">
   <!-- Success Card -->
-  <div class="bg-gradient-to-br from-emerald-600/20 to-emerald-900/10 border border-emerald-500/40 rounded-2xl p-6 text-center">
-    <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-600/30 border border-emerald-500/50 flex items-center justify-center">
-      <svg class="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+  <div class="success-card bg-gradient-to-br from-emerald-600/20 to-emerald-900/10 border border-emerald-500/40 rounded-2xl p-6 text-center">
+    <div class="success-icon w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-600/30 border border-emerald-500/50 flex items-center justify-center">
+      <svg class="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
       </svg>
     </div>
@@ -24,9 +85,9 @@
   </div>
   
   <!-- Action Buttons -->
-  <div class="mt-6 space-y-3">
+  <div class="action-card mt-6 space-y-3">
     <a href="/my/{{ rid }}?token={{ access_token }}" 
-       class="flex items-center justify-center gap-2 w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition py-3.5 font-semibold tap-highlight">
+       class="flex items-center justify-center gap-2 w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition py-3.5 font-semibold tap-highlight btn-ripple">
       <span>📬</span> View My Request
     </a>
     
@@ -43,18 +104,18 @@
   </div>
   
   <!-- Info Card -->
-  <div class="mt-6 bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+  <div class="info-card mt-6 bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
     <h3 class="font-medium text-sm mb-3">What happens next?</h3>
     <ul class="text-xs text-zinc-400 space-y-2">
-      <li class="flex items-start gap-2">
+      <li class="flex items-start gap-2 stagger-item" style="animation-delay: 0.4s">
         <span class="text-indigo-400">1.</span>
         <span>We'll review your request and approve it for printing</span>
       </li>
-      <li class="flex items-start gap-2">
+      <li class="flex items-start gap-2 stagger-item" style="animation-delay: 0.5s">
         <span class="text-indigo-400">2.</span>
         <span>You'll get an email when your print starts</span>
       </li>
-      <li class="flex items-start gap-2">
+      <li class="flex items-start gap-2 stagger-item" style="animation-delay: 0.6s">
         <span class="text-indigo-400">3.</span>
         <span>Pick it up when it's done!</span>
       </li>
@@ -65,7 +126,7 @@
   </div>
   
   <!-- PWA Promo -->
-  <div id="pwa-promo" class="hidden mt-6 bg-gradient-to-r from-indigo-600/20 to-purple-600/10 border border-indigo-500/30 rounded-xl p-4">
+  <div id="pwa-promo" class="pwa-card hidden mt-6 bg-gradient-to-r from-indigo-600/20 to-purple-600/10 border border-indigo-500/30 rounded-xl p-4">
     <div class="flex items-center gap-3">
       <div class="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center flex-shrink-0">
         <span class="text-lg">📲</span>
@@ -74,18 +135,38 @@
         <h3 class="font-medium text-sm">Get the App</h3>
         <p class="text-xs text-zinc-400">Push notifications when your print is ready</p>
       </div>
-      <button onclick="installPWA()" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium tap-highlight">
+      <button onclick="installPWA()" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium tap-highlight btn-ripple">
         Install
       </button>
     </div>
   </div>
-  <script>
-    (function() {
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-      if (!isStandalone) {
-        document.getElementById('pwa-promo')?.classList.remove('hidden');
-      }
-    })();
-  </script>
 </div>
+<script>
+  (function() {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    if (!isStandalone) {
+      document.getElementById('pwa-promo')?.classList.remove('hidden');
+    }
+    
+    // Mini confetti effect
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!prefersReducedMotion) {
+      const container = document.getElementById('success-container');
+      const colors = ['#10b981', '#6366f1', '#8b5cf6', '#f59e0b', '#3b82f6'];
+      for (let i = 0; i < 12; i++) {
+        setTimeout(() => {
+          const particle = document.createElement('div');
+          particle.className = 'confetti-particle';
+          particle.style.left = (40 + Math.random() * 20) + '%';
+          particle.style.top = '60px';
+          particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+          particle.style.animationDelay = (Math.random() * 0.3) + 's';
+          particle.style.animationDuration = (0.8 + Math.random() * 0.4) + 's';
+          container.appendChild(particle);
+          setTimeout(() => particle.remove(), 1500);
+        }, i * 50);
+      }
+    }
+  })();
+</script>
 {% endblock %}

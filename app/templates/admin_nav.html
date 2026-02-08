@@ -1,122 +1,125 @@
-{# Admin Navigation Component - Simplified flat navigation #}
+{# Admin Navigation Component - Clean and Modern #}
 {# Usage: {% include 'admin_nav.html' %} with active_page variable set #}
 
-<nav class="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50 -mx-6 -mt-6 mb-6">
+<nav class="admin-nav bg-zinc-900/95 backdrop-blur-lg border-b border-zinc-800 sticky top-0 z-50 -mx-6 -mt-6 mb-6">
   <div class="max-w-7xl mx-auto px-4 sm:px-6">
     <div class="flex items-center justify-between h-14">
-      <!-- Logo/Brand -->
-      <div class="flex items-center gap-2">
-        <a href="/" class="flex items-center gap-2 text-white hover:opacity-80 transition" title="Back to site">
-          <img src="/static/icons/logo.png" alt="Printellect" class="h-8 w-8 rounded-lg">
+      <!-- Brand -->
+      <div class="flex items-center gap-3">
+        <a href="/" class="flex items-center gap-2 hover:opacity-80 transition" title="Back to site">
+          <img src="/static/icons/logo.png" alt="" class="h-8 w-8 rounded-lg">
           <span class="font-bold text-lg hidden sm:block">Printellect</span>
         </a>
-        <a href="/admin" class="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-medium hover:bg-amber-500/30 transition">Admin</a>
+        <span class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-medium">Admin</span>
       </div>
       
       {% set design_feature_on = design_enabled if design_enabled is defined else True %}
       {% set can_design_nav = design_feature_on and ((current_admin_can_manage_designs if current_admin_can_manage_designs is defined else False) or ((current_admin.role == 'designer') if current_admin is defined else False)) %}
 
-      <!-- Desktop Navigation - Flat, simple links -->
-      <div class="hidden md:flex items-center gap-1">
-        <!-- Queue - Main view -->
-        <a href="/admin" class="admin-nav-link {% if active_page == 'queue' %}active{% endif %}">
-          📋 Queue
-        </a>
-        {% if can_design_nav %}
-        <a href="/admin?design=1" class="admin-nav-link {% if active_page == 'design' %}active{% endif %}">
-          🎨 Design Queue
-        </a>
-        {% endif %}
+      <!-- Desktop Navigation -->
+      <div class="hidden md:flex items-center">
+        <!-- Primary Nav Pills -->
+        <div class="flex items-center bg-zinc-800/50 rounded-xl p-1 gap-0.5">
+          <a href="/admin" class="admin-pill {% if active_page == 'queue' %}active{% endif %}">
+            📋 <span>Queue</span>
+          </a>
+          {% if can_design_nav %}
+          <a href="/admin?design=1" class="admin-pill {% if active_page == 'design' %}active{% endif %}">
+            🎨 <span>Design</span>
+          </a>
+          {% endif %}
+          <a href="/admin/store" class="admin-pill {% if active_page == 'store' %}active{% endif %}">
+            🏪 <span>Store</span>
+          </a>
+          <a href="/admin/analytics" class="admin-pill {% if active_page == 'analytics' %}active{% endif %}">
+            📊 <span>Stats</span>
+          </a>
+          <a href="/admin/accounts" class="admin-pill {% if active_page == 'accounts' or active_page == 'users' %}active{% endif %}">
+            👥 <span>Users</span>
+          </a>
+        </div>
         
-        <!-- Printers -->
-        <a href="/admin/printer-settings" class="admin-nav-link {% if active_page == 'printers' %}active{% endif %}">
-          🖨️ Printers
-        </a>
+        <div class="w-px h-6 bg-zinc-700 mx-3"></div>
         
-        <!-- Store -->
-        <a href="/admin/store" class="admin-nav-link {% if active_page == 'store' %}active{% endif %}">
-          🏪 Store
-        </a>
-        
-        <!-- Analytics -->
-        <a href="/admin/analytics" class="admin-nav-link {% if active_page == 'analytics' %}active{% endif %}">
-          📊 Analytics
-        </a>
-        
-        <!-- Users (combined) -->
-        <a href="/admin/accounts" class="admin-nav-link {% if active_page == 'accounts' or active_page == 'users' %}active{% endif %}">
-          👥 Accounts
-        </a>
-        
-        <!-- Settings (contains everything else) -->
-        <a href="/admin/settings" class="admin-nav-link {% if active_page == 'settings' %}active{% endif %}">
-          ⚙️ Settings
-        </a>
-        
-        <!-- Divider -->
-        <div class="w-px h-6 bg-zinc-700 mx-2"></div>
-        
-        <!-- View Site (more prominent) -->
-        <a href="/" class="admin-nav-link text-zinc-400 hover:text-indigo-300" title="Exit to main site">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"/>
-          </svg>
-          <span class="hidden lg:inline">Exit Admin</span>
-        </a>
-        
-        <!-- User Account Menu -->
-        <div class="relative" id="admin-account-container">
-          <button id="admin-account-btn" onclick="toggleAdminAccountMenu()" class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 rounded-lg transition">
-            <div id="admin-account-avatar" class="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold overflow-hidden">
-              <img id="admin-account-avatar-img" src="" alt="Avatar" class="hidden w-full h-full object-cover">
-              <span id="admin-account-avatar-initial">?</span>
-            </div>
-            <svg class="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <!-- More Menu -->
+        <div class="relative" id="more-dropdown-container">
+          <button onclick="toggleMoreDropdown()" class="admin-pill text-zinc-400 hover:text-white">
+            ⚙️ <span>More</span>
+            <svg class="w-3 h-3 ml-0.5 transition-transform" id="more-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
             </svg>
           </button>
           
-          <!-- Account Dropdown -->
-          <div id="admin-account-dropdown" class="hidden absolute top-full right-0 mt-2 w-72 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
-            <!-- Account Header -->
-            <div class="p-4 border-b border-zinc-800 bg-zinc-950/50">
-              <div class="flex items-center gap-3">
-                <div id="admin-account-avatar-lg" class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold overflow-hidden">
-                  <img id="admin-account-avatar-lg-img" src="" alt="Avatar" class="hidden w-full h-full object-cover">
-                  <span id="admin-account-avatar-lg-initial">?</span>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <p id="admin-account-email" class="text-sm font-medium text-white truncate">Loading...</p>
-                  <p class="text-xs text-zinc-500">Printellect Admin</p>
-                </div>
-              </div>
-            </div>
-            
-            <!-- Menu Items -->
-            <div class="p-2">
-              <a id="admin-profile-link" href="/user/profile" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
-                <span class="text-lg">👤</span>
-                <div>
-                  <p class="text-sm font-medium">My Account</p>
-                  <p class="text-xs text-zinc-500">Profile & preferences</p>
-                </div>
+          <div id="more-dropdown" class="hidden absolute top-full right-0 mt-2 w-52 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden z-50">
+            <div class="p-1.5">
+              <a href="/admin/printer-settings" class="dropdown-item {% if active_page == 'printers' %}active{% endif %}">
+                🖨️ Printers
               </a>
-              <a id="admin-my-prints-link" href="/my-requests" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
-                <span class="text-lg">🖨️</span>
-                <div>
-                  <p class="text-sm font-medium">My Prints</p>
-                  <p class="text-xs text-zinc-500">Track your requests</p>
-                </div>
+              <a href="/admin/settings" class="dropdown-item {% if active_page == 'settings' %}active{% endif %}">
+                ⚙️ Settings
+              </a>
+              <a href="/admin/features" class="dropdown-item {% if active_page == 'features' %}active{% endif %}">
+                ✨ Features
               </a>
             </div>
-            
-            <!-- Sign Out -->
-            <div class="p-2 border-t border-zinc-800">
-              <a href="/admin/logout" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-900/30 text-red-400 transition">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="border-t border-zinc-800 p-1.5">
+              <a href="/admin/feedback" class="dropdown-item {% if active_page == 'feedback' %}active{% endif %}">
+                📬 Feedback
+              </a>
+              <a href="/admin/broadcast" class="dropdown-item {% if active_page == 'broadcast' %}active{% endif %}">
+                📢 Broadcast
+              </a>
+              <a href="/admin/audit" class="dropdown-item {% if active_page == 'audit' %}active{% endif %}">
+                📜 Audit Log
+              </a>
+            </div>
+            <div class="border-t border-zinc-800 p-1.5">
+              <a href="/admin/file-sync" class="dropdown-item text-zinc-500 {% if active_page == 'file-sync' %}active{% endif %}">
+                📁 File Sync
+              </a>
+              <a href="/admin/debug" class="dropdown-item text-zinc-500 {% if active_page == 'debug' %}active{% endif %}">
+                🔧 Debug
+              </a>
+            </div>
+          </div>
+        </div>
+        
+        <div class="w-px h-6 bg-zinc-700 mx-3"></div>
+        
+        <!-- Exit Admin -->
+        <a href="/" class="text-sm text-zinc-400 hover:text-indigo-300 flex items-center gap-1.5 transition px-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"/>
+          </svg>
+          <span class="hidden lg:inline">Exit</span>
+        </a>
+        
+        <!-- User Avatar -->
+        <div class="relative ml-2" id="admin-account-container">
+          <button id="admin-account-btn" onclick="toggleAdminAccountMenu()" class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-sm font-bold hover:ring-2 hover:ring-indigo-500/50 transition overflow-hidden">
+            <img id="admin-account-avatar-img" src="" alt="" class="hidden w-full h-full object-cover">
+            <span id="admin-account-avatar-initial">?</span>
+          </button>
+          
+          <div id="admin-account-dropdown" class="hidden absolute top-full right-0 mt-2 w-60 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden z-50">
+            <div class="p-3 border-b border-zinc-800 bg-zinc-950/50">
+              <p id="admin-account-email" class="text-sm font-medium truncate">Loading...</p>
+              <p class="text-xs text-zinc-500">Administrator</p>
+            </div>
+            <div class="p-1.5">
+              <a id="admin-profile-link" href="/user/profile" class="dropdown-item">
+                👤 My Profile
+              </a>
+              <a id="admin-my-prints-link" href="/my-requests" class="dropdown-item">
+                🖨️ My Prints
+              </a>
+            </div>
+            <div class="border-t border-zinc-800 p-1.5">
+              <a href="/admin/logout" class="dropdown-item text-red-400 hover:bg-red-900/20">
+                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
                 </svg>
-                <span class="text-sm font-medium">Sign Out</span>
+                Sign Out
               </a>
             </div>
           </div>
@@ -124,7 +127,7 @@
       </div>
       
       <!-- Mobile Menu Button -->
-      <button id="mobile-menu-btn" class="md:hidden p-2 text-zinc-400 hover:text-white" onclick="toggleMobileMenu()">
+      <button id="mobile-menu-btn" class="md:hidden p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition" onclick="toggleMobileMenu()">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
         </svg>
@@ -133,169 +136,116 @@
   </div>
   
   <!-- Mobile Menu -->
-  <div id="mobile-menu" class="hidden md:hidden border-t border-zinc-800 bg-zinc-900">
-    <div class="px-4 py-3 space-y-1">
-      <!-- Main -->
-      <a href="/admin" class="mobile-nav-link {% if active_page == 'queue' %}active{% endif %}">
-        📋 Queue
-      </a>
-      <a href="/admin/printer-settings" class="mobile-nav-link {% if active_page == 'printers' %}active{% endif %}">
-        🖨️ Printers
-      </a>
+  <div id="mobile-menu" class="hidden md:hidden border-t border-zinc-800 bg-zinc-900/95 backdrop-blur-lg max-h-[70vh] overflow-y-auto">
+    <div class="p-3 space-y-1">
+      <a href="/admin" class="mobile-nav-link {% if active_page == 'queue' %}active{% endif %}">📋 Queue</a>
       {% if can_design_nav %}
-      <a href="/admin?design=1" class="mobile-nav-link {% if active_page == 'design' %}active{% endif %}">
-        🎨 Design Queue
-      </a>
+      <a href="/admin?design=1" class="mobile-nav-link {% if active_page == 'design' %}active{% endif %}">🎨 Design Queue</a>
       {% endif %}
-      <a href="/admin/store" class="mobile-nav-link {% if active_page == 'store' %}active{% endif %}">
-        🏪 Store
-      </a>
-      <a href="/admin/analytics" class="mobile-nav-link {% if active_page == 'analytics' %}active{% endif %}">
-        📊 Analytics
-      </a>
+      <a href="/admin/store" class="mobile-nav-link {% if active_page == 'store' %}active{% endif %}">🏪 Store</a>
+      <a href="/admin/analytics" class="mobile-nav-link {% if active_page == 'analytics' %}active{% endif %}">📊 Analytics</a>
+      <a href="/admin/accounts" class="mobile-nav-link {% if active_page == 'accounts' %}active{% endif %}">👥 Users</a>
       
-      <div class="border-t border-zinc-800 my-2"></div>
+      <div class="border-t border-zinc-800 my-2 pt-2">
+        <p class="text-xs text-zinc-500 px-3 mb-1">Settings</p>
+        <a href="/admin/printer-settings" class="mobile-nav-link {% if active_page == 'printers' %}active{% endif %}">🖨️ Printers</a>
+        <a href="/admin/settings" class="mobile-nav-link {% if active_page == 'settings' %}active{% endif %}">⚙️ Settings</a>
+        <a href="/admin/features" class="mobile-nav-link {% if active_page == 'features' %}active{% endif %}">✨ Features</a>
+        <a href="/admin/feedback" class="mobile-nav-link {% if active_page == 'feedback' %}active{% endif %}">📬 Feedback</a>
+        <a href="/admin/broadcast" class="mobile-nav-link {% if active_page == 'broadcast' %}active{% endif %}">📢 Broadcast</a>
+      </div>
       
-      <!-- People -->
-      <a href="/admin/accounts" class="mobile-nav-link {% if active_page == 'accounts' or active_page == 'users' %}active{% endif %}">
-        👥 Accounts
-      </a>
-      <a href="/admin/admins" class="mobile-nav-link {% if active_page == 'admins' %}active{% endif %}">
-        👔 Admins (Legacy)
-      </a>
-      
-      <div class="border-t border-zinc-800 my-2"></div>
-      
-      <!-- Communication -->
-      <a href="/admin/feedback" class="mobile-nav-link {% if active_page == 'feedback' %}active{% endif %}">
-        📬 Feedback
-      </a>
-      <a href="/admin/broadcast" class="mobile-nav-link {% if active_page == 'broadcast' %}active{% endif %}">
-        📢 Broadcast
-      </a>
-      
-      <div class="border-t border-zinc-800 my-2"></div>
-      
-      <!-- System -->
-      <a href="/admin/settings" class="mobile-nav-link {% if active_page == 'settings' %}active{% endif %}">
-        ⚙️ Settings
-      </a>
-      <a href="/admin/features" class="mobile-nav-link {% if active_page == 'features' %}active{% endif %}">
-        ✨ Features
-      </a>
-      <a href="/admin/file-sync" class="mobile-nav-link {% if active_page == 'file-sync' %}active{% endif %}">
-        📁 File Sync
-      </a>
-      <a href="/admin/audit" class="mobile-nav-link {% if active_page == 'audit' %}active{% endif %}">
-        📜 Audit Log
-      </a>
-      <a href="/admin/debug" class="mobile-nav-link text-zinc-500 {% if active_page == 'debug' %}active{% endif %}">
-        🔧 Debug
-      </a>
-      
-      <div class="border-t border-zinc-800 my-2"></div>
-      
-      <a href="/" class="mobile-nav-link text-indigo-400">
-        ← Exit Admin
-      </a>
-      <a href="/admin/logout" class="mobile-nav-link text-red-400">
-        Logout
-      </a>
+      <div class="border-t border-zinc-800 my-2 pt-2 flex items-center gap-2">
+        <a href="/" class="mobile-nav-link flex-1 text-indigo-400">← Exit Admin</a>
+        <a href="/admin/logout" class="mobile-nav-link text-red-400">Logout</a>
+      </div>
     </div>
   </div>
 </nav>
 
 <style>
-  .admin-nav-link {
+  .admin-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
     padding: 0.5rem 0.75rem;
     border-radius: 0.5rem;
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 500;
     color: #a1a1aa;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .admin-pill:hover { color: white; background-color: rgba(255,255,255,0.05); }
+  .admin-pill.active { 
+    color: white; 
+    background-color: rgba(99, 102, 241, 0.2);
+    box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.3);
+  }
+  
+  .dropdown-item {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    transition: color 0.15s, background-color 0.15s;
-    white-space: nowrap;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.8125rem;
+    color: #d4d4d8;
+    transition: all 0.15s;
   }
-  .admin-nav-link:hover { color: white; background-color: #27272a; }
-  .admin-nav-link.active { color: #818cf8; background-color: rgba(99, 102, 241, 0.1); }
+  .dropdown-item:hover { background-color: #27272a; color: white; }
+  .dropdown-item.active { color: #818cf8; background-color: rgba(99, 102, 241, 0.1); }
   
   .mobile-nav-link {
     display: block;
-    padding: 0.5rem 0.75rem;
+    padding: 0.625rem 0.75rem;
     border-radius: 0.5rem;
-    font-size: 1rem;
+    font-size: 0.9375rem;
     color: #d4d4d8;
-    transition: color 0.15s, background-color 0.15s;
+    transition: all 0.15s;
   }
   .mobile-nav-link:hover { background-color: #27272a; color: white; }
   .mobile-nav-link.active { color: #818cf8; background-color: rgba(99, 102, 241, 0.1); }
 </style>
 
-<!-- PWA Bottom Navigation for Admin Pages (Mobile only) -->
-<!-- Admin-contextual nav: key admin functions + Submit for testing -->
+<!-- Mobile Bottom Nav for Admin -->
 <nav class="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-lg border-t border-zinc-800 sm:hidden" style="padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);">
   <div class="grid grid-cols-5 gap-1 px-2 pt-2">
-    <a href="/admin" class="nav-item {% if active_page == 'queue' %}active{% endif %} flex flex-col items-center py-2 tap-highlight">
-      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
-        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-        </svg>
-      </div>
-      <span class="text-xs mt-1">Queue</span>
+    <a href="/admin" class="admin-bnav-item {% if active_page == 'queue' %}active{% endif %}">
+      <span class="text-lg">📋</span>
+      <span class="text-[10px]">Queue</span>
     </a>
-    <a href="/" class="nav-item flex flex-col items-center py-2 tap-highlight">
-      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
-        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-        </svg>
-      </div>
-      <span class="text-xs mt-1">Submit</span>
+    <a href="/" class="admin-bnav-item">
+      <span class="text-lg">➕</span>
+      <span class="text-[10px]">Submit</span>
     </a>
-    <a href="/admin/store" class="nav-item {% if active_page == 'store' %}active{% endif %} flex flex-col items-center py-2 tap-highlight">
-      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
-        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-        </svg>
-      </div>
-      <span class="text-xs mt-1">Store</span>
+    <a href="/admin/store" class="admin-bnav-item {% if active_page == 'store' %}active{% endif %}">
+      <span class="text-lg">🏪</span>
+      <span class="text-[10px]">Store</span>
     </a>
-    <a href="/admin/printer-settings" class="nav-item {% if active_page == 'printers' %}active{% endif %} flex flex-col items-center py-2 tap-highlight">
-      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
-        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-        </svg>
-      </div>
-      <span class="text-xs mt-1">Printers</span>
+    <a href="/admin/printer-settings" class="admin-bnav-item {% if active_page == 'printers' %}active{% endif %}">
+      <span class="text-lg">🖨️</span>
+      <span class="text-[10px]">Printers</span>
     </a>
-    <button onclick="toggleMobileMenu()" class="nav-item flex flex-col items-center py-2 tap-highlight">
-      <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all text-zinc-400">
-        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </div>
-      <span class="text-xs mt-1 text-zinc-400">More</span>
+    <button onclick="toggleMobileMenu()" class="admin-bnav-item text-zinc-400">
+      <span class="text-lg">☰</span>
+      <span class="text-[10px]">More</span>
     </button>
   </div>
 </nav>
 
 <style>
-  /* Bottom nav styling - must match pwa_base.html exactly */
-  .nav-item {
+  .admin-bnav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.5rem;
+    color: #a1a1aa;
+    transition: all 0.15s;
     -webkit-tap-highlight-color: transparent;
   }
-  .nav-item.active {
-    color: #818cf8;
-  }
-  .nav-item.active .nav-icon {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    color: white;
-    transform: scale(1.05);
-  }
-  .tap-highlight:active {
-    transform: scale(0.97);
-  }
+  .admin-bnav-item:active { transform: scale(0.95); }
+  .admin-bnav-item.active { color: #818cf8; }
 </style>
 
 <script>
@@ -303,22 +253,34 @@ function toggleMobileMenu() {
   document.getElementById('mobile-menu').classList.toggle('hidden');
 }
 
-// Admin account menu toggle
-function toggleAdminAccountMenu() {
-  const menu = document.getElementById('admin-account-dropdown');
-  if (menu) menu.classList.toggle('hidden');
+function toggleMoreDropdown() {
+  const dropdown = document.getElementById('more-dropdown');
+  const chevron = document.getElementById('more-chevron');
+  dropdown.classList.toggle('hidden');
+  chevron.style.transform = dropdown.classList.contains('hidden') ? '' : 'rotate(180deg)';
 }
 
-// Close menu when clicking outside
+function toggleAdminAccountMenu() {
+  document.getElementById('admin-account-dropdown').classList.toggle('hidden');
+}
+
+// Close dropdowns when clicking outside
 document.addEventListener('click', (e) => {
-  const menu = document.getElementById('admin-account-dropdown');
-  const btn = document.getElementById('admin-account-btn');
-  if (menu && btn && !btn.contains(e.target) && !menu.contains(e.target)) {
-    menu.classList.add('hidden');
+  const moreContainer = document.getElementById('more-dropdown-container');
+  const moreDropdown = document.getElementById('more-dropdown');
+  const accountContainer = document.getElementById('admin-account-container');
+  const accountDropdown = document.getElementById('admin-account-dropdown');
+  
+  if (moreDropdown && moreContainer && !moreContainer.contains(e.target)) {
+    moreDropdown.classList.add('hidden');
+    document.getElementById('more-chevron').style.transform = '';
+  }
+  if (accountDropdown && accountContainer && !accountContainer.contains(e.target)) {
+    accountDropdown.classList.add('hidden');
   }
 });
 
-// Load user info for account menu
+// Load user info
 async function loadAdminAccountInfo() {
   try {
     const resp = await fetch('/api/user/me', { credentials: 'include' });
@@ -328,37 +290,16 @@ async function loadAdminAccountInfo() {
         const displayName = data.user.display_name || data.user.email;
         const initial = displayName[0].toUpperCase();
         
-        const avatar = document.getElementById('admin-account-avatar');
-        const avatarImg = document.getElementById('admin-account-avatar-img');
-        const avatarInitial = document.getElementById('admin-account-avatar-initial');
-        const avatarLg = document.getElementById('admin-account-avatar-lg');
-        const avatarLgImg = document.getElementById('admin-account-avatar-lg-img');
-        const avatarLgInitial = document.getElementById('admin-account-avatar-lg-initial');
-        const emailEl = document.getElementById('admin-account-email');
+        document.getElementById('admin-account-avatar-initial').textContent = initial;
+        document.getElementById('admin-account-email').textContent = data.user.email;
         
-        if (avatarInitial) avatarInitial.textContent = initial;
-        if (avatarLgInitial) avatarLgInitial.textContent = initial;
         if (data.user.avatar_url) {
-          const avatarUrl = data.user.avatar_url;
-          if (avatarImg) {
-            avatarImg.src = avatarUrl;
-            avatarImg.classList.remove('hidden');
-          }
-          if (avatarLgImg) {
-            avatarLgImg.src = avatarUrl;
-            avatarLgImg.classList.remove('hidden');
-          }
-          if (avatarInitial) avatarInitial.classList.add('hidden');
-          if (avatarLgInitial) avatarLgInitial.classList.add('hidden');
-        } else {
-          if (avatarImg) avatarImg.classList.add('hidden');
-          if (avatarLgImg) avatarLgImg.classList.add('hidden');
-          if (avatarInitial) avatarInitial.classList.remove('hidden');
-          if (avatarLgInitial) avatarLgInitial.classList.remove('hidden');
+          const img = document.getElementById('admin-account-avatar-img');
+          img.src = data.user.avatar_url;
+          img.classList.remove('hidden');
+          document.getElementById('admin-account-avatar-initial').classList.add('hidden');
         }
-        if (emailEl) emailEl.textContent = data.user.email;
         
-        // Update links with token
         const token = localStorage.getItem('my_requests_token') || data.user.token;
         if (token) {
           const profileLink = document.getElementById('admin-profile-link');
@@ -368,20 +309,11 @@ async function loadAdminAccountInfo() {
         }
       }
     }
-  } catch (e) {
-    // Silently fail
-  }
+  } catch (e) {}
 }
 loadAdminAccountInfo();
 
-// Update My Requests link if user has saved token
-const savedToken = localStorage.getItem('my_requests_token');
-if (savedToken) {
-  const navLink = document.getElementById('admin-my-requests-nav');
-  if (navLink) navLink.href = '/my-requests/view?token=' + savedToken;
-}
-
-// Add bottom padding for mobile to account for fixed bottom nav
+// Bottom padding for mobile
 (function() {
   if (window.innerWidth < 640) {
     document.body.style.paddingBottom = 'calc(80px + env(safe-area-inset-bottom, 0px))';

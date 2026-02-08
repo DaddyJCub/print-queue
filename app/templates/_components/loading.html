@@ -3,8 +3,37 @@
   Includes skeleton loaders and loading buttons
   
   Usage:
-    {% from '_components/loading.html' import skeleton_card, skeleton_list, loading_button %}
+    {% from '_components/loading.html' import skeleton_card, skeleton_list, loading_button, skeleton_queue_card, skeleton_stat_card %}
 #}
+
+{# Queue stat card skeleton #}
+{% macro skeleton_stat_card() %}
+<div class="bg-zinc-800/50 rounded-2xl p-4 text-center border border-zinc-700/50">
+  <div class="h-7 skeleton w-8 mx-auto mb-2"></div>
+  <div class="h-3 skeleton w-12 mx-auto"></div>
+</div>
+{% endmacro %}
+
+{# Queue card skeleton (mobile view) #}
+{% macro skeleton_queue_card() %}
+<div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+  <div class="flex items-start justify-between mb-2">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-6 skeleton"></div>
+      <div>
+        <div class="h-5 skeleton w-32 mb-1"></div>
+        <div class="h-3 skeleton w-20"></div>
+      </div>
+    </div>
+    <div class="h-6 skeleton w-16 rounded-lg"></div>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    <div class="h-3 skeleton w-16"></div>
+    <div class="h-3 skeleton w-12"></div>
+    <div class="h-3 skeleton w-14"></div>
+  </div>
+</div>
+{% endmacro %}
 
 {# Card skeleton for request cards #}
 {% macro skeleton_card() %}

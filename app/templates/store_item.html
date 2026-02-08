@@ -20,7 +20,7 @@
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
     <!-- Image -->
     <div>
-      <div class="aspect-square bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center justify-center overflow-hidden">
+      <div class="aspect-square bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800 rounded-2xl flex items-center justify-center overflow-hidden shadow-xl">
         {% if item.image_data %}
           <img src="data:image/jpeg;base64,{{ item.image_data }}" 
                alt="{{ item.name }}" 
@@ -32,7 +32,7 @@
       
       {% if item.link_url %}
         <a href="{{ item.link_url }}" target="_blank" 
-           class="mt-4 flex items-center justify-center gap-2 text-indigo-400 hover:text-indigo-300 text-sm">
+           class="mt-4 flex items-center justify-center gap-2 text-indigo-400 hover:text-indigo-300 text-sm transition">
           🔗 View Original Model
         </a>
       {% endif %}
@@ -40,10 +40,10 @@
     
     <!-- Details & Form -->
     <div>
-      <h1 class="text-3xl font-bold mb-2">{{ item.name }}</h1>
+      <h1 class="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-white to-zinc-300 bg-clip-text text-transparent mb-2">{{ item.name }}</h1>
       
       {% if item.category %}
-        <span class="inline-block px-3 py-1 rounded-lg text-sm bg-indigo-600/20 text-indigo-300 mb-4">{{ item.category }}</span>
+        <span class="inline-block px-3 py-1 rounded-lg text-sm bg-purple-600/20 border border-purple-500/30 text-purple-300 mb-4">{{ item.category }}</span>
       {% endif %}
       
       {% if item.description %}
@@ -51,70 +51,70 @@
       {% endif %}
       
       <!-- Specs -->
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 mb-6">
-        <h3 class="font-semibold mb-3">Specifications</h3>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 mb-6">
+        <h3 class="font-semibold mb-3 text-zinc-200">Specifications</h3>
         <div class="grid grid-cols-2 gap-3 text-sm">
           <div>
             <span class="text-zinc-500">Material</span>
-            <p class="font-medium">{{ item.material }}</p>
+            <p class="font-medium text-zinc-200">{{ item.material }}</p>
           </div>
           {% if item.colors %}
             <div>
               <span class="text-zinc-500">Colors</span>
-              <p class="font-medium">{{ item.colors }}</p>
+              <p class="font-medium text-zinc-200">{{ item.colors }}</p>
             </div>
           {% endif %}
           {% if item.estimated_time_minutes %}
             <div>
               <span class="text-zinc-500">Est. Print Time</span>
-              <p class="font-medium">~{{ (item.estimated_time_minutes / 60)|round(1) }} hours</p>
+              <p class="font-medium text-zinc-200">~{{ (item.estimated_time_minutes / 60)|round(1) }} hours</p>
             </div>
           {% endif %}
           {% if files %}
             <div>
               <span class="text-zinc-500">Files Included</span>
-              <p class="font-medium">{{ files|length }} file{% if files|length > 1 %}s{% endif %}</p>
+              <p class="font-medium text-zinc-200">{{ files|length }} file{% if files|length > 1 %}s{% endif %}</p>
             </div>
           {% endif %}
         </div>
       </div>
       
       <!-- Request Form -->
-      <div class="bg-gradient-to-br from-indigo-900/30 to-purple-900/20 border border-indigo-500/30 rounded-2xl p-5">
-        <h3 class="font-semibold mb-4">Request This Print</h3>
+      <div class="bg-gradient-to-br from-indigo-900/30 to-purple-900/20 border border-indigo-500/30 rounded-2xl p-5 shadow-lg shadow-indigo-900/20">
+        <h3 class="font-semibold mb-4 text-indigo-200">Request This Print</h3>
         
         <form method="POST" action="/submit-store-request/{{ item.id }}" class="space-y-4">
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="text-sm text-zinc-400">Your Name *</label>
+              <label class="text-sm font-medium text-zinc-300 mb-1.5 block">Your Name *</label>
               <input type="text" name="requester_name" required
-                     class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm focus:border-indigo-500 focus:outline-none" />
+                     class="w-full rounded-xl bg-zinc-950 border border-zinc-700 p-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition" />
             </div>
             <div>
-              <label class="text-sm text-zinc-400">Your Email *</label>
+              <label class="text-sm font-medium text-zinc-300 mb-1.5 block">Your Email *</label>
               <input type="email" name="requester_email" required
-                     class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm focus:border-indigo-500 focus:outline-none" />
+                     class="w-full rounded-xl bg-zinc-950 border border-zinc-700 p-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition" />
             </div>
           </div>
           
           {% if item.colors %}
             <div>
-              <label class="text-sm text-zinc-400">Preferred Color</label>
+              <label class="text-sm font-medium text-zinc-300 mb-1.5 block">Preferred Color</label>
               <input type="text" name="colors" value="{{ item.colors }}" placeholder="e.g. Black"
-                     class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm focus:border-indigo-500 focus:outline-none" />
+                     class="w-full rounded-xl bg-zinc-950 border border-zinc-700 p-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition" />
             </div>
           {% endif %}
           
           <div>
-            <label class="text-sm text-zinc-400">Additional Notes (optional)</label>
+            <label class="text-sm font-medium text-zinc-300 mb-1.5 block">Additional Notes <span class="text-zinc-500 font-normal">(optional)</span></label>
             <textarea name="notes" rows="3" placeholder="Any special requests or modifications..."
-                      class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm resize-none focus:border-indigo-500 focus:outline-none"></textarea>
+                      class="w-full rounded-xl bg-zinc-950 border border-zinc-700 p-3 text-sm resize-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"></textarea>
           </div>
           
           <input type="hidden" name="store_item_id" value="{{ item.id }}" />
           
-          <button type="submit" class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-3 text-sm font-semibold">
-            🖨️ Submit Request
+          <button type="submit" class="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 transition px-4 py-3.5 text-sm font-bold shadow-lg shadow-indigo-900/30 flex items-center justify-center gap-2">
+            <span>🖨️</span> Submit Request
           </button>
         </form>
         

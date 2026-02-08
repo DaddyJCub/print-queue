@@ -15,24 +15,20 @@
     {% set active_page = 'design' if request.query_params.get('design') else 'queue' %}
     {% include 'admin_nav.html' %}
     
-    <!-- Page Header -->
-    <div class="mb-6">
-      <h1 class="text-3xl font-bold">📋 Queue Dashboard</h1>
-      <p class="text-zinc-400 mt-1">Manage your print queue efficiently.</p>
+    <!-- Page Header - Compact -->
+    <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
+      <h1 class="text-2xl font-bold">Queue</h1>
+      {% if current_admin_can_manage_designs and design_enabled %}
+      <div class="flex items-center gap-1 bg-zinc-900/50 rounded-lg p-0.5 border border-zinc-800">
+        <button type="button" class="design-filter-btn px-3 py-1.5 rounded-md text-xs font-medium transition"
+                data-filter="all">All</button>
+        <button type="button" class="design-filter-btn px-3 py-1.5 rounded-md text-xs font-medium transition"
+                data-filter="needs">Design Needed</button>
+        <button type="button" class="design-filter-btn px-3 py-1.5 rounded-md text-xs font-medium transition"
+                data-filter="mine">My Work</button>
+      </div>
+      {% endif %}
     </div>
-    
-    {% if current_admin_can_manage_designs and design_enabled %}
-    <div class="mb-4 flex flex-wrap items-center gap-2">
-      <span class="text-xs text-zinc-500">Design filters:</span>
-      <button type="button" class="design-filter-btn px-3 py-1.5 rounded-lg bg-zinc-800 text-xs font-semibold border border-zinc-700"
-              data-filter="all">All</button>
-      <button type="button" class="design-filter-btn px-3 py-1.5 rounded-lg bg-zinc-900 text-xs font-semibold border border-teal-700 text-teal-200"
-              data-filter="needs">Needs Design</button>
-      <button type="button" class="design-filter-btn px-3 py-1.5 rounded-lg bg-zinc-900 text-xs font-semibold border border-teal-500 text-teal-200"
-              data-filter="mine">My Design Work</button>
-      <span class="text-[11px] text-zinc-500">Design requests dim when filtered out.</span>
-    </div>
-    {% endif %}
 
     <!-- Batch Edit Form (initially hidden) -->
     <div id="batch-edit-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -329,8 +325,10 @@
       const designButtons = document.querySelectorAll('.design-filter-btn');
       function applyDesignFilter(filter) {
         designButtons.forEach(btn => {
-          btn.classList.toggle('ring-2', btn.dataset.filter === filter);
-          btn.classList.toggle('ring-teal-400', btn.dataset.filter === filter);
+          const isActive = btn.dataset.filter === filter;
+          btn.classList.toggle('bg-indigo-600', isActive);
+          btn.classList.toggle('text-white', isActive);
+          btn.classList.toggle('text-zinc-400', !isActive);
         });
         document.querySelectorAll('.request-item').forEach(el => {
           const needsDesign = el.dataset.requiresDesign === '1' && el.dataset.designComplete !== '1';
@@ -371,271 +369,176 @@
       </span>
     {%- endmacro %}
 
-    <!-- ETA Disclaimer -->
-    <div class="mt-6 mb-4 text-xs text-zinc-500 bg-zinc-900/30 border border-zinc-800 rounded-lg px-3 py-2">
-      ⏱️ <strong>Note:</strong> ETAs are estimates only and may vary based on print complexity, material, and other factors.
-    </div>
-
-    <!-- Print Match Suggestions -->
+    <!-- Print Match Suggestions - Compact Alert -->
     {% if print_match_suggestions %}
       {% for printer_code, suggestion in print_match_suggestions.items() %}
-        <div class="mb-4 bg-amber-900/20 border border-amber-600/50 rounded-xl p-4">
-          <div class="flex items-start justify-between gap-4">
-            <div class="flex-1">
-              <div class="flex items-center gap-2 mb-2">
-                <span class="text-amber-400">🔗</span>
-                <span class="font-semibold text-amber-200">
-                  {% if printer_code == 'ADVENTURER_4' %}Adventurer 4{% elif printer_code == 'AD5X' %}AD5X{% else %}{{ printer_code }}{% endif %}
-                  is printing "{{ suggestion.file_display }}"
-                </span>
-              </div>
-              <p class="text-sm text-zinc-300 mb-3">
-                {% if suggestion.matches|length == 1 %}
-                  Found 1 matching request. Would you like to assign it?
-                {% else %}
-                  Found {{ suggestion.matches|length }} potential matches. Select one to assign:
-                {% endif %}
-              </p>
-              <div class="flex flex-wrap gap-2">
-                {% for match in suggestion.matches %}
-                  <form method="POST" action="/admin/match-print/{{ match.id }}" class="inline">
-                    <input type="hidden" name="printer" value="{{ printer_code }}" />
-                    <button type="submit" class="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-600/30 hover:bg-amber-600/50 border border-amber-500/50 rounded-lg text-sm transition">
-                      <span class="font-medium">{{ match.print_name or match.id[:8] }}</span>
-                      <span class="text-xs text-amber-300/70">{{ match.requester_name }}</span>
-                      {% if match.printer == printer_code %}
-                        <span class="text-xs bg-green-600/30 text-green-300 px-1 rounded">assigned</span>
-                      {% endif %}
-                    </button>
-                  </form>
-                {% endfor %}
-              </div>
+        <div class="mb-3 bg-amber-900/20 border border-amber-600/50 rounded-xl p-3 flex items-center justify-between gap-3">
+          <div class="flex-1 min-w-0">
+            <span class="text-sm text-amber-200">
+              🔗 <strong>{{ printer_code }}</strong> printing "{{ suggestion.file_display }}" — 
+              <span class="text-amber-300">{{ suggestion.matches|length }} match{% if suggestion.matches|length != 1 %}es{% endif %}</span>
+            </span>
+            <div class="flex flex-wrap gap-1.5 mt-2">
+              {% for match in suggestion.matches %}
+                <form method="POST" action="/admin/match-print/{{ match.id }}" class="inline">
+                  <input type="hidden" name="printer" value="{{ printer_code }}" />
+                  <button type="submit" class="px-2 py-1 bg-amber-600/30 hover:bg-amber-600/50 border border-amber-500/50 rounded text-xs transition">
+                    {{ match.print_name or match.id[:8] }}
+                  </button>
+                </form>
+              {% endfor %}
             </div>
-            <form method="POST" action="/admin/dismiss-match/{{ printer_code }}" class="flex-shrink-0">
-              <button type="submit" class="text-zinc-400 hover:text-zinc-200 p-1" title="Dismiss">
-                ✕
-              </button>
-            </form>
           </div>
+          <form method="POST" action="/admin/dismiss-match/{{ printer_code }}">
+            <button type="submit" class="text-zinc-400 hover:text-zinc-200 p-1" title="Dismiss">✕</button>
+          </form>
         </div>
       {% endfor %}
     {% endif %}
 
-    <!-- Printer Status Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="printer-status-cards">
+    <!-- Printer Status - Collapsible -->
+    <details class="mb-4 group" open>
+      <summary class="flex items-center justify-between cursor-pointer p-3 bg-zinc-900/40 rounded-xl border border-zinc-800 hover:bg-zinc-900/60 transition">
+        <div class="flex items-center gap-3">
+          <span class="text-sm font-semibold">🖨 Printers</span>
+          <div class="flex items-center gap-2">
+            {% for printer_name, printer_data in printer_status.items() %}
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs
+                {% if printer_data.is_printing %}bg-emerald-500/20 text-emerald-300
+                {% elif printer_data.status == 'READY' %}bg-green-500/20 text-green-300
+                {% elif printer_data.is_offline %}bg-zinc-700/50 text-zinc-400
+                {% else %}bg-amber-500/20 text-amber-300{% endif %}">
+                <span class="w-1.5 h-1.5 rounded-full {% if printer_data.is_printing %}bg-emerald-400 animate-pulse{% elif printer_data.status == 'READY' %}bg-green-400{% elif printer_data.is_offline %}bg-zinc-500{% else %}bg-amber-400{% endif %}"></span>
+                {{ printer_name.replace('_', ' ').title() }}
+              </span>
+            {% endfor %}
+          </div>
+        </div>
+        <svg class="w-4 h-4 text-zinc-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </summary>
+      
+      <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3" id="printer-status-cards">
       <!-- Adventurer 4 -->
-      <div id="card-adv4" class="bg-zinc-900/50 border {% if printer_status.ADVENTURER_4.is_offline and printer_status.ADVENTURER_4.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-2xl p-6">
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="font-semibold flex items-center gap-2">
-            <span>🖨</span>
-            <span>FlashForge Adventurer 4</span>
-          </h3>
+      <div id="card-adv4" class="bg-zinc-900/40 border {% if printer_status.ADVENTURER_4.is_offline and printer_status.ADVENTURER_4.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-xl p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-medium text-sm">Adventurer 4</span>
           {% if printer_status.ADVENTURER_4.is_offline %}
-            <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-amber-600/20 text-amber-300 border border-amber-500/50">
-              <span class="status-dot inline-block w-2 h-2 rounded-full bg-amber-400"></span>
-              Offline
-            </span>
+            <span class="status-badge px-2 py-0.5 rounded text-xs bg-zinc-700/50 text-zinc-400">Offline</span>
           {% elif printer_status.ADVENTURER_4.status %}
-            <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium
-              {% if printer_status.ADVENTURER_4.is_printing %}
-                bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
-              {% elif printer_status.ADVENTURER_4.status == 'READY' %}
-                bg-green-500/20 text-green-300 border border-green-500/50
-              {% else %}
-                bg-amber-500/20 text-amber-300 border border-amber-500/50
-              {% endif %}">
-              <span class="status-dot inline-block w-2 h-2 rounded-full animate-pulse
-                {% if printer_status.ADVENTURER_4.is_printing %}bg-emerald-400
-                {% elif printer_status.ADVENTURER_4.status == 'READY' %}bg-green-400
-                {% else %}bg-amber-400{% endif %}"></span>
+            <span class="status-badge px-2 py-0.5 rounded text-xs
+              {% if printer_status.ADVENTURER_4.is_printing %}bg-emerald-500/20 text-emerald-300
+              {% elif printer_status.ADVENTURER_4.status == 'READY' %}bg-green-500/20 text-green-300
+              {% else %}bg-amber-500/20 text-amber-300{% endif %}">
               {{ printer_status.ADVENTURER_4.status }}
             </span>
           {% else %}
-            <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-zinc-600/20 text-zinc-300 border border-zinc-600/50">
-              <span class="status-dot inline-block w-2 h-2 rounded-full bg-zinc-400"></span>
-              Unknown
-            </span>
+            <span class="status-badge px-2 py-0.5 rounded text-xs bg-zinc-700/50 text-zinc-400">Unknown</span>
           {% endif %}
         </div>
         
-        <!-- Offline indicator with last seen -->
-        {% if printer_status.ADVENTURER_4.is_offline and printer_status.ADVENTURER_4.is_cached %}
-        <div class="mb-3 px-2 py-1.5 bg-amber-950/30 border border-amber-800/30 rounded-lg flex items-center gap-2 text-xs text-amber-400">
-          <span>⚠️</span>
-          <span>Connection lost{% if printer_status.ADVENTURER_4.last_seen %} · Last seen {{ printer_status.ADVENTURER_4.last_seen }}{% endif %}</span>
-        </div>
-        {% endif %}
-        
-        <!-- Currently printing info -->
-        <div class="print-info bg-zinc-950/60 rounded-lg p-3 mb-3 {% if not printer_status.ADVENTURER_4.is_printing %}hidden{% endif %}">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-sm font-medium text-zinc-200">📄 <span class="file-name">{{ printer_status.ADVENTURER_4.current_file or 'Unknown' }}</span></div>
-              <div class="flex items-center gap-4 mt-1 text-xs text-zinc-400">
-                {% if printer_status.ADVENTURER_4.progress is not none %}
-                  <span>Progress: <span class="progress-text text-emerald-300 font-semibold">{{ printer_status.ADVENTURER_4.progress }}%</span></span>
-                {% else %}
-                  <span>Progress: <span class="progress-text text-zinc-400 font-semibold">—</span></span>
-                {% endif %}
-                {% if printer_status.ADVENTURER_4.current_layer is not none %}
-                  <span>Layer: <span class="layer-text text-blue-300">{{ printer_status.ADVENTURER_4.current_layer }}/{{ printer_status.ADVENTURER_4.total_layers }}</span></span>
-                {% else %}
-                  <span>Layer: <span class="layer-text text-zinc-400">—</span></span>
-                {% endif %}
-              </div>
-            </div>
+        <!-- Printing progress -->
+        <div class="print-info {% if not printer_status.ADVENTURER_4.is_printing %}hidden{% endif %}">
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <span class="file-name text-zinc-300 truncate">{{ printer_status.ADVENTURER_4.current_file or 'Unknown' }}</span>
+            <span class="progress-text text-emerald-300 font-medium">{{ printer_status.ADVENTURER_4.progress or 0 }}%</span>
           </div>
-          <div class="mt-2 h-2 bg-zinc-800 rounded-full overflow-hidden">
-            <div class="progress-bar h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500" 
+          <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div class="progress-bar h-full bg-emerald-500 transition-all duration-500" 
                  style="width: {{ printer_status.ADVENTURER_4.progress or 0 }}%"></div>
           </div>
           {% set active_build = active_builds_by_printer.get('ADVENTURER_4') %}
           {% if active_build %}
-          <div class="mt-3 flex justify-end">
-            <button type="button"
-                    class="px-3 py-1.5 rounded-lg bg-amber-700/80 hover:bg-amber-600 text-white text-xs font-semibold transition"
-                    onclick="pausePrinterBuildConfirm('{{ active_build.id }}', '{{ active_build.build_number }}', 'ADVENTURER_4')">
-              ⏸ Pause Print
-            </button>
-          </div>
-          {% endif %}
-        </div>
-        
-        <div class="flex items-center justify-between text-xs text-zinc-400">
-          <span class="temp-text">
-            {% if printer_status.ADVENTURER_4.temp %}
-              🌡 Nozzle: <span class="text-zinc-200">{{ printer_status.ADVENTURER_4.temp }}°C</span>
-              {% if printer_status.ADVENTURER_4.target_temp %}
-                <span class="text-zinc-500">/ {{ printer_status.ADVENTURER_4.target_temp }}°C</span>
-              {% endif %}
-            {% endif %}
-          </span>
-          {% if printer_status.ADVENTURER_4.camera_url %}
-          <button type="button" onclick="toggleAdminCamera('ADVENTURER_4')" id="admin-cam-btn-ADVENTURER_4" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition">
-            <span>📷</span> <span class="btn-text">Show Camera</span>
+          <button type="button" class="mt-2 px-2 py-1 rounded bg-amber-700/60 hover:bg-amber-600 text-white text-xs transition"
+                  onclick="pausePrinterBuildConfirm('{{ active_build.id }}', '{{ active_build.build_number }}', 'ADVENTURER_4')">
+            ⏸ Pause
           </button>
           {% endif %}
         </div>
-        <!-- Camera preview -->
+        
+        <div class="flex items-center justify-between text-xs text-zinc-500 mt-2 {% if printer_status.ADVENTURER_4.is_printing %}pt-2 border-t border-zinc-800{% endif %}">
+          <span class="temp-text">
+            {% if printer_status.ADVENTURER_4.temp %}🌡 {{ printer_status.ADVENTURER_4.temp }}°C{% endif %}
+          </span>
+          {% if printer_status.ADVENTURER_4.camera_url %}
+          <button type="button" onclick="toggleAdminCamera('ADVENTURER_4')" id="admin-cam-btn-ADVENTURER_4" 
+                  class="text-indigo-400 hover:text-indigo-300 text-xs">
+            <span class="btn-text">📷 Camera</span>
+          </button>
+          {% endif %}
+        </div>
         {% if printer_status.ADVENTURER_4.camera_url %}
-        <div id="admin-cam-ADVENTURER_4" class="hidden mt-3">
-          <img id="admin-cam-img-ADVENTURER_4" class="w-full rounded-lg bg-zinc-800 border border-zinc-700" alt="Camera" />
-          <div class="text-xs text-zinc-500 mt-1">Updates every 10 seconds</div>
+        <div id="admin-cam-ADVENTURER_4" class="hidden mt-2">
+          <img id="admin-cam-img-ADVENTURER_4" class="w-full rounded-lg bg-zinc-800" alt="Camera" />
         </div>
         {% endif %}
       </div>
       
       <!-- AD5X -->
-      <div id="card-ad5x" class="bg-zinc-900/50 border {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-2xl p-6">
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="font-semibold flex items-center gap-2">
-            <span>🖨</span>
-            <span>FlashForge AD5X</span>
-          </h3>
+      <div id="card-ad5x" class="bg-zinc-900/40 border {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-xl p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-medium text-sm">AD5X</span>
           {% if printer_status.AD5X.is_offline %}
-            <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-amber-600/20 text-amber-300 border border-amber-500/50">
-              <span class="status-dot inline-block w-2 h-2 rounded-full bg-amber-400"></span>
-              Offline
-            </span>
+            <span class="status-badge px-2 py-0.5 rounded text-xs bg-zinc-700/50 text-zinc-400">Offline</span>
           {% elif printer_status.AD5X.status %}
-            <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium
-              {% if printer_status.AD5X.is_printing %}
-                bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
-              {% elif printer_status.AD5X.status == 'READY' %}
-                bg-green-500/20 text-green-300 border border-green-500/50
-              {% else %}
-                bg-amber-500/20 text-amber-300 border border-amber-500/50
-              {% endif %}">
-              <span class="status-dot inline-block w-2 h-2 rounded-full animate-pulse
-                {% if printer_status.AD5X.is_printing %}bg-emerald-400
-                {% elif printer_status.AD5X.status == 'READY' %}bg-green-400
-                {% else %}bg-amber-400{% endif %}"></span>
+            <span class="status-badge px-2 py-0.5 rounded text-xs
+              {% if printer_status.AD5X.is_printing %}bg-emerald-500/20 text-emerald-300
+              {% elif printer_status.AD5X.status == 'READY' %}bg-green-500/20 text-green-300
+              {% else %}bg-amber-500/20 text-amber-300{% endif %}">
               {{ printer_status.AD5X.status }}
             </span>
           {% else %}
-            <span class="status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-zinc-600/20 text-zinc-300 border border-zinc-600/50">
-              <span class="status-dot inline-block w-2 h-2 rounded-full bg-zinc-400"></span>
-              Unknown
-            </span>
+            <span class="status-badge px-2 py-0.5 rounded text-xs bg-zinc-700/50 text-zinc-400">Unknown</span>
           {% endif %}
         </div>
         
-        <!-- Offline indicator with last seen -->
-        {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}
-        <div class="mb-3 px-2 py-1.5 bg-amber-950/30 border border-amber-800/30 rounded-lg flex items-center gap-2 text-xs text-amber-400">
-          <span>⚠️</span>
-          <span>Connection lost{% if printer_status.AD5X.last_seen %} · Last seen {{ printer_status.AD5X.last_seen }}{% endif %}</span>
-        </div>
-        {% endif %}
-        
-        <!-- Currently printing info -->
-        <div class="print-info bg-zinc-950/60 rounded-lg p-3 mb-3 {% if not printer_status.AD5X.is_printing %}hidden{% endif %}">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-sm font-medium text-zinc-200">📄 <span class="file-name">{{ printer_status.AD5X.current_file or 'Unknown' }}</span></div>
-              <div class="flex items-center gap-4 mt-1 text-xs text-zinc-400">
-                {% if printer_status.AD5X.progress is not none %}
-                  <span>Progress: <span class="progress-text text-emerald-300 font-semibold">{{ printer_status.AD5X.progress }}%</span></span>
-                {% else %}
-                  <span>Progress: <span class="progress-text text-zinc-400 font-semibold">—</span></span>
-                {% endif %}
-                {% if printer_status.AD5X.current_layer is not none %}
-                  <span>Layer: <span class="layer-text text-blue-300">{{ printer_status.AD5X.current_layer }}/{{ printer_status.AD5X.total_layers }}</span></span>
-                {% else %}
-                  <span>Layer: <span class="layer-text text-zinc-400">—</span></span>
-                {% endif %}
-              </div>
-            </div>
+        <!-- Printing progress -->
+        <div class="print-info {% if not printer_status.AD5X.is_printing %}hidden{% endif %}">
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <span class="file-name text-zinc-300 truncate">{{ printer_status.AD5X.current_file or 'Unknown' }}</span>
+            <span class="progress-text text-emerald-300 font-medium">{{ printer_status.AD5X.progress or 0 }}%</span>
           </div>
-          <div class="mt-2 h-2 bg-zinc-800 rounded-full overflow-hidden">
-            <div class="progress-bar h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500" 
+          <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div class="progress-bar h-full bg-emerald-500 transition-all duration-500" 
                  style="width: {{ printer_status.AD5X.progress or 0 }}%"></div>
           </div>
           {% set active_build = active_builds_by_printer.get('AD5X') %}
           {% if active_build %}
-          <div class="mt-3 flex justify-end">
-            <button type="button"
-                    class="px-3 py-1.5 rounded-lg bg-amber-700/80 hover:bg-amber-600 text-white text-xs font-semibold transition"
-                    onclick="pausePrinterBuildConfirm('{{ active_build.id }}', '{{ active_build.build_number }}', 'AD5X')">
-              ⏸ Pause Print
-            </button>
-          </div>
-          {% endif %}
-        </div>
-        
-        <div class="flex items-center justify-between text-xs text-zinc-400">
-          <span class="temp-text">
-            {% if printer_status.AD5X.temp %}
-              🌡 Nozzle: <span class="text-zinc-200">{{ printer_status.AD5X.temp }}°C</span>
-              {% if printer_status.AD5X.target_temp %}
-                <span class="text-zinc-500">/ {{ printer_status.AD5X.target_temp }}°C</span>
-              {% endif %}
-            {% endif %}
-          </span>
-          {% if printer_status.AD5X.camera_url %}
-          <button type="button" onclick="toggleAdminCamera('AD5X')" id="admin-cam-btn-AD5X" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition">
-            <span>📷</span> <span class="btn-text">Show Camera</span>
+          <button type="button" class="mt-2 px-2 py-1 rounded bg-amber-700/60 hover:bg-amber-600 text-white text-xs transition"
+                  onclick="pausePrinterBuildConfirm('{{ active_build.id }}', '{{ active_build.build_number }}', 'AD5X')">
+            ⏸ Pause
           </button>
           {% endif %}
         </div>
-        <!-- Camera preview -->
+        
+        <div class="flex items-center justify-between text-xs text-zinc-500 mt-2 {% if printer_status.AD5X.is_printing %}pt-2 border-t border-zinc-800{% endif %}">
+          <span class="temp-text">
+            {% if printer_status.AD5X.temp %}🌡 {{ printer_status.AD5X.temp }}°C{% endif %}
+          </span>
+          {% if printer_status.AD5X.camera_url %}
+          <button type="button" onclick="toggleAdminCamera('AD5X')" id="admin-cam-btn-AD5X" 
+                  class="text-indigo-400 hover:text-indigo-300 text-xs">
+            <span class="btn-text">📷 Camera</span>
+          </button>
+          {% endif %}
+        </div>
         {% if printer_status.AD5X.camera_url %}
-        <div id="admin-cam-AD5X" class="hidden mt-3">
-          <img id="admin-cam-img-AD5X" class="w-full rounded-lg bg-zinc-800 border border-zinc-700" alt="Camera" />
-          <div class="text-xs text-zinc-500 mt-1">Updates every 10 seconds</div>
+        <div id="admin-cam-AD5X" class="hidden mt-2">
+          <img id="admin-cam-img-AD5X" class="w-full rounded-lg bg-zinc-800" alt="Camera" />
         </div>
         {% endif %}
       </div>
-    </div>
-
-    <!-- Auto-refresh controls -->
-    <div class="mt-2 flex justify-end">
-      <label class="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer">
-        <input type="checkbox" id="auto-refresh" checked class="rounded" />
-        Auto-refresh printer status every 15s
-      </label>
-      <button onclick="refreshPrinterStatus()" class="ml-4 text-xs text-indigo-400 hover:underline">↻ Refresh now</button>
-    </div>
+      
+      <!-- Auto-refresh -->
+      <div class="mt-2 flex justify-end gap-3 text-xs text-zinc-500">
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" id="auto-refresh" checked class="rounded w-3 h-3" />
+          Auto-refresh
+        </label>
+        <button onclick="refreshPrinterStatus()" class="text-indigo-400 hover:text-indigo-300">↻ Refresh</button>
+      </div>
+    </details>
 
     <script>
       // Camera toggle for admin
@@ -800,701 +703,308 @@
       startAutoRefresh();
     </script>
 
-    <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
+    <!-- QUEUE VIEW - Card-based with expandable actions -->
+    <div class="mt-4 space-y-5">
 
-      <!-- NEW REQUESTS - Collapsible cards -->
-      <section id="new-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="flex items-center gap-3">
-              <h2 class="text-xl font-semibold">New requests</h2>
-              {% if new_reqs|length > 0 %}
-                <span class="px-2 py-1 rounded-lg bg-indigo-600/20 border border-indigo-500 text-indigo-200 text-xs">
-                  {{ new_reqs|length }} needs attention
-                </span>
-              {% else %}
-                <span class="text-xs text-zinc-500">No new requests</span>
-              {% endif %}
-            </div>
-            <p class="text-xs text-zinc-500 mt-1">Tap a request to expand actions.</p>
+      <!-- NEW REQUESTS -->
+      {% if new_reqs|length > 0 %}
+      <section id="new-section" class="bg-gradient-to-b from-indigo-950/40 to-zinc-900/60 border border-indigo-800/40 rounded-2xl overflow-hidden shadow-lg">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-indigo-800/30">
+          <div class="flex items-center gap-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-500 shadow-lg shadow-indigo-500/50"></div>
+            <h2 class="text-lg font-semibold">New Requests</h2>
+            <span class="text-xs font-medium text-indigo-200 bg-indigo-600/40 px-2 py-0.5 rounded-full">{{ new_reqs|length }}</span>
           </div>
-          {% if new_reqs|length > 0 %}
-            <label class="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" data-select-all onchange="toggleSelectAll('new-section'); updateBatchUI('new-section')" />
-              Select all
-            </label>
-          {% endif %}
         </div>
-
-        {% if new_reqs|length == 0 %}
-          <div class="mt-4 text-sm text-zinc-400 bg-zinc-950/40 border border-zinc-800 rounded-xl p-4">
-            🎉 Nothing new right now.
-          </div>
-        {% else %}
-          <div class="mt-4 space-y-2" id="new-list">
-            {% for r in new_reqs[:3] %}
-              <details class="request-item group bg-zinc-950/60 border {% if r['status'] == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-xl overflow-hidden"
-                       data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
-                       data-designer="{{ r['designer_admin_id'] or '' }}"
-                       data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
-                <summary class="p-3 cursor-pointer hover:bg-zinc-900/40 list-none">
-                  <div class="flex items-center gap-3">
-                    <input type="checkbox" data-request-id value="{{ r['id'] }}" onclick="event.stopPropagation()"
-                           onchange="toggleRequestId(this.value); updateBatchUI('new-section')" />
-                    <div class="flex-1 min-w-0">
-                      <div class="flex items-center gap-2">
-                        <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
-                        {% if r["unread_replies"] and r["unread_replies"] > 0 %}
-                          <span class="px-1.5 py-0.5 bg-red-600 text-white text-xs rounded-full animate-pulse">{{ r["unread_replies"] }}</span>
-                        {% endif %}
-                        {% if r["requires_design"] %}
-                          <span class="px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200 text-[11px]">
-                            Design {% if r["design_completed_at"] %}Ready{% else %}Needed{% endif %}{% if r["designer_admin_id"] and designer_lookup.get(r["designer_admin_id"]) %} · {{ designer_lookup.get(r["designer_admin_id"]) }}{% endif %}
-                          </span>
-                        {% endif %}
-                      </div>
-                      <div class="text-xs text-zinc-500">{{ r["id"][:8] }} • {{ r["requester_name"] }}</div>
-                    </div>
-                    <div class="flex items-center gap-2 shrink-0">
-                      {{ prio_badge(r["priority"]) }}
-                      {{ badge(r["status"]) }}
-                      <svg class="w-4 h-4 text-zinc-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                      </svg>
-                    </div>
-                  </div>
-                </summary>
-                <div class="px-3 pb-3 border-t border-zinc-800/50">
-                  <div class="pt-3 text-xs text-zinc-400">
-                    {{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}
-                  </div>
-                  <div class="mt-2 flex flex-wrap gap-2 items-center">
-                    {% if r["file_count"] and r["file_count"] > 0 %}
-                      <button type="button" onclick="showFilesModal('{{ r['id'] }}', '{{ r['file_names']|default('')|e }}')"
-                              class="text-xs text-emerald-300 bg-emerald-900/20 border border-emerald-800 px-2 py-1 rounded-lg hover:bg-emerald-900/40">
-                        📁 {{ r["file_count"] }} file{% if r["file_count"] > 1 %}s{% endif %}
-                      </button>
-                    {% endif %}
-                    {% if r["link_url"] %}
-                      <a class="text-xs text-indigo-300 bg-indigo-900/20 border border-indigo-800 px-2 py-1 rounded-lg hover:bg-indigo-900/40" href="{{ r['link_url'] }}" target="_blank">🔗 Link</a>
-                    {% endif %}
-                    <a href="/admin/request/{{ r['id'] }}" class="text-xs text-zinc-400 hover:text-white">View details →</a>
-                  </div>
-                  <div class="mt-3 flex flex-wrap gap-2">
-                    <form method="POST" action="/admin/request/{{ r['id'] }}/status" class="flex-1 flex gap-1">
-                      <input type="hidden" name="to_status" value="APPROVED" />
-                      <input name="comment" placeholder="Question (optional)" class="flex-1 min-w-0 rounded-lg bg-zinc-950 border border-zinc-800 px-2 py-1.5 text-xs" />
-                      <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-1.5 text-xs font-semibold whitespace-nowrap">Approve</button>
-                    </form>
-                  </div>
-                  <div class="mt-2 flex flex-wrap gap-2">
-                    <form method="POST" action="/admin/request/{{ r['id'] }}/status" class="flex gap-1">
-                      <input type="hidden" name="to_status" value="NEEDS_INFO" />
-                      <input name="comment" placeholder="What info?" class="w-24 rounded-lg bg-zinc-950 border border-orange-800/50 px-2 py-1.5 text-xs" />
-                      <button class="text-xs px-2 py-1.5 rounded-lg bg-orange-900/20 border border-orange-800 hover:bg-orange-900/40 text-orange-200">Need Info</button>
-                    </form>
-                    <form method="POST" action="/admin/request/{{ r['id'] }}/status">
-                      <input type="hidden" name="to_status" value="REJECTED" />
-                      <input type="hidden" name="comment" value="Rejected" />
-                      <button class="text-xs px-2 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:bg-zinc-900">Reject</button>
-                    </form>
-                  </div>
+        <div class="divide-y divide-indigo-900/30">
+          {% for r in new_reqs %}
+          <details class="request-item group"
+               data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+               data-designer="{{ r['designer_admin_id'] or '' }}"
+               data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
+            <summary class="flex items-center gap-4 px-5 py-3.5 hover:bg-indigo-900/20 cursor-pointer list-none transition">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <a href="/admin/request/{{ r['id'] }}" class="text-base font-bold text-white hover:text-indigo-300 truncate">{{ r["print_name"] or 'Untitled' }}</a>
+                  {% if r["unread_replies"] and r["unread_replies"] > 0 %}
+                    <span class="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-lg shadow-red-500/50"></span>
+                  {% endif %}
+                  {% if r["requires_design"] %}
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-teal-800/50 text-teal-300 border border-teal-700/50">
+                      {% if r["design_completed_at"] %}✓ Design{% else %}Design{% endif %}
+                    </span>
+                  {% endif %}
+                  {% if r["status"] == "NEEDS_INFO" %}
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-orange-800/50 text-orange-300 border border-orange-700/50">Needs Info</span>
+                  {% endif %}
                 </div>
-              </details>
-            {% endfor %}
-            {% for r in new_reqs[3:] %}
-              <details class="request-item hidden group bg-zinc-950/60 border {% if r['status'] == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-xl overflow-hidden"
-                       data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
-                       data-designer="{{ r['designer_admin_id'] or '' }}"
-                       data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
-                <summary class="p-3 cursor-pointer hover:bg-zinc-900/40 list-none">
-                  <div class="flex items-center gap-3">
-                    <input type="checkbox" data-request-id value="{{ r['id'] }}" onclick="event.stopPropagation()"
-                           onchange="toggleRequestId(this.value); updateBatchUI('new-section')" />
-                    <div class="flex-1 min-w-0">
-                      <div class="flex items-center gap-2">
-                        <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
-                        {% if r["unread_replies"] and r["unread_replies"] > 0 %}
-                          <span class="px-1.5 py-0.5 bg-red-600 text-white text-xs rounded-full animate-pulse">{{ r["unread_replies"] }}</span>
-                        {% endif %}
-                        {% if r["requires_design"] %}
-                          <span class="px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200 text-[11px]">
-                            Design {% if r["design_completed_at"] %}Ready{% else %}Needed{% endif %}{% if r["designer_admin_id"] and designer_lookup.get(r["designer_admin_id"]) %} · {{ designer_lookup.get(r["designer_admin_id"]) }}{% endif %}
-                          </span>
-                        {% endif %}
-                      </div>
-                      <div class="text-xs text-zinc-500">{{ r["id"][:8] }} • {{ r["requester_name"] }}</div>
-                    </div>
-                    <div class="flex items-center gap-2 shrink-0">
-                      {{ prio_badge(r["priority"]) }}
-                      {{ badge(r["status"]) }}
-                      <svg class="w-4 h-4 text-zinc-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                      </svg>
-                    </div>
-                  </div>
-                </summary>
-                <div class="px-3 pb-3 border-t border-zinc-800/50">
-                  <div class="pt-3 text-xs text-zinc-400">{{ r["printer"] }} • {{ r["material"] }} • {{ r["colors"] }}</div>
-                  <div class="mt-2 flex flex-wrap gap-2 items-center">
-                    {% if r["file_count"] and r["file_count"] > 0 %}
-                      <button type="button" onclick="showFilesModal('{{ r['id'] }}', '{{ r['file_names']|default('')|e }}')"
-                              class="text-xs text-emerald-300 bg-emerald-900/20 border border-emerald-800 px-2 py-1 rounded-lg hover:bg-emerald-900/40">📁 {{ r["file_count"] }}</button>
-                    {% endif %}
-                    <a href="/admin/request/{{ r['id'] }}" class="text-xs text-zinc-400 hover:text-white">View details →</a>
-                  </div>
-                  <div class="mt-3 flex flex-wrap gap-2">
-                    <form method="POST" action="/admin/request/{{ r['id'] }}/status" class="flex-1 flex gap-1">
-                      <input type="hidden" name="to_status" value="APPROVED" />
-                      <input name="comment" placeholder="Question (optional)" class="flex-1 min-w-0 rounded-lg bg-zinc-950 border border-zinc-800 px-2 py-1.5 text-xs" />
-                      <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-1.5 text-xs font-semibold whitespace-nowrap">Approve</button>
-                    </form>
-                  </div>
-                  <div class="mt-2 flex flex-wrap gap-2">
-                    <form method="POST" action="/admin/request/{{ r['id'] }}/status">
-                      <input type="hidden" name="to_status" value="NEEDS_INFO" />
-                      <input type="hidden" name="comment" value="Needs more info" />
-                      <button class="text-xs px-2 py-1.5 rounded-lg bg-orange-900/20 border border-orange-800 hover:bg-orange-900/40 text-orange-200">Need Info</button>
-                    </form>
-                    <form method="POST" action="/admin/request/{{ r['id'] }}/status">
-                      <input type="hidden" name="to_status" value="REJECTED" />
-                      <input type="hidden" name="comment" value="Rejected" />
-                      <button class="text-xs px-2 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:bg-zinc-900">Reject</button>
-                    </form>
-                  </div>
+                <div class="flex items-center gap-2 text-sm text-zinc-400 mt-1">
+                  <span class="text-indigo-300 font-medium">{{ r["requester_name"] }}</span>
+                  <span class="text-zinc-600">•</span>
+                  <span>{{ r["printer"] or "Any" }}</span>
+                  <span class="text-zinc-600">•</span>
+                  <span>{{ r["material"] or "Any" }}</span>
+                  {% if r["colors"] %}<span class="text-zinc-600">•</span><span>{{ r["colors"] }}</span>{% endif %}
+                  {% if r["file_count"] and r["file_count"] > 0 %}
+                    <span class="text-zinc-600">•</span>
+                    <span class="text-indigo-400">{{ r["file_count"] }} file{% if r["file_count"] > 1 %}s{% endif %}</span>
+                  {% endif %}
+                  {% if r["link_url"] %}
+                    <span class="text-zinc-600">•</span>
+                    <a href="{{ r['link_url'] }}" target="_blank" class="text-indigo-400 hover:underline">Link</a>
+                  {% endif %}
                 </div>
-              </details>
-            {% endfor %}
-          </div>
-          {% if new_reqs|length > 3 %}
-          <button onclick="toggleShowMore('new-list', this)" class="mt-3 w-full text-center text-xs text-indigo-400 hover:text-indigo-300 py-2 rounded-lg hover:bg-zinc-800/50 transition">
-            Show {{ new_reqs|length - 3 }} more ▼
-          </button>
-          {% endif %}
-          <div class="mt-3">
-            <button onclick="showBatchEditModal()" class="w-full rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
-              ✏ Batch Edit Selected
-            </button>
-          </div>
-        {% endif %}
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="text-xs px-1.5 py-0.5 rounded {% if r['priority'] == 1 %}bg-red-900/50 text-red-300{% elif r['priority'] == 2 %}bg-orange-900/50 text-orange-300{% else %}bg-zinc-800 text-zinc-400{% endif %}">P{{ r["priority"] or 3 }}</span>
+                <svg class="w-4 h-4 text-zinc-500 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </div>
+            </summary>
+            <div class="px-5 py-3 bg-zinc-950/50 border-t border-indigo-900/30">
+              <div class="flex flex-wrap gap-2">
+                <form method="POST" action="/admin/request/{{ r['id'] }}/status" class="flex gap-1.5 flex-1 min-w-[200px]">
+                  <input type="hidden" name="to_status" value="APPROVED" />
+                  <input name="comment" placeholder="Note (optional)" class="flex-1 rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none" />
+                  <button class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-medium transition shadow-lg shadow-indigo-900/30">✓ Approve</button>
+                </form>
+                <form method="POST" action="/admin/request/{{ r['id'] }}/status" class="flex gap-1.5">
+                  <input type="hidden" name="to_status" value="NEEDS_INFO" />
+                  <input name="comment" placeholder="What's needed?" class="w-28 rounded-lg bg-zinc-900 border border-orange-800/50 px-2 py-1.5 text-sm focus:border-orange-500 focus:outline-none" />
+                  <button class="px-3 py-1.5 rounded-lg bg-orange-900/40 border border-orange-700/50 hover:bg-orange-900/60 text-sm text-orange-200 transition">? Info</button>
+                </form>
+                <form method="POST" action="/admin/request/{{ r['id'] }}/status">
+                  <input type="hidden" name="to_status" value="REJECTED" />
+                  <input type="hidden" name="comment" value="Rejected" />
+                  <button class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm text-zinc-300 transition">✕ Reject</button>
+                </form>
+                <a href="/admin/request/{{ r['id'] }}" class="px-3 py-1.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-700 text-sm text-zinc-400 transition">Details →</a>
+              </div>
+            </div>
+          </details>
+          {% endfor %}
+        </div>
       </section>
-
-    </div>
-
-    <!-- Status Sections Grid - 2x2 Card Layout -->
-    <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+      {% endif %}
 
       <!-- PRINTING NOW -->
-      <section id="printing-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
-        <div class="flex items-center justify-between">
+      {% if printing|length > 0 %}
+      <section id="printing-section" class="bg-gradient-to-b from-emerald-950/40 to-zinc-900/60 border border-emerald-700/40 rounded-2xl overflow-hidden shadow-lg">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-emerald-800/30">
           <div class="flex items-center gap-3">
-            <h2 class="text-xl font-semibold">Printing now</h2>
-            {% if printing|length > 0 %}
-              <span class="px-2 py-1 rounded-lg bg-emerald-600/20 border border-emerald-500 text-emerald-200 text-xs">
-                {{ printing|length }} active
-              </span>
-            {% else %}
-              <span class="text-xs text-zinc-500">None printing</span>
-            {% endif %}
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse shadow-lg shadow-emerald-500/50"></div>
+            <h2 class="text-lg font-semibold">Printing Now</h2>
+            <span class="text-xs font-medium text-emerald-200 bg-emerald-600/40 px-2 py-0.5 rounded-full">{{ printing|length }}</span>
           </div>
-          {% if printing|length > 0 %}
-            <label class="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" data-select-all onchange="toggleSelectAll('printing-section'); updateBatchUI('printing-section')" />
-              Select all
-            </label>
-          {% endif %}
         </div>
-
-        {% if printing|length == 0 %}
-          <div class="mt-4 text-sm text-zinc-400 bg-zinc-950/40 border border-zinc-800 rounded-xl p-4">
-            No active prints right now.
-          </div>
-        {% else %}
-          <div class="mt-4 space-y-2" id="printing-list">
-            {% for r in printing[:3] %}
-              <div class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3"
-                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
-                   data-designer="{{ r['designer_admin_id'] or '' }}"
-                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
-                <div class="flex items-center gap-3">
-                  <input type="checkbox" data-request-id value="{{ r['id'] }}" 
-                         onchange="toggleRequestId(this.value); updateBatchUI('printing-section')" />
-                  <a class="hover:underline flex-1 min-w-0" href="/admin/request/{{ r['id'] }}">
-                    <div class="flex items-center gap-2">
-                      <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
-                      <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
-                      {% if r.total_builds and r.total_builds > 1 %}
-                        <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
-                          {{ r.completed_builds or 0 }}/{{ r.total_builds }} builds
-                        </span>
-                      {% endif %}
-                      {% if r.status == 'IN_PROGRESS' %}
-                        <span class="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">Multi-Build</span>
-                      {% endif %}
-                      {% if r.requires_design %}
-                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
-                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
-                        </span>
-                      {% endif %}
-                    </div>
-                    <div class="text-xs text-zinc-400 mt-0.5 truncate">
-                      {{ r.get("active_printer") or r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }} {% if r["colors"] %}• {{ r["colors"] }}{% endif %}
-                    </div>
-                    {% if r.get("printer_progress") is not none %}
-                      <div class="flex items-center gap-2 mt-1.5">
-                        <div class="w-20 bg-zinc-800 rounded-full h-1.5">
-                          <div class="bg-emerald-500 h-1.5 rounded-full" style="width: {{ r.printer_progress }}%"></div>
-                        </div>
-                        <span class="text-xs font-semibold text-emerald-300">{{ r.printer_progress }}%</span>
-                        {% if r.get("smart_eta_display") %}
-                          <span class="text-xs text-zinc-500">• ETA {{ r.smart_eta_display }}</span>
-                        {% endif %}
-                      </div>
-                    {% endif %}
-                  </a>
-                  <div class="flex items-center gap-2 shrink-0">
-                    {{ prio_badge(r["priority"]) }}
-                    {{ badge(r["status"]) }}
-                  </div>
-                </div>
-
-                <div class="mt-2">
-                  <button onclick="quickStatusChange('{{ r['id'] }}', 'DONE', 'Print completed', this)" 
-                          class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-1.5 text-xs font-semibold">
-                    ✓ Mark Done + notify
-                  </button>
-                </div>
+        <div class="divide-y divide-emerald-900/30">
+          {% for r in printing %}
+          <div class="request-item flex items-center gap-4 px-5 py-4 hover:bg-emerald-900/20 transition"
+               data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+               data-designer="{{ r['designer_admin_id'] or '' }}"
+               data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <a href="/admin/request/{{ r['id'] }}" class="text-base font-bold text-white hover:text-emerald-300 truncate">{{ r["print_name"] or 'Untitled' }}</a>
+                {% if r.total_builds and r.total_builds > 1 %}
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-amber-800/50 text-amber-300 border border-amber-700/50">
+                    {{ r.completed_builds or 0 }}/{{ r.total_builds }} builds
+                  </span>
+                {% endif %}
               </div>
-            {% endfor %}
-            {% for r in printing[3:] %}
-              <div class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3"
-                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
-                   data-designer="{{ r['designer_admin_id'] or '' }}"
-                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
-                <div class="flex items-center gap-3">
-                  <input type="checkbox" data-request-id value="{{ r['id'] }}" 
-                         onchange="toggleRequestId(this.value); updateBatchUI('printing-section')" />
-                  <a class="hover:underline flex-1 min-w-0" href="/admin/request/{{ r['id'] }}">
-                    <div class="flex items-center gap-2">
-                      <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
-                      <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
-                      {% if r.total_builds and r.total_builds > 1 %}
-                        <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
-                          {{ r.completed_builds or 0 }}/{{ r.total_builds }} builds
-                        </span>
-                      {% endif %}
-                      {% if r.requires_design %}
-                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
-                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
-                        </span>
-                      {% endif %}
-                    </div>
-                    <div class="text-xs text-zinc-400 mt-0.5 truncate">
-                      {{ r.get("active_printer") or r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }}
-                    </div>
-                    {% if r.get("printer_progress") is not none %}
-                      <div class="flex items-center gap-2 mt-1.5">
-                        <div class="w-20 bg-zinc-800 rounded-full h-1.5">
-                          <div class="bg-emerald-500 h-1.5 rounded-full" style="width: {{ r.printer_progress }}%"></div>
-                        </div>
-                        <span class="text-xs font-semibold text-emerald-300">{{ r.printer_progress }}%</span>
-                      </div>
-                    {% endif %}
-                  </a>
-                  <div class="flex items-center gap-2 shrink-0">
-                    {{ prio_badge(r["priority"]) }}
-                    {{ badge(r["status"]) }}
-                  </div>
-                </div>
-                <div class="mt-2">
-                  <button onclick="quickStatusChange('{{ r['id'] }}', 'DONE', 'Print completed', this)" 
-                          class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-1.5 text-xs font-semibold">
-                    ✓ Mark Done + notify
-                  </button>
-                </div>
+              <div class="flex items-center gap-2 text-sm text-zinc-400 mt-1">
+                <span class="text-emerald-300 font-semibold">{{ r.get("active_printer") or r["printer"] }}</span>
+                <span class="text-zinc-600">•</span>
+                <span>{{ r["material"] }}</span>
+                {% if r["colors"] %}<span class="text-zinc-600">•</span><span>{{ r["colors"] }}</span>{% endif %}
               </div>
-            {% endfor %}
+              {% if r.get("printer_progress") is not none %}
+              <div class="flex items-center gap-2 mt-2">
+                <div class="flex-1 max-w-[200px] bg-zinc-800 rounded-full h-2 overflow-hidden">
+                  <div class="bg-gradient-to-r from-emerald-600 to-emerald-400 h-2 rounded-full transition-all" style="width: {{ r.printer_progress }}%"></div>
+                </div>
+                <span class="text-xs font-bold text-emerald-400">{{ r.printer_progress }}%</span>
+                {% if r.get("smart_eta_display") %}
+                  <span class="text-xs text-zinc-500">ETA {{ r.smart_eta_display }}</span>
+                {% endif %}
+              </div>
+              {% endif %}
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <button onclick="quickStatusChange('{{ r['id'] }}', 'DONE', 'Print completed', this)" 
+                      class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium transition shadow-lg shadow-emerald-900/30">
+                ✓ Done
+              </button>
+            </div>
           </div>
-          {% if printing|length > 3 %}
-          <button onclick="toggleShowMore('printing-list', this)" class="mt-3 w-full text-center text-xs text-indigo-400 hover:text-indigo-300 py-2 rounded-lg hover:bg-zinc-800/50 transition">
-            Show {{ printing|length - 3 }} more ▼
-          </button>
-          {% endif %}
-          <div class="mt-3">
-            <button onclick="showBatchEditModal()" class="w-full rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
-              ✏ Batch Edit Selected
-            </button>
-          </div>
-        {% endif %}
+          {% endfor %}
+        </div>
       </section>
+      {% endif %}
 
-      <!-- WAITING TO PRINT (APPROVED) -->
-      <section id="approved-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
-        <div class="flex items-center justify-between">
+      <!-- QUEUED (Waiting to Print) -->
+      {% if queued|length > 0 %}
+      <section id="approved-section" class="bg-gradient-to-b from-green-950/30 to-zinc-900/60 border border-green-800/30 rounded-2xl overflow-hidden shadow-lg">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-green-800/30">
           <div class="flex items-center gap-3">
-            <h2 class="text-xl font-semibold">Waiting to print</h2>
-            {% if queued|length > 0 %}
-              <span class="px-2 py-1 rounded-lg bg-green-600/20 border border-green-500 text-green-200 text-xs">
-                {{ queued|length }} queued
-              </span>
-            {% else %}
-              <span class="text-xs text-zinc-500">Empty</span>
-            {% endif %}
+            <div class="w-3 h-3 rounded-full bg-green-500 shadow-lg shadow-green-500/50"></div>
+            <h2 class="text-lg font-semibold">Queued</h2>
+            <span class="text-xs font-medium text-green-200 bg-green-600/40 px-2 py-0.5 rounded-full">{{ queued|length }}</span>
           </div>
-          {% if queued|length > 0 %}
-            <label class="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" data-select-all onchange="toggleSelectAll('approved-section'); updateBatchUI('approved-section')" />
-              Select all
-            </label>
-          {% endif %}
         </div>
-
-        {% if queued|length == 0 %}
-          <div class="mt-4 text-sm text-zinc-400 bg-zinc-950/40 border border-zinc-800 rounded-xl p-4">
-            Nothing approved yet.
-          </div>
-        {% else %}
-          <div class="mt-4 space-y-2" id="approved-list">
-            {% for r in queued[:3] %}
-              <div class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3"
-                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
-                   data-designer="{{ r['designer_admin_id'] or '' }}"
-                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
-                <div class="flex items-center gap-3">
-                  <input type="checkbox" data-request-id value="{{ r['id'] }}" 
-                         onchange="toggleRequestId(this.value); updateBatchUI('approved-section')" />
-                  <a class="hover:underline flex-1 min-w-0" href="/admin/request/{{ r['id'] }}">
-                    <div class="flex items-center gap-2">
-                      <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
-                      <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
-                      {% if r.total_builds and r.total_builds > 1 %}
-                        <span class="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">
-                          {{ r.total_builds }} builds
-                        </span>
-                      {% endif %}
-                      {% if r.requires_design %}
-                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
-                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
-                        </span>
-                      {% endif %}
-                    </div>
-                    <div class="text-xs text-zinc-400 mt-0.5 truncate">
-                      {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }} {% if r["colors"] %}• {{ r["colors"] }}{% endif %}
-                    </div>
-                  </a>
-                  <div class="flex items-center gap-2 shrink-0">
-                    {{ prio_badge(r["priority"]) }}
-                    {{ badge(r["status"]) }}
-                  </div>
+        <div class="divide-y divide-green-900/30">
+          {% for r in queued %}
+          <details class="request-item group"
+               data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+               data-designer="{{ r['designer_admin_id'] or '' }}"
+               data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
+            <summary class="flex items-center gap-4 px-5 py-3.5 hover:bg-green-900/20 cursor-pointer list-none transition">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <a href="/admin/request/{{ r['id'] }}" class="text-base font-bold text-white hover:text-green-300 truncate">{{ r["print_name"] or 'Untitled' }}</a>
+                  {% if r.total_builds and r.total_builds > 1 %}
+                    <span class="text-xs px-1.5 py-0.5 rounded bg-blue-800/50 text-blue-300 border border-blue-700/50">{{ r.total_builds }} builds</span>
+                  {% endif %}
+                  {% if r["requires_design"] %}
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-teal-800/50 text-teal-300 border border-teal-700/50">
+                      {% if r["design_completed_at"] %}✓ Design{% else %}Design{% endif %}
+                    </span>
+                  {% endif %}
                 </div>
-
-                <div class="mt-2 flex items-center gap-2">
-                  <!-- Start print -->
-                  <button type="button" 
-                          onclick="showPrintStartModal('{{ r['id'] }}', '{{ r['printer'] }}', '{{ r['material'] }}', '{{ r['colors'] }}', 'PRINTING')"
-                          class="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition px-3 py-1.5 text-xs font-semibold">
-                    🖨 Start Print
-                  </button>
-
-                  <!-- Priority -->
-                  <form method="POST" action="/admin/request/{{ r['id'] }}/priority" class="flex gap-1">
-                    <select name="priority" class="rounded-lg bg-zinc-950 border border-zinc-800 px-2 py-1.5 text-xs">
-                      {% for p in [1,2,3,4,5] %}
-                        <option value="{{ p }}" {% if (r["priority"] or 3) == p %}selected{% endif %}>P{{ p }}</option>
-                      {% endfor %}
-                    </select>
-                    <button class="rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-2 py-1.5 text-xs">
-                      Set
-                    </button>
-                  </form>
+                <div class="flex items-center gap-2 text-sm text-zinc-400 mt-1">
+                  <span class="text-green-300 font-medium">{{ r["requester_name"] }}</span>
+                  <span class="text-zinc-600">•</span>
+                  <span>{{ r["printer"] or "Any" }}</span>
+                  <span class="text-zinc-600">•</span>
+                  <span>{{ r["material"] or "Any" }}</span>
+                  {% if r["colors"] %}<span class="text-zinc-600">•</span><span>{{ r["colors"] }}</span>{% endif %}
+                  {% if r["file_count"] and r["file_count"] > 0 %}
+                    <span class="text-zinc-600">•</span>
+                    <span class="text-green-400">{{ r["file_count"] }} file{% if r["file_count"] > 1 %}s{% endif %}</span>
+                  {% endif %}
                 </div>
               </div>
-            {% endfor %}
-            {% for r in queued[3:] %}
-              <div class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3"
-                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
-                   data-designer="{{ r['designer_admin_id'] or '' }}"
-                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
-                <div class="flex items-center gap-3">
-                  <input type="checkbox" data-request-id value="{{ r['id'] }}" 
-                         onchange="toggleRequestId(this.value); updateBatchUI('approved-section')" />
-                  <a class="hover:underline flex-1 min-w-0" href="/admin/request/{{ r['id'] }}">
-                    <div class="flex items-center gap-2">
-                      <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
-                      <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
-                      {% if r.requires_design %}
-                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
-                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
-                        </span>
-                      {% endif %}
-                    </div>
-                    <div class="text-xs text-zinc-400 mt-0.5 truncate">
-                      {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }}
-                    </div>
-                  </a>
-                  <div class="flex items-center gap-2 shrink-0">
-                    {{ prio_badge(r["priority"]) }}
-                    {{ badge(r["status"]) }}
-                  </div>
-                </div>
-                <div class="mt-2 flex items-center gap-2">
-                  <button type="button" onclick="showPrintStartModal('{{ r['id'] }}', '{{ r['printer'] }}', '{{ r['material'] }}', '{{ r['colors'] }}', 'PRINTING')"
-                          class="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition px-3 py-1.5 text-xs font-semibold">
-                    🖨 Start Print
-                  </button>
-                  <form method="POST" action="/admin/request/{{ r['id'] }}/priority" class="flex gap-1">
-                    <select name="priority" class="rounded-lg bg-zinc-950 border border-zinc-800 px-2 py-1.5 text-xs">
-                      {% for p in [1,2,3,4,5] %}
-                        <option value="{{ p }}" {% if (r["priority"] or 3) == p %}selected{% endif %}>P{{ p }}</option>
-                      {% endfor %}
-                    </select>
-                    <button class="rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-2 py-1.5 text-xs">Set</button>
-                  </form>
-                </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <button type="button" onclick="event.stopPropagation(); showPrintStartModal('{{ r['id'] }}', '{{ r['printer'] }}', '{{ r['material'] }}', '{{ r['colors'] }}', 'PRINTING')"
+                        class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium transition shadow-lg shadow-emerald-900/30">🖨 Start</button>
+                <span class="text-xs px-1.5 py-0.5 rounded {% if r['priority'] == 1 %}bg-red-900/50 text-red-300{% elif r['priority'] == 2 %}bg-orange-900/50 text-orange-300{% else %}bg-zinc-800 text-zinc-400{% endif %}">P{{ r["priority"] or 3 }}</span>
+                <svg class="w-4 h-4 text-zinc-500 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
               </div>
-            {% endfor %}
-          </div>
-          {% if queued|length > 3 %}
-          <button onclick="toggleShowMore('approved-list', this)" class="mt-3 w-full text-center text-xs text-indigo-400 hover:text-indigo-300 py-2 rounded-lg hover:bg-zinc-800/50 transition">
-            Show {{ queued|length - 3 }} more ▼
-          </button>
-          {% endif %}
-          <div class="mt-3">
-            <button onclick="showBatchEditModal()" class="w-full rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
-              ✏ Batch Edit Selected
-            </button>
-          </div>
-        {% endif %}
+            </summary>
+            <div class="px-5 py-3 bg-zinc-950/50 border-t border-green-900/30">
+              <div class="flex flex-wrap gap-3 items-center">
+                <form method="POST" action="/admin/request/{{ r['id'] }}/priority" class="flex items-center gap-2">
+                  <label class="text-xs text-zinc-500">Priority:</label>
+                  <select name="priority" class="rounded-lg bg-zinc-900 border border-zinc-700 px-2 py-1 text-sm">
+                    {% for p in [1,2,3,4,5] %}
+                      <option value="{{ p }}" {% if (r["priority"] or 3) == p %}selected{% endif %}>P{{ p }}{% if p == 1 %} (Urgent){% elif p == 5 %} (Low){% endif %}</option>
+                    {% endfor %}
+                  </select>
+                  <button class="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs">Set</button>
+                </form>
+                <a href="/admin/request/{{ r['id'] }}" class="text-sm text-zinc-400 hover:text-white">View details →</a>
+              </div>
+            </div>
+          </details>
+          {% endfor %}
+        </div>
       </section>
+      {% endif %}
 
-      <!-- BLOCKED (Failed Builds) -->
-      <section id="blocked-section" class="bg-zinc-900/60 border border-red-900/50 rounded-2xl p-6">
-        <div class="flex items-center justify-between">
+      <!-- BLOCKED -->
+      {% if blocked|length > 0 %}
+      <section id="blocked-section" class="bg-gradient-to-b from-red-950/40 to-zinc-900/60 border border-red-700/40 rounded-2xl overflow-hidden shadow-lg">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-red-800/30">
           <div class="flex items-center gap-3">
-            <h2 class="text-xl font-semibold">⚠️ Blocked</h2>
-            {% if blocked|length > 0 %}
-              <span class="px-2 py-1 rounded-lg bg-red-600/20 border border-red-500 text-red-200 text-xs">
-                {{ blocked|length }} need attention
-              </span>
-            {% else %}
-              <span class="text-xs text-zinc-500">None</span>
-            {% endif %}
+            <div class="w-3 h-3 rounded-full bg-red-500 shadow-lg shadow-red-500/50"></div>
+            <h2 class="text-lg font-semibold">⚠️ Blocked</h2>
+            <span class="text-xs font-medium text-red-200 bg-red-600/40 px-2 py-0.5 rounded-full">{{ blocked|length }}</span>
           </div>
-          {% if blocked|length > 0 %}
-            <label class="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" data-select-all onchange="toggleSelectAll('blocked-section'); updateBatchUI('blocked-section')" />
-              Select all
-            </label>
-          {% endif %}
         </div>
-
-        {% if blocked|length == 0 %}
-          <div class="mt-4 text-sm text-zinc-400 bg-zinc-950/40 border border-zinc-800 rounded-xl p-4">
-            No blocked requests. All builds are running smoothly!
-          </div>
-        {% else %}
-          <div class="mt-4 space-y-2" id="blocked-list">
-            {% for r in blocked[:3] %}
-              <div class="request-item bg-zinc-950/60 border border-red-900/30 rounded-xl p-3"
-                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
-                   data-designer="{{ r['designer_admin_id'] or '' }}"
-                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
-                <div class="flex items-center gap-3">
-                  <input type="checkbox" data-request-id value="{{ r['id'] }}" 
-                         onchange="toggleRequestId(this.value); updateBatchUI('blocked-section')" />
-                  <a class="hover:underline flex-1 min-w-0" href="/admin/request/{{ r['id'] }}">
-                    <div class="flex items-center gap-2">
-                      <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
-                      <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
-                      {% if r.requires_design %}
-                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
-                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
-                        </span>
-                      {% endif %}
-                    </div>
-                    <div class="text-xs text-zinc-400 mt-0.5 truncate">
-                      {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }}
-                      {% if r["failed_builds"] %}
-                        <span class="text-red-400 ml-1">• {{ r["failed_builds"] }} failed build(s)</span>
-                      {% endif %}
-                    </div>
-                  </a>
-                  <div class="flex items-center gap-2 shrink-0">
-                    {{ prio_badge(r["priority"]) }}
-                    <span class="px-2 py-1 rounded-lg bg-red-600/20 border border-red-500 text-red-200 text-xs">BLOCKED</span>
-                  </div>
-                </div>
-
-                <div class="mt-2 flex items-center gap-2">
-                  <a href="/admin/request/{{ r['id'] }}" class="flex-1 rounded-lg bg-red-600 hover:bg-red-500 transition px-3 py-1.5 text-xs font-semibold text-center">
-                    🔧 Review &amp; Fix
-                  </a>
-                </div>
+        <div class="divide-y divide-red-900/30">
+          {% for r in blocked %}
+          <div class="request-item flex items-center gap-4 px-5 py-4 hover:bg-red-900/20 transition"
+               data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+               data-designer="{{ r['designer_admin_id'] or '' }}"
+               data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <a href="/admin/request/{{ r['id'] }}" class="text-base font-bold text-white hover:text-red-300 truncate">{{ r["print_name"] or 'Untitled' }}</a>
+                {% if r["failed_builds"] %}
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-red-800/50 text-red-300 border border-red-700/50">{{ r["failed_builds"] }} failed</span>
+                {% endif %}
               </div>
-            {% endfor %}
-            {% for r in blocked[3:] %}
-              <div class="request-item hidden bg-zinc-950/60 border border-red-900/30 rounded-xl p-3"
-                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
-                   data-designer="{{ r['designer_admin_id'] or '' }}"
-                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
-                <div class="flex items-center gap-3">
-                  <input type="checkbox" data-request-id value="{{ r['id'] }}" 
-                         onchange="toggleRequestId(this.value); updateBatchUI('blocked-section')" />
-                  <a class="hover:underline flex-1 min-w-0" href="/admin/request/{{ r['id'] }}">
-                    <div class="flex items-center gap-2">
-                      <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
-                      <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
-                      {% if r.requires_design %}
-                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
-                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
-                        </span>
-                      {% endif %}
-                    </div>
-                    <div class="text-xs text-zinc-400 mt-0.5 truncate">
-                      {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }}
-                      {% if r["failed_builds"] %}
-                        <span class="text-red-400 ml-1">• {{ r["failed_builds"] }} failed build(s)</span>
-                      {% endif %}
-                    </div>
-                  </a>
-                  <div class="flex items-center gap-2 shrink-0">
-                    {{ prio_badge(r["priority"]) }}
-                    <span class="px-2 py-1 rounded-lg bg-red-600/20 border border-red-500 text-red-200 text-xs">BLOCKED</span>
-                  </div>
-                </div>
-
-                <div class="mt-2 flex items-center gap-2">
-                  <a href="/admin/request/{{ r['id'] }}" class="flex-1 rounded-lg bg-red-600 hover:bg-red-500 transition px-3 py-1.5 text-xs font-semibold text-center">
-                    🔧 Review &amp; Fix
-                  </a>
-                </div>
+              <div class="flex items-center gap-2 text-sm text-zinc-400 mt-1">
+                <span class="text-red-300 font-medium">{{ r["requester_name"] }}</span>
+                <span class="text-zinc-600">•</span>
+                <span>{{ r["printer"] or "Any" }}</span>
+                <span class="text-zinc-600">•</span>
+                <span>{{ r["material"] or "Any" }}</span>
               </div>
-            {% endfor %}
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <a href="/admin/request/{{ r['id'] }}" class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-sm font-medium transition shadow-lg shadow-red-900/30">
+                🔧 Review & Fix
+              </a>
+            </div>
           </div>
-          {% if blocked|length > 3 %}
-          <button onclick="toggleShowMore('blocked-list', this)" class="mt-3 w-full text-center text-xs text-indigo-400 hover:text-indigo-300 py-2 rounded-lg hover:bg-zinc-800/50 transition">
-            Show {{ blocked|length - 3 }} more ▼
-          </button>
-          {% endif %}
-          <div class="mt-3">
-            <button onclick="showBatchEditModal()" class="w-full rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
-              ✏ Batch Edit Selected
-            </button>
-          </div>
-        {% endif %}
+          {% endfor %}
+        </div>
       </section>
+      {% endif %}
 
       <!-- READY FOR PICKUP -->
-      <section id="done-section" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
-        <div class="flex items-center justify-between">
+      {% if done|length > 0 %}
+      <section id="done-section" class="bg-gradient-to-b from-cyan-950/30 to-zinc-900/60 border border-cyan-800/30 rounded-2xl overflow-hidden shadow-lg">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-cyan-800/30">
           <div class="flex items-center gap-3">
-            <h2 class="text-xl font-semibold">Ready for pickup</h2>
-            {% if done|length > 0 %}
-              <span class="px-2 py-1 rounded-lg bg-amber-600/20 border border-amber-500 text-amber-200 text-xs">
-                {{ done|length }} waiting
-              </span>
-            {% else %}
-              <span class="text-xs text-zinc-500">None</span>
-            {% endif %}
+            <div class="w-3 h-3 rounded-full bg-cyan-500 shadow-lg shadow-cyan-500/50"></div>
+            <h2 class="text-lg font-semibold">Ready for Pickup</h2>
+            <span class="text-xs font-medium text-cyan-200 bg-cyan-600/40 px-2 py-0.5 rounded-full">{{ done|length }}</span>
           </div>
-          {% if done|length > 0 %}
-            <label class="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" data-select-all onchange="toggleSelectAll('done-section'); updateBatchUI('done-section')" />
-              Select all
-            </label>
-          {% endif %}
         </div>
-
-        {% if done|length == 0 %}
-          <div class="mt-4 text-sm text-zinc-400 bg-zinc-950/40 border border-zinc-800 rounded-xl p-4">
-            Nothing waiting for pickup.
-          </div>
-        {% else %}
-          <div class="mt-4 space-y-2" id="done-list">
-            {% for r in done[:3] %}
-              <div class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3"
-                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
-                   data-designer="{{ r['designer_admin_id'] or '' }}"
-                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
-                <div class="flex items-center gap-3">
-                  <input type="checkbox" data-request-id value="{{ r['id'] }}" 
-                         onchange="toggleRequestId(this.value); updateBatchUI('done-section')" />
-                  <a class="hover:underline flex-1 min-w-0" href="/admin/request/{{ r['id'] }}">
-                    <div class="flex items-center gap-2">
-                      <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
-                      <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
-                      {% if r.requires_design %}
-                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
-                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
-                        </span>
-                      {% endif %}
-                    </div>
-                    <div class="text-xs text-zinc-400 mt-0.5 truncate">
-                      {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }} {% if r["colors"] %}• {{ r["colors"] }}{% endif %}
-                    </div>
-                  </a>
-                  <div class="flex items-center gap-2 shrink-0">
-                    {{ prio_badge(r["priority"]) }}
-                    {{ badge(r["status"]) }}
-                  </div>
-                </div>
-
-                <div class="mt-2">
-                  <button onclick="quickStatusChange('{{ r['id'] }}', 'PICKED_UP', 'Picked up', this)" 
-                          class="w-full rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-3 py-1.5 text-xs">
-                    ✓ Mark Picked Up
-                  </button>
-                </div>
+        <div class="divide-y divide-cyan-900/30">
+          {% for r in done %}
+          <div class="request-item flex items-center gap-4 px-5 py-4 hover:bg-cyan-900/20 transition"
+               data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
+               data-designer="{{ r['designer_admin_id'] or '' }}"
+               data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <a href="/admin/request/{{ r['id'] }}" class="text-base font-bold text-white hover:text-cyan-300 truncate">{{ r["print_name"] or 'Untitled' }}</a>
               </div>
-            {% endfor %}
-            {% for r in done[3:] %}
-              <div class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3"
-                   data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
-                   data-designer="{{ r['designer_admin_id'] or '' }}"
-                   data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
-                <div class="flex items-center gap-3">
-                  <input type="checkbox" data-request-id value="{{ r['id'] }}" 
-                         onchange="toggleRequestId(this.value); updateBatchUI('done-section')" />
-                  <a class="hover:underline flex-1 min-w-0" href="/admin/request/{{ r['id'] }}">
-                    <div class="flex items-center gap-2">
-                      <span class="font-semibold truncate">{{ r["print_name"] or 'Untitled Print' }}</span>
-                      <span class="text-xs text-zinc-500 shrink-0">{{ r["id"][:8] }}</span>
-                      {% if r.requires_design %}
-                        <span class="text-[11px] px-2 py-0.5 rounded-lg bg-teal-900/30 border border-teal-700 text-teal-200">
-                          Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} · {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
-                        </span>
-                      {% endif %}
-                    </div>
-                    <div class="text-xs text-zinc-400 mt-0.5 truncate">
-                      {{ r["printer"] or "ANY" }} • {{ r["material"] or "ANY" }}
-                    </div>
-                  </a>
-                  <div class="flex items-center gap-2 shrink-0">
-                    {{ prio_badge(r["priority"]) }}
-                    {{ badge(r["status"]) }}
-                  </div>
-                </div>
-                <div class="mt-2">
-                  <button onclick="quickStatusChange('{{ r['id'] }}', 'PICKED_UP', 'Picked up', this)" 
-                          class="w-full rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-3 py-1.5 text-xs">
-                    ✓ Mark Picked Up
-                  </button>
-                </div>
+              <div class="flex items-center gap-2 text-sm text-zinc-400 mt-1">
+                <span class="text-cyan-300 font-medium">{{ r["requester_name"] }}</span>
+                <span class="text-zinc-600">•</span>
+                <span>{{ r["printer"] }}</span>
+                <span class="text-zinc-600">•</span>
+                <span>{{ r["material"] }}</span>
+                {% if r["colors"] %}<span class="text-zinc-600">•</span><span>{{ r["colors"] }}</span>{% endif %}
               </div>
-            {% endfor %}
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <button onclick="quickStatusChange('{{ r['id'] }}', 'PICKED_UP', 'Picked up', this)" 
+                      class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-sm font-medium transition shadow-lg shadow-cyan-900/30">
+                ✓ Picked Up
+              </button>
+            </div>
           </div>
-          {% if done|length > 3 %}
-          <button onclick="toggleShowMore('done-list', this)" class="mt-3 w-full text-center text-xs text-indigo-400 hover:text-indigo-300 py-2 rounded-lg hover:bg-zinc-800/50 transition">
-            Show {{ done|length - 3 }} more ▼
-          </button>
-          {% endif %}
-          <div class="mt-3">
-            <button onclick="showBatchEditModal()" class="w-full rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
-              ✏ Batch Edit Selected
-            </button>
-          </div>
-        {% endif %}
+          {% endfor %}
+        </div>
       </section>
+      {% endif %}
+
+      <!-- EMPTY STATE -->
+      {% if new_reqs|length == 0 and printing|length == 0 and queued|length == 0 and done|length == 0 %}
+      <div class="text-center py-16">
+        <div class="text-6xl mb-4">🎉</div>
+        <p class="text-xl font-semibold text-zinc-300">Queue is empty</p>
+        <p class="text-zinc-500 mt-1">No active print requests right now</p>
+      </div>
+      {% endif %}
 
     </div>
 

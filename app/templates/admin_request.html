@@ -25,166 +25,110 @@
     {% include 'admin_nav.html' %}
     {% set can_manage_queue = current_admin_can_manage_queue %}
 
-    <!-- Back Button & Breadcrumb -->
-    <div class="mb-4">
-      {% set back_url = '/admin' %}
-      {% set back_label = 'Back to Queue' %}
-      {% include '_components/back_button.html' %}
-    </div>
-
-    <!-- Page Header with Request Info -->
-    <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
-      <div>
-        <h1 class="text-3xl font-bold">{{ req["print_name"] or ("Request " + req["id"][:8]) }}</h1>
-        <p class="text-zinc-400 mt-1 text-sm">
-          <code class="text-indigo-400">{{ req["id"][:8] }}</code> • 
-          Created {{ req["created_at"]|localtime }} • 
-          {{ req["requester_name"] }}
-        </p>
-      </div>
+    <!-- Back Button & Page Header -->
+    <div class="flex items-center justify-between gap-4 mb-4">
       <div class="flex items-center gap-3">
-        <span class="inline-block px-4 py-2 rounded-lg border text-sm font-medium status-badge-{{ req['status'].lower().replace('_', '-') }}">
-          {{ req["status"].replace('_', ' ') }}
-        </span>
+        <a href="/admin" class="text-zinc-400 hover:text-white">← Queue</a>
+        <span class="text-zinc-600">/</span>
+        <h1 class="text-xl font-bold truncate">{{ req["print_name"] or ("Request " + req["id"][:8]) }}</h1>
       </div>
+      <span class="shrink-0 px-3 py-1 rounded-lg border text-sm font-medium status-badge-{{ req['status'].lower().replace('_', '-') }}">
+        {{ req["status"].replace('_', ' ') }}
+      </span>
     </div>
     
     {% if request.query_params.get('reminder_sent') %}
-      <div class="mb-6 bg-emerald-900/30 border border-emerald-700 rounded-xl p-4 text-emerald-200">
-        ✓ Reminder email sent to {{ req["requester_email"] }}
+      <div class="mb-4 bg-emerald-900/30 border border-emerald-700 rounded-lg p-3 text-emerald-200 text-sm">
+        ✓ Reminder sent to {{ req["requester_email"] }}
       </div>
     {% endif %}
     
-    <!-- Quick Actions Bar -->
-    <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 mb-6">
-      <div class="flex flex-wrap items-center gap-3">
-        <span class="text-sm text-zinc-400">Quick Actions:</span>
-        {% if can_manage_queue %}
-          {% if req["status"] in ["NEW", "APPROVED", "NEEDS_INFO"] %}
-            <button type="button" 
-                    onclick="showPrintStartModal()"
-                    class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition">
-              🖨 Start Print
-            </button>
-          {% endif %}
-          
-          {% if req["status"] == "PRINTING" %}
-            <form action="/admin/request/{{ req['id'] }}/status" method="POST" class="inline">
-              <input type="hidden" name="to_status" value="DONE" />
-              <input type="hidden" name="comment" value="Print completed" />
-              <button type="submit" 
-                      class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold transition">
-                ✓ Mark Done
-              </button>
-            </form>
-          {% endif %}
-          
-          <a href="/repeat/{{ req['short_id'] }}" 
-             class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/50 text-emerald-300 text-sm font-medium transition">
-            🔄 Submit Another
-          </a>
-          
-          <form action="/admin/request/{{ req['id'] }}/duplicate" method="POST" class="inline">
-            <button type="submit" 
-                    class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 text-sm font-medium transition">
-              📋 Duplicate
-            </button>
-          </form>
-          
-          {% if req["status"] == "NEEDS_INFO" %}
-            <form action="/admin/request/{{ req['id'] }}/send-reminder" method="POST" class="inline">
-              <button type="submit" 
-                      class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-orange-600/20 hover:bg-orange-600/30 border border-orange-500/50 text-orange-300 text-sm font-medium transition">
-                📧 Send Reminder
-              </button>
-            </form>
-          {% endif %}
-          
-          <a href="mailto:{{ req['requester_email'] }}" 
-             class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition">
-            ✉️ Email Directly
-          </a>
-          
-          <button type="button" onclick="showAddToStoreModal()"
-                  class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/50 text-emerald-300 text-sm font-medium transition">
-            🏪 Add to Store
+    <!-- Quick Actions - Compact -->
+    {% if can_manage_queue %}
+    <div class="flex flex-wrap items-center gap-2 mb-4 p-3 bg-zinc-900/40 rounded-xl border border-zinc-800">
+      {% if req["status"] in ["NEW", "APPROVED", "NEEDS_INFO"] %}
+        <button type="button" onclick="showPrintStartModal()"
+                class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition">
+          🖨 Start Print
+        </button>
+      {% endif %}
+      
+      {% if req["status"] == "PRINTING" %}
+        <form action="/admin/request/{{ req['id'] }}/status" method="POST" class="inline">
+          <input type="hidden" name="to_status" value="DONE" />
+          <input type="hidden" name="comment" value="Print completed" />
+          <button type="submit" class="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium transition">
+            ✓ Done
           </button>
-        {% else %}
-          <span class="text-xs text-zinc-500">Design-only access: queue actions are hidden.</span>
-        {% endif %}
-      </div>
+        </form>
+      {% endif %}
+      
+      <a href="/repeat/{{ req['short_id'] }}" class="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm transition">🔄 Repeat</a>
+      
+      <form action="/admin/request/{{ req['id'] }}/duplicate" method="POST" class="inline">
+        <button type="submit" class="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm transition">📋 Clone</button>
+      </form>
+      
+      {% if req["status"] == "NEEDS_INFO" %}
+        <form action="/admin/request/{{ req['id'] }}/send-reminder" method="POST" class="inline">
+          <button type="submit" class="px-2.5 py-1.5 rounded-lg bg-orange-900/40 border border-orange-700/50 text-orange-300 text-sm transition hover:bg-orange-900/60">
+            📧 Remind
+          </button>
+        </form>
+      {% endif %}
+      
+      <a href="mailto:{{ req['requester_email'] }}" class="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm transition">✉️ Email</a>
+      
+      <button type="button" onclick="showAddToStoreModal()" class="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm transition">🏪 Store</button>
     </div>
+    {% endif %}
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <!-- Main Content (Left) -->
-      <div class="lg:col-span-2 space-y-6">
+      <div class="lg:col-span-2 space-y-4">
 
-        <!-- Request Overview Card (Combined Requester + Project) -->
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <!-- Request Overview Card -->
+        <div class="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4">
           <!-- Requester Row -->
-          <div class="flex flex-wrap items-center gap-x-6 gap-y-2 pb-4 border-b border-zinc-800 mb-4">
-            <div class="flex items-center gap-2">
-              <span class="text-zinc-500">👤</span>
-              {% if req["account_id"] %}
-              <a href="/admin/accounts/{{ req['account_id'] }}" class="font-medium text-indigo-400 hover:text-indigo-300 hover:underline">{{ req["requester_name"] }}</a>
-              <span class="text-xs text-emerald-400 bg-emerald-900/30 px-1.5 py-0.5 rounded">linked</span>
-              {% else %}
-              <span class="font-medium">{{ req["requester_name"] }}</span>
-              <span class="text-xs text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">no account</span>
-              {% endif %}
-              <button onclick="showLinkAccountModal()" class="text-zinc-400 hover:text-indigo-400 transition p-1" title="Link/change account">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                </svg>
-              </button>
-            </div>
-            <div class="flex items-center gap-2">
-              <a href="mailto:{{ req['requester_email'] }}" class="text-indigo-400 hover:underline text-sm">{{ req["requester_email"] }}</a>
-              {% if not req["account_id"] %}
-              <a href="/admin/accounts?search={{ req['requester_email'] }}" class="text-xs text-zinc-400 hover:text-indigo-400 transition" title="Find account">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-              </a>
-              {% endif %}
-            </div>
-            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-800 text-xs">
-              P{{ req["priority"] or 3 }}{% if (req["priority"] or 3) == 1 %} ⚡{% endif %}
-            </span>
+          <div class="flex flex-wrap items-center gap-3 pb-3 border-b border-zinc-800 mb-3">
+            {% if req["account_id"] %}
+            <a href="/admin/accounts/{{ req['account_id'] }}" class="font-medium text-indigo-400 hover:underline">{{ req["requester_name"] }}</a>
+            {% else %}
+            <span class="font-medium">{{ req["requester_name"] }}</span>
+            {% endif %}
+            <a href="mailto:{{ req['requester_email'] }}" class="text-zinc-400 hover:text-indigo-400 text-sm">{{ req["requester_email"] }}</a>
+            <span class="ml-auto text-xs text-zinc-500">{{ req["created_at"]|localtime }}</span>
           </div>
           
-          <!-- Project Grid -->
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <!-- Project Info - Compact -->
+          <div class="grid grid-cols-4 gap-3 text-sm">
             <div>
-              <p class="text-xs text-zinc-500 mb-0.5">Printer</p>
-              <p class="text-sm font-medium">{{ req["printer"] }}</p>
+              <span class="text-zinc-500 text-xs">Printer</span>
+              <p class="font-medium">{{ req["printer"] }}</p>
             </div>
             <div>
-              <p class="text-xs text-zinc-500 mb-0.5">Material</p>
-              <p class="text-sm font-medium">{{ req["material"] }}</p>
+              <span class="text-zinc-500 text-xs">Material</span>
+              <p class="font-medium">{{ req["material"] }}</p>
             </div>
             <div>
-              <p class="text-xs text-zinc-500 mb-0.5">Colors</p>
-              <p class="text-sm font-medium">{{ req["colors"] or "—" }}</p>
+              <span class="text-zinc-500 text-xs">Colors</span>
+              <p class="font-medium">{{ req["colors"] or "—" }}</p>
             </div>
             <div>
-              <p class="text-xs text-zinc-500 mb-0.5">Est. Time</p>
-              <p class="text-sm font-medium">
-                {% if req["print_time_minutes"] %}{{ (req["print_time_minutes"] // 60) }}h {{ (req["print_time_minutes"] % 60) }}m{% else %}—{% endif %}
-              </p>
+              <span class="text-zinc-500 text-xs">Priority</span>
+              <p class="font-medium">P{{ req["priority"] or 3 }}</p>
             </div>
           </div>
           
           {% if req["link_url"] %}
-            <div class="mb-3">
-              <a href="{{ req['link_url'] }}" target="_blank" class="inline-flex items-center gap-1 text-indigo-400 hover:underline text-sm">
-                🔗 {{ req["link_url"][:50] }}{% if req["link_url"]|length > 50 %}...{% endif %}
-              </a>
-            </div>
+            <a href="{{ req['link_url'] }}" target="_blank" class="inline-block mt-3 text-indigo-400 hover:underline text-sm truncate max-w-full">
+              🔗 {{ req["link_url"][:60] }}{% if req["link_url"]|length > 60 %}...{% endif %}
+            </a>
           {% endif %}
           
           {% if req["notes"] %}
-            <div class="p-3 bg-zinc-950/50 rounded-lg">
-              <p class="text-xs text-zinc-500 mb-1">Requester Notes</p>
-              <p class="text-sm text-zinc-300 whitespace-pre-wrap">{{ req["notes"] }}</p>
+            <div class="mt-3 p-2.5 bg-zinc-950/50 rounded-lg text-sm text-zinc-300">
+              {{ req["notes"] }}
             </div>
           {% endif %}
         </div>

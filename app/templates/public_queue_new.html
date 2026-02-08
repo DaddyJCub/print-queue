@@ -8,37 +8,57 @@
 {% block header_title %}Queue{% endblock %}
 
 {% block content %}
-<!-- Quick Stats -->
-<div id="queue-stats" class="grid grid-cols-4 gap-3 mb-6">
-  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 text-center">
-    <div class="text-xl font-bold text-zinc-200">{{ counts["NEW"] }}</div>
-    <div class="text-xs text-zinc-500">New</div>
+<!-- Hero Section with Stats -->
+<div class="relative mb-6 -mx-4 -mt-4 px-4 pt-8 pb-5 bg-gradient-to-br from-emerald-950/50 via-zinc-900 to-indigo-950/40 border-b border-emerald-500/20 overflow-hidden">
+  <!-- Background decoration -->
+  <div class="absolute inset-0 overflow-hidden pointer-events-none">
+    <div class="absolute -top-24 -right-24 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl"></div>
+    <div class="absolute -bottom-24 -left-24 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl"></div>
   </div>
-  <div class="bg-indigo-900/30 border border-indigo-700/50 rounded-2xl p-4 text-center">
-    <div class="text-xl font-bold text-indigo-300">{{ counts["APPROVED"] }}</div>
-    <div class="text-xs text-indigo-400">Queued</div>
-  </div>
-  <div class="bg-emerald-900/30 border border-emerald-700/50 rounded-2xl p-4 text-center">
-    <div class="text-xl font-bold text-emerald-300">{{ counts["PRINTING_BUILDS"] or ((counts["PRINTING"] or 0) + (counts["IN_PROGRESS"] or 0)) }}</div>
-    <div class="text-xs text-emerald-400">Printing</div>
-  </div>
-  <div class="bg-amber-900/30 border border-amber-700/50 rounded-2xl p-4 text-center">
-    <div class="text-xl font-bold text-amber-300">{{ counts["DONE"] }}</div>
-    <div class="text-xs text-amber-400">Done</div>
+  
+  <div class="relative">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+        <span class="text-xl">📋</span>
+      </div>
+      <div>
+        <h1 class="text-xl sm:text-2xl font-bold text-white">Print Queue</h1>
+        <p class="text-zinc-400 text-xs">Live status of all requests</p>
+      </div>
+    </div>
+    
+    <!-- Quick Stats - embedded in hero -->
+    <div id="queue-stats" class="grid grid-cols-4 gap-2">
+      <div class="bg-zinc-950/60 border border-zinc-800/50 rounded-xl p-2.5 text-center">
+        <div class="text-lg font-bold text-zinc-200">{{ counts["NEW"] }}</div>
+        <div class="text-[10px] text-zinc-500">New</div>
+      </div>
+      <div class="bg-indigo-950/40 border border-indigo-700/30 rounded-xl p-2.5 text-center">
+        <div class="text-lg font-bold text-indigo-300">{{ counts["APPROVED"] }}</div>
+        <div class="text-[10px] text-indigo-400">Queued</div>
+      </div>
+      <div class="bg-emerald-950/40 border border-emerald-700/30 rounded-xl p-2.5 text-center">
+        <div class="text-lg font-bold text-emerald-300">{{ counts["PRINTING_BUILDS"] or ((counts["PRINTING"] or 0) + (counts["IN_PROGRESS"] or 0)) }}</div>
+        <div class="text-[10px] text-emerald-400">Printing</div>
+      </div>
+      <div class="bg-amber-950/40 border border-amber-700/30 rounded-xl p-2.5 text-center">
+        <div class="text-lg font-bold text-amber-300">{{ counts["DONE"] }}</div>
+        <div class="text-[10px] text-amber-400">Done</div>
+      </div>
+    </div>
   </div>
 </div>
 
 <!-- Your Position (if tracking a request) -->
 {% if mine and my_pos %}
-<div id="my-position" class="mb-4 bg-gradient-to-r from-indigo-600/20 to-purple-600/10 border border-indigo-500/40 rounded-2xl p-4">
+<div id="my-position" class="mb-4 bg-gradient-to-r from-indigo-600/20 to-purple-600/10 border border-indigo-500/40 rounded-xl p-3">
   <div class="flex items-center justify-between">
     <div>
-      <p class="text-sm text-zinc-400">Your Request</p>
-      <p class="font-mono font-semibold text-indigo-200">{{ mine }}</p>
+      <p class="text-xs text-zinc-400">Your Request</p>
+      <p class="font-mono font-semibold text-indigo-200 text-sm">{{ mine }}</p>
     </div>
     <div class="text-right">
-      <p class="text-sm text-zinc-400">Position</p>
-      <p class="text-3xl font-bold text-indigo-300 position-number">#{{ my_pos }}</p>
+      <p class="text-2xl font-bold text-indigo-300 position-number">#{{ my_pos }}</p>
     </div>
   </div>
 </div>
@@ -46,10 +66,10 @@
 
 <!-- PWA Install (collapsed, non-intrusive) -->
 <div id="pwa-promo" class="hidden mb-4">
-  <button onclick="installPWA()" class="w-full flex items-center justify-between bg-zinc-900/60 border border-zinc-700 rounded-xl px-4 py-3 tap-highlight">
-    <div class="flex items-center gap-3">
-      <span class="text-xl">📲</span>
-      <span class="text-sm">Install app for notifications</span>
+  <button onclick="installPWA()" class="w-full flex items-center justify-between bg-zinc-900/50 border border-zinc-700 rounded-xl px-3 py-2 tap-highlight">
+    <div class="flex items-center gap-2">
+      <span>📲</span>
+      <span class="text-sm">Install for notifications</span>
     </div>
     <span class="text-xs text-indigo-400">Install →</span>
   </button>
@@ -63,254 +83,116 @@
   })();
 </script>
 
-<!-- Printer Status Cards -->
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+<!-- Printer Status - Compact -->
+<details class="mb-4 group" open>
+  <summary class="flex items-center justify-between cursor-pointer p-3 bg-zinc-900/40 rounded-xl border border-zinc-800 hover:bg-zinc-900/60 transition">
+    <div class="flex items-center gap-2">
+      <span class="text-sm font-medium">🖨 Printers</span>
+      <div class="flex gap-1.5">
+        {% for pname, pdata in printer_status.items() %}
+        <span class="w-2 h-2 rounded-full {% if pdata.is_printing %}bg-emerald-400 animate-pulse{% elif pdata.status == 'READY' %}bg-green-400{% elif pdata.is_offline %}bg-zinc-500{% else %}bg-amber-400{% endif %}"></span>
+        {% endfor %}
+      </div>
+    </div>
+    <svg class="w-4 h-4 text-zinc-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+    </svg>
+  </summary>
+  
+  <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
   <!-- Adventurer 4 -->
-  <div class="bg-zinc-900/60 border {% if printer_status.ADVENTURER_4.is_offline and printer_status.ADVENTURER_4.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-2xl p-4">
-    <div class="flex items-center justify-between mb-3">
-      <span class="font-semibold text-sm">🖨 Adventurer 4</span>
+  <div class="bg-zinc-900/40 border {% if printer_status.ADVENTURER_4.is_offline and printer_status.ADVENTURER_4.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-xl p-3">
+    <div class="flex items-center justify-between mb-2">
+      <span class="font-medium text-sm">Adventurer 4</span>
       <span id="printer-status-ADVENTURER_4">
       {% if printer_status.ADVENTURER_4.status %}
-        <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium
-          {% if printer_status.ADVENTURER_4.is_offline %}bg-amber-600/20 text-amber-300 border border-amber-500/50
-          {% elif printer_status.ADVENTURER_4.is_printing %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
-          {% elif printer_status.ADVENTURER_4.status == 'READY' %}bg-green-500/20 text-green-300 border border-green-500/50
-          {% else %}bg-amber-500/20 text-amber-300 border border-amber-500/50{% endif %}">
-          {% if printer_status.ADVENTURER_4.is_offline %}
-          <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-          {% else %}
-          <span class="w-1.5 h-1.5 rounded-full animate-pulse {% if printer_status.ADVENTURER_4.is_printing %}bg-emerald-400{% elif printer_status.ADVENTURER_4.status == 'READY' %}bg-green-400{% else %}bg-amber-400{% endif %}"></span>
-          {% endif %}
+        <span class="px-2 py-0.5 rounded text-xs
+          {% if printer_status.ADVENTURER_4.is_offline %}bg-zinc-700/50 text-zinc-400
+          {% elif printer_status.ADVENTURER_4.is_printing %}bg-emerald-500/20 text-emerald-300
+          {% elif printer_status.ADVENTURER_4.status == 'READY' %}bg-green-500/20 text-green-300
+          {% else %}bg-amber-500/20 text-amber-300{% endif %}">
           {% if printer_status.ADVENTURER_4.is_offline %}Offline{% else %}{{ printer_status.ADVENTURER_4.status }}{% endif %}
         </span>
       {% else %}
-        <span class="px-2 py-1 rounded-lg text-xs bg-zinc-800 text-zinc-500">Offline</span>
+        <span class="px-2 py-0.5 rounded text-xs bg-zinc-700/50 text-zinc-400">Offline</span>
       {% endif %}
       </span>
     </div>
     
-    <!-- Last seen indicator for offline printers with cached data -->
-    {% if printer_status.ADVENTURER_4.is_offline and printer_status.ADVENTURER_4.is_cached %}
-    <div class="mb-2 px-2 py-1.5 bg-amber-900/20 border border-amber-700/30 rounded-lg text-xs text-amber-300">
-      <span class="font-medium">📡 Connection lost</span>
-      <span class="text-amber-400/80">• Last status: {{ printer_status.ADVENTURER_4.status or 'Unknown' }}</span>
-      {% if printer_status.ADVENTURER_4.last_seen %}
-      <span class="text-amber-400/60">• Last seen: {{ printer_status.ADVENTURER_4.last_seen[:19].replace('T', ' ') }}</span>
-      {% endif %}
-    </div>
-    {% endif %}
-    
-    <!-- Printing info - container with ID for JavaScript updates -->
+    <!-- Printing info -->
     <div id="printing-info-ADVENTURER_4" class="{% if not printer_status.ADVENTURER_4.is_printing %}hidden{% endif %}">
     {% if printer_status.ADVENTURER_4.is_printing %}
-    <div class="space-y-3 mb-3">
-      <!-- Current print job details - PROMINENT -->
       {% if printing_by_printer.ADVENTURER_4 %}
       {% set pit = printing_by_printer.ADVENTURER_4 %}
       {% set is_likely = pit.get('_likely_printing', False) %}
-      <div class="{% if is_likely %}bg-amber-900/30 border border-amber-600/40{% else %}bg-emerald-900/30 border border-emerald-600/40{% endif %} rounded-lg p-3">
-        {% if is_likely %}
-        <p class="text-[10px] text-amber-400 font-semibold mb-1 uppercase tracking-wide">📋 Likely Printing</p>
-        {% endif %}
-        <div class="flex items-start justify-between gap-2 mb-2">
-          <div class="min-w-0 flex-1">
-            <p class="font-bold {% if is_likely %}text-amber-100{% else %}text-emerald-100{% endif %} text-base truncate">{{ pit.print_name or pit.short_id }}</p>
-            <p class="text-sm {% if is_likely %}text-amber-200/80{% else %}text-emerald-200/80{% endif %}">By: {{ pit.requester_first }}</p>
-          </div>
-          <span class="flex-shrink-0 px-2 py-1 rounded-lg text-xs font-bold {% if is_likely %}bg-amber-500/30 border border-amber-400/50 text-amber-200{% else %}bg-emerald-500/30 border border-emerald-400/50 text-emerald-200{% endif %}">#{{ pit.queue_pos }}</span>
+      <div class="{% if is_likely %}bg-amber-900/20 border border-amber-700/40{% else %}bg-emerald-900/20 border border-emerald-700/40{% endif %} rounded-lg p-2 mb-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-medium text-sm {% if is_likely %}text-amber-200{% else %}text-emerald-200{% endif %} truncate">{{ pit.print_name or pit.short_id }}</span>
+          <span class="text-xs {% if is_likely %}text-amber-300{% else %}text-emerald-300{% endif %}">#{{ pit.queue_pos }}</span>
         </div>
-        <div class="flex flex-wrap items-center gap-2 text-xs">
-          <span class="px-2 py-0.5 rounded bg-zinc-800/80 text-zinc-300">{{ pit.material }}</span>
-          {% if pit.total_builds > 1 %}
-          <span class="px-2 py-0.5 rounded bg-amber-700/50 border border-amber-500/50 text-amber-200 font-semibold" title="Currently printing build {{ pit.build_number or (pit.completed_builds + 1) }} of {{ pit.total_builds }}">Build {{ pit.build_number or (pit.completed_builds + 1) }}/{{ pit.total_builds }}</span>
-          {% endif %}
-          {% if pit.smart_eta_display %}
-          <span class="ml-auto {% if is_likely %}text-amber-300{% else %}text-emerald-300{% endif %} font-medium">ETA: {{ pit.smart_eta_display }}</span>
-          {% endif %}
-        </div>
-        {% if pit.total_builds > 1 %}
-        <!-- Mini build progress bar -->
-        <div class="flex gap-0.5 mt-2" title="Build {{ pit.build_number or (pit.completed_builds + 1) }} of {{ pit.total_builds }} printing ({{ pit.completed_builds }} completed)">
-          {% for i in range(pit.total_builds) %}
-            {% set current_build = pit.build_number or (pit.completed_builds + 1) %}
-            <div class="flex-1 h-1 rounded-full {% if i + 1 == current_build %}bg-amber-500 animate-pulse{% elif i + 1 <= pit.completed_builds %}bg-emerald-500{% else %}bg-zinc-700{% endif %}"></div>
-          {% endfor %}
-        </div>
-        {% endif %}
+        <p class="text-xs {% if is_likely %}text-amber-300/70{% else %}text-emerald-300/70{% endif %}">{{ pit.requester_first }}</p>
       </div>
       {% endif %}
-      
-      <!-- File and progress -->
-      <div class="text-xs text-zinc-400 space-y-2">
-        {% if printer_status.ADVENTURER_4.current_file %}
-        <p class="truncate text-zinc-500">📄 {{ printer_status.ADVENTURER_4.current_file }}</p>
-        {% endif %}
-        {% if printer_status.ADVENTURER_4.progress is not none %}
-        <div class="flex items-center gap-2">
-          <div class="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
-            <div class="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all" style="width: {{ printer_status.ADVENTURER_4.progress }}%"></div>
-          </div>
-          <span class="text-emerald-300 font-semibold min-w-[3rem] text-right">{{ printer_status.ADVENTURER_4.progress }}%</span>
+      <!-- Progress bar -->
+      {% if printer_status.ADVENTURER_4.progress is not none %}
+      <div class="flex items-center gap-2 text-xs">
+        <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+          <div class="h-full bg-emerald-500 transition-all" style="width: {{ printer_status.ADVENTURER_4.progress }}%"></div>
         </div>
-        {% endif %}
-        {% if printer_status.ADVENTURER_4.current_layer is not none %}
-        <p>Layer: <span class="text-blue-300 font-medium">{{ printer_status.ADVENTURER_4.current_layer }}/{{ printer_status.ADVENTURER_4.total_layers }}</span></p>
-        {% endif %}
+        <span class="text-emerald-300 font-medium">{{ printer_status.ADVENTURER_4.progress }}%</span>
       </div>
-    </div>
+      {% endif %}
     {% endif %}
-    </div><!-- Close printing-info-ADVENTURER_4 -->
-    
-    <!-- Temperature and Camera row -->
-    <div class="flex items-center justify-between text-xs pt-2 border-t border-zinc-700/50">
-      <span class="text-zinc-400">
-        {% if printer_status.ADVENTURER_4.temp %}
-        🌡 <span class="text-zinc-200">{{ printer_status.ADVENTURER_4.temp }}°C</span>
-        {% if printer_status.ADVENTURER_4.target_temp %}
-        <span class="text-zinc-500">/ {{ printer_status.ADVENTURER_4.target_temp }}°C</span>
-        {% endif %}
-        {% else %}
-        <span class="text-zinc-600">—</span>
-        {% endif %}
-      </span>
-      {% if printer_status.ADVENTURER_4.camera_url %}
-      <button type="button" onclick="toggleCamera('ADVENTURER_4')" id="cam-btn-ADVENTURER_4" 
-              class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition">
-        <span>📷</span> <span class="btn-text">Show Camera</span>
-      </button>
-      {% endif %}
-    </div>
-    
-    <!-- Camera preview (hidden by default) -->
-    <div id="cam-ADVENTURER_4" class="hidden mt-3">
-      <img id="cam-img-ADVENTURER_4" class="w-full rounded-lg bg-zinc-800 border border-zinc-700" alt="Camera" />
-      <div class="text-xs text-zinc-500 mt-1 text-center">Updates every 10 seconds</div>
     </div>
   </div>
 
   <!-- AD5X -->
-  <div class="bg-zinc-900/60 border {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-2xl p-4">
-    <div class="flex items-center justify-between mb-3">
-      <span class="font-semibold text-sm">🖨 AD5X</span>
+  <div class="bg-zinc-900/40 border {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-xl p-3">
+    <div class="flex items-center justify-between mb-2">
+      <span class="font-medium text-sm">AD5X</span>
       <span id="printer-status-AD5X">
       {% if printer_status.AD5X.status %}
-        <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium
-          {% if printer_status.AD5X.is_offline %}bg-amber-600/20 text-amber-300 border border-amber-500/50
-          {% elif printer_status.AD5X.is_printing %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/50
-          {% elif printer_status.AD5X.status == 'READY' %}bg-green-500/20 text-green-300 border border-green-500/50
-          {% else %}bg-amber-500/20 text-amber-300 border border-amber-500/50{% endif %}">
-          {% if printer_status.AD5X.is_offline %}
-          <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-          {% else %}
-          <span class="w-1.5 h-1.5 rounded-full animate-pulse {% if printer_status.AD5X.is_printing %}bg-emerald-400{% elif printer_status.AD5X.status == 'READY' %}bg-green-400{% else %}bg-amber-400{% endif %}"></span>
-          {% endif %}
+        <span class="px-2 py-0.5 rounded text-xs
+          {% if printer_status.AD5X.is_offline %}bg-zinc-700/50 text-zinc-400
+          {% elif printer_status.AD5X.is_printing %}bg-emerald-500/20 text-emerald-300
+          {% elif printer_status.AD5X.status == 'READY' %}bg-green-500/20 text-green-300
+          {% else %}bg-amber-500/20 text-amber-300{% endif %}">
           {% if printer_status.AD5X.is_offline %}Offline{% else %}{{ printer_status.AD5X.status }}{% endif %}
         </span>
       {% else %}
-        <span class="px-2 py-1 rounded-lg text-xs bg-zinc-800 text-zinc-500">Offline</span>
+        <span class="px-2 py-0.5 rounded text-xs bg-zinc-700/50 text-zinc-400">Offline</span>
       {% endif %}
       </span>
     </div>
     
-    <!-- Last seen indicator for offline printers with cached data -->
-    {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}
-    <div class="mb-2 px-2 py-1.5 bg-amber-900/20 border border-amber-700/30 rounded-lg text-xs text-amber-300">
-      <span class="font-medium">📡 Connection lost</span>
-      <span class="text-amber-400/80">• Last status: {{ printer_status.AD5X.status or 'Unknown' }}</span>
-      {% if printer_status.AD5X.last_seen %}
-      <span class="text-amber-400/60">• Last seen: {{ printer_status.AD5X.last_seen[:19].replace('T', ' ') }}</span>
-      {% endif %}
-    </div>
-    {% endif %}
-    
-    <!-- Printing info - container with ID for JavaScript updates -->
+    <!-- Printing info -->
     <div id="printing-info-AD5X" class="{% if not printer_status.AD5X.is_printing %}hidden{% endif %}">
     {% if printer_status.AD5X.is_printing %}
-    <div class="space-y-3 mb-3">
-      <!-- Current print job details - PROMINENT -->
       {% if printing_by_printer.AD5X %}
       {% set pit = printing_by_printer.AD5X %}
       {% set is_likely = pit.get('_likely_printing', False) %}
-      <div class="{% if is_likely %}bg-amber-900/30 border border-amber-600/40{% else %}bg-emerald-900/30 border border-emerald-600/40{% endif %} rounded-lg p-3">
-        {% if is_likely %}
-        <p class="text-[10px] text-amber-400 font-semibold mb-1 uppercase tracking-wide">📋 Likely Printing</p>
-        {% endif %}
-        <div class="flex items-start justify-between gap-2 mb-2">
-          <div class="min-w-0 flex-1">
-            <p class="font-bold {% if is_likely %}text-amber-100{% else %}text-emerald-100{% endif %} text-base truncate">{{ pit.print_name or pit.short_id }}</p>
-            <p class="text-sm {% if is_likely %}text-amber-200/80{% else %}text-emerald-200/80{% endif %}">By: {{ pit.requester_first }}</p>
-          </div>
-          <span class="flex-shrink-0 px-2 py-1 rounded-lg text-xs font-bold {% if is_likely %}bg-amber-500/30 border border-amber-400/50 text-amber-200{% else %}bg-emerald-500/30 border border-emerald-400/50 text-emerald-200{% endif %}">#{{ pit.queue_pos }}</span>
+      <div class="{% if is_likely %}bg-amber-900/20 border border-amber-700/40{% else %}bg-emerald-900/20 border border-emerald-700/40{% endif %} rounded-lg p-2 mb-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-medium text-sm {% if is_likely %}text-amber-200{% else %}text-emerald-200{% endif %} truncate">{{ pit.print_name or pit.short_id }}</span>
+          <span class="text-xs {% if is_likely %}text-amber-300{% else %}text-emerald-300{% endif %}">#{{ pit.queue_pos }}</span>
         </div>
-        <div class="flex flex-wrap items-center gap-2 text-xs">
-          <span class="px-2 py-0.5 rounded bg-zinc-800/80 text-zinc-300">{{ pit.material }}</span>
-          {% if pit.total_builds > 1 %}
-          <span class="px-2 py-0.5 rounded bg-amber-700/50 border border-amber-500/50 text-amber-200 font-semibold" title="Currently printing build {{ pit.build_number or (pit.completed_builds + 1) }} of {{ pit.total_builds }}">Build {{ pit.build_number or (pit.completed_builds + 1) }}/{{ pit.total_builds }}</span>
-          {% endif %}
-          {% if pit.smart_eta_display %}
-          <span class="ml-auto {% if is_likely %}text-amber-300{% else %}text-emerald-300{% endif %} font-medium">ETA: {{ pit.smart_eta_display }}</span>
-          {% endif %}
-        </div>
-        {% if pit.total_builds > 1 %}
-        <!-- Mini build progress bar -->
-        <div class="flex gap-0.5 mt-2" title="Build {{ pit.build_number or (pit.completed_builds + 1) }} of {{ pit.total_builds }} printing ({{ pit.completed_builds }} completed)">
-          {% for i in range(pit.total_builds) %}
-            {% set current_build = pit.build_number or (pit.completed_builds + 1) %}
-            <div class="flex-1 h-1 rounded-full {% if i + 1 == current_build %}bg-amber-500 animate-pulse{% elif i + 1 <= pit.completed_builds %}bg-emerald-500{% else %}bg-zinc-700{% endif %}"></div>
-          {% endfor %}
-        </div>
-        {% endif %}
+        <p class="text-xs {% if is_likely %}text-amber-300/70{% else %}text-emerald-300/70{% endif %}">{{ pit.requester_first }}</p>
       </div>
       {% endif %}
-      
-      <!-- File and progress -->
-      <div class="text-xs text-zinc-400 space-y-2">
-        {% if printer_status.AD5X.current_file %}
-        <p class="truncate text-zinc-500">📄 {{ printer_status.AD5X.current_file }}</p>
-        {% endif %}
-        {% if printer_status.AD5X.progress is not none %}
-        <div class="flex items-center gap-2">
-          <div class="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
-            <div class="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all" style="width: {{ printer_status.AD5X.progress }}%"></div>
-          </div>
-          <span class="text-emerald-300 font-semibold min-w-[3rem] text-right">{{ printer_status.AD5X.progress }}%</span>
+      <!-- Progress bar -->
+      {% if printer_status.AD5X.progress is not none %}
+      <div class="flex items-center gap-2 text-xs">
+        <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+          <div class="h-full bg-emerald-500 transition-all" style="width: {{ printer_status.AD5X.progress }}%"></div>
         </div>
-        {% endif %}
-        {% if printer_status.AD5X.current_layer is not none %}
-        <p>Layer: <span class="text-blue-300 font-medium">{{ printer_status.AD5X.current_layer }}/{{ printer_status.AD5X.total_layers }}</span></p>
-        {% endif %}
+        <span class="text-emerald-300 font-medium">{{ printer_status.AD5X.progress }}%</span>
       </div>
-    </div>
+      {% endif %}
     {% endif %}
-    </div><!-- Close printing-info-AD5X -->
-    
-    <!-- Temperature and Camera row -->
-    <div class="flex items-center justify-between text-xs pt-2 border-t border-zinc-700/50">
-      <span class="text-zinc-400">
-        {% if printer_status.AD5X.temp %}
-        🌡 <span class="text-zinc-200">{{ printer_status.AD5X.temp }}°C</span>
-        {% if printer_status.AD5X.target_temp %}
-        <span class="text-zinc-500">/ {{ printer_status.AD5X.target_temp }}°C</span>
-        {% endif %}
-        {% else %}
-        <span class="text-zinc-600">—</span>
-        {% endif %}
-      </span>
-      {% if printer_status.AD5X.camera_url %}
-      <button type="button" onclick="toggleCamera('AD5X')" id="cam-btn-AD5X" 
-              class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs font-medium text-zinc-300 transition">
-        <span>📷</span> <span class="btn-text">Show Camera</span>
-      </button>
-      {% endif %}
-    </div>
-    
-    <!-- Camera preview (hidden by default) -->
-    <div id="cam-AD5X" class="hidden mt-3">
-      <img id="cam-img-AD5X" class="w-full rounded-lg bg-zinc-800 border border-zinc-700" alt="Camera" />
-      <div class="text-xs text-zinc-500 mt-1 text-center">Updates every 10 seconds</div>
     </div>
   </div>
-</div>
+  </div><!-- Close grid -->
+</details>
 
 <!-- Active Queue -->
 <div class="mb-6">
@@ -329,7 +211,7 @@
   <div id="queue-mobile" class="sm:hidden space-y-3">
   {% if active_queue %}
     {% for r in active_queue %}
-    <div class="bg-zinc-900/60 border {% if r.is_mine %}border-indigo-500/50 bg-indigo-900/20{% elif r.status in ['PRINTING', 'IN_PROGRESS'] %}border-emerald-500/50 bg-emerald-900/10{% else %}border-zinc-800{% endif %} rounded-xl p-4 card-interactive">
+    <div class="stagger-item bg-zinc-900/60 border {% if r.is_mine %}border-indigo-500/50 bg-indigo-900/20{% elif r.status in ['PRINTING', 'IN_PROGRESS'] %}border-emerald-500/50 bg-emerald-900/10{% else %}border-zinc-800{% endif %} rounded-xl p-4 card-interactive">
       <div class="flex items-start justify-between mb-2">
         <div class="flex items-center gap-2">
           <span class="text-lg font-bold text-zinc-500">#{{ r.queue_pos }}</span>

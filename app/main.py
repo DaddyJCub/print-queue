@@ -29,7 +29,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.12.6"
+APP_VERSION = "0.12.12"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -5986,6 +5986,68 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any], us
     # Check if user accounts feature is enabled
     user_accounts_enabled = is_feature_enabled("user_accounts")
     
+    # Get queue stats for landing page
+    queue_stats = None
+    fun_stats = None
+    recent_prints = []
+    try:
+        conn = get_conn()
+        # Count printing
+        printing = conn.execute(
+            "SELECT COUNT(*) FROM requests WHERE status IN ('PRINTING', 'IN_PROGRESS')"
+        ).fetchone()[0]
+        # Count queued (approved/pending)
+        queued = conn.execute(
+            "SELECT COUNT(*) FROM requests WHERE status IN ('PENDING', 'APPROVED', 'NEEDS_INFO')"
+        ).fetchone()[0]
+        queue_stats = {
+            "printing": printing,
+            "queued": queued,
+            "avg_wait": "1-2 days" if queued < 5 else "2-4 days" if queued < 10 else "4-7 days"
+        }
+        
+        # Fun stats for landing page
+        total_completed = conn.execute(
+            "SELECT COUNT(*) FROM requests WHERE status IN ('DONE', 'PICKED_UP')"
+        ).fetchone()[0]
+        # Estimate print hours (rough: 3 hours average per print)
+        est_hours = total_completed * 3
+        fun_stats = {
+            "total_prints": total_completed,
+            "est_hours": est_hours,
+            "est_meters": round(total_completed * 15, 0),  # ~15m filament per print avg
+        }
+        
+        # Recent completed prints (last 5)
+        recent_rows = conn.execute("""
+            SELECT print_name, colors, updated_at 
+            FROM requests 
+            WHERE status IN ('DONE', 'PICKED_UP') AND print_name IS NOT NULL
+            ORDER BY updated_at DESC 
+            LIMIT 5
+        """).fetchall()
+        recent_prints = [{"name": r[0], "colors": r[1], "date": r[2]} for r in recent_rows]
+    except:
+        pass
+    
+    # Get live printer status for landing page - use demo data or cached status
+    printer_status = {}
+    try:
+        if DEMO_MODE:
+            printer_status = get_demo_all_printers_status()
+        else:
+            # Use cached printer status (non-blocking)
+            for printer_code in ["ADVENTURER_4", "AD5X"]:
+                cached = get_cached_printer_status(printer_code)
+                if cached:
+                    printer_status[printer_code] = cached
+                else:
+                    printer_status[printer_code] = {
+                        "status": None, "is_offline": True, "is_printing": False, "progress": None
+                    }
+    except:
+        pass
+    
     return templates.TemplateResponse("request_form_new.html", {
         "request": request,
         "turnstile_site_key": TURNSTILE_SITE_KEY,
@@ -5999,6 +6061,10 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any], us
         "saved_templates": saved_templates,
         "user": user,
         "user_accounts_enabled": user_accounts_enabled,
+        "queue_stats": queue_stats,
+        "printer_status": printer_status,
+        "fun_stats": fun_stats,
+        "recent_prints": recent_prints,
     }, status_code=400 if error else 200)
 
 

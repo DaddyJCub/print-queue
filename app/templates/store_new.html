@@ -8,10 +8,25 @@
 {% block header_title %}Store{% endblock %}
 
 {% block content %}
-<!-- Page Header -->
-<div class="mb-6">
-  <h1 class="text-3xl font-bold">Print Store</h1>
-  <p class="text-zinc-400 text-sm mt-1">Pre-made prints ready to request</p>
+<!-- Hero Section -->
+<div class="relative mb-6 -mx-4 -mt-4 px-4 pt-8 pb-6 bg-gradient-to-br from-purple-950/60 via-zinc-900 to-indigo-950/40 border-b border-purple-500/20 overflow-hidden">
+  <!-- Background decoration -->
+  <div class="absolute inset-0 overflow-hidden pointer-events-none">
+    <div class="absolute -top-24 -right-24 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl"></div>
+    <div class="absolute -bottom-24 -left-24 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl"></div>
+  </div>
+  
+  <div class="relative">
+    <div class="flex items-center gap-3 mb-2">
+      <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
+        <span class="text-2xl">🏪</span>
+      </div>
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-white to-zinc-300 bg-clip-text text-transparent">Print Store</h1>
+        <p class="text-zinc-400 text-sm">Pre-made prints ready to request</p>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Category Pills (horizontal scroll on mobile) -->
