@@ -125,23 +125,55 @@
       {% if printing_by_printer.ADVENTURER_4 %}
       {% set pit = printing_by_printer.ADVENTURER_4 %}
       {% set is_likely = pit.get('_likely_printing', False) %}
-      <div class="{% if is_likely %}bg-amber-900/20 border border-amber-700/40{% else %}bg-emerald-900/20 border border-emerald-700/40{% endif %} rounded-lg p-2 mb-2">
-        <div class="flex items-center justify-between gap-2">
-          <span class="font-medium text-sm {% if is_likely %}text-amber-200{% else %}text-emerald-200{% endif %} truncate">{{ pit.print_name or pit.short_id }}</span>
-          <span class="text-xs {% if is_likely %}text-amber-300{% else %}text-emerald-300{% endif %}">#{{ pit.queue_pos }}</span>
+      <div class="{% if is_likely %}bg-amber-900/20 border border-amber-700/40{% else %}bg-emerald-900/20 border border-emerald-700/40{% endif %} rounded-lg p-2.5 mb-2">
+        {% if is_likely %}
+        <p class="text-[10px] text-amber-400 font-semibold mb-1 uppercase tracking-wide">📋 Likely Printing</p>
+        {% endif %}
+        <div class="flex items-start justify-between gap-2 mb-1.5">
+          <div class="min-w-0 flex-1">
+            <p class="font-bold {% if is_likely %}text-amber-100{% else %}text-emerald-100{% endif %} text-sm truncate">{{ pit.print_name or pit.short_id }}</p>
+            <p class="text-xs {% if is_likely %}text-amber-200/80{% else %}text-emerald-200/80{% endif %}">By: {{ pit.requester_first }}</p>
+          </div>
+          <span class="flex-shrink-0 px-1.5 py-0.5 rounded text-xs font-bold {% if is_likely %}bg-amber-500/30 border border-amber-400/50 text-amber-200{% else %}bg-emerald-500/30 border border-emerald-400/50 text-emerald-200{% endif %}">#{{ pit.queue_pos }}</span>
         </div>
-        <p class="text-xs {% if is_likely %}text-amber-300/70{% else %}text-emerald-300/70{% endif %}">{{ pit.requester_first }}</p>
+        <div class="flex flex-wrap items-center gap-1.5 text-xs">
+          <span class="px-1.5 py-0.5 rounded bg-zinc-800/80 text-zinc-300">{{ pit.material }}</span>
+          {% if pit.total_builds > 1 %}
+          <span class="px-1.5 py-0.5 rounded bg-amber-700/50 border border-amber-500/50 text-amber-200 font-semibold">Build {{ pit.build_number or (pit.completed_builds + 1) }}/{{ pit.total_builds }}</span>
+          {% endif %}
+          {% if pit.smart_eta_display %}
+          <span class="ml-auto {% if is_likely %}text-amber-300{% else %}text-emerald-300{% endif %} font-medium">ETA: {{ pit.smart_eta_display }}</span>
+          {% endif %}
+        </div>
+        {% if pit.total_builds > 1 %}
+        <!-- Mini build progress bar -->
+        <div class="flex gap-0.5 mt-2" title="Build {{ pit.build_number or (pit.completed_builds + 1) }} of {{ pit.total_builds }} printing">
+          {% for i in range(pit.total_builds) %}
+            {% set current_build = pit.build_number or (pit.completed_builds + 1) %}
+            <div class="flex-1 h-1 rounded-full {% if i + 1 == current_build %}bg-amber-500 animate-pulse{% elif i + 1 <= pit.completed_builds %}bg-emerald-500{% else %}bg-zinc-700{% endif %}"></div>
+          {% endfor %}
+        </div>
+        {% endif %}
       </div>
       {% endif %}
-      <!-- Progress bar -->
-      {% if printer_status.ADVENTURER_4.progress is not none %}
-      <div class="flex items-center gap-2 text-xs">
-        <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-          <div class="h-full bg-emerald-500 transition-all" style="width: {{ printer_status.ADVENTURER_4.progress }}%"></div>
+      
+      <!-- File and progress -->
+      <div class="text-xs text-zinc-400 space-y-1.5">
+        {% if printer_status.ADVENTURER_4.current_file %}
+        <p class="truncate text-zinc-500">📄 {{ printer_status.ADVENTURER_4.current_file }}</p>
+        {% endif %}
+        {% if printer_status.ADVENTURER_4.progress is not none %}
+        <div class="flex items-center gap-2">
+          <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div class="h-full bg-emerald-500 transition-all" style="width: {{ printer_status.ADVENTURER_4.progress }}%"></div>
+          </div>
+          <span class="text-emerald-300 font-medium">{{ printer_status.ADVENTURER_4.progress }}%</span>
         </div>
-        <span class="text-emerald-300 font-medium">{{ printer_status.ADVENTURER_4.progress }}%</span>
+        {% endif %}
+        {% if printer_status.ADVENTURER_4.current_layer is not none %}
+        <p>Layer: <span class="text-blue-300 font-medium">{{ printer_status.ADVENTURER_4.current_layer }}/{{ printer_status.ADVENTURER_4.total_layers }}</span></p>
+        {% endif %}
       </div>
-      {% endif %}
     {% endif %}
     </div>
     
@@ -199,23 +231,55 @@
       {% if printing_by_printer.AD5X %}
       {% set pit = printing_by_printer.AD5X %}
       {% set is_likely = pit.get('_likely_printing', False) %}
-      <div class="{% if is_likely %}bg-amber-900/20 border border-amber-700/40{% else %}bg-emerald-900/20 border border-emerald-700/40{% endif %} rounded-lg p-2 mb-2">
-        <div class="flex items-center justify-between gap-2">
-          <span class="font-medium text-sm {% if is_likely %}text-amber-200{% else %}text-emerald-200{% endif %} truncate">{{ pit.print_name or pit.short_id }}</span>
-          <span class="text-xs {% if is_likely %}text-amber-300{% else %}text-emerald-300{% endif %}">#{{ pit.queue_pos }}</span>
+      <div class="{% if is_likely %}bg-amber-900/20 border border-amber-700/40{% else %}bg-emerald-900/20 border border-emerald-700/40{% endif %} rounded-lg p-2.5 mb-2">
+        {% if is_likely %}
+        <p class="text-[10px] text-amber-400 font-semibold mb-1 uppercase tracking-wide">📋 Likely Printing</p>
+        {% endif %}
+        <div class="flex items-start justify-between gap-2 mb-1.5">
+          <div class="min-w-0 flex-1">
+            <p class="font-bold {% if is_likely %}text-amber-100{% else %}text-emerald-100{% endif %} text-sm truncate">{{ pit.print_name or pit.short_id }}</p>
+            <p class="text-xs {% if is_likely %}text-amber-200/80{% else %}text-emerald-200/80{% endif %}">By: {{ pit.requester_first }}</p>
+          </div>
+          <span class="flex-shrink-0 px-1.5 py-0.5 rounded text-xs font-bold {% if is_likely %}bg-amber-500/30 border border-amber-400/50 text-amber-200{% else %}bg-emerald-500/30 border border-emerald-400/50 text-emerald-200{% endif %}">#{{ pit.queue_pos }}</span>
         </div>
-        <p class="text-xs {% if is_likely %}text-amber-300/70{% else %}text-emerald-300/70{% endif %}">{{ pit.requester_first }}</p>
+        <div class="flex flex-wrap items-center gap-1.5 text-xs">
+          <span class="px-1.5 py-0.5 rounded bg-zinc-800/80 text-zinc-300">{{ pit.material }}</span>
+          {% if pit.total_builds > 1 %}
+          <span class="px-1.5 py-0.5 rounded bg-amber-700/50 border border-amber-500/50 text-amber-200 font-semibold">Build {{ pit.build_number or (pit.completed_builds + 1) }}/{{ pit.total_builds }}</span>
+          {% endif %}
+          {% if pit.smart_eta_display %}
+          <span class="ml-auto {% if is_likely %}text-amber-300{% else %}text-emerald-300{% endif %} font-medium">ETA: {{ pit.smart_eta_display }}</span>
+          {% endif %}
+        </div>
+        {% if pit.total_builds > 1 %}
+        <!-- Mini build progress bar -->
+        <div class="flex gap-0.5 mt-2" title="Build {{ pit.build_number or (pit.completed_builds + 1) }} of {{ pit.total_builds }} printing">
+          {% for i in range(pit.total_builds) %}
+            {% set current_build = pit.build_number or (pit.completed_builds + 1) %}
+            <div class="flex-1 h-1 rounded-full {% if i + 1 == current_build %}bg-amber-500 animate-pulse{% elif i + 1 <= pit.completed_builds %}bg-emerald-500{% else %}bg-zinc-700{% endif %}"></div>
+          {% endfor %}
+        </div>
+        {% endif %}
       </div>
       {% endif %}
-      <!-- Progress bar -->
-      {% if printer_status.AD5X.progress is not none %}
-      <div class="flex items-center gap-2 text-xs">
-        <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-          <div class="h-full bg-emerald-500 transition-all" style="width: {{ printer_status.AD5X.progress }}%"></div>
+      
+      <!-- File and progress -->
+      <div class="text-xs text-zinc-400 space-y-1.5">
+        {% if printer_status.AD5X.current_file %}
+        <p class="truncate text-zinc-500">📄 {{ printer_status.AD5X.current_file }}</p>
+        {% endif %}
+        {% if printer_status.AD5X.progress is not none %}
+        <div class="flex items-center gap-2">
+          <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div class="h-full bg-emerald-500 transition-all" style="width: {{ printer_status.AD5X.progress }}%"></div>
+          </div>
+          <span class="text-emerald-300 font-medium">{{ printer_status.AD5X.progress }}%</span>
         </div>
-        <span class="text-emerald-300 font-medium">{{ printer_status.AD5X.progress }}%</span>
+        {% endif %}
+        {% if printer_status.AD5X.current_layer is not none %}
+        <p>Layer: <span class="text-blue-300 font-medium">{{ printer_status.AD5X.current_layer }}/{{ printer_status.AD5X.total_layers }}</span></p>
+        {% endif %}
       </div>
-      {% endif %}
     {% endif %}
     </div>
     
