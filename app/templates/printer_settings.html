@@ -92,6 +92,11 @@
               <p class="text-xs text-indigo-400 mt-1">
                 🌙 <strong>Auto-detect:</strong> When left blank, the camera URL is auto-derived from your Moonraker IP using ustreamer (port 8080). You can also set it manually to override.
               </p>
+              {% if s.camera_ad5x_resolved %}
+              <p class="text-xs text-emerald-400 mt-1">
+                ✅ <strong>Active URL:</strong> <code class="bg-zinc-900 px-1.5 py-0.5 rounded text-emerald-300">{{ s.camera_ad5x_resolved }}</code>
+              </p>
+              {% endif %}
             {% endif %}
           </div>
         </div>

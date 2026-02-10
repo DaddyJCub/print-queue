@@ -42,6 +42,11 @@
         ✓ Reminder sent to {{ req["requester_email"] }}
       </div>
     {% endif %}
+    {% if request.query_params.get('sent_to_printer') %}
+      <div class="mb-4 bg-emerald-900/30 border border-emerald-700 rounded-lg p-3 text-emerald-200 text-sm">
+        ✓ G-code sent to printer via Moonraker
+      </div>
+    {% endif %}
     
     <!-- Quick Actions - Compact -->
     {% if can_manage_queue %}
@@ -1183,6 +1188,10 @@
                               {% if gc["size_bytes"] >= 1048576 %}{{ (gc["size_bytes"] / 1048576) | round(1) }} MB{% else %}{{ (gc["size_bytes"] / 1024) | round(1) }} KB{% endif %}
                             </span>
                             <div class="flex items-center gap-0.5 flex-shrink-0">
+                              {% if moonraker_available %}
+                                <button type="button" onclick="showSendToPrinterModal('{{ gc['id'] }}', '{{ gc['original_filename'] | e }}')" 
+                                        class="p-1 rounded-md hover:bg-emerald-900/40 text-emerald-400 hover:text-emerald-300 transition" title="Send to AD5X">🖨</button>
+                              {% endif %}
                               <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ gc['id'] }}/link" class="inline">
                                 <input type="hidden" name="linked_file_id" value="" />
                                 <button type="submit" class="p-1 rounded-md hover:bg-zinc-600/50 text-zinc-500 hover:text-amber-400 transition" title="Unlink from model">🔗</button>
@@ -1254,6 +1263,10 @@
                         </form>
                       {% endif %}
                       <div class="flex items-center gap-0.5 flex-shrink-0">
+                        {% if moonraker_available %}
+                          <button type="button" onclick="showSendToPrinterModal('{{ f['id'] }}', '{{ f['original_filename'] | e }}')" 
+                                  class="p-1.5 rounded-md hover:bg-emerald-900/40 text-emerald-400 hover:text-emerald-300 transition" title="Send to AD5X">🖨</button>
+                        {% endif %}
                         <a href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}" 
                            class="p-1.5 rounded-md hover:bg-zinc-600/50 text-zinc-400 hover:text-zinc-200 transition" title="Download">⬇️</a>
                         <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" onsubmit="return confirm('Delete {{ f.original_filename }}?')">
@@ -1409,6 +1422,47 @@
 
     </div>
     
+    <!-- Send to Printer Modal -->
+    {% if moonraker_available %}
+    <div id="send-to-printer-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-sm w-full">
+        <h2 class="text-xl font-bold mb-2">🖨 Send to Printer</h2>
+        <p class="text-sm text-zinc-400 mb-2">Upload G-code to your AD5X via Moonraker</p>
+        <p id="send-file-name" class="font-mono text-sm text-indigo-300 mb-4 break-all"></p>
+        
+        <form id="send-to-printer-form" method="POST" action="" class="space-y-4">
+          <label class="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" name="start_print" value="1" class="scale-125 accent-emerald-500" />
+            <span class="text-sm text-zinc-300">Start printing immediately after upload</span>
+          </label>
+          <input type="hidden" name="printer" value="AD5X" />
+
+          <div class="flex gap-3 pt-2">
+            <button type="button" onclick="hideSendToPrinterModal()" class="flex-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
+              Cancel
+            </button>
+            <button type="submit" class="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+              📤 Send to AD5X
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <script>
+      function showSendToPrinterModal(fileId, fileName) {
+        document.getElementById('send-file-name').textContent = fileName;
+        document.getElementById('send-to-printer-form').action = '/admin/request/{{ req["id"] }}/file/' + fileId + '/send-to-printer';
+        document.getElementById('send-to-printer-modal').classList.remove('hidden');
+      }
+      function hideSendToPrinterModal() {
+        document.getElementById('send-to-printer-modal').classList.add('hidden');
+      }
+      document.getElementById('send-to-printer-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'send-to-printer-modal') hideSendToPrinterModal();
+      });
+    </script>
+    {% endif %}
+
     <!-- Print Start Modal (Printer/Material Selection) -->
     <div id="print-start-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-sm w-full">

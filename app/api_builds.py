@@ -1049,6 +1049,76 @@ def admin_link_file(
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
 
+@router.post("/admin/request/{rid}/file/{file_id}/send-to-printer")
+async def admin_send_file_to_printer(
+    request: Request,
+    rid: str,
+    file_id: str,
+    printer: str = Form("AD5X"),
+    start_print: str = Form(""),
+    admin=Depends(require_admin)
+):
+    """Upload a G-code file to a Moonraker printer and optionally start printing."""
+    conn = db()
+    
+    # Verify request exists
+    req = conn.execute("SELECT id, printer FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    # Verify file exists, belongs to this request, and is a G-code
+    file_info = conn.execute(
+        "SELECT id, stored_filename, original_filename FROM files WHERE id = ? AND request_id = ?",
+        (file_id, rid)
+    ).fetchone()
+    conn.close()
+    
+    if not file_info:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    ext = file_info["original_filename"].rsplit('.', 1)[-1].lower() if '.' in file_info["original_filename"] else ''
+    if ext not in ('gcode', 'g'):
+        raise HTTPException(status_code=400, detail="Only G-code files can be sent to printer")
+    
+    # Verify Moonraker is available for this printer
+    if not is_feature_enabled("moonraker_ad5x") or printer != "AD5X":
+        raise HTTPException(status_code=400, detail="Moonraker is not configured for this printer")
+    
+    printer_api = get_printer_api(printer)
+    if not isinstance(printer_api, MoonrakerAPI):
+        raise HTTPException(status_code=400, detail="Printer does not support file upload (Moonraker required)")
+    
+    # Read the file from disk
+    file_path = os.path.join(UPLOAD_DIR, file_info["stored_filename"])
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    
+    with open(file_path, "rb") as f:
+        file_data = f.read()
+    
+    # Upload to Moonraker
+    filename = file_info["original_filename"]
+    logger.info(f"[SEND-TO-PRINTER] Uploading {filename} ({len(file_data)} bytes) to {printer} via Moonraker")
+    
+    result = await printer_api.upload_file(filename, file_data)
+    if not result:
+        logger.error(f"[SEND-TO-PRINTER] Failed to upload {filename} to {printer}")
+        raise HTTPException(status_code=502, detail="Failed to upload file to printer. Check Moonraker connection.")
+    
+    logger.info(f"[SEND-TO-PRINTER] Successfully uploaded {filename} to {printer}")
+    
+    # Optionally start printing
+    if start_print == "1":
+        started = await printer_api.start_print(filename)
+        if started:
+            logger.info(f"[SEND-TO-PRINTER] Print started: {filename} on {printer}")
+        else:
+            logger.warning(f"[SEND-TO-PRINTER] File uploaded but failed to start print: {filename}")
+    
+    return RedirectResponse(url=f"/admin/request/{rid}?sent_to_printer=1", status_code=303)
+
+
 @router.get("/admin/request/{rid}/file/{file_id}/preview")
 async def admin_preview_file(request: Request, rid: str, file_id: str, _=Depends(require_admin)):
     """Preview a 3D file (STL/OBJ/3MF) using an embedded viewer."""
@@ -2227,6 +2297,13 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
     # Get camera URL for the printer if configured
     camera_url = get_camera_url(req["printer"]) if req["printer"] in ["ADVENTURER_4", "AD5X"] else None
     
+    # Check if Moonraker is available for file sending
+    moonraker_available = (
+        req["printer"] == "AD5X" and 
+        is_feature_enabled("moonraker_ad5x") and 
+        bool(get_setting("moonraker_ad5x_url", ""))
+    )
+    
     # Get slicer accuracy info for this printer/material combo
     accuracy_info = get_slicer_accuracy_factor(req["printer"], req["material"])
     
@@ -2259,6 +2336,7 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         "allowed_exts": ", ".join(sorted(ALLOWED_EXTS)),
         "max_upload_mb": MAX_UPLOAD_MB,
         "camera_url": camera_url,
+        "moonraker_available": moonraker_available,
         "now": datetime.now().timestamp(),  # For cache-busting
         "accuracy_info": accuracy_info,
         "version": APP_VERSION,

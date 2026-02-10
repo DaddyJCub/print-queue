@@ -2122,8 +2122,8 @@ def setup_builds_for_request(request_id: str, build_count: int = None) -> int:
     """
     Create build records for a request based on its files.
     If build_count is specified, creates that many builds.
-    Otherwise, creates one build per file.
-    Auto-assigns files to builds 1:1 when file count matches build count.
+    Otherwise, creates one build per top-level file (linked child files
+    share the same build as their parent, e.g. G-code linked to a model).
     Returns the number of builds created.
     """
     conn = db()
@@ -2138,26 +2138,37 @@ def setup_builds_for_request(request_id: str, build_count: int = None) -> int:
         return 0  # Builds already exist
     
     # Get files for this request
-    files = conn.execute(
-        "SELECT id, original_filename FROM files WHERE request_id = ? ORDER BY created_at ASC",
+    all_files = conn.execute(
+        "SELECT id, original_filename, linked_file_id FROM files WHERE request_id = ? ORDER BY created_at ASC",
         (request_id,)
     ).fetchall()
     
-    # Get file count if build_count not specified
+    # Separate top-level files (no linked_file_id) from child files
+    top_level_files = [f for f in all_files if not f["linked_file_id"]]
+    child_files = [f for f in all_files if f["linked_file_id"]]
+    
+    # Build a mapping: parent_file_id -> list of child files
+    children_by_parent = {}
+    for cf in child_files:
+        pid = cf["linked_file_id"]
+        if pid not in children_by_parent:
+            children_by_parent[pid] = []
+        children_by_parent[pid].append(cf)
+    
+    # Get build count from top-level files if not specified
     if build_count is None:
-        build_count = max(1, len(files))
+        build_count = max(1, len(top_level_files)) if top_level_files else max(1, len(all_files))
     
     now = now_iso()
     build_ids = []
     
-    # Create builds
+    # Create builds (one per top-level file)
     for i in range(build_count):
         build_id = str(uuid.uuid4())
-        # Use file name as print_name if we have a matching file
+        # Use file name as print_name if we have a matching top-level file
         print_name = None
-        if i < len(files):
-            # Use filename without extension as print name
-            original = files[i]["original_filename"]
+        if i < len(top_level_files):
+            original = top_level_files[i]["original_filename"]
             print_name = os.path.splitext(original)[0] if original else None
         
         conn.execute("""
@@ -2166,12 +2177,28 @@ def setup_builds_for_request(request_id: str, build_count: int = None) -> int:
         """, (build_id, request_id, i + 1, print_name, now, now))
         build_ids.append(build_id)
     
-    # Auto-assign files to builds (1:1 mapping)
-    for i, file in enumerate(files):
+    # Assign top-level files to builds (1:1)
+    for i, file in enumerate(top_level_files):
         if i < len(build_ids):
             conn.execute(
                 "UPDATE files SET build_id = ? WHERE id = ?",
                 (build_ids[i], file["id"])
+            )
+            # Also assign any child files (linked G-code, etc.) to the same build
+            for cf in children_by_parent.get(file["id"], []):
+                conn.execute(
+                    "UPDATE files SET build_id = ? WHERE id = ?",
+                    (build_ids[i], cf["id"])
+                )
+    
+    # Handle orphan child files whose parent isn't in this request
+    # (shouldn't normally happen, but be safe)
+    assigned_child_ids = {cf["id"] for cfs in children_by_parent.values() for cf in cfs if cf["linked_file_id"] in {f["id"] for f in top_level_files}}
+    for cf in child_files:
+        if cf["id"] not in assigned_child_ids and build_ids:
+            conn.execute(
+                "UPDATE files SET build_id = ? WHERE id = ?",
+                (build_ids[0], cf["id"])
             )
     
     # Update request with total_builds
@@ -4793,7 +4820,9 @@ def get_camera_url(printer_code: str) -> Optional[str]:
                     hostname = parsed.hostname
                     if hostname:
                         # zmod uses ustreamer on port 8080
-                        return f"http://{hostname}:8080/?action=stream"
+                        derived = f"http://{hostname}:8080/?action=stream"
+                        logger.info(f"[CAMERA] Auto-detected AD5X camera URL from Moonraker: {derived}")
+                        return derived
                 except Exception:
                     pass
         return ""
@@ -4825,6 +4854,7 @@ async def get_camera_url_async(printer_code: str) -> Optional[str]:
                 try:
                     cam_urls = await api.get_camera_urls()
                     if cam_urls and cam_urls.get("stream_url"):
+                        logger.info(f"[CAMERA] Auto-discovered AD5X camera via Moonraker API: {cam_urls['stream_url']} (name={cam_urls.get('name', '?')}, service={cam_urls.get('service', '?')})")
                         return cam_urls["stream_url"]
                 except Exception as e:
                     logger.debug(f"[CAMERA] Moonraker webcam discovery failed: {e}")

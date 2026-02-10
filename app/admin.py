@@ -39,6 +39,7 @@ from app.main import (
     UPLOAD_DIR,
     DB_PATH,
     get_printer_api,
+    get_camera_url,
     MoonrakerAPI,
 )
 from app.auth import get_all_admins, log_audit, AuditAction
@@ -1134,6 +1135,9 @@ def admin_printer_settings(request: Request, _=Depends(require_admin), saved: Op
         "moonraker_ad5x_api_key": get_setting("moonraker_ad5x_api_key", ""),
         "saved": bool(saved == "1"),
     }
+    # Resolve the active camera URL so the admin can see what's being used
+    model["camera_ad5x_resolved"] = get_camera_url("AD5X") or ""
+    model["camera_adv4_resolved"] = get_camera_url("ADVENTURER_4") or ""
     return templates.TemplateResponse("printer_settings.html", {"request": request, "s": model, "version": APP_VERSION})
 
 
