@@ -4595,16 +4595,26 @@ class MoonrakerAPI:
             print(f"[MOONRAKER] Error listing files: {e}")
         return None
     
-    async def upload_file(self, filename: str, file_data: bytes) -> Optional[Dict[str, Any]]:
-        """Upload a G-code file to the printer."""
+    async def upload_file(self, filename: str, file_data: bytes, start_print: bool = False) -> Optional[Dict[str, Any]]:
+        """Upload a G-code file to the printer.
+        
+        If start_print=True, Moonraker will begin printing the file immediately
+        after upload, bypassing any Fluidd/Mainsail confirmation dialogs.
+        """
         try:
+            data = {}
+            if start_print:
+                data["print"] = "true"
             async with httpx.AsyncClient(timeout=60) as client:
                 r = await client.post(
                     f"{self.base_url}/server/files/upload",
                     files={"file": (filename, file_data, "application/octet-stream")},
+                    data=data,
                     headers=self._headers(),
                 )
                 if r.status_code == 201:
+                    if start_print:
+                        self._invalidate_cache()
                     return r.json()
         except Exception as e:
             print(f"[MOONRAKER] Error uploading file {filename}: {e}")
@@ -4623,6 +4633,28 @@ class MoonrakerAPI:
                 return r.status_code == 200
         except Exception as e:
             print(f"[MOONRAKER] Error starting print: {e}")
+        return False
+    
+    async def run_gcode(self, script: str, timeout: float = 300) -> bool:
+        """Run a G-code command on the printer.
+        
+        Args:
+            script: G-code command(s) to run (multiple separated by newline).
+            timeout: How long to wait for completion (default 300s for long ops like leveling).
+        Returns:
+            True if the command was accepted.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                r = await client.post(
+                    f"{self.base_url}/printer/gcode/script",
+                    json={"script": script},
+                    headers=self._headers(),
+                )
+                self._invalidate_cache()
+                return r.status_code == 200
+        except Exception as e:
+            print(f"[MOONRAKER] Error running gcode '{script}': {e}")
         return False
     
     async def pause_print(self) -> bool:

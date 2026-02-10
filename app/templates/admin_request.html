@@ -1432,9 +1432,10 @@
         
         <form id="send-to-printer-form" method="POST" action="" class="space-y-4">
           <label class="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" name="start_print" value="1" class="scale-125 accent-emerald-500" />
-            <span class="text-sm text-zinc-300">Start printing immediately after upload</span>
+            <input type="checkbox" name="start_print" value="1" class="scale-125 accent-emerald-500" checked />
+            <span class="text-sm text-zinc-300">Start printing immediately</span>
           </label>
+          <p class="text-xs text-zinc-500 ml-8">Triggers your PRINT_START macro (include BED_MESH_CALIBRATE there for auto-leveling). For multi-color prints, uncheck and start from Fluidd to set AMS spool mapping.</p>
           <input type="hidden" name="printer" value="AD5X" />
 
           <div class="flex gap-3 pt-2">

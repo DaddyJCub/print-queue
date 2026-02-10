@@ -1097,24 +1097,20 @@ async def admin_send_file_to_printer(
     with open(file_path, "rb") as f:
         file_data = f.read()
     
-    # Upload to Moonraker
+    # Upload to Moonraker (print=true triggers Klipper's PRINT_START macro which can include leveling)
     filename = file_info["original_filename"]
-    logger.info(f"[SEND-TO-PRINTER] Uploading {filename} ({len(file_data)} bytes) to {printer} via Moonraker")
+    should_start = start_print == "1"
+    logger.info(f"[SEND-TO-PRINTER] Uploading {filename} ({len(file_data)} bytes) to {printer} via Moonraker (start={should_start})")
     
-    result = await printer_api.upload_file(filename, file_data)
+    result = await printer_api.upload_file(filename, file_data, start_print=should_start)
     if not result:
         logger.error(f"[SEND-TO-PRINTER] Failed to upload {filename} to {printer}")
         raise HTTPException(status_code=502, detail="Failed to upload file to printer. Check Moonraker connection.")
     
-    logger.info(f"[SEND-TO-PRINTER] Successfully uploaded {filename} to {printer}")
-    
-    # Optionally start printing
-    if start_print == "1":
-        started = await printer_api.start_print(filename)
-        if started:
-            logger.info(f"[SEND-TO-PRINTER] Print started: {filename} on {printer}")
-        else:
-            logger.warning(f"[SEND-TO-PRINTER] File uploaded but failed to start print: {filename}")
+    if should_start:
+        logger.info(f"[SEND-TO-PRINTER] Uploaded and started printing: {filename} on {printer}")
+    else:
+        logger.info(f"[SEND-TO-PRINTER] Successfully uploaded {filename} to {printer} (not started)")
     
     return RedirectResponse(url=f"/admin/request/{rid}?sent_to_printer=1", status_code=303)
 
