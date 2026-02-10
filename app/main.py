@@ -29,7 +29,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.12.12"
+APP_VERSION = "0.13.0"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -41,6 +41,7 @@ APP_VERSION = "0.12.12"
 #   - 0.x.PATCH = Bug fixes only
 #
 # Changelog:
+# 0.13.0 - [FEATURE] Moonraker live ETA integration, file linking (G-code ↔ STL/3MF), card-based files UI, 260 tests (94 Moonraker + 28 file linking)
 # 0.12.1 - [PATCH] Auto-start next build after completion, auto-match IN_PROGRESS requests, improved error logging
 # 0.12.0 - [FEATURE] Guest account creation tips in emails: subtle CTAs in all notification emails, pre-filled registration, auto-link existing requests
 # 0.11.1 - [PATCH] Safer printer controls & admin progress alerts
