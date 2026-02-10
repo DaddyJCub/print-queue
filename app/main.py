@@ -619,7 +619,7 @@ async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.
                     "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
                     "target_temp": temp_data.get("TargetTemperature") if temp_data else None,
                     "progress": progress,
-                    "healthy": machine_status in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD", "BUILD_COMPLETE", "BUILD_COMPLETE_FROM_SD"],
+                    "healthy": machine_status in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD", "BUILD_COMPLETE", "BUILD_COMPLETE_FROM_SD", "PAUSED"],
                     "is_printing": machine_status in ["BUILDING", "BUILDING_FROM_SD"],
                     "current_file": extended.get("current_file") if extended else None,
                     "current_layer": extended.get("current_layer") if extended else None,
@@ -628,6 +628,44 @@ async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.
                     "is_cached": False,
                     "last_seen": now_iso(),
                 }
+                
+                # Moonraker-specific enrichment (extra data not available from FlashForge)
+                if isinstance(printer_api, MoonrakerAPI):
+                    result["is_moonraker"] = True
+                    result["is_paused"] = machine_status == "PAUSED"
+                    
+                    # Bed temperature
+                    try:
+                        bed_data = await asyncio.wait_for(printer_api.get_bed_temp(), timeout=timeout)
+                        if bed_data:
+                            result["bed_temp"] = bed_data.get("temperature")
+                            result["bed_target"] = bed_data.get("target")
+                    except Exception:
+                        pass
+                    
+                    # Extended Moonraker fields from the already-fetched extended status
+                    if extended:
+                        result["print_duration"] = extended.get("print_duration")
+                        result["filament_used_m"] = round(extended.get("filament_used", 0) / 1000, 2) if extended.get("filament_used") else None
+                    
+                    # File-based ETA (the accurate 'File' time from Fluidd)
+                    try:
+                        file_eta_total = await asyncio.wait_for(printer_api.get_file_eta_seconds(), timeout=timeout)
+                        if file_eta_total:
+                            result["slicer_total_seconds"] = file_eta_total
+                        time_remaining = await asyncio.wait_for(printer_api.get_time_remaining(), timeout=timeout)
+                        if time_remaining is not None:
+                            result["moonraker_time_remaining"] = time_remaining
+                    except Exception:
+                        pass
+                    
+                    # Thumbnail URL
+                    try:
+                        thumb = await asyncio.wait_for(printer_api.get_thumbnail_url(), timeout=timeout)
+                        if thumb:
+                            result["thumbnail_url"] = thumb
+                    except Exception:
+                        pass
                 
                 # Update cache on success
                 update_printer_status_cache(printer_code, result)
@@ -4165,8 +4203,537 @@ class FlashForgeAPI:
             return None
 
 
-def get_printer_api(printer_code: str) -> Optional[FlashForgeAPI]:
-    """Get FlashForge API instance for a printer (ADVENTURER_4 or AD5X)"""
+class MoonrakerAPI:
+    """Wrapper for Moonraker API (Klipper-based printers).
+    
+    Implements the same interface as FlashForgeAPI so it can be used as a
+    drop-in replacement via the get_printer_api() factory when the
+    moonraker_ad5x feature flag is enabled.
+    
+    Moonraker REST API docs: https://moonraker.readthedocs.io/en/latest/web_api/
+    """
+    
+    # Map Moonraker print_stats.state → FlashForge-compatible status strings
+    _STATE_MAP = {
+        "printing": "BUILDING",
+        "paused": "PAUSED",
+        "complete": "BUILD_COMPLETE",
+        "standby": "READY",
+        "error": "ERROR",
+        "cancelled": "READY",
+    }
+    
+    def __init__(self, moonraker_url: str, api_key: str = ""):
+        self.base_url = moonraker_url.rstrip("/")
+        self.api_key = api_key
+        self._cached_objects: Optional[Dict[str, Any]] = None
+        self._cached_at: float = 0
+    
+    def _headers(self) -> Dict[str, str]:
+        """Build request headers, including API key if configured."""
+        headers = {}
+        if self.api_key:
+            headers["X-Api-Key"] = self.api_key
+        return headers
+    
+    async def _query_objects(self, timeout: float = 5.0) -> Optional[Dict[str, Any]]:
+        """Query all printer objects in a single request (minimizes round-trips).
+        
+        Caches for 2 seconds to avoid hammering the API when multiple methods
+        are called in sequence (e.g., get_status + get_temp + get_progress).
+        """
+        import time
+        now = time.time()
+        if self._cached_objects and (now - self._cached_at) < 2.0:
+            return self._cached_objects
+        
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                url = (
+                    f"{self.base_url}/printer/objects/query"
+                    "?print_stats&virtual_sdcard&extruder&heater_bed&toolhead"
+                    "&display_status&gcode_move"
+                )
+                r = await client.get(url, headers=self._headers())
+                if r.status_code == 200:
+                    data = r.json()
+                    self._cached_objects = data.get("result", {}).get("status", {})
+                    self._cached_at = now
+                    return self._cached_objects
+        except Exception as e:
+            print(f"[MOONRAKER] Error querying objects: {e}")
+        return None
+    
+    def _invalidate_cache(self):
+        """Invalidate the object query cache (call after control actions)."""
+        self._cached_objects = None
+        self._cached_at = 0
+    
+    async def get_status(self) -> Optional[Dict[str, Any]]:
+        """Get printer status in FlashForge-compatible format."""
+        objects = await self._query_objects()
+        if not objects:
+            return None
+        
+        print_stats = objects.get("print_stats", {})
+        state = print_stats.get("state", "standby")
+        mapped_status = self._STATE_MAP.get(state, "UNKNOWN")
+        
+        return {"MachineStatus": mapped_status}
+    
+    async def get_progress(self) -> Optional[Dict[str, Any]]:
+        """Get print progress in FlashForge-compatible format."""
+        objects = await self._query_objects()
+        if not objects:
+            return None
+        
+        vsd = objects.get("virtual_sdcard", {})
+        progress_float = vsd.get("progress", 0)  # 0.0 – 1.0
+        percent = int(progress_float * 100)
+        
+        return {"PercentageCompleted": percent}
+    
+    async def get_temperature(self) -> Optional[Dict[str, Any]]:
+        """Get nozzle temperature in FlashForge-compatible format."""
+        objects = await self._query_objects()
+        if not objects:
+            return None
+        
+        extruder = objects.get("extruder", {})
+        current = round(extruder.get("temperature", 0), 1)
+        target = round(extruder.get("target", 0), 1)
+        
+        return {
+            "Temperature": str(current),
+            "TargetTemperature": str(target),
+        }
+    
+    async def get_info(self) -> Optional[Dict[str, Any]]:
+        """Get printer info from Moonraker."""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                r = await client.get(
+                    f"{self.base_url}/printer/info",
+                    headers=self._headers(),
+                )
+                if r.status_code == 200:
+                    data = r.json().get("result", {})
+                    return {
+                        "MachineName": data.get("hostname", "Klipper"),
+                        "FirmwareVersion": data.get("software_version", "?"),
+                        "SerialNumber": data.get("cpu_info", "?"),
+                        "MachineType": "Klipper",
+                        "state": data.get("state", "unknown"),
+                        "state_message": data.get("state_message", ""),
+                    }
+        except Exception as e:
+            print(f"[MOONRAKER] Error fetching info: {e}")
+        return None
+    
+    async def get_head_location(self) -> Optional[Dict[str, Any]]:
+        """Get toolhead position."""
+        objects = await self._query_objects()
+        if not objects:
+            return None
+        
+        toolhead = objects.get("toolhead", {})
+        position = toolhead.get("position", [0, 0, 0, 0])
+        
+        return {
+            "X": round(position[0], 2) if len(position) > 0 else 0,
+            "Y": round(position[1], 2) if len(position) > 1 else 0,
+            "Z": round(position[2], 2) if len(position) > 2 else 0,
+        }
+    
+    async def get_extended_status(self) -> Optional[Dict[str, Any]]:
+        """Get extended status: current file, layers, etc.
+        
+        Combines print_stats data with display_status for a rich status response.
+        Does NOT require raw socket connections — uses REST API only.
+        """
+        objects = await self._query_objects()
+        if not objects:
+            return None
+        
+        print_stats = objects.get("print_stats", {})
+        display = objects.get("display_status", {})
+        
+        filename = print_stats.get("filename", "")
+        info = print_stats.get("info", {})
+        current_layer = info.get("current_layer")
+        total_layer = info.get("total_layer")
+        
+        result = {}
+        if filename:
+            result["current_file"] = filename
+        if current_layer is not None:
+            result["current_layer"] = current_layer
+        if total_layer is not None:
+            result["total_layers"] = total_layer
+        
+        # Include Moonraker-specific extras
+        result["print_duration"] = print_stats.get("print_duration", 0)
+        result["filament_used"] = print_stats.get("filament_used", 0)
+        result["state"] = print_stats.get("state", "standby")
+        result["message"] = print_stats.get("message", "")
+        
+        # display_status.progress is Klipper's M73-reported progress (0.0–1.0)
+        if display.get("progress") is not None:
+            result["display_progress"] = int(display["progress"] * 100)
+        
+        return result if result else None
+    
+    async def is_printing(self) -> bool:
+        """Check if printer is currently printing."""
+        objects = await self._query_objects()
+        if not objects:
+            return False
+        state = objects.get("print_stats", {}).get("state", "standby")
+        return state == "printing"
+    
+    async def is_complete(self) -> bool:
+        """Check if printer just finished a print."""
+        objects = await self._query_objects()
+        if not objects:
+            return False
+        state = objects.get("print_stats", {}).get("state", "standby")
+        return state == "complete"
+    
+    async def get_percent_complete(self) -> Optional[int]:
+        """Get print progress percentage (0-100)."""
+        progress = await self.get_progress()
+        if not progress:
+            return None
+        return progress.get("PercentageCompleted")
+    
+    def calculate_eta(self, percent_complete: int, start_time_iso: str) -> Optional[int]:
+        """Calculate estimated time remaining in seconds (same as FlashForge)."""
+        if percent_complete <= 0:
+            return None
+        try:
+            start_time = datetime.fromisoformat(start_time_iso)
+            elapsed = (datetime.now(start_time.tzinfo) - start_time).total_seconds()
+            if elapsed < 1:
+                return None
+            rate = elapsed / percent_complete
+            remaining_percent = 100 - percent_complete
+            eta_seconds = int(rate * remaining_percent)
+            return max(0, eta_seconds)
+        except Exception:
+            return None
+    
+    # ── Moonraker-only methods (not in FlashForgeAPI) ──────────────────
+    
+    async def get_bed_temp(self) -> Optional[Dict[str, Any]]:
+        """Get heated bed temperature."""
+        objects = await self._query_objects()
+        if not objects:
+            return None
+        bed = objects.get("heater_bed", {})
+        return {
+            "temperature": round(bed.get("temperature", 0), 1),
+            "target": round(bed.get("target", 0), 1),
+        }
+    
+    async def get_file_metadata(self, filename: str) -> Optional[Dict[str, Any]]:
+        """Get G-code file metadata including slicer estimated time."""
+        if not filename:
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                r = await client.get(
+                    f"{self.base_url}/server/files/metadata",
+                    params={"filename": filename},
+                    headers=self._headers(),
+                )
+                if r.status_code == 200:
+                    return r.json().get("result", {})
+        except Exception as e:
+            print(f"[MOONRAKER] Error fetching file metadata for {filename}: {e}")
+        return None
+    
+    async def get_file_eta_seconds(self) -> Optional[int]:
+        """Get the slicer's estimated total print time from G-code file metadata.
+        
+        This is the 'File' time shown in Fluidd (e.g., '43m 20s') — typically
+        very accurate since it's calculated from the actual G-code.
+        """
+        objects = await self._query_objects()
+        if not objects:
+            return None
+        
+        filename = objects.get("print_stats", {}).get("filename")
+        if not filename:
+            return None
+        
+        metadata = await self.get_file_metadata(filename)
+        if not metadata:
+            return None
+        
+        estimated_time = metadata.get("estimated_time")
+        return int(estimated_time) if estimated_time else None
+    
+    async def get_time_remaining(self) -> Optional[int]:
+        """Calculate time remaining using Moonraker's own data.
+        
+        Uses file-based ETA (estimated_time) combined with progress for
+        the most accurate estimate — matches what Fluidd shows.
+        """
+        objects = await self._query_objects()
+        if not objects:
+            return None
+        
+        print_stats = objects.get("print_stats", {})
+        vsd = objects.get("virtual_sdcard", {})
+        
+        progress = vsd.get("progress", 0)
+        print_duration = print_stats.get("print_duration", 0)
+        
+        if progress <= 0 or print_duration <= 0:
+            return None
+        
+        # Method 1: File-based (most accurate)
+        filename = print_stats.get("filename")
+        if filename:
+            metadata = await self.get_file_metadata(filename)
+            if metadata and metadata.get("estimated_time"):
+                total_est = metadata["estimated_time"]
+                # Scale by actual progress rate
+                actual_rate = print_duration / progress if progress > 0 else total_est
+                remaining = actual_rate * (1 - progress)
+                return max(0, int(remaining))
+        
+        # Method 2: Linear extrapolation from progress
+        if progress > 0:
+            total_est = print_duration / progress
+            remaining = total_est - print_duration
+            return max(0, int(remaining))
+        
+        return None
+    
+    async def get_thumbnail_url(self) -> Optional[str]:
+        """Get URL for the current print's thumbnail (extracted from G-code)."""
+        objects = await self._query_objects()
+        if not objects:
+            return None
+        
+        filename = objects.get("print_stats", {}).get("filename")
+        if not filename:
+            return None
+        
+        metadata = await self.get_file_metadata(filename)
+        if not metadata:
+            return None
+        
+        thumbnails = metadata.get("thumbnails", [])
+        if not thumbnails:
+            return None
+        
+        # Pick the largest thumbnail
+        best = max(thumbnails, key=lambda t: t.get("width", 0) * t.get("height", 0))
+        relative_path = best.get("relative_path")
+        if relative_path:
+            return f"{self.base_url}/server/files/gcodes/{relative_path}"
+        return None
+    
+    async def get_server_files(self) -> Optional[List[Dict[str, Any]]]:
+        """List G-code files on the printer."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.get(
+                    f"{self.base_url}/server/files/list",
+                    params={"root": "gcodes"},
+                    headers=self._headers(),
+                )
+                if r.status_code == 200:
+                    return r.json().get("result", [])
+        except Exception as e:
+            print(f"[MOONRAKER] Error listing files: {e}")
+        return None
+    
+    async def upload_file(self, filename: str, file_data: bytes) -> Optional[Dict[str, Any]]:
+        """Upload a G-code file to the printer."""
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                r = await client.post(
+                    f"{self.base_url}/server/files/upload",
+                    files={"file": (filename, file_data, "application/octet-stream")},
+                    headers=self._headers(),
+                )
+                if r.status_code == 201:
+                    return r.json()
+        except Exception as e:
+            print(f"[MOONRAKER] Error uploading file {filename}: {e}")
+        return None
+    
+    async def start_print(self, filename: str) -> bool:
+        """Start printing a file."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(
+                    f"{self.base_url}/printer/print/start",
+                    json={"filename": filename},
+                    headers=self._headers(),
+                )
+                self._invalidate_cache()
+                return r.status_code == 200
+        except Exception as e:
+            print(f"[MOONRAKER] Error starting print: {e}")
+        return False
+    
+    async def pause_print(self) -> bool:
+        """Pause the current print."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(
+                    f"{self.base_url}/printer/print/pause",
+                    headers=self._headers(),
+                )
+                self._invalidate_cache()
+                return r.status_code == 200
+        except Exception as e:
+            print(f"[MOONRAKER] Error pausing print: {e}")
+        return False
+    
+    async def resume_print(self) -> bool:
+        """Resume a paused print."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(
+                    f"{self.base_url}/printer/print/resume",
+                    headers=self._headers(),
+                )
+                self._invalidate_cache()
+                return r.status_code == 200
+        except Exception as e:
+            print(f"[MOONRAKER] Error resuming print: {e}")
+        return False
+    
+    async def cancel_print(self) -> bool:
+        """Cancel the current print."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(
+                    f"{self.base_url}/printer/print/cancel",
+                    headers=self._headers(),
+                )
+                self._invalidate_cache()
+                return r.status_code == 200
+        except Exception as e:
+            print(f"[MOONRAKER] Error cancelling print: {e}")
+        return False
+    
+    async def test_connection(self) -> Dict[str, Any]:
+        """Test the connection to Moonraker. Returns status info or error."""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                r = await client.get(
+                    f"{self.base_url}/server/info",
+                    headers=self._headers(),
+                )
+                if r.status_code == 200:
+                    result = r.json().get("result", {})
+                    return {
+                        "success": True,
+                        "klippy_state": result.get("klippy_state", "unknown"),
+                        "moonraker_version": result.get("moonraker_version", "?"),
+                        "components": result.get("components", []),
+                    }
+                elif r.status_code == 401:
+                    return {"success": False, "error": "Authentication required. Add an API key or configure trusted_clients in moonraker.conf."}
+                else:
+                    return {"success": False, "error": f"HTTP {r.status_code}: {r.text[:200]}"}
+        except httpx.ConnectError:
+            return {"success": False, "error": f"Cannot connect to {self.base_url}. Check the URL and ensure Moonraker is running."}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    async def get_webcams(self) -> Optional[List[Dict[str, Any]]]:
+        """List webcams configured in Moonraker.
+        
+        Queries GET /server/webcams/list which returns webcam entries with
+        stream_url and snapshot_url fields. These are configured via
+        moonraker.conf [webcam] sections or through front-end UIs like Fluidd.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                r = await client.get(
+                    f"{self.base_url}/server/webcams/list",
+                    headers=self._headers(),
+                )
+                if r.status_code == 200:
+                    return r.json().get("result", {}).get("webcams", [])
+        except Exception as e:
+            print(f"[MOONRAKER] Error listing webcams: {e}")
+        return None
+    
+    async def get_camera_urls(self) -> Optional[Dict[str, str]]:
+        """Get the best camera stream and snapshot URLs from Moonraker.
+        
+        Auto-discovers webcams via the Moonraker webcam API. Picks the first
+        enabled webcam and resolves relative URLs against the Moonraker host.
+        
+        Returns dict with 'stream_url' and 'snapshot_url' keys, or None.
+        """
+        webcams = await self.get_webcams()
+        if not webcams:
+            return None
+        
+        # Find the first enabled webcam (or first webcam if none explicitly enabled)
+        cam = None
+        for wc in webcams:
+            if wc.get("enabled", True):
+                cam = wc
+                break
+        if cam is None and webcams:
+            cam = webcams[0]
+        if cam is None:
+            return None
+        
+        stream_url = cam.get("stream_url", "")
+        snapshot_url = cam.get("snapshot_url", "")
+        
+        # Resolve relative URLs against the Moonraker host
+        # Moonraker webcams can have relative paths like /webcam/?action=stream
+        from urllib.parse import urlparse
+        base_parsed = urlparse(self.base_url)
+        base_host = f"{base_parsed.scheme}://{base_parsed.hostname}"
+        if base_parsed.port and base_parsed.port not in (80, 443):
+            base_host += f":{base_parsed.port}"
+        
+        def resolve_url(url: str) -> str:
+            if not url:
+                return ""
+            if url.startswith("http://") or url.startswith("https://"):
+                return url
+            # Relative URL — resolve against Moonraker's host (port 80)
+            host_no_port = f"{base_parsed.scheme}://{base_parsed.hostname}"
+            return f"{host_no_port}/{url.lstrip('/')}"
+        
+        return {
+            "stream_url": resolve_url(stream_url),
+            "snapshot_url": resolve_url(snapshot_url),
+            "name": cam.get("name", ""),
+            "service": cam.get("service", ""),
+        }
+
+
+def get_printer_api(printer_code: str):
+    """Get printer API instance for a printer (ADVENTURER_4 or AD5X).
+    
+    Returns MoonrakerAPI for AD5X when the moonraker_ad5x feature flag is enabled
+    and a Moonraker URL is configured. Otherwise returns FlashForgeAPI.
+    """
+    # Moonraker path for AD5X (when feature flag is on)
+    if printer_code == "AD5X" and is_feature_enabled("moonraker_ad5x"):
+        moonraker_url = get_setting("moonraker_ad5x_url", "")
+        if moonraker_url:
+            api_key = get_setting("moonraker_ad5x_api_key", "")
+            return MoonrakerAPI(moonraker_url, api_key)
+        # Flag is on but no URL configured — fall through to FlashForge
+        print("[PRINTER] moonraker_ad5x enabled but no URL configured, falling back to FlashForge")
+    
+    # FlashForge path (default for all printers)
     flask_url = get_setting("flashforge_api_url", "http://localhost:5000")
     
     if printer_code == "ADVENTURER_4":
@@ -4183,11 +4750,78 @@ def get_printer_api(printer_code: str) -> Optional[FlashForgeAPI]:
 
 
 def get_camera_url(printer_code: str) -> Optional[str]:
-    """Get camera URL for a printer"""
+    """Get camera URL for a printer.
+    
+    For AD5X with Moonraker enabled, if no manual camera URL is set, derives
+    the camera URL from the Moonraker IP using the standard ustreamer port (8080).
+    This handles zmod/Klipper setups where ustreamer replaces the stock camera.
+    
+    Full Moonraker webcam auto-discovery (via /server/webcams/list) is available
+    through the async get_camera_url_async() function.
+    """
     if printer_code == "ADVENTURER_4":
         return get_setting("camera_adventurer_4_url", "")
     elif printer_code == "AD5X":
-        return get_setting("camera_ad5x_url", "")
+        manual_url = get_setting("camera_ad5x_url", "")
+        if manual_url:
+            return manual_url
+        
+        # Auto-derive from Moonraker URL when no manual camera URL is set
+        if is_feature_enabled("moonraker_ad5x"):
+            moonraker_url = get_setting("moonraker_ad5x_url", "")
+            if moonraker_url:
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(moonraker_url)
+                    hostname = parsed.hostname
+                    if hostname:
+                        # zmod uses ustreamer on port 8080
+                        return f"http://{hostname}:8080/?action=stream"
+                except Exception:
+                    pass
+        return ""
+    return None
+
+
+async def get_camera_url_async(printer_code: str) -> Optional[str]:
+    """Get camera URL with Moonraker webcam auto-discovery (async).
+    
+    Tries in order:
+    1. Manual camera URL from settings (always wins)
+    2. Moonraker webcam API auto-discovery (/server/webcams/list)
+    3. Derived URL from Moonraker IP + ustreamer port 8080
+    """
+    # Manual URL always takes priority
+    if printer_code == "ADVENTURER_4":
+        return get_setting("camera_adventurer_4_url", "")
+    elif printer_code == "AD5X":
+        manual_url = get_setting("camera_ad5x_url", "")
+        if manual_url:
+            return manual_url
+        
+        # Try Moonraker webcam auto-discovery
+        if is_feature_enabled("moonraker_ad5x"):
+            moonraker_url = get_setting("moonraker_ad5x_url", "")
+            if moonraker_url:
+                api_key = get_setting("moonraker_ad5x_api_key", "")
+                api = MoonrakerAPI(moonraker_url, api_key)
+                try:
+                    cam_urls = await api.get_camera_urls()
+                    if cam_urls and cam_urls.get("stream_url"):
+                        return cam_urls["stream_url"]
+                except Exception as e:
+                    logger.debug(f"[CAMERA] Moonraker webcam discovery failed: {e}")
+                
+                # Fallback: derive from Moonraker IP
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(moonraker_url)
+                    hostname = parsed.hostname
+                    if hostname:
+                        return f"http://{hostname}:8080/?action=stream"
+                except Exception:
+                    pass
+        return ""
     return None
 
 
@@ -4363,6 +4997,28 @@ async def poll_printer_status_worker():
                         )
                         conn.commit()
                         conn.close()
+                
+                # Moonraker: write file-based slicer estimate to request for smart ETA
+                if isinstance(printer_api, MoonrakerAPI) and is_printing:
+                    try:
+                        file_eta_total = await printer_api.get_file_eta_seconds()
+                        if file_eta_total and file_eta_total > 0:
+                            slicer_est_min = int(file_eta_total / 60)
+                            conn = db()
+                            # Only write if not already set (don't overwrite admin-entered values)
+                            existing = conn.execute(
+                                "SELECT slicer_estimate_minutes FROM requests WHERE id = ?", (rid,)
+                            ).fetchone()
+                            if existing and not existing["slicer_estimate_minutes"]:
+                                conn.execute(
+                                    "UPDATE requests SET slicer_estimate_minutes = ? WHERE id = ?",
+                                    (slicer_est_min, rid)
+                                )
+                                conn.commit()
+                                print(f"[MOONRAKER] Wrote slicer estimate {slicer_est_min}m to request {rid[:8]}")
+                            conn.close()
+                    except Exception as e:
+                        print(f"[MOONRAKER] Error writing slicer estimate for {rid[:8]}: {e}")
 
                 # Send PRINTING notification email with live printer data (if not already sent)
                 # Note: sqlite3.Row doesn't have .get(), so we use bracket notation with fallback
@@ -4893,6 +5549,27 @@ async def poll_builds_status_worker():
                 
                 # Auto-complete build if printer reports complete
                 should_complete = is_complete or ((not is_printing) and (percent_complete == 100))
+                
+                # Moonraker: write file-based slicer estimate to build for smart ETA
+                if isinstance(printer_api, MoonrakerAPI) and not should_complete and is_printing:
+                    try:
+                        file_eta_total = await printer_api.get_file_eta_seconds()
+                        if file_eta_total and file_eta_total > 0:
+                            slicer_est_min = int(file_eta_total / 60)
+                            conn_mk = db()
+                            existing_b = conn_mk.execute(
+                                "SELECT slicer_estimate_minutes FROM builds WHERE id = ?", (build_id,)
+                            ).fetchone()
+                            if existing_b and not existing_b["slicer_estimate_minutes"]:
+                                conn_mk.execute(
+                                    "UPDATE builds SET slicer_estimate_minutes = ? WHERE id = ?",
+                                    (slicer_est_min, build_id)
+                                )
+                                conn_mk.commit()
+                                print(f"[MOONRAKER] Wrote slicer estimate {slicer_est_min}m to build {build_id[:8]}")
+                            conn_mk.close()
+                    except Exception as e:
+                        print(f"[MOONRAKER] Error writing slicer estimate for build {build_id[:8]}: {e}")
                 
                 # Check for progress notifications BEFORE completion check
                 # Only send progress notifications for builds that are still printing and not complete

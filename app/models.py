@@ -95,6 +95,13 @@ class AuditAction(str, Enum):
     TRIP_EVENT_CREATED = "trip_event_created"
     TRIP_EVENT_UPDATED = "trip_event_updated"
     TRIP_EVENT_DELETED = "trip_event_deleted"
+    
+    # Printer control actions (Moonraker)
+    PRINTER_PRINT_STARTED = "printer_print_started"
+    PRINTER_PRINT_PAUSED = "printer_print_paused"
+    PRINTER_PRINT_RESUMED = "printer_print_resumed"
+    PRINTER_PRINT_CANCELLED = "printer_print_cancelled"
+    PRINTER_FILE_UPLOADED = "printer_file_uploaded"
 
 
 class TripMemberRole(str, Enum):
@@ -895,10 +902,10 @@ DEFAULT_FEATURE_FLAGS = {
         enabled=True,
         description="Detailed audit trail for admin actions",
     ),
-    "octoprint_integration": FeatureFlag(
-        key="octoprint_integration",
+    "moonraker_ad5x": FeatureFlag(
+        key="moonraker_ad5x",
         enabled=False,
-        description="OctoPrint/Klipper API integration",
+        description="Moonraker/Klipper API integration for AD5X (replaces FlashForge API when enabled)",
     ),
     "auto_slicer": FeatureFlag(
         key="auto_slicer",

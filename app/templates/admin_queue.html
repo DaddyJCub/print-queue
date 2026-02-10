@@ -476,11 +476,18 @@
       </div>
       
       <!-- AD5X -->
-      <div id="card-ad5x" class="bg-zinc-900/40 border {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}border-amber-700/50{% else %}border-zinc-800{% endif %} rounded-xl p-4">
+      <div id="card-ad5x" class="bg-zinc-900/40 border {% if printer_status.AD5X.is_offline and printer_status.AD5X.is_cached %}border-amber-700/50{% elif printer_status.AD5X.get('is_moonraker') %}border-indigo-800/50{% else %}border-zinc-800{% endif %} rounded-xl p-4">
         <div class="flex items-center justify-between mb-2">
-          <span class="font-medium text-sm">AD5X</span>
+          <div class="flex items-center gap-2">
+            <span class="font-medium text-sm">AD5X</span>
+            {% if printer_status.AD5X.get('is_moonraker') %}
+              <span class="px-1.5 py-0.5 rounded text-[10px] bg-indigo-600/20 text-indigo-300 border border-indigo-600/30">🌙 Moonraker</span>
+            {% endif %}
+          </div>
           {% if printer_status.AD5X.is_offline %}
             <span class="status-badge px-2 py-0.5 rounded text-xs bg-zinc-700/50 text-zinc-400">Offline</span>
+          {% elif printer_status.AD5X.get('is_paused') %}
+            <span class="status-badge px-2 py-0.5 rounded text-xs bg-amber-500/20 text-amber-300">Paused</span>
           {% elif printer_status.AD5X.status %}
             <span class="status-badge px-2 py-0.5 rounded text-xs
               {% if printer_status.AD5X.is_printing %}bg-emerald-500/20 text-emerald-300
@@ -493,35 +500,94 @@
           {% endif %}
         </div>
         
+        <!-- Thumbnail (Moonraker) -->
+        {% if printer_status.AD5X.get('thumbnail_url') and printer_status.AD5X.is_printing %}
+        <div class="mb-2">
+          <img src="{{ printer_status.AD5X.thumbnail_url }}" class="w-16 h-16 rounded-lg bg-zinc-800 object-contain" alt="Print thumbnail" />
+        </div>
+        {% endif %}
+        
         <!-- Printing progress -->
-        <div class="print-info {% if not printer_status.AD5X.is_printing %}hidden{% endif %}">
+        <div class="print-info {% if not printer_status.AD5X.is_printing and not printer_status.AD5X.get('is_paused') %}hidden{% endif %}">
           <div class="flex items-center justify-between text-xs mb-1.5">
             <span class="file-name text-zinc-300 truncate">{{ printer_status.AD5X.current_file or 'Unknown' }}</span>
             <span class="progress-text text-emerald-300 font-medium">{{ printer_status.AD5X.progress or 0 }}%</span>
           </div>
           <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-            <div class="progress-bar h-full bg-emerald-500 transition-all duration-500" 
+            <div class="progress-bar h-full {% if printer_status.AD5X.get('is_paused') %}bg-amber-500{% else %}bg-emerald-500{% endif %} transition-all duration-500" 
                  style="width: {{ printer_status.AD5X.progress or 0 }}%"></div>
           </div>
-          {% set active_build = active_builds_by_printer.get('AD5X') %}
-          {% if active_build %}
-          <button type="button" class="mt-2 px-2 py-1 rounded bg-amber-700/60 hover:bg-amber-600 text-white text-xs transition"
-                  onclick="pausePrinterBuildConfirm('{{ active_build.id }}', '{{ active_build.build_number }}', 'AD5X')">
-            ⏸ Pause
-          </button>
+          
+          <!-- Moonraker: enriched info row -->
+          {% if printer_status.AD5X.get('is_moonraker') %}
+          <div class="moonraker-info flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[11px] text-zinc-400">
+            {% if printer_status.AD5X.get('moonraker_time_remaining') is not none %}
+              {% set rem = printer_status.AD5X.moonraker_time_remaining %}
+              {% set h = rem // 3600 %}
+              {% set m = (rem % 3600) // 60 %}
+              <span class="time-remaining">⏱ {% if h > 0 %}{{ h }}h {% endif %}{{ m }}m left</span>
+            {% endif %}
+            {% if printer_status.AD5X.current_layer is not none and printer_status.AD5X.total_layers %}
+              <span class="layer-text">🧱 {{ printer_status.AD5X.current_layer }}/{{ printer_status.AD5X.total_layers }}</span>
+            {% endif %}
+            {% if printer_status.AD5X.get('filament_used_m') %}
+              <span>🧵 {{ printer_status.AD5X.filament_used_m }}m used</span>
+            {% endif %}
+          </div>
           {% endif %}
+          
+          <!-- Control buttons -->
+          <div class="flex gap-1.5 mt-2">
+            {% if printer_status.AD5X.get('is_moonraker') %}
+              <!-- Moonraker control buttons -->
+              {% if printer_status.AD5X.get('is_paused') %}
+                <button type="button" class="px-2 py-1 rounded bg-emerald-700/60 hover:bg-emerald-600 text-white text-xs transition"
+                        onclick="moonrakerControl('AD5X', 'resume', 'Resume print on AD5X?')">
+                  ▶ Resume
+                </button>
+                <button type="button" class="px-2 py-1 rounded bg-red-800/60 hover:bg-red-700 text-white text-xs transition"
+                        onclick="moonrakerCancelConfirm('AD5X')">
+                  ✕ Cancel
+                </button>
+              {% elif printer_status.AD5X.is_printing %}
+                <button type="button" class="px-2 py-1 rounded bg-amber-700/60 hover:bg-amber-600 text-white text-xs transition"
+                        onclick="moonrakerControl('AD5X', 'pause', 'Pause print on AD5X?')">
+                  ⏸ Pause
+                </button>
+                <button type="button" class="px-2 py-1 rounded bg-red-800/60 hover:bg-red-700 text-white text-xs transition"
+                        onclick="moonrakerCancelConfirm('AD5X')">
+                  ✕ Cancel
+                </button>
+              {% endif %}
+            {% else %}
+              <!-- FlashForge pause button (existing) -->
+              {% set active_build = active_builds_by_printer.get('AD5X') %}
+              {% if active_build %}
+              <button type="button" class="px-2 py-1 rounded bg-amber-700/60 hover:bg-amber-600 text-white text-xs transition"
+                      onclick="pausePrinterBuildConfirm('{{ active_build.id }}', '{{ active_build.build_number }}', 'AD5X')">
+                ⏸ Pause
+              </button>
+              {% endif %}
+            {% endif %}
+          </div>
         </div>
         
-        <div class="flex items-center justify-between text-xs text-zinc-500 mt-2 {% if printer_status.AD5X.is_printing %}pt-2 border-t border-zinc-800{% endif %}">
+        <div class="flex items-center justify-between text-xs text-zinc-500 mt-2 {% if printer_status.AD5X.is_printing or printer_status.AD5X.get('is_paused') %}pt-2 border-t border-zinc-800{% endif %}">
           <span class="temp-text">
             {% if printer_status.AD5X.temp %}🌡 {{ printer_status.AD5X.temp }}°C{% endif %}
+            {% if printer_status.AD5X.get('bed_temp') %}<span class="bed-temp-text ml-2">🛏 {{ printer_status.AD5X.bed_temp }}°C</span>{% endif %}
           </span>
-          {% if printer_status.AD5X.camera_url %}
-          <button type="button" onclick="toggleAdminCamera('AD5X')" id="admin-cam-btn-AD5X" 
-                  class="text-indigo-400 hover:text-indigo-300 text-xs">
-            <span class="btn-text">📷 Camera</span>
-          </button>
-          {% endif %}
+          <div class="flex items-center gap-2">
+            {% if printer_status.AD5X.get('is_moonraker') and not printer_status.AD5X.is_printing %}
+              <button type="button" onclick="showUploadModal('AD5X')" class="text-indigo-400 hover:text-indigo-300 text-xs">📤 Upload</button>
+            {% endif %}
+            {% if printer_status.AD5X.camera_url %}
+            <button type="button" onclick="toggleAdminCamera('AD5X')" id="admin-cam-btn-AD5X" 
+                    class="text-indigo-400 hover:text-indigo-300 text-xs">
+              <span class="btn-text">📷 Camera</span>
+            </button>
+            {% endif %}
+          </div>
         </div>
         {% if printer_status.AD5X.camera_url %}
         <div id="admin-cam-AD5X" class="hidden mt-2">
@@ -623,9 +689,12 @@
         // Update status badge
         const badge = card.querySelector('.status-badge');
         if (badge) {
-          badge.textContent = status.status || 'OFFLINE';
+          const displayStatus = status.is_paused ? 'PAUSED' : (status.status || 'OFFLINE');
+          badge.textContent = displayStatus;
           badge.className = 'status-badge inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium';
-          if (status.is_printing) {
+          if (status.is_paused) {
+            badge.classList.add('bg-amber-500/20', 'text-amber-300', 'border', 'border-amber-500/50');
+          } else if (status.is_printing) {
             badge.classList.add('bg-emerald-500/20', 'text-emerald-300', 'border', 'border-emerald-500/50');
           } else if (status.status === 'READY') {
             badge.classList.add('bg-green-500/20', 'text-green-300', 'border', 'border-green-500/50');
@@ -639,20 +708,50 @@
         // Update print info section
         const printInfo = card.querySelector('.print-info');
         if (printInfo) {
-          if (status.is_printing) {
+          if (status.is_printing || status.is_paused) {
             printInfo.classList.remove('hidden');
             const fileName = printInfo.querySelector('.file-name');
             const progress = printInfo.querySelector('.progress-text');
-            const layer = printInfo.querySelector('.layer-text');
             const progressBar = printInfo.querySelector('.progress-bar');
             
             if (fileName) fileName.textContent = status.current_file || 'Unknown file';
             if (progress) progress.textContent = (status.progress ?? '?') + '%';
-            if (layer && status.current_layer !== null) {
-              layer.textContent = `${status.current_layer}/${status.total_layers}`;
-            }
             if (progressBar && status.progress !== null) {
               progressBar.style.width = status.progress + '%';
+              // Paused = amber bar
+              if (status.is_paused) {
+                progressBar.classList.remove('bg-emerald-500');
+                progressBar.classList.add('bg-amber-500');
+              } else {
+                progressBar.classList.remove('bg-amber-500');
+                progressBar.classList.add('bg-emerald-500');
+              }
+            }
+            
+            // Moonraker enriched info
+            if (status.is_moonraker) {
+              const moonInfo = card.querySelector('.moonraker-info');
+              if (moonInfo) {
+                let infoHtml = '';
+                if (status.moonraker_time_remaining != null) {
+                  const h = Math.floor(status.moonraker_time_remaining / 3600);
+                  const m = Math.floor((status.moonraker_time_remaining % 3600) / 60);
+                  infoHtml += `<span class="time-remaining">⏱ ${h > 0 ? h + 'h ' : ''}${m}m left</span>`;
+                }
+                if (status.current_layer != null && status.total_layers) {
+                  infoHtml += `<span class="layer-text">🧱 ${status.current_layer}/${status.total_layers}</span>`;
+                }
+                if (status.filament_used_m) {
+                  infoHtml += `<span>🧵 ${status.filament_used_m}m used</span>`;
+                }
+                moonInfo.innerHTML = infoHtml;
+              }
+            } else {
+              // FlashForge: update layer text
+              const layer = printInfo.querySelector('.layer-text');
+              if (layer && status.current_layer !== null) {
+                layer.textContent = `${status.current_layer}/${status.total_layers}`;
+              }
             }
           } else {
             printInfo.classList.add('hidden');
@@ -662,9 +761,18 @@
         // Update temperature
         const temp = card.querySelector('.temp-text');
         if (temp && status.temp) {
-          let tempText = `🌡 Nozzle: ${status.temp}°C`;
+          let tempText = `🌡 ${status.temp}°C`;
           if (status.target_temp) tempText += ` / ${status.target_temp}°C`;
           temp.innerHTML = tempText;
+        }
+        
+        // Moonraker: update bed temp
+        if (status.is_moonraker) {
+          const bedTemp = card.querySelector('.bed-temp-text');
+          if (bedTemp && status.bed_temp != null) {
+            bedTemp.textContent = `🛏 ${status.bed_temp}°C`;
+            if (status.bed_target) bedTemp.textContent += ` / ${status.bed_target}°C`;
+          }
         }
       }
 
@@ -677,6 +785,154 @@
         const label = buildNumber ? `build ${buildNumber}` : 'the active build';
         if (!confirm(`Pause ${label} on ${printer}? This will send M25 to the printer.`)) return;
         window.location = `/api/admin/build/${buildId}/pause-open`;
+      }
+      
+      // ── Moonraker Controls ──────────────────────────────────────────
+      
+      async function moonrakerControl(printerCode, action, confirmMsg) {
+        if (confirmMsg && !confirm(confirmMsg)) return;
+        
+        try {
+          const formData = new FormData();
+          formData.append('confirm', '1');
+          
+          const resp = await fetch(`/api/admin/printer/${printerCode}/${action}`, {
+            method: 'POST',
+            body: formData,
+          });
+          
+          const data = await resp.json();
+          if (!resp.ok) {
+            alert(`Error: ${data.detail || 'Unknown error'}`);
+            return;
+          }
+          
+          // Refresh printer status immediately
+          refreshPrinterStatus();
+        } catch (e) {
+          alert(`Failed to ${action}: ${e.message}`);
+        }
+      }
+      
+      function moonrakerCancelConfirm(printerCode) {
+        // Two-step confirmation for cancel (destructive action)
+        const modal = document.getElementById('moonraker-cancel-modal');
+        if (modal) {
+          document.getElementById('cancel-printer-code').value = printerCode;
+          document.getElementById('cancel-printer-name').textContent = printerCode;
+          modal.classList.remove('hidden');
+        }
+      }
+      
+      function closeCancelModal() {
+        const modal = document.getElementById('moonraker-cancel-modal');
+        if (modal) modal.classList.add('hidden');
+      }
+      
+      async function executeMoonrakerCancel() {
+        const printerCode = document.getElementById('cancel-printer-code').value;
+        closeCancelModal();
+        
+        try {
+          const formData = new FormData();
+          formData.append('confirm', '1');
+          
+          const resp = await fetch(`/api/admin/printer/${printerCode}/cancel`, {
+            method: 'POST',
+            body: formData,
+          });
+          
+          const data = await resp.json();
+          if (!resp.ok) {
+            alert(`Error: ${data.detail || 'Unknown error'}`);
+            return;
+          }
+          
+          refreshPrinterStatus();
+        } catch (e) {
+          alert(`Failed to cancel: ${e.message}`);
+        }
+      }
+      
+      // Upload & Print modal
+      function showUploadModal(printerCode) {
+        const modal = document.getElementById('moonraker-upload-modal');
+        if (modal) {
+          document.getElementById('upload-printer-code').value = printerCode;
+          document.getElementById('upload-printer-name').textContent = printerCode;
+          document.getElementById('upload-file-input').value = '';
+          document.getElementById('upload-status').textContent = '';
+          document.getElementById('upload-start-btn').classList.add('hidden');
+          modal.classList.remove('hidden');
+        }
+      }
+      
+      function closeUploadModal() {
+        const modal = document.getElementById('moonraker-upload-modal');
+        if (modal) modal.classList.add('hidden');
+      }
+      
+      async function uploadToMoonraker() {
+        const printerCode = document.getElementById('upload-printer-code').value;
+        const fileInput = document.getElementById('upload-file-input');
+        const statusEl = document.getElementById('upload-status');
+        const startBtn = document.getElementById('upload-start-btn');
+        
+        if (!fileInput.files.length) {
+          statusEl.textContent = 'Please select a file.';
+          statusEl.className = 'text-xs text-red-400 mt-2';
+          return;
+        }
+        
+        const file = fileInput.files[0];
+        statusEl.textContent = `Uploading ${file.name}...`;
+        statusEl.className = 'text-xs text-indigo-300 mt-2';
+        
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          const resp = await fetch(`/api/admin/printer/${printerCode}/upload`, {
+            method: 'POST',
+            body: formData,
+          });
+          
+          const data = await resp.json();
+          if (!resp.ok) {
+            statusEl.textContent = `Upload failed: ${data.detail || 'Unknown error'}`;
+            statusEl.className = 'text-xs text-red-400 mt-2';
+            return;
+          }
+          
+          statusEl.textContent = `✓ Uploaded ${file.name}`;
+          statusEl.className = 'text-xs text-emerald-400 mt-2';
+          
+          // Show "Start Print" button
+          startBtn.classList.remove('hidden');
+          startBtn.onclick = async function() {
+            if (!confirm(`Start printing ${file.name} on ${printerCode}?`)) return;
+            
+            const startForm = new FormData();
+            startForm.append('filename', file.name);
+            startForm.append('confirm', '1');
+            
+            const startResp = await fetch(`/api/admin/printer/${printerCode}/start`, {
+              method: 'POST',
+              body: startForm,
+            });
+            
+            if (startResp.ok) {
+              closeUploadModal();
+              refreshPrinterStatus();
+            } else {
+              const err = await startResp.json();
+              alert(`Failed to start: ${err.detail || 'Unknown error'}`);
+            }
+          };
+        } catch (e) {
+          statusEl.textContent = `Upload failed: ${e.message}`;
+          statusEl.className = 'text-xs text-red-400 mt-2';
+        }
       }
       
       function startAutoRefresh() {
@@ -702,6 +958,55 @@
       // Start auto-refresh on page load
       startAutoRefresh();
     </script>
+
+    <!-- Moonraker Cancel Confirmation Modal -->
+    <div id="moonraker-cancel-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+      <div class="bg-zinc-900 border border-red-700/50 rounded-xl p-6 w-full max-w-sm">
+        <h3 class="text-lg font-semibold mb-2 text-red-400">⚠️ Cancel Print</h3>
+        <p class="text-sm text-zinc-300 mb-1">Are you sure you want to cancel the print on <strong id="cancel-printer-name">AD5X</strong>?</p>
+        <p class="text-xs text-red-300/80 mb-4">This will immediately stop the print. The printer will cool down and the part will be incomplete. This action cannot be undone.</p>
+        <input type="hidden" id="cancel-printer-code" value="" />
+        <div class="flex gap-2">
+          <button type="button" onclick="executeMoonrakerCancel()" class="flex-1 rounded-lg bg-red-600 hover:bg-red-500 transition px-4 py-2 text-sm font-semibold">
+            Cancel Print
+          </button>
+          <button type="button" onclick="closeCancelModal()" class="rounded-lg bg-zinc-700 hover:bg-zinc-600 transition px-4 py-2 text-sm">
+            Go Back
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Moonraker Upload & Print Modal -->
+    <div id="moonraker-upload-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+      <div class="bg-zinc-900 border border-indigo-700/50 rounded-xl p-6 w-full max-w-md">
+        <h3 class="text-lg font-semibold mb-2 text-indigo-300">📤 Upload G-code to <span id="upload-printer-name">AD5X</span></h3>
+        <p class="text-sm text-zinc-400 mb-4">Upload a .gcode file directly to the printer via Moonraker.</p>
+        <input type="hidden" id="upload-printer-code" value="" />
+        
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs text-zinc-400 block mb-1">G-code File</label>
+            <input type="file" id="upload-file-input" accept=".gcode,.g"
+                   class="w-full text-sm text-zinc-300 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 file:cursor-pointer" />
+          </div>
+          
+          <div id="upload-status" class="text-xs mt-2"></div>
+          
+          <div class="flex gap-2 pt-2">
+            <button type="button" onclick="uploadToMoonraker()" class="flex-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
+              Upload
+            </button>
+            <button type="button" id="upload-start-btn" class="hidden flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+              ▶ Start Print
+            </button>
+            <button type="button" onclick="closeUploadModal()" class="rounded-lg bg-zinc-700 hover:bg-zinc-600 transition px-4 py-2 text-sm">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- QUEUE VIEW - Card-based with expandable actions -->
     <div class="mt-4 space-y-5">

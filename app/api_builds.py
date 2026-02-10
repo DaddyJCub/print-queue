@@ -68,6 +68,7 @@ from app.main import (
     _human_material,
     is_feature_enabled,
 )
+from app.main import MoonrakerAPI
 from app.auth import (
     get_current_admin, require_permission, AdminRole, get_admin_by_id, get_all_admins,
     get_request_assignments, create_request_assignment, delete_request_assignment,
@@ -1445,14 +1446,53 @@ async def get_all_printers_status(_=Depends(require_admin)):
                         "raw_status": machine_status,
                         "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
                         "target_temp": temp_data.get("TargetTemperature") if temp_data else None,
-                        "healthy": machine_status in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD"],
+                        "healthy": machine_status in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD", "PAUSED"],
                         "is_printing": is_printing,
+                        "is_paused": machine_status == "PAUSED",
                         "progress": progress.get("PercentageCompleted") if progress else None,
                         "current_file": extended.get("current_file") if extended else None,
                         "current_layer": extended.get("current_layer") if extended else None,
                         "total_layers": extended.get("total_layers") if extended else None,
                         "camera_url": get_camera_url(printer_code),
                     }
+                    
+                    # Moonraker-specific enrichment
+                    if isinstance(printer_api, MoonrakerAPI):
+                        current_status["is_moonraker"] = True
+                        
+                        # Bed temperature
+                        try:
+                            bed_data = await printer_api.get_bed_temp()
+                            if bed_data:
+                                current_status["bed_temp"] = bed_data.get("temperature")
+                                current_status["bed_target"] = bed_data.get("target")
+                        except Exception:
+                            pass
+                        
+                        # Extended Moonraker fields
+                        if extended:
+                            current_status["print_duration"] = extended.get("print_duration")
+                            current_status["filament_used_m"] = round(extended.get("filament_used", 0) / 1000, 2) if extended.get("filament_used") else None
+                        
+                        # File-based ETA
+                        try:
+                            file_eta_total = await printer_api.get_file_eta_seconds()
+                            if file_eta_total:
+                                current_status["slicer_total_seconds"] = file_eta_total
+                            time_remaining = await printer_api.get_time_remaining()
+                            if time_remaining is not None:
+                                current_status["moonraker_time_remaining"] = time_remaining
+                        except Exception:
+                            pass
+                        
+                        # Thumbnail
+                        try:
+                            thumb = await printer_api.get_thumbnail_url()
+                            if thumb:
+                                current_status["thumbnail_url"] = thumb
+                        except Exception:
+                            pass
+                    
                     # Successful poll - update cache and reset failure count
                     update_printer_status_cache(printer_code, current_status)
                     printer_status[printer_code] = current_status

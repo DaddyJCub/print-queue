@@ -88,6 +88,11 @@
                    value="{{ s.camera_ad5x_url }}"
                    class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3"
                    placeholder="http://192.168.0.157:8080/?action=stream" />
+            {% if s.moonraker_ad5x_enabled and not s.camera_ad5x_url %}
+              <p class="text-xs text-indigo-400 mt-1">
+                🌙 <strong>Auto-detect:</strong> When left blank, the camera URL is auto-derived from your Moonraker IP using ustreamer (port 8080). You can also set it manually to override.
+              </p>
+            {% endif %}
           </div>
         </div>
 
@@ -107,7 +112,16 @@
         <div class="mt-4 p-4 bg-amber-900/20 border border-amber-800/40 rounded-xl">
           <div class="text-sm text-amber-200 font-semibold">💡 Finding Your Camera URL:</div>
           <div class="text-xs text-amber-100/80 mt-2 space-y-1">
+            {% if s.moonraker_ad5x_enabled %}
+            <p><strong>zmod / Klipper (AD5X):</strong> Camera is handled by <strong>ustreamer</strong> on port 8080:</p>
+            <ul class="list-disc list-inside ml-2 space-y-1">
+              <li><code class="bg-zinc-900 px-1">http://PRINTER_IP:8080/?action=stream</code> (MJPEG stream)</li>
+              <li><code class="bg-zinc-900 px-1">http://PRINTER_IP:8080/?action=snapshot</code> (Single image)</li>
+            </ul>
+            <p class="mt-2"><strong>Stock FlashForge firmware:</strong></p>
+            {% else %}
             <p>FlashForge cameras often use these patterns:</p>
+            {% endif %}
             <ul class="list-disc list-inside ml-2 space-y-1">
               <li><code class="bg-zinc-900 px-1">http://PRINTER_IP:8080/?action=stream</code> (MJPEG stream)</li>
               <li><code class="bg-zinc-900 px-1">http://PRINTER_IP:8080/?action=snapshot</code> (Single image)</li>
@@ -117,6 +131,62 @@
           </div>
         </div>
       </section>
+
+      <!-- Moonraker / Klipper Integration (AD5X) -->
+      {% if s.moonraker_ad5x_enabled %}
+      <section class="bg-zinc-900/60 border border-indigo-800/50 rounded-2xl p-6">
+        <div class="flex items-center gap-2 mb-1">
+          <h2 class="text-lg font-semibold">🌙 Moonraker API — AD5X</h2>
+          <span class="px-2 py-0.5 bg-indigo-600/20 text-indigo-300 text-xs rounded-lg">Active</span>
+        </div>
+        <p class="text-sm text-zinc-400 mt-1">Klipper/Moonraker integration for the AD5X. Provides richer status, file-based ETA, bed temperature, and remote print control.</p>
+
+        <div class="mt-4 space-y-4">
+          <div>
+            <label class="text-xs text-zinc-400">Moonraker URL</label>
+            <input name="moonraker_ad5x_url"
+                   value="{{ s.moonraker_ad5x_url }}"
+                   class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3"
+                   placeholder="http://192.168.0.157:7125" />
+            <p class="text-xs text-zinc-500 mt-1">
+              Usually <code class="bg-zinc-900 px-1">http://PRINTER_IP:7125</code>. Test by visiting this URL in your browser — you should see a JSON response.
+            </p>
+          </div>
+
+          <div>
+            <label class="text-xs text-zinc-400">API Key <span class="text-zinc-600">(optional)</span></label>
+            <input name="moonraker_ad5x_api_key"
+                   value="{{ s.moonraker_ad5x_api_key }}"
+                   type="password"
+                   class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3"
+                   placeholder="Leave blank if not using authentication" />
+          </div>
+        </div>
+
+        <div class="mt-4 p-4 bg-indigo-900/20 border border-indigo-800/40 rounded-xl">
+          <div class="text-sm text-indigo-200 font-semibold">💡 Setup Tips</div>
+          <div class="text-xs text-indigo-100/80 mt-2 space-y-2">
+            <p><strong>Finding your Moonraker URL:</strong> Open <code class="bg-zinc-900 px-1">http://&lt;printer-ip&gt;:7125/server/info</code> in your browser. If you get a JSON response, that's your URL.</p>
+            <p><strong>Authentication:</strong> Most setups don't need an API key if you're on the same network. If you get 401 errors, either:</p>
+            <ul class="list-disc list-inside ml-2 space-y-1">
+              <li>Add this server's IP to <code class="bg-zinc-900 px-1">trusted_clients</code> in <code class="bg-zinc-900 px-1">~/printer_data/config/moonraker.conf</code> under <code class="bg-zinc-900 px-1">[authorization]</code></li>
+              <li>Or generate an API key in Fluidd → Settings → Authorization, and paste it above</li>
+            </ul>
+            <p><strong>Camera:</strong> With zmod, the camera is served by <strong>ustreamer on port 8080</strong>. If the AD5X camera URL above is blank, it will be auto-detected from your Moonraker IP. You can also configure webcams in Fluidd → Settings → Webcams for auto-discovery.</p>
+          </div>
+        </div>
+      </section>
+      {% else %}
+      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 opacity-60">
+        <div class="flex items-center gap-2 mb-1">
+          <h2 class="text-lg font-semibold">🌙 Moonraker API — AD5X</h2>
+          <span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>
+        </div>
+        <p class="text-sm text-zinc-500 mt-1">Enable the <strong>Moonraker AD5X</strong> feature flag in <a href="/admin/features" class="text-indigo-400 hover:underline">Features</a> to configure Klipper/Moonraker integration for the AD5X printer.</p>
+        <input type="hidden" name="moonraker_ad5x_url" value="{{ s.moonraker_ad5x_url }}" />
+        <input type="hidden" name="moonraker_ad5x_api_key" value="{{ s.moonraker_ad5x_api_key }}" />
+      </section>
+      {% endif %}
 
       <!-- Polling Features -->
       <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">

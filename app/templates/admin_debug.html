@@ -39,9 +39,14 @@
       {% if printer_cache %}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           {% for printer, status in printer_cache.items() %}
-            <div class="bg-zinc-950 border border-zinc-700 rounded-lg p-4">
-              <h3 class="font-semibold text-indigo-400 mb-2">{{ printer }}</h3>
-              <pre class="text-xs text-zinc-400 overflow-auto max-h-32">{{ status | tojson(indent=2) }}</pre>
+            <div class="bg-zinc-950 border {% if status.get('is_moonraker') %}border-indigo-700{% else %}border-zinc-700{% endif %} rounded-lg p-4">
+              <div class="flex items-center gap-2 mb-2">
+                <h3 class="font-semibold text-indigo-400">{{ printer }}</h3>
+                {% if status.get('is_moonraker') %}
+                  <span class="px-1.5 py-0.5 rounded text-[10px] bg-indigo-600/20 text-indigo-300 border border-indigo-600/30">🌙 Moonraker</span>
+                {% endif %}
+              </div>
+              <pre class="text-xs text-zinc-400 overflow-auto max-h-48">{{ status | tojson(indent=2) }}</pre>
             </div>
           {% endfor %}
         </div>
@@ -49,6 +54,114 @@
         <p class="text-zinc-500 text-sm">No cached printer status available</p>
       {% endif %}
     </div>
+
+    <!-- Moonraker Connection Test -->
+    {% if moonraker_enabled %}
+    <div class="bg-zinc-900/50 border border-indigo-800/50 rounded-xl p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4">🌙 Moonraker Connection</h2>
+      <p class="text-sm text-zinc-400 mb-4">Test connectivity to the AD5X Moonraker API.</p>
+      <div class="flex gap-3">
+        <button onclick="testMoonraker()" id="moonraker-test-btn"
+                class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm transition">
+          Test Connection
+        </button>
+        <button onclick="testWebcam()" id="webcam-test-btn"
+                class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm transition">
+          📷 Test Camera
+        </button>
+      </div>
+      <pre id="moonraker-test-result" class="mt-3 text-xs text-zinc-400 hidden bg-zinc-950 rounded-lg p-3 overflow-auto max-h-48"></pre>
+      <div id="webcam-test-result" class="mt-3 hidden">
+        <pre id="webcam-test-json" class="text-xs text-zinc-400 bg-zinc-950 rounded-lg p-3 overflow-auto max-h-48"></pre>
+        <div id="webcam-test-preview" class="mt-3 hidden">
+          <p class="text-xs text-zinc-500 mb-2">Camera Preview:</p>
+          <img id="webcam-preview-img" class="max-w-md rounded-lg border border-zinc-700" alt="Camera snapshot" />
+        </div>
+      </div>
+      <script>
+        async function testMoonraker() {
+          const btn = document.getElementById('moonraker-test-btn');
+          const result = document.getElementById('moonraker-test-result');
+          btn.textContent = 'Testing...';
+          btn.disabled = true;
+          result.classList.remove('hidden');
+          document.getElementById('webcam-test-result').classList.add('hidden');
+          try {
+            const resp = await fetch('/api/admin/moonraker/AD5X/test');
+            const data = await resp.json();
+            result.textContent = JSON.stringify(data, null, 2);
+            result.className = data.success 
+              ? 'mt-3 text-xs text-emerald-400 bg-zinc-950 rounded-lg p-3 overflow-auto max-h-48'
+              : 'mt-3 text-xs text-red-400 bg-zinc-950 rounded-lg p-3 overflow-auto max-h-48';
+          } catch (e) {
+            result.textContent = 'Error: ' + e.message;
+            result.className = 'mt-3 text-xs text-red-400 bg-zinc-950 rounded-lg p-3 overflow-auto max-h-48';
+          }
+          btn.textContent = 'Test Connection';
+          btn.disabled = false;
+        }
+
+        async function testWebcam() {
+          const btn = document.getElementById('webcam-test-btn');
+          const resultDiv = document.getElementById('webcam-test-result');
+          const jsonPre = document.getElementById('webcam-test-json');
+          const previewDiv = document.getElementById('webcam-test-preview');
+          const previewImg = document.getElementById('webcam-preview-img');
+          
+          btn.textContent = '📷 Testing...';
+          btn.disabled = true;
+          resultDiv.classList.remove('hidden');
+          previewDiv.classList.add('hidden');
+          document.getElementById('moonraker-test-result').classList.add('hidden');
+          
+          try {
+            const resp = await fetch('/api/admin/moonraker/AD5X/webcams');
+            const data = await resp.json();
+            
+            let summary = '';
+            if (data.webcams && data.webcams.length > 0) {
+              summary += `✅ Found ${data.webcams.length} webcam(s) in Moonraker:\n`;
+              data.webcams.forEach((cam, i) => {
+                summary += `  ${i+1}. "${cam.name}" (${cam.service || 'unknown'})\n`;
+                summary += `     Stream:   ${cam.stream_url || '(none)'}\n`;
+                summary += `     Snapshot: ${cam.snapshot_url || '(none)'}\n`;
+              });
+            } else {
+              summary += '⚠ No webcams configured in Moonraker.\n';
+              summary += '  Configure one in Fluidd → Settings → Webcams\n';
+            }
+            
+            if (data.auto_detected) {
+              summary += `\nAuto-detected: ${data.auto_detected.stream_url || '(none)'}\n`;
+              summary += `Snapshot reachable: ${data.snapshot_reachable ? '✅ Yes' : '❌ No'}\n`;
+            }
+            
+            if (data.derived_url) {
+              summary += `\nDerived ustreamer URL: ${data.derived_url}\n`;
+              summary += `Derived reachable: ${data.derived_reachable ? '✅ Yes' : '❌ No'}\n`;
+            }
+            
+            jsonPre.textContent = summary;
+            jsonPre.className = (data.snapshot_reachable || data.derived_reachable)
+              ? 'text-xs text-emerald-400 bg-zinc-950 rounded-lg p-3 overflow-auto max-h-48'
+              : 'text-xs text-amber-400 bg-zinc-950 rounded-lg p-3 overflow-auto max-h-48';
+            
+            // Try to show a preview
+            const snapshotUrl = data.auto_detected?.snapshot_url || data.derived_url;
+            if (snapshotUrl && (data.snapshot_reachable || data.derived_reachable)) {
+              previewImg.src = snapshotUrl + '&t=' + Date.now();
+              previewDiv.classList.remove('hidden');
+            }
+          } catch (e) {
+            jsonPre.textContent = 'Error: ' + e.message;
+            jsonPre.className = 'text-xs text-red-400 bg-zinc-950 rounded-lg p-3 overflow-auto max-h-48';
+          }
+          btn.textContent = '📷 Test Camera';
+          btn.disabled = false;
+        }
+      </script>
+    </div>
+    {% endif %}
 
     <!-- Polling Control -->
     <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 mb-6">

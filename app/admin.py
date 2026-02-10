@@ -2,6 +2,7 @@ import os, uuid, hashlib, urllib.parse
 from datetime import datetime
 from typing import Optional, List
 
+import httpx
 from fastapi import APIRouter, Request, Form, Depends, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Response
 
@@ -37,8 +38,10 @@ from app.main import (
     safe_ext,
     UPLOAD_DIR,
     DB_PATH,
+    get_printer_api,
+    MoonrakerAPI,
 )
-from app.auth import get_all_admins
+from app.auth import get_all_admins, log_audit, AuditAction
 from app.demo_data import DEMO_MODE, get_demo_status, reset_demo_data
 
 router = APIRouter()
@@ -673,6 +676,7 @@ def admin_debug(request: Request, _=Depends(require_admin)):
         "printer_cache": _printer_status_cache,
         "failure_counts": _printer_failure_count,
         "polling_status": polling_status,
+        "moonraker_enabled": is_feature_enabled("moonraker_ad5x"),
         "version": APP_VERSION,
     })
 
@@ -1125,6 +1129,9 @@ def admin_printer_settings(request: Request, _=Depends(require_admin), saved: Op
         "enable_printer_polling": get_bool_setting("enable_printer_polling", True),
         "enable_camera_snapshot": get_bool_setting("enable_camera_snapshot", False),
         "enable_auto_print_match": get_bool_setting("enable_auto_print_match", True),
+        "moonraker_ad5x_enabled": is_feature_enabled("moonraker_ad5x"),
+        "moonraker_ad5x_url": get_setting("moonraker_ad5x_url", ""),
+        "moonraker_ad5x_api_key": get_setting("moonraker_ad5x_api_key", ""),
         "saved": bool(saved == "1"),
     }
     return templates.TemplateResponse("printer_settings.html", {"request": request, "s": model, "version": APP_VERSION})
@@ -1141,6 +1148,8 @@ def admin_printer_settings_post(
     enable_printer_polling: Optional[str] = Form(None),
     enable_camera_snapshot: Optional[str] = Form(None),
     enable_auto_print_match: Optional[str] = Form(None),
+    moonraker_ad5x_url: str = Form(""),
+    moonraker_ad5x_api_key: str = Form(""),
     _=Depends(require_admin),
 ):
     set_setting("flashforge_api_url", flashforge_api_url.strip())
@@ -1151,5 +1160,243 @@ def admin_printer_settings_post(
     set_setting("enable_printer_polling", "1" if enable_printer_polling else "0")
     set_setting("enable_camera_snapshot", "1" if enable_camera_snapshot else "0")
     set_setting("enable_auto_print_match", "1" if enable_auto_print_match else "0")
+    set_setting("moonraker_ad5x_url", moonraker_ad5x_url.strip())
+    set_setting("moonraker_ad5x_api_key", moonraker_ad5x_api_key.strip())
 
     return RedirectResponse(url="/admin/printer-settings?saved=1", status_code=303)
+
+
+# ── Moonraker Printer Control Routes ─────────────────────────────────────
+# All routes require admin auth and the moonraker_ad5x feature flag.
+# Control actions are audit-logged and require confirmation parameters.
+
+def _require_moonraker(printer_code: str):
+    """Validate that Moonraker is enabled for this printer and return the API instance."""
+    if printer_code != "AD5X":
+        raise HTTPException(status_code=400, detail="Moonraker is only available for AD5X")
+    if not is_feature_enabled("moonraker_ad5x"):
+        raise HTTPException(status_code=403, detail="Moonraker integration is disabled. Enable the 'Moonraker AD5X' feature flag first.")
+    api = get_printer_api(printer_code)
+    if not isinstance(api, MoonrakerAPI):
+        raise HTTPException(status_code=503, detail="Moonraker API not configured. Set the Moonraker URL in Printer Settings.")
+    return api
+
+
+@router.get("/api/admin/moonraker/{printer_code}/test")
+async def moonraker_test_connection(printer_code: str, _=Depends(require_admin)):
+    """Test Moonraker connection and return server info."""
+    api = _require_moonraker(printer_code)
+    result = await api.test_connection()
+    return result
+
+
+@router.get("/api/admin/moonraker/{printer_code}/webcams")
+async def moonraker_list_webcams(printer_code: str, _=Depends(require_admin)):
+    """List webcams configured in Moonraker and test camera connectivity."""
+    api = _require_moonraker(printer_code)
+    
+    webcams = await api.get_webcams()
+    cam_urls = await api.get_camera_urls()
+    
+    # Try to test snapshot reachability
+    snapshot_reachable = False
+    if cam_urls and cam_urls.get("snapshot_url"):
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                r = await client.get(cam_urls["snapshot_url"])
+                snapshot_reachable = r.status_code == 200
+        except Exception:
+            pass
+    
+    # Also test the derived ustreamer URL
+    from urllib.parse import urlparse
+    derived_url = None
+    derived_reachable = False
+    moonraker_url = get_setting("moonraker_ad5x_url", "")
+    if moonraker_url:
+        parsed = urlparse(moonraker_url)
+        if parsed.hostname:
+            derived_url = f"http://{parsed.hostname}:8080/?action=snapshot"
+            try:
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    r = await client.get(derived_url)
+                    derived_reachable = r.status_code == 200
+            except Exception:
+                pass
+    
+    return {
+        "webcams": webcams or [],
+        "auto_detected": cam_urls,
+        "snapshot_reachable": snapshot_reachable,
+        "derived_url": derived_url,
+        "derived_reachable": derived_reachable,
+    }
+
+
+@router.get("/api/admin/moonraker/{printer_code}/files")
+async def moonraker_list_files(printer_code: str, _=Depends(require_admin)):
+    """List G-code files on the printer."""
+    api = _require_moonraker(printer_code)
+    files = await api.get_server_files()
+    if files is None:
+        raise HTTPException(status_code=502, detail="Failed to fetch file list from Moonraker")
+    return {"files": files}
+
+
+@router.post("/api/admin/printer/{printer_code}/upload")
+async def moonraker_upload_file(
+    printer_code: str,
+    file: UploadFile = File(...),
+    admin=Depends(require_admin),
+):
+    """Upload a G-code file to the printer via Moonraker."""
+    api = _require_moonraker(printer_code)
+    
+    if not file.filename or not file.filename.lower().endswith(('.gcode', '.g')):
+        raise HTTPException(status_code=400, detail="Only .gcode files can be uploaded to the printer")
+    
+    file_data = await file.read()
+    if len(file_data) > 500 * 1024 * 1024:  # 500MB limit
+        raise HTTPException(status_code=400, detail="File too large (max 500MB)")
+    
+    result = await api.upload_file(file.filename, file_data)
+    if not result:
+        raise HTTPException(status_code=502, detail="Failed to upload file to Moonraker")
+    
+    log_audit(
+        action=AuditAction.PRINTER_FILE_UPLOADED,
+        actor_type="admin",
+        actor_id=getattr(admin, 'id', None),
+        actor_name=getattr(admin, 'display_name', None) or getattr(admin, 'username', 'admin'),
+        target_type="printer",
+        target_id=printer_code,
+        details={"filename": file.filename, "size_bytes": len(file_data)},
+    )
+    
+    return {"success": True, "filename": file.filename, "size": len(file_data)}
+
+
+@router.post("/api/admin/printer/{printer_code}/start")
+async def moonraker_start_print(
+    printer_code: str,
+    filename: str = Form(...),
+    confirm: str = Form("0"),
+    admin=Depends(require_admin),
+):
+    """Start printing a file on the printer. Requires confirm=1."""
+    api = _require_moonraker(printer_code)
+    
+    if confirm != "1":
+        raise HTTPException(status_code=400, detail="Confirmation required. Set confirm=1 to proceed.")
+    
+    if not filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
+    
+    success = await api.start_print(filename)
+    if not success:
+        raise HTTPException(status_code=502, detail="Failed to start print via Moonraker")
+    
+    log_audit(
+        action=AuditAction.PRINTER_PRINT_STARTED,
+        actor_type="admin",
+        actor_id=getattr(admin, 'id', None),
+        target_type="printer",
+        target_id=printer_code,
+        details={"filename": filename},
+    )
+    
+    return {"success": True, "action": "start", "filename": filename, "printer": printer_code}
+
+
+@router.post("/api/admin/printer/{printer_code}/pause")
+async def moonraker_pause_print(
+    printer_code: str,
+    confirm: str = Form("0"),
+    admin=Depends(require_admin),
+):
+    """Pause the current print. Requires confirm=1."""
+    api = _require_moonraker(printer_code)
+    
+    if confirm != "1":
+        raise HTTPException(status_code=400, detail="Confirmation required. Set confirm=1 to proceed.")
+    
+    success = await api.pause_print()
+    if not success:
+        raise HTTPException(status_code=502, detail="Failed to pause print via Moonraker")
+    
+    log_audit(
+        action=AuditAction.PRINTER_PRINT_PAUSED,
+        actor_type="admin",
+        actor_id=getattr(admin, 'id', None),
+        target_type="printer",
+        target_id=printer_code,
+    )
+    
+    return {"success": True, "action": "pause", "printer": printer_code}
+
+
+@router.post("/api/admin/printer/{printer_code}/resume")
+async def moonraker_resume_print(
+    printer_code: str,
+    confirm: str = Form("0"),
+    admin=Depends(require_admin),
+):
+    """Resume a paused print. Requires confirm=1."""
+    api = _require_moonraker(printer_code)
+    
+    if confirm != "1":
+        raise HTTPException(status_code=400, detail="Confirmation required. Set confirm=1 to proceed.")
+    
+    success = await api.resume_print()
+    if not success:
+        raise HTTPException(status_code=502, detail="Failed to resume print via Moonraker")
+    
+    log_audit(
+        action=AuditAction.PRINTER_PRINT_RESUMED,
+        actor_type="admin",
+        actor_id=getattr(admin, 'id', None),
+        target_type="printer",
+        target_id=printer_code,
+    )
+    
+    return {"success": True, "action": "resume", "printer": printer_code}
+
+
+@router.post("/api/admin/printer/{printer_code}/cancel")
+async def moonraker_cancel_print(
+    printer_code: str,
+    confirm: str = Form("0"),
+    force: str = Form("0"),
+    admin=Depends(require_admin),
+):
+    """Cancel the current print. Requires confirm=1. Use force=1 to bypass safety checks."""
+    api = _require_moonraker(printer_code)
+    
+    if confirm != "1":
+        raise HTTPException(status_code=400, detail="Confirmation required. Set confirm=1 to proceed.")
+    
+    # Extra safety: verify the printer is actually printing or paused
+    is_printing = await api.is_printing()
+    objects = await api._query_objects()
+    state = objects.get("print_stats", {}).get("state", "standby") if objects else "unknown"
+    
+    if not is_printing and state != "paused" and force != "1":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Printer is not currently printing (state: {state}). Set force=1 to cancel anyway."
+        )
+    
+    success = await api.cancel_print()
+    if not success:
+        raise HTTPException(status_code=502, detail="Failed to cancel print via Moonraker")
+    
+    log_audit(
+        action=AuditAction.PRINTER_PRINT_CANCELLED,
+        actor_type="admin",
+        actor_id=getattr(admin, 'id', None),
+        target_type="printer",
+        target_id=printer_code,
+        details={"previous_state": state, "force": force == "1"},
+    )
+    
+    return {"success": True, "action": "cancel", "printer": printer_code, "previous_state": state}

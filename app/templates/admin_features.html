@@ -126,11 +126,11 @@
           'file_sync': {'icon': '📁', 'title': 'File Sync', 'desc': 'Watch folders for STL files and auto-match to requests. Great for SD card workflows.'},
           'multi_admin': {'icon': '👥', 'title': 'Multi Admin', 'desc': 'Enable role-based access control (RBAC) with multiple admin accounts and permission levels.'},
           'audit_logging': {'icon': '📜', 'title': 'Audit Logging', 'desc': 'Track all admin and user actions for compliance and debugging.'},
-          'octoprint_integration': {'icon': '🐙', 'title': 'OctoPrint', 'desc': 'Connect to OctoPrint for remote print monitoring and control.'},
+          'moonraker_ad5x': {'icon': '🌙', 'title': 'Moonraker AD5X', 'desc': 'Use Moonraker/Klipper API for the AD5X printer. Enables richer status, file-based ETA, bed temp, and remote print control. Toggle off to revert to FlashForge API.'},
           'auto_slicer': {'icon': '🔪', 'title': 'Auto Slicer', 'desc': 'Automatically slice uploaded STL files with preset profiles.'},
           '3d_preview': {'icon': '🎲', 'title': '3D Preview', 'desc': 'Interactive 3D model preview for uploaded STL files.'}
         } %}
-        {% for key in ['file_sync', 'multi_admin', 'audit_logging', 'octoprint_integration', 'auto_slicer', '3d_preview'] %}
+        {% for key in ['file_sync', 'multi_admin', 'audit_logging', 'moonraker_ad5x', 'auto_slicer', '3d_preview'] %}
         {% set flag = flags.get(key) %}
         {% set details = advanced_flag_details.get(key, {}) %}
         {% if flag %}
@@ -142,7 +142,7 @@
                 <span class="font-medium">{{ details.title }}</span>
                 {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
                 {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
-                {% if key in ['octoprint_integration', 'auto_slicer', 'file_sync'] %}<span class="px-2 py-0.5 bg-orange-600/20 text-orange-300 text-xs rounded-lg">Coming Soon</span>{% endif %}
+                {% if key in ['auto_slicer', 'file_sync'] %}<span class="px-2 py-0.5 bg-orange-600/20 text-orange-300 text-xs rounded-lg">Coming Soon</span>{% endif %}
               </div>
               <p class="text-sm text-zinc-400 mt-2">{{ details.desc }}</p>
             </div>
