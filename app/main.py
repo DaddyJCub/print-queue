@@ -1379,6 +1379,10 @@ def ensure_migrations():
     if files_cols and "build_id" not in files_cols:
         cur.execute("ALTER TABLE files ADD COLUMN build_id TEXT")
 
+    # Add linked_file_id to files table (link gcode to its source model file)
+    if files_cols and "linked_file_id" not in files_cols:
+        cur.execute("ALTER TABLE files ADD COLUMN linked_file_id TEXT")
+
     # Builds table migrations
     cur.execute("PRAGMA table_info(builds)")
     builds_cols = {row[1] for row in cur.fetchall()}
@@ -2927,16 +2931,25 @@ def get_smart_eta(printer: str = None, material: str = None,
                   current_percent: int = None, printing_started_at: str = None,
                   current_layer: int = None, total_layers: int = None,
                   estimated_minutes: Optional[float] = None,
-                  now: Optional[datetime] = None) -> Optional[datetime]:
+                  now: Optional[datetime] = None,
+                  moonraker_time_remaining: Optional[float] = None) -> Optional[datetime]:
     """
     Calculate a smart ETA based on:
-    1. Layer progress + elapsed time (most accurate - layers are more linear than bytes)
+    0. Moonraker live time_remaining (most accurate - from printer firmware/file analysis)
+    1. Layer progress + elapsed time (most accurate calculated - layers are more linear than bytes)
     2. Percent progress + elapsed time (good fallback)
     3. Historical average for this printer/material combo
     
     Returns a datetime of estimated completion, or None if can't estimate.
     """
     now = now or datetime.utcnow()
+    
+    # Method 0: Moonraker live time remaining (most accurate - matches Fluidd/Mainsail display)
+    # This uses the printer's own file-based ETA calculation which accounts for actual print speed
+    if moonraker_time_remaining is not None and moonraker_time_remaining >= 0:
+        if moonraker_time_remaining <= 0:
+            return now
+        return now + __import__('datetime').timedelta(seconds=moonraker_time_remaining)
     
     # Parse start time if available
     elapsed = 0
@@ -3115,10 +3128,12 @@ def get_request_eta_info(request_id: str, req: Dict = None,
         total_layers = None
         
         if status == "PRINTING":
+            moonraker_remaining = None
             if printer_status:
                 build_progress = printer_status.get("progress", build_progress)
                 current_layer = printer_status.get("current_layer")
                 total_layers = printer_status.get("total_layers")
+                moonraker_remaining = printer_status.get("moonraker_time_remaining")
             start_time = b.get("started_at") or req.get("printing_started_at")
             build_eta_dt = get_smart_eta(
                 printer=b.get("printer") or req.get("printer"),
@@ -3128,7 +3143,8 @@ def get_request_eta_info(request_id: str, req: Dict = None,
                 current_layer=current_layer,
                 total_layers=total_layers,
                 estimated_minutes=est_minutes,
-                now=now
+                now=now,
+                moonraker_time_remaining=moonraker_remaining,
             )
             if build_eta_dt:
                 build_eta_display = format_eta_display(build_eta_dt)

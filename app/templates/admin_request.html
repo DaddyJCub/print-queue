@@ -252,7 +252,32 @@
               <p class="text-sm font-medium text-zinc-200">⏱️ {{ (b.print_time_minutes // 60) }}h {{ (b.print_time_minutes % 60) }}m</p>
             </div>
             {% endif %}
+            {% set ns_eta = namespace(eta=None) %}
+            {% for bi in build_eta_info.get('builds_info', []) %}
+              {% if bi.id == b.id and bi.eta_display %}
+                {% set ns_eta.eta = bi.eta_display %}
+              {% endif %}
+            {% endfor %}
+            {% if ns_eta.eta %}
+            <div>
+              <p class="text-xs text-zinc-500 uppercase mb-1">ETA</p>
+              <p class="text-sm font-medium text-amber-400 current-build-eta" data-build-id="{{ b.id }}">⏱ {{ ns_eta.eta }}</p>
+            </div>
+            {% endif %}
           </div>
+          
+          <!-- Live progress bar -->
+          {% if b.progress %}
+          <div class="mb-4">
+            <div class="flex items-center justify-between text-xs mb-1">
+              <span class="text-zinc-400">Progress</span>
+              <span class="text-amber-300 font-medium current-build-progress-text" data-build-id="{{ b.id }}">{{ b.progress }}%</span>
+            </div>
+            <div class="h-2 bg-zinc-800 rounded-full overflow-hidden">
+              <div class="h-full bg-amber-500 transition-all duration-500 current-build-progress-bar" data-build-id="{{ b.id }}" style="width: {{ b.progress }}%"></div>
+            </div>
+          </div>
+          {% endif %}
           
           {# Find associated file - either from assigned_files OR by matching file_name to request files #}
           {% set ns = namespace(current_file=none) %}
@@ -439,33 +464,31 @@
         <!-- Build Configuration -->
         <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
           <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-semibold">🔧 Build Configuration</h2>
+            <h2 class="text-lg font-semibold">🔧 Builds <span class="text-sm font-normal text-zinc-500">({{ builds|length if builds else 0 }})</span></h2>
             <div class="flex items-center gap-2">
-              {% if builds and builds|length > 0 %}
+              {% if builds and builds|length > 1 %}
                 <button type="button" onclick="toggleReorderMode()" 
                         class="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 transition">
                   ↕️ Reorder
                 </button>
               {% endif %}
-              <span class="text-xs text-zinc-500">{{ builds|length if builds else 1 }} build(s)</span>
+              <details class="relative">
+                <summary class="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 transition cursor-pointer list-none">
+                  ➕ Add/Remove
+                </summary>
+                <form method="POST" action="/admin/request/{{ req['id'] }}/configure-builds" class="absolute right-0 top-8 z-10 p-3 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl min-w-[200px]">
+                  <div class="flex items-center gap-2">
+                    <input type="number" name="build_count" min="1" max="20" 
+                           value="{{ builds|length if builds else (req.total_builds or 1) }}"
+                           class="w-16 rounded bg-zinc-950 border border-zinc-700 p-1.5 text-sm text-center" />
+                    <button type="submit" class="rounded bg-indigo-600 hover:bg-indigo-500 transition px-3 py-1.5 text-xs font-semibold whitespace-nowrap">
+                      Set
+                    </button>
+                  </div>
+                </form>
+              </details>
             </div>
           </div>
-          
-          <!-- Add/Update builds count -->
-          <details class="mb-4">
-            <summary class="text-xs text-zinc-400 cursor-pointer hover:text-zinc-300">➕ Add/Remove Builds</summary>
-            <form method="POST" action="/admin/request/{{ req['id'] }}/configure-builds" class="mt-2 p-3 bg-zinc-800/50 rounded-lg">
-              <div class="flex items-center gap-3">
-                <label class="text-sm text-zinc-400 whitespace-nowrap">Number of builds:</label>
-                <input type="number" name="build_count" min="1" max="20" 
-                       value="{{ builds|length if builds else (req.total_builds or 1) }}"
-                       class="w-20 rounded-lg bg-zinc-950 border border-zinc-800 p-2 text-sm text-center" />
-                <button type="submit" class="flex-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-2 text-sm font-semibold">
-                  Update Builds
-                </button>
-              </div>
-            </form>
-          </details>
           
           {% if builds and builds|length > 0 %}
             <!-- Reorder Form (hidden by default) -->
@@ -497,67 +520,78 @@
               </div>
             </form>
             
-            <!-- Clean Build List -->
+            <!-- Compact Build List -->
             <div id="build-details-list" class="space-y-2">
               {% for b in builds %}
-                {% set status_labels = {'COMPLETED': 'DONE', 'READY': 'QUEUED', 'PENDING': 'PENDING', 'PRINTING': 'PRINTING', 'FAILED': 'FAILED', 'SKIPPED': 'SKIPPED'} %}
-                <div class="p-3 rounded-lg border transition-all
-                  {% if b.status == 'PRINTING' %}bg-amber-900/30 border-amber-500/50 ring-1 ring-amber-500/30
-                  {% elif b.status == 'COMPLETED' %}bg-emerald-900/20 border-emerald-700/50
-                  {% elif b.status == 'FAILED' %}bg-red-900/20 border-red-700/50
-                  {% elif b.status == 'READY' %}bg-blue-900/20 border-blue-700/50
-                  {% else %}bg-zinc-800/50 border-zinc-700{% endif %}">
+                {% set status_labels = {'COMPLETED': 'DONE', 'READY': 'QUEUED', 'PENDING': 'PENDING', 'PRINTING': 'PRINTING', 'FAILED': 'FAILED', 'SKIPPED': 'SKIP'} %}
+                <div class="rounded-lg border transition-all
+                  {% if b.status == 'PRINTING' %}bg-amber-900/20 border-amber-500/40
+                  {% elif b.status == 'COMPLETED' %}bg-emerald-900/10 border-emerald-700/40
+                  {% elif b.status == 'FAILED' %}bg-red-900/10 border-red-700/40
+                  {% elif b.status == 'READY' %}bg-blue-900/10 border-blue-700/40
+                  {% else %}bg-zinc-800/30 border-zinc-700/50{% endif %}">
                   
-                  <!-- Build Header Row -->
-                  <div class="flex items-center justify-between gap-2">
-                    <div class="flex items-center gap-2 min-w-0">
-                      <span class="font-medium text-sm whitespace-nowrap">Build {{ b.build_number }}</span>
+                  <!-- Build Row: Status + Name + Metadata + Actions — all on one line -->
+                  <div class="flex items-center gap-2 px-3 py-2.5">
+                    <!-- Status pill -->
+                    <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0
+                      {% if b.status == 'COMPLETED' %}bg-emerald-500/20 text-emerald-300
+                      {% elif b.status == 'PRINTING' %}bg-amber-500/20 text-amber-300
+                      {% elif b.status == 'FAILED' %}bg-red-500/20 text-red-300
+                      {% elif b.status == 'READY' %}bg-blue-500/20 text-blue-300
+                      {% elif b.status == 'SKIPPED' %}bg-zinc-600/30 text-zinc-400
+                      {% else %}bg-zinc-700/50 text-zinc-400{% endif %}">
+                      {{ status_labels.get(b.status, b.status) }}
+                    </span>
+                    
+                    <!-- Build info -->
+                    <div class="flex items-center gap-1.5 min-w-0 flex-1">
+                      <span class="font-medium text-sm text-zinc-200 whitespace-nowrap">#{{ b.build_number }}</span>
                       {% if b.print_name %}
                         <span class="text-zinc-400 text-sm truncate">{{ b.print_name }}</span>
                       {% endif %}
                       {% if b.printer %}
-                        <span class="text-xs px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded whitespace-nowrap">{{ b.printer }}</span>
+                        <span class="text-[10px] px-1.5 py-0.5 bg-indigo-500/15 text-indigo-300 rounded flex-shrink-0">{{ b.printer }}</span>
+                      {% endif %}
+                      {% if b.material %}
+                        <span class="text-[10px] px-1.5 py-0.5 bg-zinc-700/50 text-zinc-400 rounded flex-shrink-0">{{ b.material }}</span>
+                      {% endif %}
+                      {% if b.colors %}
+                        <span class="text-[10px] px-1.5 py-0.5 bg-zinc-700/50 text-zinc-400 rounded flex-shrink-0">🎨 {{ b.colors }}</span>
+                      {% endif %}
+                      {% if b.print_time_minutes %}
+                        <span class="text-[10px] text-zinc-500 flex-shrink-0">{{ (b.print_time_minutes // 60) }}h{{ (b.print_time_minutes % 60) }}m</span>
                       {% endif %}
                     </div>
                     
-                    <div class="flex items-center gap-2 flex-shrink-0">
-                      <span class="text-xs px-2 py-0.5 rounded-full 
-                        {% if b.status == 'COMPLETED' %}bg-emerald-500/20 text-emerald-300
-                        {% elif b.status == 'PRINTING' %}bg-amber-500/20 text-amber-300
-                        {% elif b.status == 'FAILED' %}bg-red-500/20 text-red-300
-                        {% elif b.status == 'READY' %}bg-blue-500/20 text-blue-300
-                        {% elif b.status == 'SKIPPED' %}bg-zinc-600/20 text-zinc-400
-                        {% else %}bg-zinc-700/50 text-zinc-400{% endif %}">
-                        {{ status_labels.get(b.status, b.status) }}
-                      </span>
-                      
-                      <!-- Quick Actions based on status -->
+                    <!-- Inline action buttons -->
+                    <div class="flex items-center gap-1 flex-shrink-0">
                       {% if b.status == 'READY' or b.status == 'PENDING' %}
                         <button type="button" onclick="showStartBuildModal('{{ b.id }}', {{ b.build_number }})"
-                                class="text-xs px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white transition">
+                                class="text-xs px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition">
                           ▶ Start
                         </button>
                       {% elif b.status == 'PRINTING' %}
                         <form action="/admin/build/{{ b.id }}/complete" method="POST" class="inline">
-                          <button type="submit" class="text-xs px-2 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white transition"
-                                  onclick="return confirm('Mark build {{ b.build_number }} as complete?')">
+                          <button type="submit" class="text-xs px-2 py-1 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white transition"
+                                  onclick="return confirm('Mark build #{{ b.build_number }} complete?')">
                             ✓ Done
                           </button>
                         </form>
                         <form action="/admin/build/{{ b.id }}/fail" method="POST" class="inline">
-                          <button type="submit" class="text-xs px-2 py-1 rounded bg-red-600/80 hover:bg-red-600 text-white transition"
-                                  onclick="return confirm('Mark build {{ b.build_number }} as failed?')">
+                          <button type="submit" class="text-xs px-2 py-1 rounded-md bg-red-700/80 hover:bg-red-600 text-white transition"
+                                  onclick="return confirm('Mark build #{{ b.build_number }} failed?')">
                             ✕ Fail
                           </button>
                         </form>
                         <button type="button"
-                                class="text-xs px-2 py-1 rounded bg-amber-700/80 hover:bg-amber-600 text-white transition"
+                                class="text-xs px-2 py-1 rounded-md bg-amber-700/70 hover:bg-amber-600 text-white transition"
                                 onclick="pauseBuildConfirm('{{ b.id }}', {{ b.build_number }}, '{{ b.printer|default("", true) }}')">
-                          ⏸ Pause
+                          ⏸
                         </button>
                       {% elif b.status == 'FAILED' %}
                         <form action="/admin/build/{{ b.id }}/retry" method="POST" class="inline">
-                          <button type="submit" class="text-xs px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white transition">
+                          <button type="submit" class="text-xs px-2 py-1 rounded-md bg-amber-600 hover:bg-amber-500 text-white transition">
                             🔄 Retry
                           </button>
                         </form>
@@ -565,24 +599,16 @@
                     </div>
                   </div>
                   
-                  <!-- Build metadata (if any) -->
-                  {% if b.colors or b.material or b.print_time_minutes %}
-                    <div class="flex flex-wrap gap-2 mt-2 text-xs text-zinc-400">
-                      {% if b.colors %}<span class="px-1.5 py-0.5 bg-zinc-700/50 rounded">🎨 {{ b.colors }}</span>{% endif %}
-                      {% if b.material %}<span class="px-1.5 py-0.5 bg-zinc-700/50 rounded">🧪 {{ b.material }}</span>{% endif %}
-                      {% if b.print_time_minutes %}<span class="px-1.5 py-0.5 bg-zinc-700/50 rounded">⏱️ {{ (b.print_time_minutes // 60) }}h {{ (b.print_time_minutes % 60) }}m</span>{% endif %}
-                    </div>
-                  {% endif %}
-                  
-                  <!-- Assigned files -->
+                  <!-- Assigned files (compact) -->
                   {% if b.assigned_files %}
-                    <div class="flex flex-wrap gap-1 mt-2">
+                    <div class="flex flex-wrap gap-1 px-3 pb-2 -mt-0.5">
                       {% for af in b.assigned_files %}
                         {% set af_ext = af.original_filename.lower().split('.')[-1] if '.' in af.original_filename else '' %}
-                        <span class="flex items-center gap-1 text-xs px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded">
-                          📄 {{ af.original_filename|truncate(25) }}
+                        <span class="flex items-center gap-1 text-[11px] px-1.5 py-0.5 bg-zinc-700/40 text-zinc-300 rounded">
+                          {% if af.file_type == 'model' %}🔷{% elif af.file_type == 'gcode' %}⚙️{% else %}📄{% endif %}
+                          {{ af.original_filename|truncate(22) }}
                           {% if af_ext in ['stl', 'obj', '3mf'] %}
-                            <a href="/admin/request/{{ req['id'] }}/file/{{ af.id }}/preview" class="text-emerald-400 hover:text-emerald-300">👁️</a>
+                            <a href="/admin/request/{{ req['id'] }}/file/{{ af.id }}/preview" class="text-indigo-400 hover:text-indigo-300">👁️</a>
                           {% endif %}
                         </span>
                       {% endfor %}
@@ -590,33 +616,32 @@
                   {% endif %}
                   
                   <!-- Expandable Edit Section -->
-                  <details class="mt-2">
-                    <summary class="text-xs text-zinc-500 cursor-pointer hover:text-zinc-300">⚙️ Edit build details</summary>
-                    <div class="mt-2 p-3 bg-zinc-900/50 rounded-lg space-y-3">
-                      <!-- Status Change -->
+                  <details class="border-t border-zinc-700/30">
+                    <summary class="text-xs text-zinc-500 cursor-pointer hover:text-zinc-300 px-3 py-1.5">⚙️ Edit</summary>
+                    <div class="px-3 pb-3 pt-1 space-y-2">
                       {% if b.status not in ['COMPLETED', 'PRINTING'] %}
                       <form method="POST" action="/admin/build/{{ b.id }}/set-status" class="flex gap-2 items-center">
-                        <select name="status" class="flex-1 rounded-md bg-zinc-950 border border-zinc-700 p-1.5 text-xs">
+                        <select name="status" class="flex-1 rounded bg-zinc-950 border border-zinc-700 p-1.5 text-xs">
                           <option value="PENDING" {% if b.status == 'PENDING' %}selected{% endif %}>⏳ Pending</option>
                           <option value="READY" {% if b.status == 'READY' %}selected{% endif %}>✓ Queued</option>
                           <option value="SKIPPED" {% if b.status == 'SKIPPED' %}selected{% endif %}>⏭ Skipped</option>
                         </select>
-                        <button type="submit" class="px-2 py-1 rounded-md bg-zinc-700 hover:bg-zinc-600 text-xs">Set</button>
+                        <button type="submit" class="px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-xs">Set</button>
                       </form>
                       {% endif %}
                       
                       <form method="POST" action="/admin/build/{{ b.id }}/update" class="space-y-2">
                         <input type="text" name="print_name" value="{{ b.print_name or '' }}" 
-                               placeholder="Part name (e.g., 'Left arm', 'Base')"
-                               class="w-full rounded-md bg-zinc-950 border border-zinc-700 p-2 text-xs" />
+                               placeholder="Part name (e.g. 'Left arm', 'Base')"
+                               class="w-full rounded bg-zinc-950 border border-zinc-700 p-2 text-xs" />
                         <div class="grid grid-cols-2 gap-2">
-                          <select name="printer" class="rounded-md bg-zinc-950 border border-zinc-700 p-2 text-xs">
+                          <select name="printer" class="rounded bg-zinc-950 border border-zinc-700 p-1.5 text-xs">
                             <option value="">Printer: Auto</option>
                             {% for code, label in printers %}{% if code != 'ANY' %}
                               <option value="{{ code }}" {% if code == b.printer %}selected{% endif %}>{{ label }}</option>
                             {% endif %}{% endfor %}
                           </select>
-                          <select name="material" class="rounded-md bg-zinc-950 border border-zinc-700 p-2 text-xs">
+                          <select name="material" class="rounded bg-zinc-950 border border-zinc-700 p-1.5 text-xs">
                             <option value="">Material: Same</option>
                             {% for code, label in materials %}
                               <option value="{{ code }}" {% if code == b.material %}selected{% endif %}>{{ label }}</option>
@@ -625,25 +650,25 @@
                         </div>
                         <div class="flex gap-2">
                           <input type="text" name="colors" value="{{ b.colors or '' }}" placeholder="Colors"
-                                 class="flex-1 rounded-md bg-zinc-950 border border-zinc-700 p-2 text-xs" />
+                                 class="flex-1 rounded bg-zinc-950 border border-zinc-700 p-1.5 text-xs" />
                           <div class="flex items-center gap-1">
                             <input type="number" name="est_hours" min="0" max="999" 
                                    value="{{ (b.print_time_minutes // 60) if b.print_time_minutes else '' }}"
-                                   placeholder="0" class="w-12 rounded-md bg-zinc-950 border border-zinc-700 p-2 text-xs text-center" />
+                                   placeholder="0" class="w-10 rounded bg-zinc-950 border border-zinc-700 p-1.5 text-xs text-center" />
                             <span class="text-xs text-zinc-500">h</span>
                             <input type="number" name="est_minutes" min="0" max="59"
                                    value="{{ (b.print_time_minutes % 60) if b.print_time_minutes else '' }}"
-                                   placeholder="0" class="w-12 rounded-md bg-zinc-950 border border-zinc-700 p-2 text-xs text-center" />
+                                   placeholder="0" class="w-10 rounded bg-zinc-950 border border-zinc-700 p-1.5 text-xs text-center" />
                             <span class="text-xs text-zinc-500">m</span>
                           </div>
                         </div>
                         <div class="flex gap-2">
-                          <button type="submit" class="flex-1 rounded-md bg-zinc-700 hover:bg-zinc-600 transition px-2 py-1 text-xs">
-                            Save Changes
+                          <button type="submit" class="flex-1 rounded bg-zinc-700 hover:bg-zinc-600 transition px-2 py-1 text-xs">
+                            Save
                           </button>
                           <button type="button" onclick="showDeleteBuildModal('{{ b.id }}', {{ b.build_number }}, '{{ b.status }}')"
-                                  class="rounded-md bg-red-900/30 hover:bg-red-800/50 text-red-400 px-2 py-1 text-xs">
-                            🗑️ Delete
+                                  class="rounded bg-red-900/30 hover:bg-red-800/50 text-red-400 px-2 py-1 text-xs">
+                            🗑️
                           </button>
                         </div>
                       </form>
@@ -901,6 +926,23 @@
                   {{ builds|selectattr('status', 'equalto', 'COMPLETED')|list|length }}/{{ builds|length }} completed
                 </span>
               </div>
+              {% if build_eta_info and build_eta_info.get('current_build_eta') and not build_eta_info.get('blocked') %}
+                <div class="flex justify-between text-sm mb-2">
+                  <span class="text-zinc-400">Current Build ETA</span>
+                  <span class="text-amber-400 font-medium" id="request-build-eta">⏱ {{ build_eta_info.current_build_eta }}</span>
+                </div>
+              {% endif %}
+              {% if build_eta_info and build_eta_info.get('total_eta') and not build_eta_info.get('blocked') %}
+                <div class="flex justify-between text-sm">
+                  <span class="text-zinc-400">All Builds Complete</span>
+                  <span class="text-emerald-400 font-medium" id="request-total-eta">📅 {{ build_eta_info.total_eta }}</span>
+                </div>
+              {% elif build_eta_info and build_eta_info.get('blocked') %}
+                <div class="flex justify-between text-sm">
+                  <span class="text-zinc-400">ETA</span>
+                  <span class="text-red-400 font-medium">⚠ Blocked</span>
+                </div>
+              {% endif %}
               <div class="flex gap-1">
                 {% for b in builds %}
                   {% set status_tip = {
@@ -951,7 +993,7 @@
                   <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2">
                       <span class="text-sm font-medium">Build {{ b.build_number }}</span>
-                      {% if b.print_name %}<span class="text-xs text-zinc-500 truncate max-w-[100px]">{{ b.print_name }}</span>{% endif %}
+                      {% if b.print_name %}<span class="text-xs text-zinc-500 truncate max-w-[180px]">{{ b.print_name }}</span>{% endif %}
                       <span class="text-xs px-2 py-0.5 rounded-full 
                         {% if b.status == 'COMPLETED' %}bg-emerald-500/20 text-emerald-300
                         {% elif b.status == 'PRINTING' %}bg-amber-500/20 text-amber-300
@@ -967,11 +1009,24 @@
                     {% endif %}
                   </div>
                   {% if b.progress and b.status == 'PRINTING' %}
+                    {% set build_info = namespace(eta=None) %}
+                    {% for bi in build_eta_info.get('builds_info', []) %}
+                      {% if bi.id == b.id and bi.eta_display %}
+                        {% set build_info.eta = bi.eta_display %}
+                      {% endif %}
+                    {% endfor %}
                     <div class="mt-2">
                       <div class="h-1.5 bg-zinc-700 rounded-full overflow-hidden">
-                        <div class="h-full bg-amber-500" style="width: {{ b.progress }}%"></div>
+                        <div class="h-full bg-amber-500 build-progress-bar" data-build-id="{{ b.id }}" style="width: {{ b.progress }}%"></div>
                       </div>
-                      <span class="text-xs text-zinc-500">{{ b.progress }}%</span>
+                      <div class="flex items-center justify-between mt-1">
+                        <span class="text-xs text-zinc-500 build-progress-text" data-build-id="{{ b.id }}">{{ b.progress }}%</span>
+                        {% if build_info.eta %}
+                          <span class="text-xs text-amber-400 build-eta-text" data-build-id="{{ b.id }}">⏱ {{ build_info.eta }}</span>
+                        {% else %}
+                          <span class="text-xs text-amber-400 build-eta-text hidden" data-build-id="{{ b.id }}"></span>
+                        {% endif %}
+                      </div>
                     </div>
                   {% endif %}
                   
@@ -980,7 +1035,7 @@
                     <div class="mt-2 flex flex-wrap gap-1">
                       {% if b.status == 'READY' %}
                         <form action="/admin/build/{{ b.id }}/start" method="POST" class="inline">
-                          <input type="hidden" name="printer" value="{{ req.printer or printers[0] }}" />
+                          <input type="hidden" name="printer" value="{{ req.printer or printers[1][0] }}" />
                           <button type="submit" class="text-xs px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white">
                             ▶ Start
                           </button>
@@ -1029,7 +1084,9 @@
                 <form action="/admin/request/{{ req['id'] }}/start-next-build" method="POST" class="flex gap-2">
                   <select name="printer" class="flex-1 text-sm rounded-lg bg-zinc-800 border-zinc-700 px-3 py-2">
                     {% for p in printers %}
-                      <option value="{{ p }}" {% if p == req.printer %}selected{% endif %}>{{ p }}</option>
+                      {% if p[0] != 'ANY' %}
+                      <option value="{{ p[0] }}" {% if p[0] == req.printer %}selected{% endif %}>{{ p[1] }}</option>
+                      {% endif %}
                     {% endfor %}
                   </select>
                   <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium">
@@ -1042,79 +1099,250 @@
         {% endif %}
 
         <!-- Files Card -->
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
-          <h2 class="text-lg font-semibold mb-4">📁 Files</h2>
+        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 sm:p-6">
+          <h2 class="text-lg font-semibold mb-3">📁 Files <span class="text-sm font-normal text-zinc-500">({{ files|length }})</span></h2>
           
           <form class="mb-4" method="POST" action="/admin/request/{{ req['id'] }}/add-file" enctype="multipart/form-data">
-            <p class="text-xs text-zinc-400 mb-2">{{ allowed_exts }} • {{ max_upload_mb }}MB max per file • Multiple files supported</p>
+            <p class="text-xs text-zinc-400 mb-2">{{ allowed_exts }} • {{ max_upload_mb }}MB max • Multiple files</p>
             <div class="flex gap-2">
-              <input type="file" name="upload" multiple class="flex-1 text-sm rounded-lg border border-zinc-700" />
-              <button class="rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-3 text-sm font-semibold whitespace-nowrap">
-                Add Files
+              <input type="file" name="upload" multiple class="flex-1 min-w-0 text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-zinc-700 file:text-zinc-200 file:text-sm file:font-medium hover:file:bg-zinc-600 file:cursor-pointer" />
+              <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold whitespace-nowrap flex-shrink-0">
+                + Upload
               </button>
             </div>
           </form>
 
           {% if files|length == 0 %}
-            <p class="text-zinc-400 text-sm">No files uploaded.</p>
+            <p class="text-zinc-500 text-sm italic">No files uploaded yet.</p>
           {% else %}
-            <ul class="space-y-2">
-              {% for f in files %}
-                <li class="bg-zinc-950/60 border border-zinc-700 rounded-lg p-3">
-                  <div class="flex items-start justify-between gap-2">
-                    <div class="flex-1 min-w-0">
-                      <div class="font-mono text-sm text-zinc-200 truncate">{{ f["original_filename"] }}</div>
-                      <div class="text-xs text-zinc-500">{{ (f["size_bytes"] / 1024) | round(1) }} KB • Uploaded {{ f["created_at"]|localtime('%b %d, %Y at %I:%M %p') }}</div>
+            <div class="space-y-3">
+
+              {# ── Model files with nested G-code ── #}
+              {% for f in model_files %}
+                {% set file_ext = f["original_filename"].lower().split('.')[-1] if '.' in f["original_filename"] else '' %}
+                <div class="rounded-lg border border-zinc-700/60 bg-zinc-800/40 overflow-hidden">
+                  <div class="p-3 space-y-2">
+                    {# Row 1: Icon + filename #}
+                    <div class="flex items-start gap-2">
+                      <span class="text-base flex-shrink-0 mt-0.5" title="3D Model">🔷</span>
+                      <span class="font-mono text-sm text-zinc-100 break-all leading-snug">{{ f["original_filename"] }}</span>
                     </div>
-                    {% set file_ext = f["original_filename"].lower().split('.')[-1] if '.' in f["original_filename"] else '' %}
-                    {% if file_ext in ['stl', 'obj', '3mf'] %}
-                      <a href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/preview" 
-                         class="text-xs px-2 py-1 rounded bg-indigo-600/30 hover:bg-indigo-500/40 text-indigo-300 transition"
-                         title="Preview 3D model">
-                        👁️ 3D
-                      </a>
-                    {% endif %}
-                  </div>
-                  {% if f.metadata and f.metadata.dimensions_mm %}
-                    <div class="text-xs text-indigo-400 mt-1 flex items-center gap-1">
-                      📐 {{ f.metadata.dimensions_mm.x }} × {{ f.metadata.dimensions_mm.y }} × {{ f.metadata.dimensions_mm.z }} mm
-                      {% if f.metadata.volume_cm3 %}
-                        <span class="text-zinc-500">• {{ f.metadata.volume_cm3 }} cm³</span>
+                    {# Row 2: Metadata badges #}
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500 pl-7">
+                      {% if f["size_bytes"] >= 1048576 %}
+                        <span>{{ (f["size_bytes"] / 1048576) | round(1) }} MB</span>
+                      {% else %}
+                        <span>{{ (f["size_bytes"] / 1024) | round(1) }} KB</span>
+                      {% endif %}
+                      {% if f.metadata and f.metadata.dimensions_mm %}
+                        <span class="text-indigo-400">📐 {{ f.metadata.dimensions_mm.x }}×{{ f.metadata.dimensions_mm.y }}×{{ f.metadata.dimensions_mm.z }}mm</span>
+                      {% endif %}
+                      {% if f.metadata and f.metadata.volume_cm3 %}
+                        <span>{{ f.metadata.volume_cm3 }}cm³</span>
                       {% endif %}
                     </div>
-                  {% endif %}
-                  {% if f.metadata and f.metadata.triangle_count %}
-                    <div class="text-xs text-zinc-500">🔺 {{ "{:,}".format(f.metadata.triangle_count) }} triangles</div>
-                  {% endif %}
-                  
-                  <!-- Build assignment -->
-                  {% if builds|length > 0 %}
-                    <div class="mt-2 pt-2 border-t border-zinc-700/50">
-                      <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/assign-build" class="flex items-center gap-2">
-                        <label class="text-xs text-zinc-500">Assigned to:</label>
-                        <select name="build_id" class="flex-1 text-xs rounded bg-zinc-900 border border-zinc-700 p-1" onchange="this.form.submit()">
-                          <option value="">— No build —</option>
-                          {% for b in builds %}
-                            <option value="{{ b.id }}" {% if f.build_id == b.id %}selected{% endif %}>
-                              Build #{{ b.build_number }}{% if b.print_name %} - {{ b.print_name }}{% endif %}
-                            </option>
-                          {% endfor %}
-                        </select>
-                      </form>
+                    {# Row 3: Build dropdown + actions #}
+                    <div class="flex items-center gap-2 pl-7">
+                      {% if builds|length > 0 %}
+                        <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/assign-build" class="flex-1 min-w-0">
+                          <select name="build_id" onchange="this.form.submit()"
+                                  class="w-full text-xs rounded-lg px-2.5 py-1.5 border cursor-pointer
+                                    {% if f.build_id %}bg-indigo-500/20 border-indigo-500/40 text-indigo-200{% else %}bg-zinc-700/50 border-zinc-600 text-zinc-400{% endif %}">
+                            <option value="">No build</option>
+                            {% for b in builds %}
+                              <option value="{{ b.id }}" {% if f.build_id == b.id %}selected{% endif %}>
+                                Build #{{ b.build_number }}{% if b.print_name %} – {{ b.print_name }}{% endif %}
+                              </option>
+                            {% endfor %}
+                          </select>
+                        </form>
+                      {% endif %}
+                      <div class="flex items-center gap-0.5 flex-shrink-0">
+                        {% if file_ext in ['stl', 'obj', '3mf'] %}
+                          <a href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/preview" 
+                             class="p-1.5 rounded-md hover:bg-zinc-600/50 text-indigo-300 transition" title="Preview 3D">👁️</a>
+                        {% endif %}
+                        <a href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}" 
+                           class="p-1.5 rounded-md hover:bg-zinc-600/50 text-zinc-400 hover:text-zinc-200 transition" title="Download">⬇️</a>
+                        <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" onsubmit="return confirm('Delete {{ f.original_filename }}?')">
+                          <button type="submit" class="p-1.5 rounded-md hover:bg-red-900/40 text-zinc-500 hover:text-red-400 transition" title="Delete">🗑️</button>
+                        </form>
+                      </div>
                     </div>
-                  {% endif %}
-                  
-                  <div class="flex items-center gap-3 mt-2">
-                    <a class="text-indigo-400 hover:underline text-xs" href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}">Download</a>
-                    <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" onsubmit="return confirm('Delete this file?')">
-                      <button type="submit" class="text-red-400 hover:text-red-300 text-xs">Delete</button>
-                    </form>
                   </div>
-                </li>
+
+                  {# Nested linked G-code files — build inherited from model #}
+                  {% if f.linked_gcodes %}
+                    {% for gc in f.linked_gcodes %}
+                      <div class="border-t border-zinc-700/40 bg-zinc-900/50">
+                        <div class="ml-4 border-l-2 border-indigo-500/30 pl-3 py-2 pr-3">
+                          <div class="flex items-center gap-2">
+                            <span class="text-sm flex-shrink-0">⚙️</span>
+                            <span class="font-mono text-xs text-zinc-300 break-all leading-snug flex-1 min-w-0">{{ gc["original_filename"] }}</span>
+                            <span class="text-[10px] text-zinc-500 flex-shrink-0">
+                              {% if gc["size_bytes"] >= 1048576 %}{{ (gc["size_bytes"] / 1048576) | round(1) }} MB{% else %}{{ (gc["size_bytes"] / 1024) | round(1) }} KB{% endif %}
+                            </span>
+                            <div class="flex items-center gap-0.5 flex-shrink-0">
+                              <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ gc['id'] }}/link" class="inline">
+                                <input type="hidden" name="linked_file_id" value="" />
+                                <button type="submit" class="p-1 rounded-md hover:bg-zinc-600/50 text-zinc-500 hover:text-amber-400 transition" title="Unlink from model">🔗</button>
+                              </form>
+                              <a href="/admin/request/{{ req['id'] }}/file/{{ gc['id'] }}" 
+                                 class="p-1 rounded-md hover:bg-zinc-600/50 text-zinc-400 hover:text-zinc-200 transition" title="Download">⬇️</a>
+                              <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ gc['id'] }}/delete" class="inline" onsubmit="return confirm('Delete {{ gc.original_filename }}?')">
+                                <button type="submit" class="p-1 rounded-md hover:bg-red-900/40 text-zinc-500 hover:text-red-400 transition" title="Delete">🗑️</button>
+                              </form>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    {% endfor %}
+                  {% endif %}
+                </div>
               {% endfor %}
-            </ul>
+
+              {# ── Standalone G-code files (not linked to any model) ── #}
+              {% for f in standalone_gcodes %}
+                <div class="rounded-lg border border-zinc-700/60 bg-zinc-800/40">
+                  <div class="p-3 space-y-2">
+                    {# Row 1: Icon + filename #}
+                    <div class="flex items-start gap-2">
+                      <span class="text-base flex-shrink-0 mt-0.5" title="G-code">⚙️</span>
+                      <span class="font-mono text-sm text-zinc-100 break-all leading-snug">{{ f["original_filename"] }}</span>
+                    </div>
+                    {# Row 2: Size #}
+                    <div class="text-xs text-zinc-500 pl-7">
+                      {% if f["size_bytes"] >= 1048576 %}
+                        {{ (f["size_bytes"] / 1048576) | round(1) }} MB
+                      {% else %}
+                        {{ (f["size_bytes"] / 1024) | round(1) }} KB
+                      {% endif %}
+                    </div>
+                    {# Row 3: Link button + build + actions #}
+                    <div class="flex items-center gap-2 pl-7 flex-wrap">
+                      {% if model_files|length > 0 %}
+                        <div class="relative">
+                          <button type="button" class="text-xs rounded-lg px-2.5 py-1.5 border border-dashed border-zinc-500 text-zinc-400 hover:border-indigo-400 hover:text-indigo-300 transition cursor-pointer whitespace-nowrap"
+                                  onclick="toggleLinkMenu(this)">
+                            🔗 Link to model…
+                          </button>
+                          <div class="link-menu hidden absolute left-0 top-full mt-1 z-30 bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl py-1 min-w-[220px] max-w-[300px]">
+                            {% for mf in model_files %}
+                              <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/link" class="contents">
+                                <input type="hidden" name="linked_file_id" value="{{ mf.id }}" />
+                                <button type="submit" class="w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition flex items-center gap-2">
+                                  <span class="flex-shrink-0">🔷</span>
+                                  <span class="truncate text-zinc-200">{{ mf.original_filename }}</span>
+                                </button>
+                              </form>
+                            {% endfor %}
+                          </div>
+                        </div>
+                      {% endif %}
+                      {% if builds|length > 0 %}
+                        <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/assign-build" class="flex-1 min-w-0">
+                          <select name="build_id" onchange="this.form.submit()"
+                                  class="w-full text-xs rounded-lg px-2.5 py-1.5 border cursor-pointer
+                                    {% if f.build_id %}bg-indigo-500/20 border-indigo-500/40 text-indigo-200{% else %}bg-zinc-700/50 border-zinc-600 text-zinc-400{% endif %}">
+                            <option value="">No build</option>
+                            {% for b in builds %}
+                              <option value="{{ b.id }}" {% if f.build_id == b.id %}selected{% endif %}>
+                                Build #{{ b.build_number }}{% if b.print_name %} – {{ b.print_name }}{% endif %}
+                              </option>
+                            {% endfor %}
+                          </select>
+                        </form>
+                      {% endif %}
+                      <div class="flex items-center gap-0.5 flex-shrink-0">
+                        <a href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}" 
+                           class="p-1.5 rounded-md hover:bg-zinc-600/50 text-zinc-400 hover:text-zinc-200 transition" title="Download">⬇️</a>
+                        <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" onsubmit="return confirm('Delete {{ f.original_filename }}?')">
+                          <button type="submit" class="p-1.5 rounded-md hover:bg-red-900/40 text-zinc-500 hover:text-red-400 transition" title="Delete">🗑️</button>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+
+              {# ── Other files (zip, step, etc.) ── #}
+              {% for f in other_files %}
+                <div class="rounded-lg border border-zinc-700/40 bg-zinc-800/20 overflow-hidden">
+                  <div class="p-3 space-y-2">
+                    <div class="flex items-start gap-2">
+                      <span class="text-base flex-shrink-0 mt-0.5">📄</span>
+                      <span class="font-mono text-sm text-zinc-300 break-all leading-snug">{{ f["original_filename"] }}</span>
+                    </div>
+                    <div class="flex items-center gap-2 pl-7">
+                      <span class="text-xs text-zinc-500">
+                        {% if f["size_bytes"] >= 1048576 %}
+                          {{ (f["size_bytes"] / 1048576) | round(1) }} MB
+                        {% else %}
+                          {{ (f["size_bytes"] / 1024) | round(1) }} KB
+                        {% endif %}
+                      </span>
+                      {% if builds|length > 0 %}
+                        <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/assign-build" class="flex-1 min-w-0">
+                          <select name="build_id" onchange="this.form.submit()"
+                                  class="w-full text-xs rounded-lg px-2.5 py-1.5 border cursor-pointer
+                                    {% if f.build_id %}bg-indigo-500/20 border-indigo-500/40 text-indigo-200{% else %}bg-zinc-700/50 border-zinc-600 text-zinc-400{% endif %}">
+                            <option value="">No build</option>
+                            {% for b in builds %}
+                              <option value="{{ b.id }}" {% if f.build_id == b.id %}selected{% endif %}>
+                                Build #{{ b.build_number }}{% if b.print_name %} – {{ b.print_name }}{% endif %}
+                              </option>
+                            {% endfor %}
+                          </select>
+                        </form>
+                      {% endif %}
+                      <div class="flex items-center gap-0.5 flex-shrink-0">
+                        <a href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}" 
+                           class="p-1.5 rounded-md hover:bg-zinc-600/50 text-zinc-400 hover:text-zinc-200 transition" title="Download">⬇️</a>
+                        <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" onsubmit="return confirm('Delete {{ f.original_filename }}?')">
+                          <button type="submit" class="p-1.5 rounded-md hover:bg-red-900/40 text-zinc-500 hover:text-red-400 transition" title="Delete">🗑️</button>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+
+            </div>
           {% endif %}
         </div>
+
+        <script>
+        function toggleLinkMenu(btn) {
+          const menu = btn.nextElementSibling;
+          // Close all other open menus
+          document.querySelectorAll('.link-menu').forEach(m => {
+            if (m !== menu) m.classList.add('hidden');
+          });
+          menu.classList.toggle('hidden');
+          // Position above or below depending on viewport space
+          if (!menu.classList.contains('hidden')) {
+            const rect = btn.getBoundingClientRect();
+            const menuH = menu.scrollHeight;
+            const spaceBelow = window.innerHeight - rect.bottom;
+            if (spaceBelow < menuH + 8 && rect.top > menuH) {
+              menu.style.top = 'auto';
+              menu.style.bottom = '100%';
+              menu.style.marginBottom = '4px';
+              menu.style.marginTop = '0';
+            } else {
+              menu.style.top = '100%';
+              menu.style.bottom = 'auto';
+              menu.style.marginTop = '4px';
+              menu.style.marginBottom = '0';
+            }
+          }
+        }
+        document.addEventListener('click', function(e) {
+          if (!e.target.closest('.link-menu') && !e.target.closest('[onclick*="toggleLinkMenu"]')) {
+            document.querySelectorAll('.link-menu').forEach(m => m.classList.add('hidden'));
+          }
+        });
+        </script>
 
         <!-- Messages Card -->
         <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
@@ -1633,6 +1861,90 @@
       document.getElementById('link-account-modal')?.addEventListener('click', (e) => {
         if (e.target.id === 'link-account-modal') hideLinkAccountModal();
       });
+      
+      // ── Live ETA / Progress Polling ──────────────────────────────────
+      {% if req["status"] == "PRINTING" %}
+      (function() {
+        const RID = '{{ req["id"] }}';
+        const POLL_INTERVAL = 15000; // 15 seconds
+        
+        function formatTimeRemaining(seconds) {
+          if (seconds == null || seconds < 0) return null;
+          const h = Math.floor(seconds / 3600);
+          const m = Math.floor((seconds % 3600) / 60);
+          if (h > 0) return `⏱ ${h}h ${m}m left`;
+          return `⏱ ${m}m left`;
+        }
+        
+        async function pollLiveStatus() {
+          try {
+            const resp = await fetch(`/api/request/${RID}/live-status`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            
+            const eta = data.eta_info || {};
+            const live = data.printer_live || {};
+            
+            // Update "Currently Printing" card progress bars
+            if (live.progress != null) {
+              document.querySelectorAll('.current-build-progress-bar').forEach(el => {
+                el.style.width = live.progress + '%';
+              });
+              document.querySelectorAll('.current-build-progress-text').forEach(el => {
+                el.textContent = live.progress + '%';
+              });
+            }
+            
+            // Update build card progress bars in the build list
+            (eta.builds_info || []).forEach(bi => {
+              if (bi.progress != null) {
+                const bar = document.querySelector(`.build-progress-bar[data-build-id="${bi.id}"]`);
+                if (bar) bar.style.width = bi.progress + '%';
+                const txt = document.querySelector(`.build-progress-text[data-build-id="${bi.id}"]`);
+                if (txt) txt.textContent = bi.progress + '%';
+              }
+              // Update individual build ETA
+              const etaEl = document.querySelector(`.build-eta-text[data-build-id="${bi.id}"]`);
+              if (etaEl) {
+                if (bi.eta_display) {
+                  etaEl.textContent = '⏱ ' + bi.eta_display;
+                  etaEl.classList.remove('hidden');
+                }
+              }
+              // Update "Currently Printing" card ETA
+              const currentEta = document.querySelector(`.current-build-eta[data-build-id="${bi.id}"]`);
+              if (currentEta && bi.eta_display) {
+                currentEta.textContent = '⏱ ' + bi.eta_display;
+              }
+            });
+            
+            // Update Moonraker time remaining display
+            if (live.moonraker_time_remaining != null) {
+              const timeStr = formatTimeRemaining(live.moonraker_time_remaining);
+              // Could add a dedicated element for this
+            }
+            
+            // Update multi-build summary ETA
+            const buildEtaEl = document.getElementById('request-build-eta');
+            if (buildEtaEl && eta.current_build_eta) {
+              buildEtaEl.textContent = '⏱ ' + eta.current_build_eta;
+            }
+            const totalEtaEl = document.getElementById('request-total-eta');
+            if (totalEtaEl && eta.total_eta) {
+              totalEtaEl.textContent = '📅 ' + eta.total_eta;
+            }
+            
+          } catch (e) {
+            console.warn('[Live ETA] Poll error:', e);
+          }
+        }
+        
+        // Start polling
+        setInterval(pollLiveStatus, POLL_INTERVAL);
+        // Initial poll after 5 seconds (gives page load time to settle)
+        setTimeout(pollLiveStatus, 5000);
+      })();
+      {% endif %}
     </script>
   </div>
 </body>

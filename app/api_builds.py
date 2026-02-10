@@ -964,9 +964,10 @@ def admin_assign_file_to_build(
         conn.close()
         raise HTTPException(status_code=404, detail="File not found")
     
-    # If build_id is empty, unassign the file
+    # If build_id is empty, unassign the file (and any linked G-code)
     if not build_id or build_id.strip() == "":
         conn.execute("UPDATE files SET build_id = NULL WHERE id = ?", (file_id,))
+        conn.execute("UPDATE files SET build_id = NULL WHERE linked_file_id = ? AND request_id = ?", (file_id, rid))
         conn.commit()
         conn.close()
         return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
@@ -981,11 +982,70 @@ def admin_assign_file_to_build(
         conn.close()
         raise HTTPException(status_code=404, detail="Build not found")
     
-    # Assign file to build
+    # Assign file to build, and cascade to any linked G-code files
     conn.execute("UPDATE files SET build_id = ? WHERE id = ?", (build_id, file_id))
+    conn.execute("UPDATE files SET build_id = ? WHERE linked_file_id = ? AND request_id = ?", (build_id, file_id, rid))
     conn.commit()
     conn.close()
     
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@router.post("/admin/request/{rid}/file/{file_id}/link")
+def admin_link_file(
+    request: Request,
+    rid: str,
+    file_id: str,
+    linked_file_id: str = Form(""),
+    _=Depends(require_admin)
+):
+    """Link a file to another file (e.g. link a G-code to its source STL/3MF)."""
+    conn = db()
+
+    # Verify request exists
+    req = conn.execute("SELECT id FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    # Verify the file exists and belongs to this request
+    file_info = conn.execute(
+        "SELECT id, original_filename FROM files WHERE id = ? AND request_id = ?",
+        (file_id, rid)
+    ).fetchone()
+    if not file_info:
+        conn.close()
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # If empty, unlink
+    if not linked_file_id or linked_file_id.strip() == "":
+        conn.execute("UPDATE files SET linked_file_id = NULL WHERE id = ?", (file_id,))
+        conn.commit()
+        conn.close()
+        return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+    # Verify the target file exists and belongs to this request
+    target = conn.execute(
+        "SELECT id, original_filename FROM files WHERE id = ? AND request_id = ?",
+        (linked_file_id, rid)
+    ).fetchone()
+    if not target:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Target file not found")
+
+    # Don't allow linking a file to itself
+    if file_id == linked_file_id:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Cannot link a file to itself")
+
+    conn.execute("UPDATE files SET linked_file_id = ? WHERE id = ?", (linked_file_id, file_id))
+    # Auto-inherit the model's build assignment
+    model_build = conn.execute("SELECT build_id FROM files WHERE id = ?", (linked_file_id,)).fetchone()
+    if model_build and model_build["build_id"]:
+        conn.execute("UPDATE files SET build_id = ? WHERE id = ?", (model_build["build_id"], file_id))
+    conn.commit()
+    conn.close()
+
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
 
@@ -1535,6 +1595,47 @@ async def get_all_printers_status(_=Depends(require_admin)):
     return printer_status
 
 
+@router.get("/api/request/{rid}/live-status")
+async def request_live_status(rid: str, _=Depends(require_admin)):
+    """
+    Get live status for a request including Moonraker ETA, progress, and build info.
+    Used by AJAX polling on the request detail page.
+    """
+    conn = db()
+    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    req = dict(req_row)
+    conn.close()
+
+    # Get live printer status from cache
+    printer_code = req.get("printer")
+    live_printer_status = get_cached_printer_status(printer_code) if printer_code else None
+
+    # Get ETA info with live printer data
+    eta_info = get_request_eta_info(rid, req, printer_status=live_printer_status)
+
+    # Extract live progress/time from printer status
+    printer_live = {}
+    if live_printer_status and live_printer_status.get("is_printing"):
+        printer_live = {
+            "progress": live_printer_status.get("progress"),
+            "current_layer": live_printer_status.get("current_layer"),
+            "total_layers": live_printer_status.get("total_layers"),
+            "moonraker_time_remaining": live_printer_status.get("moonraker_time_remaining"),
+            "is_moonraker": live_printer_status.get("is_moonraker", False),
+            "filament_used_m": live_printer_status.get("filament_used_m"),
+        }
+
+    return {
+        "request_id": rid,
+        "request_status": req.get("status"),
+        "eta_info": eta_info,
+        "printer_live": printer_live,
+    }
+
+
 @router.get("/api/printer/{printer_code}/raw/{command}")
 async def printer_raw_command(printer_code: str, command: str, _=Depends(require_admin)):
     """Send a raw M-code command to the printer and return the response"""
@@ -2049,7 +2150,54 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         else:
             f_dict["metadata"] = None
         enriched_files.append(f_dict)
-    
+
+    # Build a lookup map of file id -> file for linking
+    files_by_id = {f["id"]: f for f in enriched_files}
+
+    # Resolve linked file names for display
+    for f in enriched_files:
+        lid = f.get("linked_file_id")
+        if lid and lid in files_by_id:
+            f["linked_file_name"] = files_by_id[lid].get("original_filename", "")
+        else:
+            f["linked_file_name"] = None
+
+    # Categorize files by type for the template
+    MODEL_EXTS = {'.stl', '.3mf', '.obj', '.step', '.stp'}
+    GCODE_EXTS = {'.gcode', '.g'}
+    for f in enriched_files:
+        ext = ('.' + f["original_filename"].rsplit('.', 1)[-1].lower()) if '.' in f["original_filename"] else ''
+        if ext in MODEL_EXTS:
+            f["file_type"] = "model"
+        elif ext in GCODE_EXTS:
+            f["file_type"] = "gcode"
+        else:
+            f["file_type"] = "other"
+
+    # Build a list of model files for the link-to dropdown
+    model_files = [f for f in enriched_files if f["file_type"] == "model"]
+
+    # Group files for the card-based UI:
+    # - Model files with their linked G-code nested inside
+    # - Standalone G-code files (not linked to any model)
+    # - Other files (zip, step, etc.)
+    linked_gcode_ids = set()  # track which gcodes are already nested
+    for f in enriched_files:
+        if f["file_type"] == "gcode" and f.get("linked_file_id") and f["linked_file_id"] in files_by_id:
+            linked_gcode_ids.add(f["id"])
+
+    # Attach linked gcodes to their model files
+    model_to_gcodes = {}  # model_id -> [gcode files]
+    for f in enriched_files:
+        if f["id"] in linked_gcode_ids:
+            mid = f["linked_file_id"]
+            model_to_gcodes.setdefault(mid, []).append(f)
+    for mf in model_files:
+        mf["linked_gcodes"] = model_to_gcodes.get(mf["id"], [])
+
+    standalone_gcodes = [f for f in enriched_files if f["file_type"] == "gcode" and f["id"] not in linked_gcode_ids]
+    other_files = [f for f in enriched_files if f["file_type"] == "other"]
+
     # Build a map of build_id -> list of files
     files_by_build = {}
     for f in enriched_files:
@@ -2082,8 +2230,11 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
     # Get slicer accuracy info for this printer/material combo
     accuracy_info = get_slicer_accuracy_factor(req["printer"], req["material"])
     
-    # Get multi-build ETA info
-    build_eta_info = get_request_eta_info(rid, dict(req))
+    # Get live printer status from cache (populated by periodic poll)
+    live_printer_status = get_cached_printer_status(req["printer"]) if req["printer"] else None
+    
+    # Get multi-build ETA info (pass live printer status for Moonraker ETA)
+    build_eta_info = get_request_eta_info(rid, dict(req), printer_status=live_printer_status)
     
     # Get request assignments (who is linked to this request)
     assignments = get_request_assignments(rid)
@@ -2093,6 +2244,9 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         "request": request,
         "req": req,
         "files": enriched_files,
+        "model_files": model_files,
+        "standalone_gcodes": standalone_gcodes,
+        "other_files": other_files,
         "events": events,
         "messages": messages,
         "builds": builds_list,
