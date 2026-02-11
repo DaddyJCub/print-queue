@@ -23,6 +23,9 @@
           <a href="/admin" class="admin-pill {% if active_page == 'queue' %}active{% endif %}">
             📋 <span>Queue</span>
           </a>
+          <a href="/admin/shipping" class="admin-pill {% if active_page == 'shipping' %}active{% endif %}">
+            📦 <span>Shipping</span>
+          </a>
           {% if can_design_nav %}
           <a href="/admin?design=1" class="admin-pill {% if active_page == 'design' %}active{% endif %}">
             🎨 <span>Design</span>
@@ -139,6 +142,7 @@
   <div id="mobile-menu" class="hidden md:hidden border-t border-zinc-800 bg-zinc-900/95 backdrop-blur-lg max-h-[70vh] overflow-y-auto">
     <div class="p-3 space-y-1">
       <a href="/admin" class="mobile-nav-link {% if active_page == 'queue' %}active{% endif %}">📋 Queue</a>
+      <a href="/admin/shipping" class="mobile-nav-link {% if active_page == 'shipping' %}active{% endif %}">📦 Shipping</a>
       {% if can_design_nav %}
       <a href="/admin?design=1" class="mobile-nav-link {% if active_page == 'design' %}active{% endif %}">🎨 Design Queue</a>
       {% endif %}

@@ -1,0 +1,178 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shipping | Printellect Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-7xl mx-auto p-6">
+    {% set active_page = 'shipping' %}
+    {% include 'admin_nav.html' %}
+
+    <div class="mb-5">
+      <h1 class="text-2xl font-bold">Shipping Operations</h1>
+      <p class="text-sm text-zinc-400 mt-1">Central view for all shipping requests, statuses, and fulfillment tasks.</p>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+      <a href="/admin/shipping" class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 hover:bg-zinc-900">
+        <div class="text-xs text-zinc-500">All</div>
+        <div class="text-lg font-semibold">{{ task_counts.get("all", 0) }}</div>
+      </a>
+      <a href="/admin/shipping?task=ready_for_fulfillment" class="rounded-xl border border-emerald-700/40 bg-emerald-900/20 p-3 hover:bg-emerald-900/30">
+        <div class="text-xs text-emerald-300">Ready to Fulfill</div>
+        <div class="text-lg font-semibold text-emerald-200">{{ task_counts.get("ready_for_fulfillment", 0) }}</div>
+      </a>
+      <a href="/admin/shipping?task=in_transit" class="rounded-xl border border-sky-700/40 bg-sky-900/20 p-3 hover:bg-sky-900/30">
+        <div class="text-xs text-sky-300">In Transit</div>
+        <div class="text-lg font-semibold text-sky-200">{{ task_counts.get("in_transit", 0) }}</div>
+      </a>
+      <a href="/admin/shipping?task=exceptions" class="rounded-xl border border-red-700/40 bg-red-900/20 p-3 hover:bg-red-900/30">
+        <div class="text-xs text-red-300">Exceptions</div>
+        <div class="text-lg font-semibold text-red-200">{{ task_counts.get("exceptions", 0) }}</div>
+      </a>
+      <a href="/admin/shipping?task=delivered" class="rounded-xl border border-indigo-700/40 bg-indigo-900/20 p-3 hover:bg-indigo-900/30">
+        <div class="text-xs text-indigo-300">Delivered</div>
+        <div class="text-lg font-semibold text-indigo-200">{{ task_counts.get("delivered", 0) }}</div>
+      </a>
+      <a href="/admin/shipping?task=pending_print" class="rounded-xl border border-amber-700/40 bg-amber-900/20 p-3 hover:bg-amber-900/30">
+        <div class="text-xs text-amber-300">Pending Print</div>
+        <div class="text-lg font-semibold text-amber-200">{{ task_counts.get("pending_print", 0) }}</div>
+      </a>
+    </div>
+
+    <form method="GET" action="/admin/shipping" class="mb-5 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div>
+          <label class="text-xs text-zinc-500">Task</label>
+          <select name="task" class="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm">
+            <option value="" {% if not task_filter %}selected{% endif %}>All tasks</option>
+            <option value="ready_for_fulfillment" {% if task_filter == "ready_for_fulfillment" %}selected{% endif %}>Ready to fulfill</option>
+            <option value="in_transit" {% if task_filter == "in_transit" %}selected{% endif %}>In transit</option>
+            <option value="exceptions" {% if task_filter == "exceptions" %}selected{% endif %}>Exceptions</option>
+            <option value="delivered" {% if task_filter == "delivered" %}selected{% endif %}>Delivered</option>
+            <option value="pending_print" {% if task_filter == "pending_print" %}selected{% endif %}>Pending print completion</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-zinc-500">Shipping status</label>
+          <select name="shipping_status" class="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm">
+            <option value="" {% if not shipping_status_filter %}selected{% endif %}>All statuses</option>
+            {% for s in shipping_statuses %}
+              <option value="{{ s }}" {% if shipping_status_filter == s %}selected{% endif %}>
+                {{ s.replace('_', ' ').title() }} ({{ status_counts.get(s, 0) }})
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="md:col-span-2">
+          <label class="text-xs text-zinc-500">Search</label>
+          <input name="q" value="{{ q }}" placeholder="Request ID, print name, requester, tracking..."
+                 class="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm" />
+        </div>
+      </div>
+      <div class="mt-3 flex gap-2">
+        <button class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-medium">Apply Filters</button>
+        <a href="/admin/shipping" class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm">Reset</a>
+      </div>
+    </form>
+
+    {% if items %}
+      <div class="space-y-3">
+        {% for item in items %}
+        <div class="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <a href="/admin/request/{{ item.id }}#shipping" class="font-semibold text-base hover:text-indigo-300">
+                {{ item.print_name or ("Request " ~ item.id[:8]) }}
+              </a>
+              <div class="text-xs text-zinc-500 mt-1">ID: {{ item.id[:8] }}</div>
+              <div class="text-sm text-zinc-300 mt-2">
+                {{ item.requester_name }} • {{ item.material or "—" }} {% if item.colors %}• {{ item.colors }}{% endif %}
+              </div>
+              <div class="text-sm text-zinc-400 mt-1">
+                {{ item.recipient_name or item.requester_name }} • {{ item.city or "—" }}, {{ item.state or "—" }} {{ item.postal_code or "" }} {{ item.country or "US" }}
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="inline-flex items-center px-2 py-1 rounded-lg border border-sky-700/40 bg-sky-900/20 text-sky-200 text-xs">
+                {{ item.shipping_status.replace("_", " ").title() }}
+              </div>
+              <div class="mt-2 text-xs">
+                <span class="px-2 py-0.5 rounded {% if item.print_complete %}bg-emerald-900/40 text-emerald-300{% else %}bg-amber-900/40 text-amber-300{% endif %}">
+                  Print: {{ item.status.replace("_", " ").title() }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+            <div class="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2.5">
+              <div class="text-xs text-zinc-500">Address Validation</div>
+              <div class="mt-1 {% if item.needs_address_validation %}text-amber-300{% else %}text-emerald-300{% endif %}">
+                {% if item.needs_address_validation %}Needs review{% else %}Valid{% endif %}
+              </div>
+            </div>
+            <div class="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2.5">
+              <div class="text-xs text-zinc-500">Quote</div>
+              <div class="mt-1 {% if item.has_quote %}text-emerald-300{% else %}text-zinc-400{% endif %}">
+                {% if item.has_quote %}${{ '%.2f'|format(item.quote_amount_cents / 100.0) }} {{ item.quote_currency or 'USD' }}{% else %}Not quoted{% endif %}
+              </div>
+            </div>
+            <div class="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2.5">
+              <div class="text-xs text-zinc-500">Tracking</div>
+              <div class="mt-1 {% if item.has_tracking %}text-emerald-300{% else %}text-zinc-400{% endif %}">
+                {{ item.tracking_number or "Not set" }}
+              </div>
+            </div>
+            <div class="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2.5">
+              <div class="text-xs text-zinc-500">Carrier / Service</div>
+              <div class="mt-1 text-zinc-300">{{ item.carrier or "—" }}{% if item.service %} • {{ item.service }}{% endif %}</div>
+            </div>
+          </div>
+
+          <div class="mt-3 flex flex-wrap gap-2">
+            <a href="/admin/request/{{ item.id }}#shipping" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm">Open Request</a>
+            {% if item.tracking_url %}
+              <a href="{{ item.tracking_url }}" target="_blank" class="px-3 py-1.5 rounded-lg bg-sky-700 hover:bg-sky-600 text-sm">Track</a>
+            {% endif %}
+            {% if item.needs_address_validation %}
+              <form method="POST" action="/admin/request/{{ item.id }}/shipping/validate-address">
+                {{ csrf_input(request)|safe }}
+                <button class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm">Validate Address</button>
+              </form>
+            {% endif %}
+            {% if item.needs_quote %}
+              <form method="POST" action="/admin/request/{{ item.id }}/shipping/rates">
+                {{ csrf_input(request)|safe }}
+                <input type="hidden" name="package_weight_oz" value="{{ shipping_defaults.weight_oz }}" />
+                <input type="hidden" name="package_length_in" value="{{ shipping_defaults.length_in }}" />
+                <input type="hidden" name="package_width_in" value="{{ shipping_defaults.width_in }}" />
+                <input type="hidden" name="package_height_in" value="{{ shipping_defaults.height_in }}" />
+                <button class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm">Fetch Rates</button>
+              </form>
+            {% endif %}
+            {% if item.in_transit %}
+              <form method="POST" action="/admin/request/{{ item.id }}/shipping/mark-delivered">
+                {{ csrf_input(request)|safe }}
+                <button class="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-sm">Mark Delivered</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-10 text-center text-zinc-400">
+        No shipping requests match the selected filters.
+      </div>
+    {% endif %}
+
+    <div class="mt-8 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
+      <a href="/changelog" class="hover:text-indigo-400 transition">Printellect v{{ version }}</a>
+    </div>
+  </div>
+</body>
+</html>

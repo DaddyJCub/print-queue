@@ -81,8 +81,225 @@ from app.demo_data import (
     get_demo_printer_job,
     get_demo_all_printers_status,
 )
+from app.shipping_shippo import ShippoClient, map_shippo_tracking_status
 
 router = APIRouter()
+
+SHIPPING_STATUSES = {
+    "REQUESTED",
+    "ADDRESS_VALIDATED",
+    "QUOTED",
+    "LABEL_PURCHASED",
+    "PRE_TRANSIT",
+    "IN_TRANSIT",
+    "OUT_FOR_DELIVERY",
+    "DELIVERED",
+    "EXCEPTION",
+    "RETURNED",
+    "CANCELLED",
+}
+
+
+def _shipping_tracking_url(carrier: Optional[str], tracking_number: Optional[str]) -> Optional[str]:
+    if not tracking_number:
+        return None
+    slug = (carrier or "").strip().lower()
+    if "usps" in slug:
+        return f"https://tools.usps.com/go/TrackConfirmAction?tLabels={tracking_number}"
+    if "ups" in slug:
+        return f"https://www.ups.com/track?tracknum={tracking_number}"
+    if "fedex" in slug:
+        return f"https://www.fedex.com/fedextrack/?trknbr={tracking_number}"
+    return f"https://track.goshippo.com/tracking/{tracking_number}"
+
+
+def _admin_actor_id(admin_obj: Any) -> Optional[str]:
+    return getattr(admin_obj, "id", None) if admin_obj else None
+
+
+def _shipping_from_address() -> Dict[str, Any]:
+    return {
+        "name": get_setting("shipping_from_name", ""),
+        "company": get_setting("shipping_from_company", ""),
+        "phone": get_setting("shipping_from_phone", ""),
+        "street1": get_setting("shipping_from_address_line1", ""),
+        "street2": get_setting("shipping_from_address_line2", ""),
+        "city": get_setting("shipping_from_city", ""),
+        "state": get_setting("shipping_from_state", ""),
+        "zip": get_setting("shipping_from_postal_code", ""),
+        "country": get_setting("shipping_from_country", "US"),
+    }
+
+
+def _shippo_api_key() -> str:
+    return (get_setting("shippo_api_key", "").strip() or os.getenv("SHIPPO_API_KEY", "").strip())
+
+
+def _shippo_webhook_credentials() -> tuple[str, str]:
+    user = get_setting("shippo_webhook_user", "").strip() or os.getenv("SHIPPO_WEBHOOK_USER", "").strip()
+    password = get_setting("shippo_webhook_pass", "").strip() or os.getenv("SHIPPO_WEBHOOK_PASS", "").strip()
+    return user, password
+
+
+def _parse_parcel_inputs(weight_oz: Optional[str], length_in: Optional[str], width_in: Optional[str], height_in: Optional[str]) -> Dict[str, str]:
+    def _as_float(raw: Optional[str], fallback: str) -> str:
+        try:
+            return str(float(raw))
+        except Exception:
+            return fallback
+
+    return {
+        "mass_unit": "oz",
+        "distance_unit": "in",
+        "weight": _as_float(weight_oz, get_setting("shipping_default_weight_oz", "16")),
+        "length": _as_float(length_in, get_setting("shipping_default_length_in", "8")),
+        "width": _as_float(width_in, get_setting("shipping_default_width_in", "6")),
+        "height": _as_float(height_in, get_setting("shipping_default_height_in", "4")),
+    }
+
+
+def _upsert_shipping_record(conn, rid: str, req: Dict[str, Any]):
+    row = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
+    if row:
+        return row
+
+    now = now_iso()
+    conn.execute(
+        """INSERT INTO request_shipping (
+            id, request_id, created_at, updated_at, shipping_status,
+            recipient_name, recipient_phone, address_line1, address_line2, city, state, postal_code, country,
+            package_weight_oz, package_length_in, package_width_in, package_height_in
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            str(uuid.uuid4()),
+            rid,
+            now,
+            now,
+            "REQUESTED",
+            req.get("requester_name"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            get_setting("shipping_default_country", "US"),
+            float(get_setting("shipping_default_weight_oz", "16")),
+            float(get_setting("shipping_default_length_in", "8")),
+            float(get_setting("shipping_default_width_in", "6")),
+            float(get_setting("shipping_default_height_in", "4")),
+        ),
+    )
+    return conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
+
+
+def _insert_shipping_event(
+    conn,
+    rid: str,
+    event_type: str,
+    shipping_status: Optional[str] = None,
+    provider: Optional[str] = None,
+    provider_event_id: Optional[str] = None,
+    message: Optional[str] = None,
+    payload: Optional[Dict[str, Any]] = None,
+):
+    try:
+        conn.execute(
+            """INSERT INTO request_shipping_events
+               (id, request_id, created_at, event_type, shipping_status, provider, provider_event_id, message, payload_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                str(uuid.uuid4()),
+                rid,
+                now_iso(),
+                event_type,
+                shipping_status,
+                provider,
+                provider_event_id,
+                message,
+                json.dumps(payload) if payload is not None else None,
+            ),
+        )
+    except Exception as exc:
+        # Duplicate provider event id is expected for webhook retries.
+        if provider_event_id and "UNIQUE constraint failed" in str(exc):
+            return
+        raise
+
+
+def _notify_requester_shipping_status(req: Dict[str, Any], shipping: Dict[str, Any], status_value: str):
+    if not get_bool_setting("shipping_notify_requester_updates", True):
+        return
+    email = req.get("requester_email")
+    if not email:
+        return
+    user_prefs = get_user_notification_prefs(email)
+    if not user_prefs.get("status_email", True):
+        return
+
+    rid = req["id"]
+    title_map = {
+        "QUOTED": "Shipping Quote Ready",
+        "LABEL_PURCHASED": "Shipping Label Created",
+        "PRE_TRANSIT": "Shipment Created",
+        "IN_TRANSIT": "Package In Transit",
+        "OUT_FOR_DELIVERY": "Out for Delivery",
+        "DELIVERED": "Package Delivered",
+        "EXCEPTION": "Shipping Exception",
+        "RETURNED": "Shipment Returned",
+        "CANCELLED": "Shipping Cancelled",
+    }
+    subtitle_map = {
+        "QUOTED": "We prepared your shipping quote.",
+        "LABEL_PURCHASED": "Your tracking number is now available.",
+        "PRE_TRANSIT": "Your package is prepared for carrier pickup.",
+        "IN_TRANSIT": "Your package is moving through the carrier network.",
+        "OUT_FOR_DELIVERY": "Your package is out for delivery.",
+        "DELIVERED": "Your package was marked delivered.",
+        "EXCEPTION": "The carrier reported an issue with delivery.",
+        "RETURNED": "The package is being returned.",
+        "CANCELLED": "Shipping was cancelled for this request.",
+    }
+
+    subject = f"[{APP_TITLE}] {title_map.get(status_value, 'Shipping Update')} - {req.get('print_name') or rid[:8]}"
+    rows = [
+        ("Request ID", rid[:8]),
+        ("Print", req.get("print_name") or "—"),
+        ("Shipping Status", status_value.replace("_", " ").title()),
+        ("Carrier", shipping.get("carrier") or "—"),
+        ("Service", shipping.get("service") or "—"),
+        ("Tracking #", shipping.get("tracking_number") or "—"),
+    ]
+    cta_url = shipping.get("tracking_url") or f"{BASE_URL}/my/{rid}?token={req['access_token']}"
+    cta_label = "Track Package" if shipping.get("tracking_url") else "View Request"
+    html = build_email_html(
+        title=title_map.get(status_value, "Shipping Update"),
+        subtitle=subtitle_map.get(status_value, "Your shipping details were updated."),
+        rows=rows,
+        cta_url=cta_url,
+        cta_label=cta_label,
+        header_color="#0ea5e9",
+        secondary_cta_url=f"{BASE_URL}/my/{rid}?token={req['access_token']}",
+        secondary_cta_label="Open Request",
+    )
+    text = (
+        f"Request: {req.get('print_name') or rid[:8]}\n"
+        f"Shipping status: {status_value}\n"
+        f"Tracking: {shipping.get('tracking_number') or 'N/A'}\n"
+        f"Link: {cta_url}\n"
+    )
+    send_email([email], subject, text, html)
+
+    if user_prefs.get("status_push", True):
+        try:
+            send_push_notification(
+                email=email,
+                title=title_map.get(status_value, "Shipping Update"),
+                body=f"{req.get('print_name') or 'Your request'}: {status_value.replace('_', ' ').title()}",
+                url=f"/my/{rid}?token={req['access_token']}",
+            )
+        except Exception:
+            pass
 
 # ─────────────────────────── BUILD MANAGEMENT ENDPOINTS ───────────────────────────
 
@@ -2338,6 +2555,15 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
     files = conn.execute("SELECT * FROM files WHERE request_id = ? ORDER BY created_at DESC", (rid,)).fetchall()
     events = conn.execute("SELECT * FROM status_events WHERE request_id = ? ORDER BY created_at DESC", (rid,)).fetchall()
     messages = conn.execute("SELECT * FROM request_messages WHERE request_id = ? ORDER BY created_at ASC", (rid,)).fetchall()
+    shipping_row = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
+    shipping_rates_rows = conn.execute(
+        "SELECT * FROM request_shipping_rate_snapshots WHERE request_id = ? ORDER BY created_at DESC LIMIT 5",
+        (rid,),
+    ).fetchall()
+    shipping_events = conn.execute(
+        "SELECT * FROM request_shipping_events WHERE request_id = ? ORDER BY created_at DESC LIMIT 30",
+        (rid,),
+    ).fetchall()
     
     # Enrich files with parsed metadata
     enriched_files = []
@@ -2448,6 +2674,23 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
     # Get request assignments (who is linked to this request)
     assignments = get_request_assignments(rid)
     assignments_list = [a.to_dict() if hasattr(a, 'to_dict') else a for a in assignments]
+
+    shipping_rates = []
+    for row in shipping_rates_rows:
+        item = dict(row)
+        try:
+            item["rates"] = json.loads(item.get("rates_json") or "[]")
+        except Exception:
+            item["rates"] = []
+        shipping_rates.append(item)
+
+    shipping_defaults = {
+        "weight_oz": get_setting("shipping_default_weight_oz", "16"),
+        "length_in": get_setting("shipping_default_length_in", "8"),
+        "width_in": get_setting("shipping_default_width_in", "6"),
+        "height_in": get_setting("shipping_default_height_in", "4"),
+    }
+    shipping_from = _shipping_from_address()
     
     return templates.TemplateResponse("admin_request.html", {
         "request": request,
@@ -2461,6 +2704,12 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         "builds": builds_list,
         "build_eta_info": build_eta_info,
         "assignments": assignments_list,
+        "shipping": dict(shipping_row) if shipping_row else None,
+        "shipping_rates": shipping_rates,
+        "shipping_events": [dict(e) for e in shipping_events],
+        "shipping_defaults": shipping_defaults,
+        "shipping_from": shipping_from,
+        "shipping_enabled": get_bool_setting("shipping_enabled", False),
         "assignment_roles": [r.value for r in AssignmentRole],
         "status_flow": STATUS_FLOW,
         "printers": PRINTERS,
@@ -2756,6 +3005,526 @@ def admin_dismiss_match_suggestion(
     return RedirectResponse(url="/admin", status_code=303)
 
 
+@router.post("/admin/request/{rid}/shipping/rates")
+def admin_fetch_shipping_rates(
+    request: Request,
+    rid: str,
+    package_weight_oz: Optional[str] = Form(None),
+    package_length_in: Optional[str] = Form(None),
+    package_width_in: Optional[str] = Form(None),
+    package_height_in: Optional[str] = Form(None),
+    _=Depends(require_permission("manage_queue")),
+):
+    if not get_bool_setting("shipping_enabled", False):
+        raise HTTPException(status_code=400, detail="Shipping is disabled")
+
+    conn = db()
+    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    req = dict(req_row)
+    if (req.get("fulfillment_method") or "pickup") != "shipping":
+        conn.close()
+        raise HTTPException(status_code=400, detail="Request is not a shipping request")
+
+    shipping = _upsert_shipping_record(conn, rid, req)
+    shipping = dict(shipping)
+    address_to = {
+        "name": shipping.get("recipient_name") or req.get("requester_name") or "",
+        "phone": shipping.get("recipient_phone") or "",
+        "street1": shipping.get("address_line1") or "",
+        "street2": shipping.get("address_line2") or "",
+        "city": shipping.get("city") or "",
+        "state": shipping.get("state") or "",
+        "zip": shipping.get("postal_code") or "",
+        "country": shipping.get("country") or "US",
+    }
+    if not address_to["street1"] or not address_to["city"] or not address_to["state"] or not address_to["zip"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Shipping address is incomplete")
+
+    parcel = _parse_parcel_inputs(package_weight_oz, package_length_in, package_width_in, package_height_in)
+    try:
+        client = ShippoClient(api_key=_shippo_api_key())
+        shipment = client.create_shipment_and_rates(
+            address_from=_shipping_from_address(),
+            address_to=address_to,
+            parcel=parcel,
+            metadata=f"request_id={rid}",
+        )
+    except Exception as exc:
+        conn.close()
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    rates = shipment.get("rates", [])
+    now = now_iso()
+    conn.execute(
+        """INSERT INTO request_shipping_rate_snapshots
+           (id, request_id, created_at, provider, parcel_weight_oz, parcel_length_in, parcel_width_in, parcel_height_in, rates_json)
+           VALUES (?, ?, ?, 'shippo', ?, ?, ?, ?, ?)""",
+        (
+            str(uuid.uuid4()),
+            rid,
+            now,
+            float(parcel["weight"]),
+            float(parcel["length"]),
+            float(parcel["width"]),
+            float(parcel["height"]),
+            json.dumps(rates),
+        ),
+    )
+    conn.execute(
+        """UPDATE request_shipping
+           SET updated_at = ?, package_weight_oz = ?, package_length_in = ?, package_width_in = ?, package_height_in = ?,
+               provider = 'shippo', provider_shipment_id = ?
+           WHERE request_id = ?""",
+        (now, float(parcel["weight"]), float(parcel["length"]), float(parcel["width"]), float(parcel["height"]), shipment.get("object_id"), rid),
+    )
+    _insert_shipping_event(
+        conn,
+        rid,
+        event_type="rates_fetched",
+        shipping_status=shipping.get("shipping_status"),
+        provider="shippo",
+        provider_event_id=None,
+        message=f"Fetched {len(rates)} live rates",
+        payload={"shipment_id": shipment.get("object_id"), "rate_count": len(rates)},
+    )
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now, req["status"], req["status"], f"Shipping rates fetched ({len(rates)} options)"),
+    )
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url=f"/admin/request/{rid}#shipping", status_code=303)
+
+
+@router.post("/admin/request/{rid}/shipping/quote")
+def admin_save_shipping_quote(
+    request: Request,
+    rid: str,
+    quote_amount: str = Form(...),
+    quote_notes: Optional[str] = Form(None),
+    selected_rate_id: Optional[str] = Form(None),
+    admin=Depends(require_permission("manage_queue")),
+):
+    conn = db()
+    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    req = dict(req_row)
+    shipping = _upsert_shipping_record(conn, rid, req)
+
+    try:
+        amount_cents = int(round(float((quote_amount or "0").strip()) * 100))
+    except Exception:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Invalid quote amount")
+    if amount_cents < 0:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Invalid quote amount")
+
+    now = now_iso()
+    conn.execute(
+        """UPDATE request_shipping
+           SET updated_at = ?, shipping_status = 'QUOTED', quote_amount_cents = ?, quote_notes = ?, quoted_at = ?, quoted_by = ?, selected_rate_id = ?
+           WHERE request_id = ?""",
+        (now, amount_cents, (quote_notes or "").strip() or None, now, _admin_actor_id(admin), (selected_rate_id or "").strip() or None, rid),
+    )
+    _insert_shipping_event(
+        conn,
+        rid,
+        event_type="quote_saved",
+        shipping_status="QUOTED",
+        message=f"Quote saved (${amount_cents / 100:.2f})",
+    )
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now, req["status"], req["status"], f"Shipping quote saved (${amount_cents / 100:.2f})"),
+    )
+    conn.commit()
+
+    shipping_updated = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
+    if shipping_updated:
+        _notify_requester_shipping_status(req, dict(shipping_updated), "QUOTED")
+    conn.close()
+    return RedirectResponse(url=f"/admin/request/{rid}#shipping", status_code=303)
+
+
+@router.post("/admin/request/{rid}/shipping/validate-address")
+def admin_validate_shipping_address(
+    request: Request,
+    rid: str,
+    _=Depends(require_permission("manage_queue")),
+):
+    conn = db()
+    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    req = dict(req_row)
+    shipping = dict(_upsert_shipping_record(conn, rid, req))
+
+    address = {
+        "name": shipping.get("recipient_name") or req.get("requester_name") or "",
+        "phone": shipping.get("recipient_phone") or "",
+        "street1": shipping.get("address_line1") or "",
+        "street2": shipping.get("address_line2") or "",
+        "city": shipping.get("city") or "",
+        "state": shipping.get("state") or "",
+        "zip": shipping.get("postal_code") or "",
+        "country": shipping.get("country") or "US",
+    }
+    if not address["street1"] or not address["city"] or not address["state"] or not address["zip"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Shipping address is incomplete")
+
+    try:
+        client = ShippoClient(api_key=_shippo_api_key())
+        result = client.validate_address(address)
+    except Exception as exc:
+        conn.close()
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    validation = result.get("validation_results", {}) if isinstance(result, dict) else {}
+    messages = validation.get("messages") or []
+    is_valid = bool(validation.get("is_valid"))
+    next_status = "ADDRESS_VALIDATED" if is_valid else shipping.get("shipping_status") or "REQUESTED"
+    now = now_iso()
+    conn.execute(
+        """UPDATE request_shipping
+           SET updated_at = ?, shipping_status = ?, address_validation_status = ?, address_validation_messages = ?, normalized_address_json = ?
+           WHERE request_id = ?""",
+        (
+            now,
+            next_status,
+            "valid" if is_valid else "invalid",
+            json.dumps(messages),
+            json.dumps(result),
+            rid,
+        ),
+    )
+    _insert_shipping_event(
+        conn,
+        rid,
+        event_type="address_validated",
+        shipping_status=next_status,
+        provider="shippo",
+        message="Address validation completed",
+        payload={"is_valid": is_valid, "messages": messages},
+    )
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now, req["status"], req["status"], f"Shipping address validation: {'valid' if is_valid else 'needs review'}"),
+    )
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url=f"/admin/request/{rid}#shipping", status_code=303)
+
+
+@router.post("/admin/request/{rid}/shipping/buy-label")
+def admin_buy_shipping_label(
+    request: Request,
+    rid: str,
+    rate_id: Optional[str] = Form(None),
+    _=Depends(require_permission("manage_queue")),
+):
+    conn = db()
+    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    req = dict(req_row)
+    shipping = dict(_upsert_shipping_record(conn, rid, req))
+    chosen_rate_id = (rate_id or shipping.get("selected_rate_id") or "").strip()
+    if not chosen_rate_id:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Rate ID is required to buy a label")
+
+    try:
+        client = ShippoClient(api_key=_shippo_api_key())
+        txn = client.buy_label(chosen_rate_id, metadata=f"request_id={rid}")
+    except Exception as exc:
+        conn.close()
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    rate_obj = txn.get("rate") or {}
+    tracking_number = txn.get("tracking_number")
+    carrier = txn.get("tracking_provider") or rate_obj.get("provider")
+    tracking_status = (txn.get("tracking_status") or "UNKNOWN").upper()
+    internal_status = map_shippo_tracking_status(tracking_status)
+    if internal_status == "LABEL_PURCHASED" and tracking_number:
+        internal_status = "PRE_TRANSIT"
+
+    now = now_iso()
+    conn.execute(
+        """UPDATE request_shipping
+           SET updated_at = ?, shipping_status = ?, provider = 'shippo', provider_transaction_id = ?, provider_shipment_id = ?,
+               selected_rate_id = ?, carrier = ?, service = ?, rate_amount = ?, tracking_number = ?, tracking_status = ?,
+               tracking_url = ?, label_url = ?, label_pdf_url = ?, shipped_at = ?, last_provider_payload = ?
+           WHERE request_id = ?""",
+        (
+            now,
+            internal_status,
+            txn.get("object_id"),
+            txn.get("shipment"),
+            chosen_rate_id,
+            carrier,
+            rate_obj.get("servicelevel_name"),
+            rate_obj.get("amount"),
+            tracking_number,
+            tracking_status,
+            _shipping_tracking_url(carrier, tracking_number),
+            txn.get("label_url"),
+            txn.get("label_file"),
+            now if tracking_number else None,
+            json.dumps(txn),
+            rid,
+        ),
+    )
+    _insert_shipping_event(
+        conn,
+        rid,
+        event_type="label_purchased",
+        shipping_status=internal_status,
+        provider="shippo",
+        provider_event_id=txn.get("object_id"),
+        message=f"Label purchased ({carrier or 'carrier unknown'})",
+        payload={"tracking_number": tracking_number},
+    )
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now, req["status"], req["status"], "Shipping label purchased"),
+    )
+    conn.commit()
+
+    shipping_updated = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
+    if shipping_updated:
+        _notify_requester_shipping_status(req, dict(shipping_updated), internal_status)
+    conn.close()
+    return RedirectResponse(url=f"/admin/request/{rid}#shipping", status_code=303)
+
+
+@router.post("/admin/request/{rid}/shipping/set-tracking")
+def admin_set_tracking_number(
+    request: Request,
+    rid: str,
+    tracking_number: str = Form(...),
+    carrier: Optional[str] = Form(None),
+    tracking_url: Optional[str] = Form(None),
+    shipping_status: Optional[str] = Form(None),
+    _=Depends(require_permission("manage_queue")),
+):
+    conn = db()
+    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    req = dict(req_row)
+    _upsert_shipping_record(conn, rid, req)
+    normalized_status = (shipping_status or "PRE_TRANSIT").strip().upper()
+    if normalized_status not in SHIPPING_STATUSES:
+        normalized_status = "PRE_TRANSIT"
+    now = now_iso()
+    final_tracking_url = (tracking_url or "").strip() or _shipping_tracking_url(carrier, tracking_number)
+    conn.execute(
+        """UPDATE request_shipping
+           SET updated_at = ?, shipping_status = ?, carrier = ?, tracking_number = ?, tracking_status = ?, tracking_url = ?,
+               shipped_at = COALESCE(shipped_at, ?)
+           WHERE request_id = ?""",
+        (now, normalized_status, (carrier or "").strip() or None, tracking_number.strip(), normalized_status, final_tracking_url, now, rid),
+    )
+    _insert_shipping_event(
+        conn,
+        rid,
+        event_type="tracking_set",
+        shipping_status=normalized_status,
+        message="Tracking number set by admin",
+        payload={"carrier": carrier, "tracking_number": tracking_number},
+    )
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now, req["status"], req["status"], "Shipping tracking number updated"),
+    )
+    conn.commit()
+    shipping_updated = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
+    if shipping_updated:
+        _notify_requester_shipping_status(req, dict(shipping_updated), normalized_status)
+    conn.close()
+    return RedirectResponse(url=f"/admin/request/{rid}#shipping", status_code=303)
+
+
+@router.post("/admin/request/{rid}/shipping/mark-delivered")
+def admin_mark_shipping_delivered(
+    request: Request,
+    rid: str,
+    _=Depends(require_permission("manage_queue")),
+):
+    conn = db()
+    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    req = dict(req_row)
+    _upsert_shipping_record(conn, rid, req)
+    now = now_iso()
+    conn.execute(
+        """UPDATE request_shipping
+           SET updated_at = ?, shipping_status = 'DELIVERED', tracking_status = 'DELIVERED', delivered_at = ?
+           WHERE request_id = ?""",
+        (now, now, rid),
+    )
+    _insert_shipping_event(
+        conn,
+        rid,
+        event_type="delivered_manual",
+        shipping_status="DELIVERED",
+        message="Marked delivered by admin",
+    )
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now, req["status"], req["status"], "Shipping marked delivered"),
+    )
+    conn.commit()
+    shipping_updated = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
+    if shipping_updated:
+        _notify_requester_shipping_status(req, dict(shipping_updated), "DELIVERED")
+    conn.close()
+    return RedirectResponse(url=f"/admin/request/{rid}#shipping", status_code=303)
+
+
+@router.post("/webhooks/shippo")
+async def shippo_webhook(request: Request):
+    configured_user, configured_pass = _shippo_webhook_credentials()
+    if not configured_user or not configured_pass:
+        raise HTTPException(status_code=503, detail="Webhook authentication is not configured")
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Basic "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        raw = base64.b64decode(auth_header.split(" ", 1)[1]).decode("utf-8")
+        user, pwd = raw.split(":", 1)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if user != configured_user or pwd != configured_pass:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    payload = await request.json()
+    event_type = (payload.get("event") or payload.get("event_type") or "").strip().lower()
+    data = payload.get("data") or {}
+    provider_event_id = str(payload.get("object_id") or data.get("object_id") or "") or None
+    if provider_event_id:
+        provider_event_id = f"{event_type}:{provider_event_id}"
+
+    conn = db()
+    if provider_event_id:
+        dupe = conn.execute(
+            "SELECT id FROM request_shipping_events WHERE provider = 'shippo' AND provider_event_id = ?",
+            (provider_event_id,),
+        ).fetchone()
+        if dupe:
+            conn.close()
+            return JSONResponse({"ok": True, "duplicate": True})
+
+    rid = None
+    metadata = data.get("metadata")
+    if isinstance(metadata, str) and "request_id=" in metadata:
+        rid = metadata.split("request_id=", 1)[1].split(",", 1)[0].strip()
+    if not rid and data.get("tracking_number"):
+        row = conn.execute(
+            "SELECT request_id FROM request_shipping WHERE tracking_number = ?",
+            (data.get("tracking_number"),),
+        ).fetchone()
+        if row:
+            rid = row["request_id"]
+    if not rid and data.get("object_id"):
+        row = conn.execute(
+            "SELECT request_id FROM request_shipping WHERE provider_transaction_id = ? OR provider_shipment_id = ?",
+            (data.get("object_id"), data.get("object_id")),
+        ).fetchone()
+        if row:
+            rid = row["request_id"]
+
+    if not rid:
+        conn.close()
+        return JSONResponse({"ok": True, "ignored": "no_matching_request"})
+
+    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    shipping_row = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
+    if not req_row or not shipping_row:
+        conn.close()
+        return JSONResponse({"ok": True, "ignored": "missing_rows"})
+
+    req = dict(req_row)
+    shipping = dict(shipping_row)
+    now = now_iso()
+
+    next_status = shipping.get("shipping_status") or "REQUESTED"
+    tracking_number = data.get("tracking_number") or shipping.get("tracking_number")
+    carrier = data.get("carrier") or shipping.get("carrier")
+    tracking_status = shipping.get("tracking_status")
+
+    raw_tracking = data.get("tracking_status")
+    if isinstance(raw_tracking, dict):
+        tracking_status = (raw_tracking.get("status") or tracking_status or "").upper()
+    elif isinstance(raw_tracking, str):
+        tracking_status = raw_tracking.upper()
+    elif event_type == "transaction_updated":
+        tracking_status = (data.get("tracking_status") or tracking_status or "").upper()
+
+    if tracking_status:
+        next_status = map_shippo_tracking_status(tracking_status)
+    elif event_type == "transaction_updated" and data.get("status") == "SUCCESS":
+        next_status = "LABEL_PURCHASED"
+
+    delivered_at = now if next_status == "DELIVERED" else shipping.get("delivered_at")
+
+    conn.execute(
+        """UPDATE request_shipping
+           SET updated_at = ?, shipping_status = ?, tracking_status = ?, tracking_number = ?, carrier = ?,
+               tracking_url = ?, delivered_at = ?, last_provider_payload = ?
+           WHERE request_id = ?""",
+        (
+            now,
+            next_status,
+            tracking_status,
+            tracking_number,
+            carrier,
+            _shipping_tracking_url(carrier, tracking_number),
+            delivered_at,
+            json.dumps(payload),
+            rid,
+        ),
+    )
+    _insert_shipping_event(
+        conn,
+        rid,
+        event_type=f"webhook:{event_type or 'unknown'}",
+        shipping_status=next_status,
+        provider="shippo",
+        provider_event_id=provider_event_id,
+        message="Shippo webhook processed",
+        payload=payload,
+    )
+    conn.commit()
+    updated = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
+    if updated:
+        _notify_requester_shipping_status(req, dict(updated), next_status)
+
+    if next_status == "EXCEPTION" and get_bool_setting("shipping_notify_admin_exceptions", True):
+        send_push_notification_to_admins(
+            title="Shipping Exception",
+            body=f"{req.get('requester_name')}: {req.get('print_name') or rid[:8]}",
+            url=f"/admin/request/{rid}",
+            tag=f"shipping-exception-{rid[:8]}",
+        )
+    conn.close()
+    return JSONResponse({"ok": True})
+
+
 @router.post("/admin/request/{rid}/status")
 def admin_set_status(
     request: Request,
@@ -2881,12 +3650,16 @@ def admin_set_status(
         "NEEDS_INFO": "⚠️ Info Needed",
         "APPROVED": "✓ Request Approved",
         "PRINTING": "🖨 Now Printing",
-        "DONE": "✓ Ready for Pickup",
+        "DONE": "✓ Print Complete",
         "PICKED_UP": "✓ Completed",
         "REJECTED": "Request Rejected",
         "CANCELLED": "Request Cancelled",
         "BLOCKED": "⚠️ Build Issue",
     }
+    if to_status == "DONE" and (req.get("fulfillment_method") or "pickup") == "shipping":
+        status_titles["DONE"] = "✓ Print Complete (Shipping)"
+    elif to_status == "DONE":
+        status_titles["DONE"] = "✓ Ready for Pickup"
     
     header_color = status_colors.get(to_status, "#4f46e5")
     status_title = status_titles.get(to_status, "Status Update")
@@ -3007,7 +3780,10 @@ def admin_set_status(
         elif to_status == "PRINTING":
             subtitle = f"'{print_label}' is now printing!"
         elif to_status == "DONE":
-            subtitle = f"'{print_label}' is complete and ready for pickup!"
+            if (req.get("fulfillment_method") or "pickup") == "shipping":
+                subtitle = f"'{print_label}' is complete. We will update you when shipping starts."
+            else:
+                subtitle = f"'{print_label}' is complete and ready for pickup!"
         elif to_status == "PICKED_UP":
             subtitle = f"'{print_label}' has been picked up. Thanks!"
         elif to_status == "REJECTED":
@@ -3060,7 +3836,11 @@ def admin_set_status(
         push_bodies = {
             "NEEDS_INFO": f"We need more info about '{req['print_name'] or 'your request'}'",
             "APPROVED": f"'{req['print_name'] or 'Your request'}' is approved and in queue",
-            "DONE": f"'{req['print_name'] or 'Your request'}' is ready for pickup!",
+            "DONE": (
+                f"'{req['print_name'] or 'Your request'}' is complete and shipping will be updated soon."
+                if (req.get("fulfillment_method") or "pickup") == "shipping"
+                else f"'{req['print_name'] or 'Your request'}' is ready for pickup!"
+            ),
             "CANCELLED": f"'{req['print_name'] or 'Your request'}' has been cancelled.",
             "REJECTED": f"'{req['print_name'] or 'Your request'}' was rejected.",
             "BLOCKED": f"'{req['print_name'] or 'Your request'}' has a build issue - awaiting admin action.",

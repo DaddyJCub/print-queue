@@ -168,6 +168,133 @@
           {% endif %}
         </div>
 
+        {% if req["fulfillment_method"] == "shipping" %}
+        <div id="shipping" class="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4">
+          <div class="flex items-center justify-between gap-3 mb-3">
+            <h2 class="text-lg font-semibold">📦 Shipping</h2>
+            <span class="px-2 py-1 rounded-lg text-xs border border-sky-500/40 bg-sky-500/15 text-sky-300">
+              {{ shipping.shipping_status if shipping else 'REQUESTED' }}
+            </span>
+          </div>
+
+          {% if not shipping_enabled %}
+            <p class="text-sm text-amber-300 mb-3">Shipping feature is disabled in settings.</p>
+          {% endif %}
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div class="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+              <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">Destination</div>
+              {% if shipping %}
+                <p class="font-medium text-zinc-200">{{ shipping.recipient_name or req["requester_name"] }}</p>
+                <p class="text-zinc-300">{{ shipping.address_line1 or "—" }}</p>
+                {% if shipping.address_line2 %}<p class="text-zinc-400">{{ shipping.address_line2 }}</p>{% endif %}
+                <p class="text-zinc-300">{{ shipping.city or "—" }}, {{ shipping.state or "—" }} {{ shipping.postal_code or "" }}</p>
+                <p class="text-zinc-400">{{ shipping.country or "US" }}</p>
+                <p class="mt-2 text-xs text-zinc-500">Validation: {{ shipping.address_validation_status or "pending" }}</p>
+              {% else %}
+                <p class="text-zinc-500">No shipping record yet.</p>
+              {% endif %}
+            </div>
+            <div class="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+              <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">Tracking</div>
+              <p class="text-zinc-300">Carrier: {{ shipping.carrier if shipping else "—" }}</p>
+              <p class="text-zinc-300">Service: {{ shipping.service if shipping else "—" }}</p>
+              <p class="text-zinc-300">Tracking #: {{ shipping.tracking_number if shipping else "—" }}</p>
+              {% if shipping and shipping.tracking_url %}
+                <a href="{{ shipping.tracking_url }}" target="_blank" class="text-sky-300 hover:underline text-xs">Open tracking</a>
+              {% endif %}
+              {% if shipping and shipping.label_url %}
+                <div class="mt-2"><a href="{{ shipping.label_url }}" target="_blank" class="text-emerald-300 hover:underline text-xs">Open label</a></div>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/validate-address" class="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+              <div class="text-xs uppercase tracking-wide text-zinc-500">Address</div>
+              <button type="submit" class="w-full rounded-lg bg-sky-700 hover:bg-sky-600 transition py-2 text-sm font-medium">Validate Address</button>
+            </form>
+
+            <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/rates" class="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+              <div class="text-xs uppercase tracking-wide text-zinc-500">Rate Suggestions</div>
+              <div class="grid grid-cols-2 gap-2">
+                <input name="package_weight_oz" placeholder="Weight oz" value="{{ shipping.package_weight_oz if shipping and shipping.package_weight_oz else shipping_defaults.weight_oz }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+                <input name="package_length_in" placeholder="Length in" value="{{ shipping.package_length_in if shipping and shipping.package_length_in else shipping_defaults.length_in }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+                <input name="package_width_in" placeholder="Width in" value="{{ shipping.package_width_in if shipping and shipping.package_width_in else shipping_defaults.width_in }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+                <input name="package_height_in" placeholder="Height in" value="{{ shipping.package_height_in if shipping and shipping.package_height_in else shipping_defaults.height_in }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+              </div>
+              <button type="submit" class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition py-2 text-sm font-medium">Fetch Live Rates</button>
+            </form>
+          </div>
+
+          {% if shipping_rates %}
+            <div class="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+              <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">Recent Rate Snapshot</div>
+              {% set latest = shipping_rates[0] %}
+              {% set rates = latest.rates if latest.rates else [] %}
+              {% if rates %}
+                <div class="space-y-1 max-h-44 overflow-y-auto">
+                  {% for rate in rates[:12] %}
+                    <div class="flex items-center justify-between text-xs border border-zinc-800 rounded px-2 py-1.5">
+                      <span class="text-zinc-300">{{ rate.provider }} {{ rate.servicelevel.name if rate.servicelevel else '' }}</span>
+                      <span class="text-emerald-300">${{ rate.amount }}</span>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="text-xs text-zinc-500">No rates in latest snapshot.</p>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/quote" class="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+              <div class="text-xs uppercase tracking-wide text-zinc-500">Manual Quote</div>
+              <input name="quote_amount" required placeholder="Amount (USD)" value="{% if shipping and shipping.quote_amount_cents %}{{ '%.2f'|format((shipping.quote_amount_cents / 100.0)) }}{% endif %}" class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm" />
+              <input name="selected_rate_id" placeholder="Selected rate ID (optional)" value="{{ shipping.selected_rate_id if shipping else '' }}" class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+              <textarea name="quote_notes" rows="2" placeholder="Quote notes..." class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs">{{ shipping.quote_notes if shipping else '' }}</textarea>
+              <button type="submit" class="w-full rounded-lg bg-emerald-600 hover:bg-emerald-500 transition py-2 text-sm font-medium">Save Quote</button>
+            </form>
+
+            <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/buy-label" class="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+              <div class="text-xs uppercase tracking-wide text-zinc-500">Buy Label</div>
+              <input name="rate_id" placeholder="Rate ID (uses selected rate if empty)" class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+              <button type="submit" class="w-full rounded-lg bg-cyan-600 hover:bg-cyan-500 transition py-2 text-sm font-medium">Buy Label & Attach Tracking</button>
+            </form>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/set-tracking" class="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+              <div class="text-xs uppercase tracking-wide text-zinc-500">Manual Tracking</div>
+              <input name="tracking_number" required placeholder="Tracking number" class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+              <input name="carrier" placeholder="Carrier (USPS, UPS, FedEx...)" class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+              <input name="tracking_url" placeholder="Tracking URL (optional)" class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+              <button type="submit" class="w-full rounded-lg bg-zinc-700 hover:bg-zinc-600 transition py-2 text-sm font-medium">Set Tracking</button>
+            </form>
+
+            <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/mark-delivered" class="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+              <div class="text-xs uppercase tracking-wide text-zinc-500">Delivery Override</div>
+              <button type="submit" class="w-full rounded-lg bg-purple-700 hover:bg-purple-600 transition py-2 text-sm font-medium">Mark Delivered</button>
+            </form>
+          </div>
+
+          {% if shipping_events %}
+            <div class="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+              <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">Shipping Timeline</div>
+              <div class="space-y-1.5 max-h-44 overflow-y-auto">
+                {% for evt in shipping_events %}
+                  <div class="text-xs border border-zinc-800 rounded px-2 py-1.5">
+                    <div class="text-zinc-300">{{ evt.event_type }} {% if evt.shipping_status %}→ {{ evt.shipping_status }}{% endif %}</div>
+                    {% if evt.message %}<div class="text-zinc-500">{{ evt.message }}</div>{% endif %}
+                    <div class="text-zinc-600">{{ evt.created_at|localtime }}</div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
         <!-- Camera Feed Card (shows when printing and camera is configured) -->
         {% if req["status"] == "PRINTING" and req["printer"] in ["ADVENTURER_4", "AD5X"] and camera_url %}
         <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">

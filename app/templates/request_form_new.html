@@ -416,10 +416,110 @@
   </div>
   </div>
 
-  <!-- Section: Print Details -->
+  {% if shipping_enabled %}
+  <!-- Section: Delivery -->
   <div class="pb-4 border-b border-zinc-800">
     <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
       <span class="w-6 h-6 rounded-lg bg-indigo-600/30 flex items-center justify-center text-indigo-400 text-xs">2</span>
+      Delivery
+    </h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+      <label class="flex items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 cursor-pointer">
+        <input type="radio" name="fulfillment_method" value="pickup"
+               {% if not form.fulfillment_method or form.fulfillment_method == 'pickup' %}checked{% endif %}
+               onchange="toggleShippingFields()" />
+        <div>
+          <div class="font-medium text-zinc-100">Pickup</div>
+          <div class="text-xs text-zinc-500">Collect when your print is ready</div>
+        </div>
+      </label>
+      <label class="flex items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 cursor-pointer">
+        <input type="radio" name="fulfillment_method" value="shipping"
+               {% if form.fulfillment_method == 'shipping' %}checked{% endif %}
+               onchange="toggleShippingFields()" />
+        <div>
+          <div class="font-medium text-zinc-100">Ship to me</div>
+          <div class="text-xs text-zinc-500">Requires account sign-in</div>
+        </div>
+      </label>
+    </div>
+
+    {% if not user %}
+    <div id="shipping-account-gate" class="hidden rounded-xl border border-amber-700/50 bg-amber-900/20 p-3 text-sm">
+      <p class="text-amber-200">Shipping requires an account to continue. Sign in or create an account, then finish your request.</p>
+      <div class="mt-2 flex gap-2">
+        <a href="/auth/login?next=/" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-200">Sign In</a>
+        <a href="/auth/register?next=/?resume_shipping=1&flow=shipping" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">Register</a>
+      </div>
+    </div>
+    {% endif %}
+
+    <div id="shipping-fields" class="hidden mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-1.5">Recipient Name</label>
+        <input name="ship_recipient_name"
+               value="{{ (form.ship_recipient_name if form is defined else '') }}"
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-1.5">Phone <span class="text-zinc-500">(optional)</span></label>
+        <input name="ship_recipient_phone"
+               value="{{ (form.ship_recipient_phone if form is defined else '') }}"
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition" />
+      </div>
+      <div class="sm:col-span-2">
+        <label class="block text-sm font-medium text-zinc-300 mb-1.5">Address Line 1</label>
+        <input name="ship_address_line1"
+               value="{{ (form.ship_address_line1 if form is defined else '') }}"
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition" />
+      </div>
+      <div class="sm:col-span-2">
+        <label class="block text-sm font-medium text-zinc-300 mb-1.5">Address Line 2 <span class="text-zinc-500">(optional)</span></label>
+        <input name="ship_address_line2"
+               value="{{ (form.ship_address_line2 if form is defined else '') }}"
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-1.5">City</label>
+        <input name="ship_city"
+               value="{{ (form.ship_city if form is defined else '') }}"
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-1.5">State</label>
+        <input name="ship_state"
+               value="{{ (form.ship_state if form is defined else '') }}"
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-1.5">Postal Code</label>
+        <input name="ship_postal_code"
+               value="{{ (form.ship_postal_code if form is defined else '') }}"
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-zinc-300 mb-1.5">Country</label>
+        <input name="ship_country"
+               value="{{ (form.ship_country if form is defined and form.ship_country else shipping_default_country) }}"
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition" />
+      </div>
+      <div class="sm:col-span-2">
+        <label class="block text-sm font-medium text-zinc-300 mb-1.5">Shipping Speed</label>
+        <select name="ship_service_preference" class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 px-4 py-3 transition">
+          <option value="" {% if not form.ship_service_preference %}selected{% endif %}>No preference</option>
+          <option value="standard" {% if form.ship_service_preference == 'standard' %}selected{% endif %}>Standard</option>
+          <option value="priority" {% if form.ship_service_preference == 'priority' %}selected{% endif %}>Priority</option>
+          <option value="express" {% if form.ship_service_preference == 'express' %}selected{% endif %}>Express</option>
+        </select>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Section: Print Details -->
+  <div class="pb-4 border-b border-zinc-800">
+    <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+      <span class="w-6 h-6 rounded-lg bg-indigo-600/30 flex items-center justify-center text-indigo-400 text-xs">{% if shipping_enabled %}3{% else %}2{% endif %}</span>
       Print Details
     </h2>
 
@@ -513,7 +613,7 @@
   <!-- Section: Files & Notes -->
   <div class="pb-4 border-b border-zinc-800">
     <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-      <span class="w-6 h-6 rounded-lg bg-indigo-600/30 flex items-center justify-center text-indigo-400 text-xs">3</span>
+      <span class="w-6 h-6 rounded-lg bg-indigo-600/30 flex items-center justify-center text-indigo-400 text-xs">{% if shipping_enabled %}4{% else %}3{% endif %}</span>
       Files & Notes
     </h2>
 
@@ -670,6 +770,59 @@
     '.stl': '🧊', '.3mf': '📦', '.obj': '🎲', '.gcode': '📜',
     '.step': '⚙️', '.stp': '⚙️', '.fpp': '🖨️', '.zip': '📁'
   };
+  const REQUEST_DRAFT_KEY = 'printellect_request_draft_v1';
+  const HAS_USER_SESSION = {{ "true" if user else "false" }};
+
+  function toggleShippingFields() {
+    const selected = document.querySelector('input[name="fulfillment_method"]:checked')?.value || 'pickup';
+    const fields = document.getElementById('shipping-fields');
+    const gate = document.getElementById('shipping-account-gate');
+    if (fields) fields.classList.toggle('hidden', selected !== 'shipping');
+    if (gate) gate.classList.toggle('hidden', selected !== 'shipping');
+  }
+
+  function saveRequestDraft() {
+    const form = document.getElementById('request-form');
+    if (!form) return;
+    const keys = [
+      'requester_name', 'requester_email', 'print_name', 'printer', 'material', 'colors',
+      'link_url', 'notes', 'fulfillment_method', 'ship_recipient_name', 'ship_recipient_phone',
+      'ship_address_line1', 'ship_address_line2', 'ship_city', 'ship_state', 'ship_postal_code',
+      'ship_country', 'ship_service_preference'
+    ];
+    const data = {};
+    keys.forEach((k) => {
+      if (k === 'fulfillment_method') {
+        data[k] = form.querySelector('input[name="fulfillment_method"]:checked')?.value || 'pickup';
+        return;
+      }
+      const el = form.querySelector(`[name="${k}"]`);
+      if (el) data[k] = el.value || '';
+    });
+    localStorage.setItem(REQUEST_DRAFT_KEY, JSON.stringify(data));
+  }
+
+  function restoreRequestDraft() {
+    const form = document.getElementById('request-form');
+    if (!form) return;
+    let parsed = null;
+    try {
+      parsed = JSON.parse(localStorage.getItem(REQUEST_DRAFT_KEY) || 'null');
+    } catch (e) {
+      parsed = null;
+    }
+    if (!parsed) return;
+
+    Object.keys(parsed).forEach((k) => {
+      if (k === 'fulfillment_method') {
+        const radio = form.querySelector(`input[name="fulfillment_method"][value="${parsed[k]}"]`);
+        if (radio) radio.checked = true;
+        return;
+      }
+      const el = form.querySelector(`[name="${k}"]`);
+      if (el && !el.value) el.value = parsed[k];
+    });
+  }
   
   function handleDragOver(e) {
     e.preventDefault();
@@ -879,6 +1032,22 @@
 
   // Form submission with loading state
   document.getElementById('request-form')?.addEventListener('submit', function(e) {
+    const selectedDelivery = document.querySelector('input[name="fulfillment_method"]:checked')?.value || 'pickup';
+    if (selectedDelivery === 'shipping' && !HAS_USER_SESSION) {
+      e.preventDefault();
+      saveRequestDraft();
+      toggleShippingFields();
+      const name = document.querySelector('[name="requester_name"]')?.value || '';
+      const email = document.querySelector('[name="requester_email"]')?.value || '';
+      const params = new URLSearchParams();
+      params.set('next', '/?resume_shipping=1');
+      params.set('flow', 'shipping');
+      if (email.trim()) params.set('email', email.trim());
+      if (name.trim()) params.set('name', name.trim());
+      window.location.href = `/auth/register?${params.toString()}`;
+      return;
+    }
+
     const btn = document.getElementById('submit-btn');
     const text = document.getElementById('submit-text');
     const spinner = document.getElementById('submit-spinner');
@@ -888,6 +1057,7 @@
     
     // 🎉 Launch confetti!
     launchConfetti();
+    localStorage.removeItem(REQUEST_DRAFT_KEY);
     
     // Show loading state
     btn.disabled = true;
@@ -898,11 +1068,24 @@
 
   // Init
   document.addEventListener('DOMContentLoaded', function() {
+    restoreRequestDraft();
+    toggleShippingFields();
     toggleRushPayment();
     if (document.getElementById('requester-name')?.value) updateRushPricing();
+    const qs = new URLSearchParams(window.location.search);
+    if (HAS_USER_SESSION && qs.get('resume_shipping') === '1') {
+      showToastLocal('Account ready. Review your details and submit to create your shipping request.');
+    }
     document.getElementById('template-name-input')?.addEventListener('keypress', e => {
       if (e.key === 'Enter') { e.preventDefault(); saveTemplate(); }
     });
+    const form = document.getElementById('request-form');
+    if (form) {
+      form.querySelectorAll('input, textarea, select').forEach((el) => {
+        el.addEventListener('change', saveRequestDraft);
+        el.addEventListener('input', saveRequestDraft);
+      });
+    }
   });
 </script>
 {% endblock %}

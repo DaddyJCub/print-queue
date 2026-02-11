@@ -45,6 +45,17 @@ class TestHomePage:
 
 class TestRequestSubmission:
     """Tests for the /submit endpoint."""
+
+    def _set_shipping_enabled(self, enabled: bool = True):
+        conn = get_test_db()
+        now = "2026-01-01T00:00:00Z"
+        conn.execute(
+            """INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+            ("shipping_enabled", "1" if enabled else "0", now),
+        )
+        conn.commit()
+        conn.close()
     
     def test_submit_with_valid_data_and_link(self, client):
         """Valid submission with link URL should succeed."""
@@ -175,6 +186,92 @@ class TestRequestSubmission:
         
         # Form should re-render with preserved values
         assert "My Unique Name" in response.text or "unique@example.com" in response.text
+
+    def test_submit_shipping_requires_account(self, client):
+        """Guests selecting shipping are redirected into registration flow."""
+        self._set_shipping_enabled(True)
+        response = client.post("/submit", data={
+            "requester_name": "Guest User",
+            "requester_email": "guest@example.com",
+            "print_name": "Ship Me",
+            "printer": "ANY",
+            "material": "PLA",
+            "colors": "Black",
+            "link_url": "https://example.com/model.stl",
+            "fulfillment_method": "shipping",
+            "ship_recipient_name": "Guest User",
+            "ship_address_line1": "123 Main St",
+            "ship_city": "Austin",
+            "ship_state": "TX",
+            "ship_postal_code": "78701",
+            "ship_country": "US",
+        }, follow_redirects=False)
+        assert response.status_code in (303, 302)
+        location = response.headers.get("location", "")
+        assert location.startswith("/auth/register")
+        assert "email=guest%40example.com" in location
+
+    def test_submit_shipping_missing_address_fields(self, client):
+        """Shipping submission validates required address fields."""
+        self._set_shipping_enabled(True)
+        from app.auth import create_user, create_user_session
+        user = create_user("shipmissing@example.com", "Ship Missing", "Password123")
+        token = create_user_session(user.id, "pytest", "127.0.0.1")
+        client.cookies.set("user_session", token)
+
+        response = client.post("/submit", data={
+            "requester_name": "Ship Missing",
+            "requester_email": "shipmissing@example.com",
+            "print_name": "Address Check",
+            "printer": "ANY",
+            "material": "PLA",
+            "colors": "Black",
+            "link_url": "https://example.com/model.stl",
+            "fulfillment_method": "shipping",
+            "ship_recipient_name": "Ship Missing",
+            # Missing street/city/state/postal
+            "ship_country": "US",
+        })
+        assert response.status_code in (200, 400)
+        assert "missing shipping info" in response.text.lower()
+
+    def test_submit_shipping_authenticated_creates_shipping_record(self, client):
+        """Authenticated shipping submit creates both request and request_shipping rows."""
+        self._set_shipping_enabled(True)
+        from app.auth import create_user, create_user_session
+        user = create_user("shipok@example.com", "Ship OK", "Password123")
+        token = create_user_session(user.id, "pytest", "127.0.0.1")
+        client.cookies.set("user_session", token)
+
+        response = client.post("/submit", data={
+            "requester_name": "Ship OK",
+            "requester_email": "shipok@example.com",
+            "print_name": "Shipping Print",
+            "printer": "ANY",
+            "material": "PLA",
+            "colors": "Blue",
+            "link_url": "https://example.com/model.stl",
+            "fulfillment_method": "shipping",
+            "ship_recipient_name": "Ship OK",
+            "ship_address_line1": "123 Main St",
+            "ship_city": "Austin",
+            "ship_state": "TX",
+            "ship_postal_code": "78701",
+            "ship_country": "US",
+            "ship_service_preference": "standard",
+        }, follow_redirects=False)
+        assert response.status_code in (200, 303)
+
+        conn = get_test_db()
+        req = conn.execute(
+            "SELECT id, fulfillment_method FROM requests WHERE requester_email = ? ORDER BY created_at DESC LIMIT 1",
+            ("shipok@example.com",),
+        ).fetchone()
+        assert req is not None
+        assert req["fulfillment_method"] == "shipping"
+        shipping = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (req["id"],)).fetchone()
+        conn.close()
+        assert shipping is not None
 
 
 class TestQueuePage:

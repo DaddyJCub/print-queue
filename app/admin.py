@@ -198,6 +198,9 @@ def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
             f"""SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors, 
                       r.link_url, r.status, r.priority, r.special_notes, r.printing_started_at,
                       r.print_name, r.total_builds, r.completed_builds, r.failed_builds,
+                      r.fulfillment_method,
+                      (SELECT rs.shipping_status FROM request_shipping rs WHERE rs.request_id = r.id) as shipping_status,
+                      (SELECT rs.tracking_number FROM request_shipping rs WHERE rs.request_id = r.id) as shipping_tracking_number,
                       r.requires_design, r.designer_admin_id, r.design_completed_at,
                       r.print_time_minutes, r.slicer_estimate_minutes,
                       (SELECT COUNT(*) FROM files f WHERE f.request_id = r.id) as file_count,
@@ -213,6 +216,9 @@ def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
             f"""SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors, 
                       r.link_url, r.status, r.priority, r.special_notes,
                       r.print_name, r.total_builds, r.completed_builds, r.failed_builds,
+                      r.fulfillment_method,
+                      (SELECT rs.shipping_status FROM request_shipping rs WHERE rs.request_id = r.id) as shipping_status,
+                      (SELECT rs.tracking_number FROM request_shipping rs WHERE rs.request_id = r.id) as shipping_tracking_number,
                       r.requires_design, r.designer_admin_id, r.design_completed_at,
                       (SELECT COUNT(*) FROM files f WHERE f.request_id = r.id) as file_count,
                       (SELECT GROUP_CONCAT(f.original_filename, ', ') FROM files f WHERE f.request_id = r.id) as file_names,
@@ -315,6 +321,8 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
     closed = conn.execute(
         """SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors, 
                   r.link_url, r.status, r.priority, r.special_notes, r.print_name,
+                  r.fulfillment_method,
+                  (SELECT rs.shipping_status FROM request_shipping rs WHERE rs.request_id = r.id) as shipping_status,
                   r.requires_design, r.designer_admin_id, r.design_completed_at
            FROM requests r
            WHERE r.status IN (?, ?, ?) 
@@ -379,6 +387,142 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
     })
 
 
+@router.get("/admin/shipping", response_class=HTMLResponse)
+def admin_shipping_dashboard(
+    request: Request,
+    shipping_status: Optional[str] = None,
+    task: Optional[str] = None,
+    q: Optional[str] = None,
+    _=Depends(require_admin),
+):
+    conn = db()
+    rows = conn.execute(
+        """SELECT
+             r.id,
+             r.created_at,
+             r.updated_at,
+             r.requester_name,
+             r.requester_email,
+             r.print_name,
+             r.status,
+             r.printer,
+             r.material,
+             r.colors,
+             r.fulfillment_method,
+             rs.shipping_status,
+             rs.address_validation_status,
+             rs.quote_amount_cents,
+             rs.quote_currency,
+             rs.quote_notes,
+             rs.tracking_number,
+             rs.tracking_url,
+             rs.carrier,
+             rs.service,
+             rs.recipient_name,
+             rs.city,
+             rs.state,
+             rs.postal_code,
+             rs.country,
+             rs.updated_at as shipping_updated_at
+           FROM requests r
+           LEFT JOIN request_shipping rs ON rs.request_id = r.id
+           WHERE r.fulfillment_method = 'shipping'
+           ORDER BY COALESCE(rs.updated_at, r.updated_at) DESC, r.created_at DESC"""
+    ).fetchall()
+    conn.close()
+
+    items_all = []
+    for row in rows:
+        item = dict(row)
+        ship_status = (item.get("shipping_status") or "REQUESTED").upper()
+        item["shipping_status"] = ship_status
+        item["address_validation_status"] = (item.get("address_validation_status") or "").lower()
+        item["has_quote"] = item.get("quote_amount_cents") is not None
+        item["has_tracking"] = bool(item.get("tracking_number"))
+        item["is_exception"] = ship_status in {"EXCEPTION", "RETURNED"}
+        item["in_transit"] = ship_status in {"PRE_TRANSIT", "IN_TRANSIT", "OUT_FOR_DELIVERY"}
+        item["is_delivered"] = ship_status == "DELIVERED"
+        item["print_complete"] = item.get("status") in {"DONE", "PICKED_UP"}
+        item["needs_address_validation"] = item["address_validation_status"] != "valid"
+        item["needs_quote"] = (not item["has_quote"]) and (not item["is_delivered"]) and ship_status not in {"CANCELLED"}
+        item["needs_label"] = (not item["has_tracking"]) and (not item["is_delivered"]) and ship_status not in {"CANCELLED"}
+        item["task_ready_for_fulfillment"] = item["print_complete"] and (item["needs_quote"] or item["needs_label"])
+        items_all.append(item)
+
+    status_counts = {}
+    for item in items_all:
+        status_counts[item["shipping_status"]] = status_counts.get(item["shipping_status"], 0) + 1
+
+    task_counts = {
+        "all": len(items_all),
+        "exceptions": sum(1 for i in items_all if i["is_exception"]),
+        "ready_for_fulfillment": sum(1 for i in items_all if i["task_ready_for_fulfillment"]),
+        "in_transit": sum(1 for i in items_all if i["in_transit"]),
+        "delivered": sum(1 for i in items_all if i["is_delivered"]),
+        "pending_print": sum(1 for i in items_all if not i["print_complete"]),
+    }
+
+    items = list(items_all)
+    normalized_status = (shipping_status or "").strip().upper()
+    if normalized_status:
+        items = [i for i in items if i["shipping_status"] == normalized_status]
+
+    normalized_task = (task or "").strip().lower()
+    if normalized_task == "exceptions":
+        items = [i for i in items if i["is_exception"]]
+    elif normalized_task == "ready_for_fulfillment":
+        items = [i for i in items if i["task_ready_for_fulfillment"]]
+    elif normalized_task == "in_transit":
+        items = [i for i in items if i["in_transit"]]
+    elif normalized_task == "delivered":
+        items = [i for i in items if i["is_delivered"]]
+    elif normalized_task == "pending_print":
+        items = [i for i in items if not i["print_complete"]]
+
+    search_term = (q or "").strip().lower()
+    if search_term:
+        items = [
+            i for i in items
+            if search_term in (i.get("id") or "").lower()
+            or search_term in (i.get("print_name") or "").lower()
+            or search_term in (i.get("requester_name") or "").lower()
+            or search_term in (i.get("tracking_number") or "").lower()
+        ]
+
+    shipping_statuses = [
+        "REQUESTED",
+        "ADDRESS_VALIDATED",
+        "QUOTED",
+        "LABEL_PURCHASED",
+        "PRE_TRANSIT",
+        "IN_TRANSIT",
+        "OUT_FOR_DELIVERY",
+        "DELIVERED",
+        "EXCEPTION",
+        "RETURNED",
+        "CANCELLED",
+    ]
+    shipping_defaults = {
+        "weight_oz": get_setting("shipping_default_weight_oz", "16"),
+        "length_in": get_setting("shipping_default_length_in", "8"),
+        "width_in": get_setting("shipping_default_width_in", "6"),
+        "height_in": get_setting("shipping_default_height_in", "4"),
+    }
+
+    return templates.TemplateResponse("admin_shipping.html", {
+        "request": request,
+        "items": items,
+        "shipping_statuses": shipping_statuses,
+        "shipping_status_filter": normalized_status,
+        "task_filter": normalized_task,
+        "q": q or "",
+        "status_counts": status_counts,
+        "task_counts": task_counts,
+        "shipping_defaults": shipping_defaults,
+        "version": APP_VERSION,
+    })
+
+
 @router.get("/admin/settings", response_class=HTMLResponse)
 def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[str] = None):
     model = {
@@ -409,6 +553,27 @@ def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[s
         "enable_rush_option": get_bool_setting("enable_rush_option", True),
         "rush_fee_amount": get_setting("rush_fee_amount", "5"),
         "venmo_handle": get_setting("venmo_handle", "@YourVenmoHandle"),
+        # Shipping settings
+        "shipping_enabled": get_bool_setting("shipping_enabled", False),
+        "shipping_default_country": get_setting("shipping_default_country", "US"),
+        "shipping_notify_requester_updates": get_bool_setting("shipping_notify_requester_updates", True),
+        "shipping_notify_admin_exceptions": get_bool_setting("shipping_notify_admin_exceptions", True),
+        "shipping_default_weight_oz": get_setting("shipping_default_weight_oz", "16"),
+        "shipping_default_length_in": get_setting("shipping_default_length_in", "8"),
+        "shipping_default_width_in": get_setting("shipping_default_width_in", "6"),
+        "shipping_default_height_in": get_setting("shipping_default_height_in", "4"),
+        "shipping_from_name": get_setting("shipping_from_name", ""),
+        "shipping_from_company": get_setting("shipping_from_company", ""),
+        "shipping_from_phone": get_setting("shipping_from_phone", ""),
+        "shipping_from_address_line1": get_setting("shipping_from_address_line1", ""),
+        "shipping_from_address_line2": get_setting("shipping_from_address_line2", ""),
+        "shipping_from_city": get_setting("shipping_from_city", ""),
+        "shipping_from_state": get_setting("shipping_from_state", ""),
+        "shipping_from_postal_code": get_setting("shipping_from_postal_code", ""),
+        "shipping_from_country": get_setting("shipping_from_country", "US"),
+        "shippo_webhook_user": get_setting("shippo_webhook_user", "").strip() or os.getenv("SHIPPO_WEBHOOK_USER", "").strip(),
+        "shippo_api_key_configured": bool(get_setting("shippo_api_key", "").strip() or os.getenv("SHIPPO_API_KEY", "").strip()),
+        "shippo_webhook_pass_configured": bool(get_setting("shippo_webhook_pass", "").strip() or os.getenv("SHIPPO_WEBHOOK_PASS", "").strip()),
         "saved": bool(saved == "1"),
     }
     return templates.TemplateResponse("admin_settings.html", {"request": request, "s": model, "version": APP_VERSION})
@@ -444,6 +609,30 @@ def admin_settings_post(
     enable_rush_option: Optional[str] = Form(None),
     rush_fee_amount: str = Form("5"),
     venmo_handle: str = Form("@YourVenmoHandle"),
+    # Shipping settings
+    shipping_enabled: Optional[str] = Form(None),
+    shipping_default_country: str = Form("US"),
+    shipping_notify_requester_updates: Optional[str] = Form(None),
+    shipping_notify_admin_exceptions: Optional[str] = Form(None),
+    shipping_default_weight_oz: str = Form("16"),
+    shipping_default_length_in: str = Form("8"),
+    shipping_default_width_in: str = Form("6"),
+    shipping_default_height_in: str = Form("4"),
+    shipping_from_name: str = Form(""),
+    shipping_from_company: str = Form(""),
+    shipping_from_phone: str = Form(""),
+    shipping_from_address_line1: str = Form(""),
+    shipping_from_address_line2: str = Form(""),
+    shipping_from_city: str = Form(""),
+    shipping_from_state: str = Form(""),
+    shipping_from_postal_code: str = Form(""),
+    shipping_from_country: str = Form("US"),
+    # Shippo provider config
+    shippo_api_key: Optional[str] = Form(None),
+    clear_shippo_api_key: Optional[str] = Form(None),
+    shippo_webhook_user: str = Form(""),
+    shippo_webhook_pass: Optional[str] = Form(None),
+    clear_shippo_webhook_pass: Optional[str] = Form(None),
     _=Depends(require_admin),
 ):
     # checkboxes: present => "on", missing => None
@@ -474,6 +663,34 @@ def admin_settings_post(
     set_setting("enable_rush_option", "1" if enable_rush_option else "0")
     set_setting("rush_fee_amount", (rush_fee_amount or "5").strip())
     set_setting("venmo_handle", (venmo_handle or "").strip())
+    # Shipping settings
+    set_setting("shipping_enabled", "1" if shipping_enabled else "0")
+    set_setting("shipping_default_country", (shipping_default_country or "US").strip().upper())
+    set_setting("shipping_notify_requester_updates", "1" if shipping_notify_requester_updates else "0")
+    set_setting("shipping_notify_admin_exceptions", "1" if shipping_notify_admin_exceptions else "0")
+    set_setting("shipping_default_weight_oz", (shipping_default_weight_oz or "16").strip())
+    set_setting("shipping_default_length_in", (shipping_default_length_in or "8").strip())
+    set_setting("shipping_default_width_in", (shipping_default_width_in or "6").strip())
+    set_setting("shipping_default_height_in", (shipping_default_height_in or "4").strip())
+    set_setting("shipping_from_name", (shipping_from_name or "").strip())
+    set_setting("shipping_from_company", (shipping_from_company or "").strip())
+    set_setting("shipping_from_phone", (shipping_from_phone or "").strip())
+    set_setting("shipping_from_address_line1", (shipping_from_address_line1 or "").strip())
+    set_setting("shipping_from_address_line2", (shipping_from_address_line2 or "").strip())
+    set_setting("shipping_from_city", (shipping_from_city or "").strip())
+    set_setting("shipping_from_state", (shipping_from_state or "").strip())
+    set_setting("shipping_from_postal_code", (shipping_from_postal_code or "").strip())
+    set_setting("shipping_from_country", (shipping_from_country or "US").strip().upper())
+    # Shippo provider config
+    if clear_shippo_api_key:
+        set_setting("shippo_api_key", "")
+    elif shippo_api_key and shippo_api_key.strip():
+        set_setting("shippo_api_key", shippo_api_key.strip())
+    set_setting("shippo_webhook_user", (shippo_webhook_user or "").strip())
+    if clear_shippo_webhook_pass:
+        set_setting("shippo_webhook_pass", "")
+    elif shippo_webhook_pass and shippo_webhook_pass.strip():
+        set_setting("shippo_webhook_pass", shippo_webhook_pass.strip())
 
     return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
 

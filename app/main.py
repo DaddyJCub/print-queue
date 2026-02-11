@@ -771,7 +771,8 @@ def init_db():
       colors TEXT NOT NULL,
       link_url TEXT,
       notes TEXT,
-      status TEXT NOT NULL
+      status TEXT NOT NULL,
+      fulfillment_method TEXT NOT NULL DEFAULT 'pickup'
     );
     """)
 
@@ -797,6 +798,88 @@ def init_db():
       to_status TEXT NOT NULL,
       comment TEXT,
       FOREIGN KEY(request_id) REFERENCES requests(id)
+    );
+    """)
+
+    # Shipping details per request (for fulfillment_method='shipping')
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS request_shipping (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      shipping_status TEXT NOT NULL DEFAULT 'REQUESTED',
+      recipient_name TEXT,
+      recipient_phone TEXT,
+      address_line1 TEXT,
+      address_line2 TEXT,
+      city TEXT,
+      state TEXT,
+      postal_code TEXT,
+      country TEXT DEFAULT 'US',
+      service_preference TEXT,
+      address_validation_status TEXT,
+      address_validation_messages TEXT,
+      normalized_address_json TEXT,
+      package_weight_oz REAL,
+      package_length_in REAL,
+      package_width_in REAL,
+      package_height_in REAL,
+      quote_amount_cents INTEGER,
+      quote_currency TEXT DEFAULT 'USD',
+      quote_notes TEXT,
+      quoted_at TEXT,
+      quoted_by TEXT,
+      selected_rate_id TEXT,
+      provider TEXT DEFAULT 'shippo',
+      provider_shipment_id TEXT,
+      provider_transaction_id TEXT,
+      carrier TEXT,
+      service TEXT,
+      rate_amount TEXT,
+      tracking_number TEXT,
+      tracking_status TEXT,
+      tracking_url TEXT,
+      label_url TEXT,
+      label_pdf_url TEXT,
+      shipped_at TEXT,
+      delivered_at TEXT,
+      last_provider_payload TEXT,
+      metadata_json TEXT,
+      FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE
+    );
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS request_shipping_rate_snapshots (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'shippo',
+      parcel_weight_oz REAL,
+      parcel_length_in REAL,
+      parcel_width_in REAL,
+      parcel_height_in REAL,
+      selected_rate_id TEXT,
+      fetched_by TEXT,
+      rates_json TEXT NOT NULL,
+      FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE
+    );
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS request_shipping_events (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      shipping_status TEXT,
+      provider TEXT,
+      provider_event_id TEXT,
+      message TEXT,
+      payload_json TEXT,
+      FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE,
+      UNIQUE(provider, provider_event_id)
     );
     """)
 
@@ -1225,6 +1308,10 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_request_assignments_request ON request_assignments(request_id);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_request_assignments_account ON request_assignments(account_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_requests_fulfillment_method ON requests(fulfillment_method);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_request_shipping_status ON request_shipping(shipping_status);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_request_shipping_tracking ON request_shipping(tracking_number);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_request_shipping_events_provider_event ON request_shipping_events(provider, provider_event_id);")
 
     conn.commit()
     conn.close()
@@ -1353,6 +1440,10 @@ def ensure_migrations():
     if "active_build_id" not in cols:
         cur.execute("ALTER TABLE requests ADD COLUMN active_build_id TEXT")
 
+    if "fulfillment_method" not in cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN fulfillment_method TEXT NOT NULL DEFAULT 'pickup'")
+        cur.execute("UPDATE requests SET fulfillment_method = 'pickup' WHERE fulfillment_method IS NULL OR fulfillment_method = ''")
+
     # Notification log table
     cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='notification_log'")
     if not cur.fetchone():
@@ -1474,6 +1565,92 @@ def ensure_migrations():
     if "account_id" not in req_cols:
         cur.execute("ALTER TABLE requests ADD COLUMN account_id TEXT")
         logger.info("Added account_id column to requests table")
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # SHIPPING TABLES + INDEXES
+    # ─────────────────────────────────────────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS request_shipping (
+            id TEXT PRIMARY KEY,
+            request_id TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            shipping_status TEXT NOT NULL DEFAULT 'REQUESTED',
+            recipient_name TEXT,
+            recipient_phone TEXT,
+            address_line1 TEXT,
+            address_line2 TEXT,
+            city TEXT,
+            state TEXT,
+            postal_code TEXT,
+            country TEXT DEFAULT 'US',
+            service_preference TEXT,
+            address_validation_status TEXT,
+            address_validation_messages TEXT,
+            normalized_address_json TEXT,
+            package_weight_oz REAL,
+            package_length_in REAL,
+            package_width_in REAL,
+            package_height_in REAL,
+            quote_amount_cents INTEGER,
+            quote_currency TEXT DEFAULT 'USD',
+            quote_notes TEXT,
+            quoted_at TEXT,
+            quoted_by TEXT,
+            selected_rate_id TEXT,
+            provider TEXT DEFAULT 'shippo',
+            provider_shipment_id TEXT,
+            provider_transaction_id TEXT,
+            carrier TEXT,
+            service TEXT,
+            rate_amount TEXT,
+            tracking_number TEXT,
+            tracking_status TEXT,
+            tracking_url TEXT,
+            label_url TEXT,
+            label_pdf_url TEXT,
+            shipped_at TEXT,
+            delivered_at TEXT,
+            last_provider_payload TEXT,
+            metadata_json TEXT,
+            FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS request_shipping_rate_snapshots (
+            id TEXT PRIMARY KEY,
+            request_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            provider TEXT NOT NULL DEFAULT 'shippo',
+            parcel_weight_oz REAL,
+            parcel_length_in REAL,
+            parcel_width_in REAL,
+            parcel_height_in REAL,
+            selected_rate_id TEXT,
+            fetched_by TEXT,
+            rates_json TEXT NOT NULL,
+            FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS request_shipping_events (
+            id TEXT PRIMARY KEY,
+            request_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            shipping_status TEXT,
+            provider TEXT,
+            provider_event_id TEXT,
+            message TEXT,
+            payload_json TEXT,
+            FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE,
+            UNIQUE(provider, provider_event_id)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_requests_fulfillment_method ON requests(fulfillment_method)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_request_shipping_status ON request_shipping(shipping_status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_request_shipping_tracking ON request_shipping(tracking_number)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_request_shipping_events_provider_event ON request_shipping_events(provider, provider_event_id)")
 
     # ─────────────────────────────────────────────────────────────────────────────
     # MIGRATE USERS + ADMINS → ACCOUNTS (v0.11.0 one-time migration)
@@ -2545,6 +2722,29 @@ DEFAULT_SETTINGS: Dict[str, str] = {
     # Enable progress notifications (push primarily, email at 50% and 75%)
     "enable_progress_notifications": "1",
     "admin_progress_notifications": "0",
+
+    # Shipping settings
+    "shipping_enabled": "0",
+    "shipping_default_country": "US",
+    "shipping_notify_requester_updates": "1",
+    "shipping_notify_admin_exceptions": "1",
+    "shipping_default_weight_oz": "16",
+    "shipping_default_length_in": "8",
+    "shipping_default_width_in": "6",
+    "shipping_default_height_in": "4",
+    "shipping_from_name": "",
+    "shipping_from_company": "",
+    "shipping_from_phone": "",
+    "shipping_from_address_line1": "",
+    "shipping_from_address_line2": "",
+    "shipping_from_city": "",
+    "shipping_from_state": "",
+    "shipping_from_postal_code": "",
+    "shipping_from_country": "US",
+    # Shippo provider credentials/config (admin UI editable; env vars still supported)
+    "shippo_api_key": "",
+    "shippo_webhook_user": "",
+    "shippo_webhook_pass": "",
 }
 
 
@@ -6873,6 +7073,8 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any], us
     
     # Check if user accounts feature is enabled
     user_accounts_enabled = is_feature_enabled("user_accounts")
+    shipping_enabled = get_bool_setting("shipping_enabled", False)
+    shipping_default_country = get_setting("shipping_default_country", "US")
     
     # Get queue stats for landing page
     queue_stats = None
@@ -6949,6 +7151,8 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any], us
         "saved_templates": saved_templates,
         "user": user,
         "user_accounts_enabled": user_accounts_enabled,
+        "shipping_enabled": shipping_enabled,
+        "shipping_default_country": shipping_default_country,
         "queue_stats": queue_stats,
         "printer_status": printer_status,
         "fun_stats": fun_stats,

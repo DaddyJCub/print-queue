@@ -39,6 +39,7 @@ from app.main import (
     format_eta_display,
     get_smart_eta,
     first_name_only,
+    is_feature_enabled,
     logger,
 )
 
@@ -62,6 +63,16 @@ async def submit(
     colors: str = Form(...),
     link_url: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
+    fulfillment_method: str = Form("pickup"),
+    ship_recipient_name: Optional[str] = Form(None),
+    ship_recipient_phone: Optional[str] = Form(None),
+    ship_address_line1: Optional[str] = Form(None),
+    ship_address_line2: Optional[str] = Form(None),
+    ship_city: Optional[str] = Form(None),
+    ship_state: Optional[str] = Form(None),
+    ship_postal_code: Optional[str] = Form(None),
+    ship_country: Optional[str] = Form("US"),
+    ship_service_preference: Optional[str] = Form(None),
     rush_request: Optional[str] = Form(None),
     rush_payment_confirmed: Optional[str] = Form(None),
     turnstile_token: Optional[str] = Form(None, alias="cf-turnstile-response"),
@@ -87,9 +98,50 @@ async def submit(
         "colors": colors,
         "link_url": link_url or "",
         "notes": notes or "",
+        "fulfillment_method": fulfillment_method or "pickup",
+        "ship_recipient_name": ship_recipient_name or "",
+        "ship_recipient_phone": ship_recipient_phone or "",
+        "ship_address_line1": ship_address_line1 or "",
+        "ship_address_line2": ship_address_line2 or "",
+        "ship_city": ship_city or "",
+        "ship_state": ship_state or "",
+        "ship_postal_code": ship_postal_code or "",
+        "ship_country": ship_country or "US",
+        "ship_service_preference": ship_service_preference or "",
         "rush_request": rush_request,
         "rush_payment_confirmed": rush_payment_confirmed,
     }
+
+    fulfillment_method = (fulfillment_method or "pickup").strip().lower()
+    if fulfillment_method not in {"pickup", "shipping"}:
+        return render_form(request, "Invalid fulfillment selection.", form_state)
+
+    if fulfillment_method == "shipping":
+        if not get_bool_setting("shipping_enabled", False):
+            return render_form(request, "Shipping is not enabled yet. Please choose pickup.", form_state)
+        if not user:
+            register_url = (
+                f"/auth/register?next={urllib.parse.quote('/?resume_shipping=1')}"
+                f"&email={urllib.parse.quote((requester_email or '').strip())}"
+                f"&name={urllib.parse.quote((requester_name or '').strip())}"
+                f"&flow=shipping"
+            )
+            return RedirectResponse(url=register_url, status_code=303)
+        if not is_feature_enabled("user_accounts"):
+            return render_form(request, "Shipping requires user accounts to be enabled.", form_state)
+        required_shipping = {
+            "Recipient name": ship_recipient_name,
+            "Address line 1": ship_address_line1,
+            "City": ship_city,
+            "State": ship_state,
+            "Postal code": ship_postal_code,
+            "Country": ship_country,
+        }
+        missing = [label for label, value in required_shipping.items() if not (value or "").strip()]
+        if missing:
+            return render_form(request, f"Missing shipping info: {', '.join(missing)}.", form_state)
+        if (ship_country or "US").strip().upper() != "US":
+            return render_form(request, "Shipping currently supports US destinations only.", form_state)
 
     try:
         ok = await verify_turnstile(turnstile_token or "", client_ip)
@@ -155,8 +207,8 @@ async def submit(
     try:
         conn.execute(
             """INSERT INTO requests
-               (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, special_notes, priority, admin_notes, access_token, account_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, special_notes, priority, admin_notes, access_token, account_id, fulfillment_method)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 rid,
                 created,
@@ -175,8 +227,49 @@ async def submit(
                 admin_notes,  # Rush info goes here now
                 access_token,
                 user.id if user else None,  # Link request to account if logged in
+                fulfillment_method,
             )
         )
+
+        if fulfillment_method == "shipping":
+            def _to_float(value: Optional[str], default: float) -> float:
+                try:
+                    return float(value)
+                except Exception:
+                    return default
+
+            default_weight_oz = _to_float(get_setting("shipping_default_weight_oz", "16"), 16.0)
+            default_length_in = _to_float(get_setting("shipping_default_length_in", "8"), 8.0)
+            default_width_in = _to_float(get_setting("shipping_default_width_in", "6"), 6.0)
+            default_height_in = _to_float(get_setting("shipping_default_height_in", "4"), 4.0)
+
+            conn.execute(
+                """INSERT INTO request_shipping (
+                    id, request_id, created_at, updated_at, shipping_status,
+                    recipient_name, recipient_phone, address_line1, address_line2, city, state, postal_code, country,
+                    service_preference, package_weight_oz, package_length_in, package_width_in, package_height_in
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    str(uuid.uuid4()),
+                    rid,
+                    created,
+                    created,
+                    "REQUESTED",
+                    (ship_recipient_name or requester_name).strip(),
+                    (ship_recipient_phone or "").strip() or None,
+                    (ship_address_line1 or "").strip(),
+                    (ship_address_line2 or "").strip() or None,
+                    (ship_city or "").strip(),
+                    (ship_state or "").strip(),
+                    (ship_postal_code or "").strip(),
+                    (ship_country or "US").strip().upper(),
+                    (ship_service_preference or "").strip() or None,
+                    default_weight_oz,
+                    default_length_in,
+                    default_width_in,
+                    default_height_in,
+                )
+            )
     except Exception as e:
         logger.error(f"[SUBMIT] Database error creating request {rid[:8]}: {e}", exc_info=True)
         conn.close()
@@ -187,6 +280,12 @@ async def submit(
            VALUES (?, ?, ?, ?, ?, ?)""",
         (str(uuid.uuid4()), rid, created, None, "NEW", "Request submitted")
     )
+    if fulfillment_method == "shipping":
+        conn.execute(
+            """INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (str(uuid.uuid4()), rid, created, "NEW", "NEW", "Shipping requested")
+        )
     
     # Create request assignment for logged-in user as requester
     if user:
@@ -351,7 +450,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     rows = conn.execute(
         """SELECT id, requester_name, print_name, printer, material, colors, status, special_notes, 
                   print_time_minutes, turnaround_minutes, printing_started_at, 
-                  active_build_id, total_builds, completed_builds
+                  active_build_id, total_builds, completed_builds, fulfillment_method
            FROM requests 
            WHERE status NOT IN (?, ?, ?) 
            ORDER BY created_at ASC""",
@@ -443,6 +542,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
             "material": r["material"],
             "colors": r["colors"],
             "status": r["status"],
+            "fulfillment_method": r.get("fulfillment_method") or "pickup",
             "is_mine": bool(mine and mine == short_id),
             "print_time_minutes": r["print_time_minutes"],
             "turnaround_minutes": r["turnaround_minutes"],
@@ -462,7 +562,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     # Include IN_PROGRESS for multi-build requests that have active builds
     printing_items = [it for it in items if it["status"] in ["PRINTING", "IN_PROGRESS"]]
     approved_items = [it for it in items if it["status"] == "APPROVED"]
-    done_items = [it for it in items if it["status"] == "DONE"]
+    done_items = [it for it in items if it["status"] == "DONE" and (it.get("fulfillment_method") or "pickup") == "pickup"]
     pending_items = [it for it in items if it["status"] in ["NEW", "NEEDS_INFO"]]
     
     # Group printing items by printer (for printer card display)
@@ -741,11 +841,11 @@ async def queue_data_api(mine: Optional[str] = None):
     """JSON API for queue data (used for AJAX refresh)"""
     conn = db()
     rows = conn.execute(
-        """SELECT id, requester_name, print_name, printer, material, colors, status, special_notes, 
+        """SELECT id, requester_name, print_name, printer, material, colors, status, special_notes,
                   print_time_minutes, turnaround_minutes, printing_started_at,
-                  active_build_id, total_builds, completed_builds
-           FROM requests 
-           WHERE status NOT IN (?, ?, ?) 
+                  active_build_id, total_builds, completed_builds, fulfillment_method
+           FROM requests
+           WHERE status NOT IN (?, ?, ?)
            ORDER BY created_at ASC""",
         ("PICKED_UP", "REJECTED", "CANCELLED")
     ).fetchall()
@@ -763,6 +863,7 @@ async def queue_data_api(mine: Optional[str] = None):
         r = dict(r)
         short_id = r["id"][:8]
         printer_progress = None
+        smart_eta = None
         smart_eta_display = None
         current_layer = None
         total_layers = None
@@ -818,6 +919,7 @@ async def queue_data_api(mine: Optional[str] = None):
             "material": r["material"],
             "colors": r["colors"],
             "status": r["status"],
+            "fulfillment_method": r.get("fulfillment_method") or "pickup",
             "is_mine": bool(mine and mine == short_id),
             "printer_progress": printer_progress,
             "smart_eta": smart_eta,
@@ -831,7 +933,7 @@ async def queue_data_api(mine: Optional[str] = None):
     # Separate by status - include IN_PROGRESS for multi-build requests
     printing_items = [it for it in items if it["status"] in ["PRINTING", "IN_PROGRESS"]]
     approved_items = [it for it in items if it["status"] == "APPROVED"]
-    done_items = [it for it in items if it["status"] == "DONE"]
+    done_items = [it for it in items if it["status"] == "DONE" and (it.get("fulfillment_method") or "pickup") == "pickup"]
     
     # Build active queue with continuous numbering
     active_queue = printing_items + approved_items
@@ -1232,5 +1334,3 @@ def submit_store_request(
             pass
     
     return RedirectResponse(url=f"/thanks?id={rid[:8]}", status_code=303)
-
-

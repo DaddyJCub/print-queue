@@ -43,6 +43,7 @@ CSRF_EXEMPT_PATHS = [
     "/api/printer/",    # Printer API
     "/health",          # Health check
     "/api/webhooks/",   # Webhooks use signatures
+    "/webhooks/",       # Provider webhooks (e.g., Shippo) use provider auth
 ]
 
 

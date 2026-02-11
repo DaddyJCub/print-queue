@@ -73,6 +73,7 @@ def clear_all_test_data():
         "push_subscriptions", "email_lookup_tokens", "request_messages",
         "users", "admins", "feedback", "request_templates",
         "request_assignments", "notification_prefs",
+        "request_shipping", "request_shipping_rate_snapshots", "request_shipping_events",
     ]
     for table in tables:
         try:
@@ -98,6 +99,8 @@ def create_test_request(
     colors: str = "Black",
     with_file: bool = False,
     with_builds: int = 0,
+    fulfillment_method: str = "pickup",
+    with_shipping: bool = False,
 ) -> Dict[str, Any]:
     """
     Create a test print request with optional files and builds.
@@ -113,12 +116,12 @@ def create_test_request(
         INSERT INTO requests (
             id, created_at, updated_at, requester_name, requester_email,
             print_name, printer, material, colors, status, access_token,
-            total_builds, completed_builds, failed_builds
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+            total_builds, completed_builds, failed_builds, fulfillment_method
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)
     """, (
         rid, now, now, requester_name, requester_email,
         print_name, printer, material, colors, status, access_token,
-        max(1, with_builds)
+        max(1, with_builds), fulfillment_method
     ))
     
     conn.execute("""
@@ -157,6 +160,17 @@ def create_test_request(
                 "UPDATE requests SET active_build_id = ? WHERE id = ?",
                 (build_ids[0], rid)
             )
+
+    if fulfillment_method == "shipping" or with_shipping:
+        conn.execute("""
+            INSERT INTO request_shipping (
+                id, request_id, created_at, updated_at, shipping_status,
+                recipient_name, address_line1, city, state, postal_code, country
+            ) VALUES (?, ?, ?, ?, 'REQUESTED', ?, ?, ?, ?, ?, 'US')
+        """, (
+            str(uuid.uuid4()), rid, now, now,
+            requester_name, "123 Test St", "Austin", "TX", "78701"
+        ))
     
     conn.commit()
     conn.close()

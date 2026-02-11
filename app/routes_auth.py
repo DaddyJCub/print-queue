@@ -261,7 +261,15 @@ async def user_verify_magic_link(request: Request, token: str):
 
 
 @router.get("/auth/register", response_class=HTMLResponse)
-async def user_register_page(request: Request, next: str = None, error: str = None, email: str = None, success: str = None):
+async def user_register_page(
+    request: Request,
+    next: str = None,
+    error: str = None,
+    email: str = None,
+    name: str = None,
+    flow: str = None,
+    success: str = None,
+):
     """User registration page."""
     if not is_feature_enabled("user_accounts"):
         return RedirectResponse(url="/", status_code=303)
@@ -281,6 +289,8 @@ async def user_register_page(request: Request, next: str = None, error: str = No
         "next": next,
         "error": error,
         "email": email,
+        "name": name,
+        "flow": flow,
         "success": success,
     })
 

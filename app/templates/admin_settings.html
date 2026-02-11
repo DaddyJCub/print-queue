@@ -303,6 +303,173 @@
         </div>
       </section>
 
+      <!-- Shipping Settings -->
+      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <h2 class="text-xl font-semibold mb-4">📦 Shipping Settings</h2>
+        <p class="text-sm text-zinc-400 mb-4">Enable shipping requests, configure rate defaults, and set ship-from profile used for live rate suggestions and label purchase.</p>
+
+        <div class="space-y-4">
+          <label class="flex items-center gap-3">
+            <input type="checkbox" name="shipping_enabled" class="scale-125"
+                   {% if s.shipping_enabled %}checked{% endif %} />
+            <span>Enable shipping option on request form</span>
+          </label>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label class="block">
+              <span class="text-sm text-zinc-300">Default destination country</span>
+              <input name="shipping_default_country" type="text"
+                     value="{{ s.shipping_default_country }}"
+                     placeholder="US"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+
+            <div class="space-y-2">
+              <label class="flex items-center gap-3">
+                <input type="checkbox" name="shipping_notify_requester_updates" class="scale-110"
+                       {% if s.shipping_notify_requester_updates %}checked{% endif %} />
+                <span>Notify requester on shipping updates</span>
+              </label>
+              <label class="flex items-center gap-3">
+                <input type="checkbox" name="shipping_notify_admin_exceptions" class="scale-110"
+                       {% if s.shipping_notify_admin_exceptions %}checked{% endif %} />
+                <span>Notify admins on shipping exceptions</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-6">
+          <h3 class="text-lg font-semibold">Package defaults</h3>
+          <p class="text-xs text-zinc-500 mt-1">Used to pre-fill parcel size/weight for admin rate checks.</p>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+            <label class="block">
+              <span class="text-sm text-zinc-300">Weight (oz)</span>
+              <input name="shipping_default_weight_oz" type="text"
+                     value="{{ s.shipping_default_weight_oz }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+            <label class="block">
+              <span class="text-sm text-zinc-300">Length (in)</span>
+              <input name="shipping_default_length_in" type="text"
+                     value="{{ s.shipping_default_length_in }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+            <label class="block">
+              <span class="text-sm text-zinc-300">Width (in)</span>
+              <input name="shipping_default_width_in" type="text"
+                     value="{{ s.shipping_default_width_in }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+            <label class="block">
+              <span class="text-sm text-zinc-300">Height (in)</span>
+              <input name="shipping_default_height_in" type="text"
+                     value="{{ s.shipping_default_height_in }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+          </div>
+        </div>
+
+        <div class="mt-6">
+          <h3 class="text-lg font-semibold">Ship-from profile</h3>
+          <p class="text-xs text-zinc-500 mt-1">Carrier origin address used when requesting rates or buying labels.</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <label class="block">
+              <span class="text-sm text-zinc-300">Name</span>
+              <input name="shipping_from_name" type="text"
+                     value="{{ s.shipping_from_name }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+            <label class="block">
+              <span class="text-sm text-zinc-300">Company</span>
+              <input name="shipping_from_company" type="text"
+                     value="{{ s.shipping_from_company }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+            <label class="block">
+              <span class="text-sm text-zinc-300">Phone</span>
+              <input name="shipping_from_phone" type="text"
+                     value="{{ s.shipping_from_phone }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+            <label class="block">
+              <span class="text-sm text-zinc-300">Country</span>
+              <input name="shipping_from_country" type="text"
+                     value="{{ s.shipping_from_country }}"
+                     placeholder="US"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+            <label class="block md:col-span-2">
+              <span class="text-sm text-zinc-300">Address line 1</span>
+              <input name="shipping_from_address_line1" type="text"
+                     value="{{ s.shipping_from_address_line1 }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+            <label class="block md:col-span-2">
+              <span class="text-sm text-zinc-300">Address line 2</span>
+              <input name="shipping_from_address_line2" type="text"
+                     value="{{ s.shipping_from_address_line2 }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+            <label class="block">
+              <span class="text-sm text-zinc-300">City</span>
+              <input name="shipping_from_city" type="text"
+                     value="{{ s.shipping_from_city }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+            <label class="block">
+              <span class="text-sm text-zinc-300">State</span>
+              <input name="shipping_from_state" type="text"
+                     value="{{ s.shipping_from_state }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+            <label class="block">
+              <span class="text-sm text-zinc-300">Postal code</span>
+              <input name="shipping_from_postal_code" type="text"
+                     value="{{ s.shipping_from_postal_code }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+          </div>
+        </div>
+
+        <div class="mt-6">
+          <h3 class="text-lg font-semibold">Shippo API configuration</h3>
+          <p class="text-xs text-zinc-500 mt-1">Credentials can be managed here. Leaving password fields blank keeps existing secrets unchanged.</p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <label class="block md:col-span-2">
+              <span class="text-sm text-zinc-300">Shippo API key</span>
+              <input name="shippo_api_key" type="password"
+                     placeholder="{% if s.shippo_api_key_configured %}Configured (enter new value to replace){% else %}Enter Shippo API key{% endif %}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+              <label class="mt-2 inline-flex items-center gap-2 text-xs text-zinc-400">
+                <input type="checkbox" name="clear_shippo_api_key" />
+                <span>Clear stored API key</span>
+              </label>
+            </label>
+
+            <label class="block">
+              <span class="text-sm text-zinc-300">Webhook basic auth user</span>
+              <input name="shippo_webhook_user" type="text"
+                     value="{{ s.shippo_webhook_user }}"
+                     placeholder="shippo-webhook"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+            </label>
+
+            <label class="block">
+              <span class="text-sm text-zinc-300">Webhook basic auth password</span>
+              <input name="shippo_webhook_pass" type="password"
+                     placeholder="{% if s.shippo_webhook_pass_configured %}Configured (enter new value to replace){% else %}Enter webhook password{% endif %}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+              <label class="mt-2 inline-flex items-center gap-2 text-xs text-zinc-400">
+                <input type="checkbox" name="clear_shippo_webhook_pass" />
+                <span>Clear stored webhook password</span>
+              </label>
+            </label>
+          </div>
+        </div>
+      </section>
+
         <div class="mt-6 flex gap-3">
           <button class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold">
             Save settings

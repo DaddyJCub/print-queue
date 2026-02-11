@@ -152,12 +152,122 @@ class TestAdminStatusTransitions:
         assert response.status_code in (200, 303)
 
 
+class TestAdminShipping:
+    """Tests for admin shipping endpoints."""
+
+    def _set_shipping_enabled(self, enabled: bool = True):
+        conn = get_test_db()
+        conn.execute(
+            """INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+            ("shipping_enabled", "1" if enabled else "0", "2026-01-01T00:00:00Z"),
+        )
+        conn.commit()
+        conn.close()
+
+    def test_fetch_shipping_rates_persists_snapshot(self, admin_client, monkeypatch):
+        self._set_shipping_enabled(True)
+        req = create_test_request(fulfillment_method="shipping", with_shipping=True)
+
+        from app import api_builds
+
+        class FakeShippo:
+            def create_shipment_and_rates(self, address_from, address_to, parcel, metadata=None):
+                return {
+                    "object_id": "shippo_shipment_123",
+                    "rates": [
+                        {"object_id": "rate_1", "provider": "USPS", "amount": "8.40", "servicelevel": {"name": "Ground"}},
+                        {"object_id": "rate_2", "provider": "UPS", "amount": "12.10", "servicelevel": {"name": "2nd Day"}},
+                    ],
+                }
+
+        monkeypatch.setattr(api_builds, "ShippoClient", lambda **kw: FakeShippo())
+        response = admin_client.post(
+            f"/admin/request/{req['request_id']}/shipping/rates",
+            data={"package_weight_oz": "12", "package_length_in": "8", "package_width_in": "6", "package_height_in": "4"},
+            follow_redirects=False,
+        )
+        assert response.status_code in (200, 303)
+
+        conn = get_test_db()
+        snap = conn.execute(
+            "SELECT * FROM request_shipping_rate_snapshots WHERE request_id = ? ORDER BY created_at DESC LIMIT 1",
+            (req["request_id"],),
+        ).fetchone()
+        conn.close()
+        assert snap is not None
+
+    def test_save_shipping_quote_updates_record(self, admin_client):
+        self._set_shipping_enabled(True)
+        req = create_test_request(fulfillment_method="shipping", with_shipping=True)
+        response = admin_client.post(
+            f"/admin/request/{req['request_id']}/shipping/quote",
+            data={"quote_amount": "14.99", "quote_notes": "Manual quote"},
+            follow_redirects=False,
+        )
+        assert response.status_code in (200, 303)
+
+        conn = get_test_db()
+        row = conn.execute("SELECT shipping_status, quote_amount_cents FROM request_shipping WHERE request_id = ?", (req["request_id"],)).fetchone()
+        conn.close()
+        assert row is not None
+        assert row["shipping_status"] == "QUOTED"
+        assert row["quote_amount_cents"] == 1499
+
+    def test_buy_label_persists_tracking(self, admin_client, monkeypatch):
+        self._set_shipping_enabled(True)
+        req = create_test_request(fulfillment_method="shipping", with_shipping=True)
+
+        from app import api_builds
+
+        class FakeShippo:
+            def buy_label(self, rate_id, metadata=None):
+                return {
+                    "object_id": "txn_123",
+                    "shipment": "shipment_123",
+                    "tracking_number": "9400111899223847182933",
+                    "tracking_provider": "USPS",
+                    "tracking_status": "PRE_TRANSIT",
+                    "label_url": "https://example.com/label.png",
+                    "label_file": "https://example.com/label.pdf",
+                    "rate": {
+                        "provider": "USPS",
+                        "servicelevel_name": "Ground Advantage",
+                        "amount": "8.40",
+                    },
+                }
+
+        monkeypatch.setattr(api_builds, "ShippoClient", lambda **kw: FakeShippo())
+        response = admin_client.post(
+            f"/admin/request/{req['request_id']}/shipping/buy-label",
+            data={"rate_id": "rate_123"},
+            follow_redirects=False,
+        )
+        assert response.status_code in (200, 303)
+
+        conn = get_test_db()
+        row = conn.execute(
+            "SELECT shipping_status, tracking_number, carrier, label_url FROM request_shipping WHERE request_id = ?",
+            (req["request_id"],),
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row["tracking_number"] == "9400111899223847182933"
+        assert row["carrier"] == "USPS"
+        assert row["label_url"] == "https://example.com/label.png"
+
+
 class TestAdminSettings:
     """Tests for admin settings pages."""
     
     def test_admin_settings_page_loads(self, admin_client):
         """Admin settings page should load."""
         response = admin_client.get("/admin/settings")
+        assert response.status_code == 200
+
+    def test_admin_shipping_page_loads(self, admin_client):
+        """Admin shipping dashboard should load."""
+        response = admin_client.get("/admin/shipping")
         assert response.status_code == 200
     
     def test_admin_accounts_page_loads(self, admin_client):

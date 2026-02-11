@@ -101,6 +101,17 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
     messages = conn.execute(
         "SELECT * FROM request_messages WHERE request_id = ? ORDER BY created_at ASC", (rid,)
     ).fetchall()
+
+    shipping = None
+    shipping_events = []
+    if (req.get("fulfillment_method") or "pickup") == "shipping":
+        shipping_row = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
+        if shipping_row:
+            shipping = dict(shipping_row)
+            shipping_events = conn.execute(
+                "SELECT * FROM request_shipping_events WHERE request_id = ? ORDER BY created_at DESC LIMIT 20",
+                (rid,),
+            ).fetchall()
     
     # Get builds with snapshots (for multi-build requests or DONE status)
     builds_with_snapshots = []
@@ -220,6 +231,8 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
         "build_eta_info": get_request_eta_info(rid, dict(req), printer_status=printer_status),
         "active_printer": active_printer,
         "builds_with_snapshots": builds_with_snapshots,
+        "shipping": shipping,
+        "shipping_events": shipping_events,
         "requester_email": requester_email,
         "current_printing_build": current_printing_build,
         "current_printing_file": current_printing_file,
@@ -743,17 +756,19 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
     
     # Fetch all requests for this email, including multi-build info
     requests_list = conn.execute(
-        """SELECT id, print_name, status, created_at, updated_at, printer, material, colors, 
-                  access_token, completion_snapshot, printing_started_at, print_time_minutes,
-                  active_build_id, total_builds, completed_builds
-           FROM requests 
+        """SELECT r.id, r.print_name, r.status, r.created_at, r.updated_at, r.printer, r.material, r.colors,
+                  r.access_token, r.completion_snapshot, r.printing_started_at, r.print_time_minutes,
+                  r.active_build_id, r.total_builds, r.completed_builds, r.fulfillment_method,
+                  rs.shipping_status, rs.tracking_number, rs.tracking_url, rs.carrier
+           FROM requests r
+           LEFT JOIN request_shipping rs ON rs.request_id = r.id
            WHERE LOWER(requester_email) = ?
            ORDER BY 
-             CASE WHEN status = 'DONE' THEN 0
-                  WHEN status IN ('PRINTING', 'IN_PROGRESS') THEN 1
-                  WHEN status = 'NEEDS_INFO' THEN 2
+             CASE WHEN r.status = 'DONE' THEN 0
+                  WHEN r.status IN ('PRINTING', 'IN_PROGRESS') THEN 1
+                  WHEN r.status = 'NEEDS_INFO' THEN 2
                   ELSE 3 END,
-             created_at DESC""",
+             r.created_at DESC""",
         (email,)
     ).fetchall()
     

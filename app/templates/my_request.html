@@ -459,11 +459,60 @@
     } %}
     
     <div class="rounded-2xl border p-4 mb-6 {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">
-      <div class="font-semibold text-lg">{{ status_messages.get(req.status, req.status) }}</div>
+      <div class="font-semibold text-lg">
+        {% if req.status == 'DONE' and req.fulfillment_method == 'shipping' %}
+          ✅ Print complete - shipping updates below
+        {% else %}
+          {{ status_messages.get(req.status, req.status) }}
+        {% endif %}
+      </div>
       {% if req.status == 'NEEDS_INFO' %}
         <p class="text-sm mt-2 opacity-80">Please scroll down to send a reply or upload additional files.</p>
       {% endif %}
     </div>
+
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 mb-6">
+      <div class="text-xs uppercase tracking-wide text-zinc-500 mb-1">Fulfillment</div>
+      <div class="font-medium text-zinc-200">
+        {% if req.fulfillment_method == 'shipping' %}Shipping{% else %}Pickup{% endif %}
+      </div>
+    </div>
+
+    {% if shipping %}
+      <div class="rounded-2xl border border-sky-700/40 bg-sky-900/20 p-4 mb-6">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="font-semibold text-sky-100">📦 Shipping Details</h3>
+          <span class="px-2 py-1 rounded-lg text-xs bg-sky-500/20 border border-sky-500/40 text-sky-200">
+            {{ shipping.shipping_status or 'REQUESTED' }}
+          </span>
+        </div>
+        <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+          <div><span class="text-zinc-400">Carrier:</span> {{ shipping.carrier or '—' }}</div>
+          <div><span class="text-zinc-400">Service:</span> {{ shipping.service or '—' }}</div>
+          <div><span class="text-zinc-400">Tracking:</span> {{ shipping.tracking_number or 'Pending' }}</div>
+          <div><span class="text-zinc-400">Status:</span> {{ shipping.tracking_status or shipping.shipping_status or 'Pending' }}</div>
+        </div>
+        {% if shipping.tracking_url %}
+          <a href="{{ shipping.tracking_url }}" target="_blank" class="inline-block mt-3 text-sky-300 hover:text-sky-200 text-sm underline">
+            Open tracking page →
+          </a>
+        {% endif %}
+        {% if shipping_events %}
+          <div class="mt-4">
+            <div class="text-xs uppercase tracking-wide text-zinc-400 mb-2">Shipping Timeline</div>
+            <div class="space-y-1.5 max-h-40 overflow-y-auto">
+              {% for evt in shipping_events[:8] %}
+                <div class="rounded-lg border border-sky-800/40 bg-sky-950/20 px-2 py-1.5 text-xs">
+                  <div class="text-zinc-200">{{ evt.event_type }}{% if evt.shipping_status %} → {{ evt.shipping_status }}{% endif %}</div>
+                  {% if evt.message %}<div class="text-zinc-400">{{ evt.message }}</div>{% endif %}
+                  <div class="text-zinc-500">{{ evt.created_at|localtime }}</div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
     
     {% if req.requires_design %}
       <div class="rounded-xl border border-teal-800 bg-teal-900/30 p-3 mb-4">

@@ -332,7 +332,8 @@ def generate_demo_request(
     printer: str = "ANY",
     material: str = "PLA",
     with_builds: bool = False,
-    num_builds: int = 1
+    num_builds: int = 1,
+    fulfillment_method: str = "pickup",
 ) -> Dict[str, Any]:
     """Generate a single demo request with realistic data"""
     
@@ -371,6 +372,7 @@ def generate_demo_request(
         "total_builds": num_builds,
         "completed_builds": 0,
         "failed_builds": 0,
+        "fulfillment_method": fulfillment_method,
     }
     
     # Add timing info for printing/done requests
@@ -557,6 +559,11 @@ def seed_demo_data(db_func, force: bool = False):
         
         # Multi-build request example
         generate_demo_request(3, "IN_PROGRESS", "ANY", "PLA", with_builds=True, num_builds=4),
+        
+        # Shipping requests (fulfillment_method='shipping')
+        generate_demo_request(2, "DONE", "ADVENTURER_4", "PLA", fulfillment_method="shipping"),
+        generate_demo_request(1, "APPROVED", "AD5X", "PETG", fulfillment_method="shipping"),
+        generate_demo_request(0, "NEW", "ANY", "PLA", fulfillment_method="shipping"),
     ]
     
     for req in demo_requests:
@@ -567,8 +574,9 @@ def seed_demo_data(db_func, force: bool = False):
                     printer, material, colors, link_url, notes, status,
                     priority, admin_notes, print_name, access_token,
                     total_builds, completed_builds, failed_builds,
-                    print_time_minutes, slicer_estimate_minutes, printing_started_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    print_time_minutes, slicer_estimate_minutes, printing_started_at,
+                    fulfillment_method
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 req["id"], req["created_at"], req["updated_at"],
                 req["requester_name"], req["requester_email"],
@@ -578,7 +586,8 @@ def seed_demo_data(db_func, force: bool = False):
                 req.get("print_name", ""), req["access_token"],
                 req.get("total_builds", 1), req.get("completed_builds", 0), req.get("failed_builds", 0),
                 req.get("print_time_minutes"), req.get("slicer_estimate_minutes"),
-                req.get("printing_started_at")
+                req.get("printing_started_at"),
+                req.get("fulfillment_method", "pickup"),
             ))
             
             # Add a demo file for each request
@@ -710,6 +719,75 @@ def seed_demo_data(db_func, force: bool = False):
             ))
         except Exception as e:
             print(f"[DEMO] Error inserting email token: {e}")
+    
+    # ── Seed Shipping Records (for requests with fulfillment_method='shipping') ──
+    shipping_requests = [r for r in demo_requests if r.get("fulfillment_method") == "shipping"]
+    shipping_addresses = [
+        {
+            "recipient_name": "Alex Johnson",
+            "recipient_phone": "555-0101",
+            "address_line1": "123 Main St",
+            "address_line2": "Apt 4B",
+            "city": "Dallas",
+            "state": "TX",
+            "postal_code": "75201",
+            "country": "US",
+        },
+        {
+            "recipient_name": "Sam Williams",
+            "recipient_phone": "555-0202",
+            "address_line1": "456 Oak Ave",
+            "address_line2": "",
+            "city": "Austin",
+            "state": "TX",
+            "postal_code": "73301",
+            "country": "US",
+        },
+        {
+            "recipient_name": "Jordan Taylor",
+            "recipient_phone": "555-0303",
+            "address_line1": "789 Pine Blvd",
+            "address_line2": "Suite 100",
+            "city": "Houston",
+            "state": "TX",
+            "postal_code": "77001",
+            "country": "US",
+        },
+    ]
+    shipping_statuses_demo = ["SHIPPED", "QUOTED", "REQUESTED"]
+    for i, req in enumerate(shipping_requests):
+        addr = shipping_addresses[i % len(shipping_addresses)]
+        ship_status = shipping_statuses_demo[i % len(shipping_statuses_demo)]
+        ship_id = str(uuid.uuid4())
+        try:
+            cur.execute("""
+                INSERT INTO request_shipping (
+                    id, request_id, created_at, updated_at, shipping_status,
+                    recipient_name, recipient_phone, address_line1, address_line2,
+                    city, state, postal_code, country,
+                    package_weight_oz, package_length_in, package_width_in, package_height_in,
+                    quote_amount_cents, quote_currency, carrier, service,
+                    tracking_number, tracking_url, shipped_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                ship_id, req["id"], req["created_at"], req["updated_at"], ship_status,
+                addr["recipient_name"], addr["recipient_phone"],
+                addr["address_line1"], addr["address_line2"],
+                addr["city"], addr["state"], addr["postal_code"], addr["country"],
+                random.uniform(2.0, 16.0),  # weight_oz
+                random.uniform(4.0, 12.0),  # length
+                random.uniform(3.0, 8.0),   # width
+                random.uniform(2.0, 6.0),   # height
+                random.choice([599, 899, 1299, 1599]) if ship_status != "REQUESTED" else None,
+                "USD",
+                "USPS" if ship_status != "REQUESTED" else None,
+                "Priority Mail" if ship_status != "REQUESTED" else None,
+                f"9400111899{random.randint(1000000000, 9999999999)}" if ship_status == "SHIPPED" else None,
+                f"https://tools.usps.com/go/TrackConfirmAction?tLabels=9400111899{random.randint(1000000000, 9999999999)}" if ship_status == "SHIPPED" else None,
+                (datetime.utcnow() - timedelta(hours=random.randint(2, 48))).isoformat(timespec="seconds") + "Z" if ship_status == "SHIPPED" else None,
+            ))
+        except Exception as e:
+            print(f"[DEMO] Error inserting shipping record: {e}")
     
     # ── Seed Demo Users ──
     # Create sample user accounts for testing the user management features
@@ -844,6 +922,16 @@ def seed_demo_data(db_func, force: bool = False):
     except Exception as e:
         print(f"[DEMO] Could not configure Moonraker: {e}")
 
+    # ── Enable Shipping for demo ──
+    try:
+        cur.execute("""
+            INSERT OR REPLACE INTO settings (key, value, updated_at)
+            VALUES ('shipping_enabled', '1', ?)
+        """, (now_iso,))
+        print("[DEMO] ✓ Shipping enabled")
+    except Exception as e:
+        print(f"[DEMO] Could not enable shipping: {e}")
+
     # ── Mark as seeded ──
     try:
         cur.execute("""
@@ -856,7 +944,7 @@ def seed_demo_data(db_func, force: bool = False):
     conn.commit()
     conn.close()
     
-    print(f"[DEMO] ✓ Seeded {len(demo_requests)} requests, {len(DEMO_STORE_ITEMS)} store items, {len(DEMO_REQUEST_TEMPLATES)} templates, {user_count} users, 20 print history entries")
+    print(f"[DEMO] ✓ Seeded {len(demo_requests)} requests ({len(shipping_requests)} with shipping), {len(DEMO_STORE_ITEMS)} store items, {len(DEMO_REQUEST_TEMPLATES)} templates, {user_count} users, 20 print history entries")
 
 
 def reset_demo_data(db_func):
@@ -875,6 +963,7 @@ def reset_demo_data(db_func):
     
     # Clear all tables (order matters for foreign keys)
     tables = [
+        "request_shipping_events", "request_shipping_rate_snapshots", "request_shipping",
         "build_snapshots", "build_status_events", "builds",
         "status_events", "files", "request_messages", "push_subscriptions",
         "email_lookup_tokens", "store_item_files", "store_items",
@@ -906,6 +995,7 @@ def get_demo_status() -> Dict[str, Any]:
             "Fake requests in various statuses",
             "Pre-populated store items",
             "Print history for ETA learning",
+            "Shipping requests with addresses and tracking",
             "Sample feedback entries",
         ] if DEMO_MODE else []
     }
