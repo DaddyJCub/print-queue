@@ -503,7 +503,7 @@
         <!-- Thumbnail (Moonraker) -->
         {% if printer_status.AD5X.get('thumbnail_url') and printer_status.AD5X.is_printing %}
         <div class="mb-2">
-          <img src="{{ printer_status.AD5X.thumbnail_url }}" class="w-16 h-16 rounded-lg bg-zinc-800 object-contain" alt="Print thumbnail" />
+          <img src="/api/printer/AD5X/thumbnail" class="w-16 h-16 rounded-lg bg-zinc-800 object-contain" alt="Print thumbnail" onerror="this.parentElement.style.display='none'" />
         </div>
         {% endif %}
         

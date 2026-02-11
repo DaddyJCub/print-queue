@@ -3030,12 +3030,20 @@ def get_smart_eta(printer: str = None, material: str = None,
 
 
 def format_eta_display(eta_dt: Optional[datetime]) -> str:
-    """Format an ETA datetime for display in the UI"""
+    """Format an ETA datetime for display in the UI.
+    
+    Note: eta_dt is expected in UTC (from get_smart_eta which uses utcnow).
+    We convert to local time for display.
+    """
     if not eta_dt:
         return "Unknown"
     
+    # eta_dt is in UTC; convert to local time for display
+    import time as _time
+    utc_offset = _time.timezone if _time.daylight == 0 else _time.altzone
+    local_eta = eta_dt - __import__('datetime').timedelta(seconds=utc_offset)
     now = datetime.now()
-    diff = eta_dt - now
+    diff = local_eta - now
     
     if diff.total_seconds() < 0:
         return "Any moment now"
@@ -3051,12 +3059,12 @@ def format_eta_display(eta_dt: Optional[datetime]) -> str:
     
     # Format as "Dec 14, 3:45 PM" if more than a day away
     # or "Today at 3:45 PM" / "Tomorrow at 10:30 AM"
-    if eta_dt.date() == now.date():
-        return f"Today at {format_time(eta_dt)}"
-    elif eta_dt.date() == (now + __import__('datetime').timedelta(days=1)).date():
-        return f"Tomorrow at {format_time(eta_dt)}"
+    if local_eta.date() == now.date():
+        return f"Today at {format_time(local_eta)}"
+    elif local_eta.date() == (now + __import__('datetime').timedelta(days=1)).date():
+        return f"Tomorrow at {format_time(local_eta)}"
     else:
-        return f"{eta_dt.strftime('%b %d')}, {format_time(eta_dt)}"
+        return f"{local_eta.strftime('%b %d')}, {format_time(local_eta)}"
 
 
 
@@ -4620,19 +4628,119 @@ class MoonrakerAPI:
             print(f"[MOONRAKER] Error uploading file {filename}: {e}")
         return None
     
-    async def start_print(self, filename: str) -> bool:
-        """Start printing a file."""
+    async def get_file_metadata(self, filename: str) -> Optional[Dict[str, Any]]:
+        """Get G-code file metadata from Moonraker.
+        
+        After a file is uploaded, Moonraker parses it and extracts metadata
+        including filament colors, referenced tools, filament types, etc.
+        This is the same data Fluidd uses to detect multi-color prints.
+        
+        Returns dict with keys like:
+          - referenced_tools: [0, 1, 2] — which tools the file uses
+          - filament_colors: ['#FF0000', '#00FF00'] — colors per tool
+          - filament_type: 'PLA' or 'PLA;PETG' — material types
+          - filament_name: filament profile names
+          - filament_total: total filament in mm
+          - filament_change_count: number of filament changes
+          - estimated_time: estimated print time in seconds
+          - thumbnails: list of thumbnail images
+        """
         try:
             async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.get(
+                    f"{self.base_url}/server/files/metadata",
+                    params={"filename": filename},
+                    headers=self._headers(),
+                )
+                if r.status_code == 200:
+                    return r.json().get("result", {})
+        except Exception as e:
+            print(f"[MOONRAKER] Error fetching metadata for {filename}: {e}")
+        return None
+    
+    async def get_spoolman_spools(self) -> Optional[list]:
+        """Get all spools from Spoolman via Moonraker proxy.
+        
+        Requires [spoolman] to be configured in moonraker.conf.
+        Returns list of spool objects with filament info (color, material, vendor, weight).
+        Returns None if Spoolman is not available.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(
+                    f"{self.base_url}/server/spoolman/proxy",
+                    json={
+                        "request_method": "GET",
+                        "path": "/v1/spool",
+                        "use_v2_response": True,
+                    },
+                    headers=self._headers(),
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    # v2 response wraps in {"response": ..., "error": ...}
+                    if isinstance(data, dict) and "result" in data:
+                        result = data["result"]
+                        if isinstance(result, dict) and "response" in result:
+                            return result["response"]
+                        return result
+                    return data
+        except Exception as e:
+            print(f"[MOONRAKER] Spoolman not available: {e}")
+        return None
+    
+    async def get_active_spool(self) -> Optional[int]:
+        """Get the currently active spool ID from Spoolman."""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                r = await client.get(
+                    f"{self.base_url}/server/spoolman/spool_id",
+                    headers=self._headers(),
+                )
+                if r.status_code == 200:
+                    return r.json().get("result", {}).get("spool_id")
+        except Exception:
+            pass
+        return None
+    
+    async def set_active_spool(self, spool_id: Optional[int]) -> bool:
+        """Set the active spool ID in Spoolman for filament tracking."""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                r = await client.post(
+                    f"{self.base_url}/server/spoolman/spool_id",
+                    json={"spool_id": spool_id},
+                    headers=self._headers(),
+                )
+                return r.status_code == 200
+        except Exception:
+            pass
+        return False
+    
+    async def start_print(self, filename: str) -> bool:
+        """Start printing a file.
+        
+        Uses a longer timeout (60s) because ZMOD intercepts print starts
+        and may run macros (homing, bed leveling) before responding.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
                 r = await client.post(
                     f"{self.base_url}/printer/print/start",
                     json={"filename": filename},
                     headers=self._headers(),
                 )
                 self._invalidate_cache()
-                return r.status_code == 200
+                if r.status_code == 200:
+                    return True
+                else:
+                    body = r.text[:500] if r.text else "(empty)"
+                    print(f"[MOONRAKER] start_print failed: HTTP {r.status_code} — {body}")
+                    return False
+        except httpx.TimeoutException:
+            print(f"[MOONRAKER] start_print timed out after 60s for {filename}")
         except Exception as e:
-            print(f"[MOONRAKER] Error starting print: {e}")
+            print(f"[MOONRAKER] Error starting print: {type(e).__name__}: {e}")
         return False
     
     async def run_gcode(self, script: str, timeout: float = 300) -> bool:

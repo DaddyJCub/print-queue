@@ -25,3 +25,8 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Test artifacts
+tests/tmp_data/
+tests/tmp_uploads/
+tests/tmp_trip_uploads/

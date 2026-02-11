@@ -1,4 +1,4 @@
-import os, json, uuid, hashlib, base64, urllib.parse, secrets
+import os, json, uuid, hashlib, base64, urllib.parse, secrets, asyncio
 from typing import Optional, List, Any, Dict
 from datetime import datetime
 
@@ -1097,20 +1097,118 @@ async def admin_send_file_to_printer(
     with open(file_path, "rb") as f:
         file_data = f.read()
     
-    # Upload to Moonraker (print=true triggers Klipper's PRINT_START macro which can include leveling)
+    # Upload to Moonraker first (always without starting, so we can check metadata)
     filename = file_info["original_filename"]
     should_start = start_print == "1"
-    logger.info(f"[SEND-TO-PRINTER] Uploading {filename} ({len(file_data)} bytes) to {printer} via Moonraker (start={should_start})")
+    logger.info(f"[SEND-TO-PRINTER] Uploading {filename} ({len(file_data)} bytes) to {printer} via Moonraker")
     
-    result = await printer_api.upload_file(filename, file_data, start_print=should_start)
+    result = await printer_api.upload_file(filename, file_data, start_print=False)
     if not result:
         logger.error(f"[SEND-TO-PRINTER] Failed to upload {filename} to {printer}")
         raise HTTPException(status_code=502, detail="Failed to upload file to printer. Check Moonraker connection.")
     
-    if should_start:
-        logger.info(f"[SEND-TO-PRINTER] Uploaded and started printing: {filename} on {printer}")
+    logger.info(f"[SEND-TO-PRINTER] Uploaded {filename} to {printer}, checking metadata...")
+    
+    # Poll for metadata readiness — Moonraker needs time to parse the G-code and
+    # extract metadata (colors, tools, etc). For large files this can take several seconds.
+    # We poll every 1s for up to 10s, checking for a valid 'size' field in the response.
+    metadata = None
+    for attempt in range(10):
+        await asyncio.sleep(1)
+        metadata = await printer_api.get_file_metadata(filename)
+        if metadata and metadata.get("size"):
+            logger.info(f"[SEND-TO-PRINTER] Metadata ready after {attempt + 1}s")
+            break
     else:
-        logger.info(f"[SEND-TO-PRINTER] Successfully uploaded {filename} to {printer} (not started)")
+        logger.warning(f"[SEND-TO-PRINTER] Metadata not ready after 10s, proceeding anyway")
+    
+    # Detect multi-color prints from metadata
+    is_multi_color = False
+    tool_count = 1
+    filament_info = ""
+    
+    if metadata:
+        referenced_tools = metadata.get("referenced_tools") or []
+        filament_colors = metadata.get("filament_colors") or []
+        filament_type = metadata.get("filament_type") or ""
+        filament_names = metadata.get("filament_name") or ""
+        filament_change_count = metadata.get("filament_change_count") or 0
+        
+        tool_count = len(referenced_tools) if referenced_tools else 1
+        is_multi_color = tool_count > 1 or filament_change_count > 0
+        
+        if is_multi_color:
+            logger.info(f"[SEND-TO-PRINTER] Multi-color detected: {tool_count} tools, {filament_change_count} changes, colors={filament_colors}")
+        
+        # Build filament info summary for display
+        info_parts = []
+        if filament_type:
+            info_parts.append(filament_type)
+        if filament_colors:
+            info_parts.append(f"colors: {','.join(filament_colors)}")
+        filament_info = "; ".join(info_parts)
+    
+    # Multi-color: don't auto-start — user needs to configure AMS spool mapping via ZMOD prompt
+    if is_multi_color and should_start:
+        logger.info(f"[SEND-TO-PRINTER] Multi-color file uploaded (not auto-started) — user should configure spool mapping via ZMOD or Fluidd")
+        params = urllib.parse.urlencode({
+            "sent_to_printer": "multi_color",
+            "tool_count": tool_count,
+            "filament_info": filament_info,
+        })
+        return RedirectResponse(url=f"/admin/request/{rid}?{params}", status_code=303)
+    
+    # Single-color (or metadata unavailable): bypass ZMOD's interactive color-selection
+    # dialog by temporarily overriding ZMOD settings, then starting in the background.
+    #
+    # SILENT=2: skip dialog AND skip IFS entirely — required for API-uploaded files
+    #           because they have no IFS color data (SILENT=1 falls back to dialog)
+    # FORCE_MD5=0: skip MD5 checksum verification (API-uploaded files lack valid checksums
+    #              causing "file error" on the native screen)
+    #
+    # NOTE: Do NOT send SDCARD_RESET_FILE before upload — it confuses the native screen
+    # and causes port 8898 communication timeouts.
+    #
+    # The start_print call runs in a background task because ZMOD's START_PRINT macro
+    # communicates with the native screen (port 8898), which takes 30-60+ seconds.
+    # The page returns immediately so the user isn't stuck waiting.
+    if should_start:
+        # Set ZMOD overrides before starting (these gcode commands complete quickly)
+        await printer_api.run_gcode('SAVE_ZMOD_DATA SILENT=2')
+        await printer_api.run_gcode('SAVE_ZMOD_DATA FORCE_MD5=0')
+        logger.info(f"[SEND-TO-PRINTER] Set ZMOD SILENT=2 FORCE_MD5=0, starting print in background...")
+        
+        # Background task: start print + restore ZMOD settings
+        async def _start_and_restore():
+            try:
+                await asyncio.sleep(2)  # Let ZMOD register setting changes
+                bg_api = get_printer_api(printer)
+                if not isinstance(bg_api, MoonrakerAPI):
+                    return
+                started = await bg_api.start_print(filename)
+                if started:
+                    logger.info(f"[SEND-TO-PRINTER] Print started: {filename} on {printer} (background)")
+                else:
+                    logger.warning(f"[SEND-TO-PRINTER] Failed to start print: {filename} (background)")
+            except Exception as e:
+                logger.error(f"[SEND-TO-PRINTER] Background start error: {e}")
+            
+            # Restore ZMOD settings for future manual prints
+            # ZMOD auto-resets SILENT after processing, but we also restore FORCE_MD5
+            # Wait long enough for ZMOD's START_PRINT to fully complete (homing, leveling, etc)
+            await asyncio.sleep(120)
+            try:
+                restore_api = get_printer_api(printer)
+                if isinstance(restore_api, MoonrakerAPI):
+                    await restore_api.run_gcode('SAVE_ZMOD_DATA SILENT=0')
+                    await restore_api.run_gcode('SAVE_ZMOD_DATA FORCE_MD5=1')
+                    logger.info(f"[SEND-TO-PRINTER] Restored ZMOD SILENT=0 FORCE_MD5=1 (background)")
+            except Exception as e:
+                logger.warning(f"[SEND-TO-PRINTER] Failed to restore ZMOD settings: {e}")
+        
+        asyncio.create_task(_start_and_restore())
+    else:
+        logger.info(f"[SEND-TO-PRINTER] Uploaded {filename} to {printer} (not started)")
     
     return RedirectResponse(url=f"/admin/request/{rid}?sent_to_printer=1", status_code=303)
 
@@ -1303,6 +1401,43 @@ async def camera_status(_=Depends(require_admin)):
             "url": get_camera_url("AD5X"),
         },
     }
+
+
+@router.get("/api/printer/{printer_code}/thumbnail")
+async def printer_thumbnail_proxy(printer_code: str):
+    """Proxy the current print thumbnail from Moonraker.
+    
+    The thumbnail URL is internal to the Moonraker server and not directly
+    reachable from the browser. This endpoint proxies the image through the app.
+    Public endpoint so it works on public queue too.
+    """
+    if printer_code not in ["ADVENTURER_4", "AD5X"]:
+        raise HTTPException(status_code=400, detail="Invalid printer code")
+    
+    # Get the cached thumbnail URL from printer status
+    cached = get_cached_printer_status(printer_code)
+    if not cached or not cached.get("thumbnail_url"):
+        raise HTTPException(status_code=404, detail="No thumbnail available")
+    
+    thumbnail_url = cached["thumbnail_url"]
+    
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(thumbnail_url)
+            if resp.status_code == 200:
+                content_type = resp.headers.get("content-type", "image/png")
+                return Response(
+                    content=resp.content,
+                    media_type=content_type,
+                    headers={"Cache-Control": "public, max-age=60"}
+                )
+            else:
+                raise HTTPException(status_code=resp.status_code, detail="Failed to fetch thumbnail")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[THUMBNAIL] Error proxying thumbnail for {printer_code}: {e}")
+        raise HTTPException(status_code=503, detail=f"Thumbnail error: {str(e)}")
 
 
 @router.get("/api/request/{rid}/completion-snapshot")
@@ -2294,8 +2429,9 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
     camera_url = get_camera_url(req["printer"]) if req["printer"] in ["ADVENTURER_4", "AD5X"] else None
     
     # Check if Moonraker is available for file sending
+    # Show send-to-printer button for AD5X requests AND "ANY" printer requests
     moonraker_available = (
-        req["printer"] == "AD5X" and 
+        req["printer"] in ("AD5X", "ANY") and 
         is_feature_enabled("moonraker_ad5x") and 
         bool(get_setting("moonraker_ad5x_url", ""))
     )

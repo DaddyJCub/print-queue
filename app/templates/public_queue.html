@@ -320,7 +320,14 @@
         </div>
         {% if printer_status.AD5X.is_printing %}
           <div class="mt-2 text-xs text-zinc-400">
-            {% if printer_status.AD5X.current_file %}
+            {% if printer_status.AD5X.get('thumbnail_url') %}
+            <div class="flex items-center gap-2 mb-1">
+              <img src="/api/printer/AD5X/thumbnail" class="w-12 h-12 rounded bg-zinc-800 object-contain" alt="" onerror="this.parentElement.style.display='none'" />
+              {% if printer_status.AD5X.current_file %}
+              <div class="text-zinc-300 font-medium">📄 {{ printer_status.AD5X.current_file }}</div>
+              {% endif %}
+            </div>
+            {% elif printer_status.AD5X.current_file %}
               <div class="text-zinc-300 font-medium mb-1">📄 {{ printer_status.AD5X.current_file }}</div>
             {% endif %}
             <div class="flex gap-4">

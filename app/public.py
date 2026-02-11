@@ -413,6 +413,9 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                 current_layer = cached_status.get("current_layer")
                 total_layers = cached_status.get("total_layers")
             
+            # Get Moonraker time remaining if available (most accurate ETA source)
+            moonraker_remaining = cached_status.get("moonraker_time_remaining") if cached_status else None
+            
             # Calculate smart ETA based on layers (preferred) or progress
             eta_dt = get_smart_eta(
                 printer=active_printer,
@@ -421,7 +424,8 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                 printing_started_at=printing_started_at,
                 current_layer=current_layer,
                 total_layers=total_layers,
-                estimated_minutes=r.get("print_time_minutes") or r.get("slicer_estimate_minutes")
+                estimated_minutes=r.get("print_time_minutes") or r.get("slicer_estimate_minutes"),
+                moonraker_time_remaining=moonraker_remaining
             )
             if eta_dt:
                 smart_eta = eta_dt.isoformat()
@@ -514,6 +518,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                     # Calculate ETA for this specific build
                     started_at = build["started_at"]
                     if started_at:
+                        build_moonraker_remaining = cached_status.get("moonraker_time_remaining") if cached_status else None
                         eta_dt = get_smart_eta(
                             printer=build_printer,
                             material=build["material"] or parent_item["material"],
@@ -521,7 +526,8 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                             printing_started_at=started_at,
                             current_layer=build_layer,
                             total_layers=build_total_layers,
-                            estimated_minutes=build.get("print_time_minutes") or build.get("slicer_estimate_minutes") or parent_item.get("print_time_minutes") or parent_item.get("slicer_estimate_minutes")
+                            estimated_minutes=build.get("print_time_minutes") or build.get("slicer_estimate_minutes") or parent_item.get("print_time_minutes") or parent_item.get("slicer_estimate_minutes"),
+                            moonraker_time_remaining=build_moonraker_remaining
                         )
                         if eta_dt:
                             build_eta_display = format_eta_display(eta_dt)

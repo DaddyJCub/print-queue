@@ -286,6 +286,11 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
             conn_fix.commit()
             conn_fix.close()
         
+        # Get Moonraker time remaining if available (most accurate ETA source)
+        moonraker_remaining = None
+        if cached_status:
+            moonraker_remaining = cached_status.get("moonraker_time_remaining")
+        
         # Calculate smart ETA based on layers (preferred) or progress
         eta_dt = get_smart_eta(
             printer=active_printer,
@@ -294,7 +299,8 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
             printing_started_at=printing_started_at,
             current_layer=current_layer,
             total_layers=total_layers,
-            estimated_minutes=active_est_minutes or r["print_time_minutes"] or r["slicer_estimate_minutes"]
+            estimated_minutes=active_est_minutes or r["print_time_minutes"] or r["slicer_estimate_minutes"],
+            moonraker_time_remaining=moonraker_remaining
         )
         
         # Convert to dict and add ETA fields

@@ -265,7 +265,14 @@
       
       <!-- File and progress -->
       <div class="text-xs text-zinc-400 space-y-1.5">
-        {% if printer_status.AD5X.current_file %}
+        {% if printer_status.AD5X.get('thumbnail_url') %}
+        <div class="flex items-center gap-2 mb-1">
+          <img src="/api/printer/AD5X/thumbnail" class="w-12 h-12 rounded bg-zinc-800 object-contain" alt="" onerror="this.parentElement.style.display='none'" />
+          {% if printer_status.AD5X.current_file %}
+          <p class="truncate text-zinc-400 flex-1">{{ printer_status.AD5X.current_file }}</p>
+          {% endif %}
+        </div>
+        {% elif printer_status.AD5X.current_file %}
         <p class="truncate text-zinc-500">📄 {{ printer_status.AD5X.current_file }}</p>
         {% endif %}
         {% if printer_status.AD5X.progress is not none %}

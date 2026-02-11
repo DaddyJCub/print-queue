@@ -142,6 +142,7 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
             
             # Calculate smart ETA if we have status
             if printer_status and not printer_status.get("is_offline"):
+                moonraker_remaining = printer_status.get("moonraker_time_remaining")
                 eta_dt = get_smart_eta(
                     printer=active_printer,
                     material=req["material"],
@@ -149,7 +150,8 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
                     printing_started_at=printing_started_at or now_iso(),
                     current_layer=printer_status.get("current_layer") or 0,
                     total_layers=printer_status.get("total_layers") or 0,
-                    estimated_minutes=req["print_time_minutes"] or req["slicer_estimate_minutes"]
+                    estimated_minutes=req["print_time_minutes"] or req["slicer_estimate_minutes"],
+                    moonraker_time_remaining=moonraker_remaining
                 )
                 if eta_dt:
                     smart_eta_display = format_eta_display(eta_dt)
@@ -788,6 +790,7 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
                 
                 # Calculate smart ETA if not offline
                 if req_dict.get("printer_status") and not req_dict["printer_status"].get("is_offline"):
+                    moonraker_remaining = req_dict["printer_status"].get("moonraker_time_remaining")
                     eta_dt = get_smart_eta(
                         printer=printer_code,
                         material=req["material"],
@@ -795,7 +798,8 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
                         printing_started_at=printing_started_at or now_iso(),
                         current_layer=req_dict["printer_status"].get("current_layer") or 0,
                         total_layers=req_dict["printer_status"].get("total_layers") or 0,
-                        estimated_minutes=req_dict.get("print_time_minutes") or req_dict.get("slicer_estimate_minutes")
+                        estimated_minutes=req_dict.get("print_time_minutes") or req_dict.get("slicer_estimate_minutes"),
+                        moonraker_time_remaining=moonraker_remaining
                     )
                     req_dict["smart_eta_display"] = format_eta_display(eta_dt) if eta_dt else None
         

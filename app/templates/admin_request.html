@@ -42,9 +42,39 @@
         ✓ Reminder sent to {{ req["requester_email"] }}
       </div>
     {% endif %}
-    {% if request.query_params.get('sent_to_printer') %}
+    {% if request.query_params.get('sent_to_printer') == 'multi_color' %}
+      <div class="mb-4 bg-amber-900/30 border border-amber-700 rounded-xl p-4 text-amber-200 text-sm">
+        <div class="flex items-start gap-3">
+          <span class="text-2xl">🎨</span>
+          <div>
+            <p class="font-semibold text-amber-100">Multi-color file uploaded — AMS mapping needed</p>
+            <p class="mt-1 text-amber-300/80">
+              This file uses <strong>{{ request.query_params.get('tool_count', '?') }} tools</strong>{% if request.query_params.get('filament_info') %} ({{ request.query_params.get('filament_info') }}){% endif %}.
+              The printer's <strong>ZMOD</strong> prompt will appear on the display to assign AMS slots to each tool. You can also start the print from <strong>Fluidd</strong>.
+            </p>
+            {% if request.query_params.get('filament_info') and 'colors:' in request.query_params.get('filament_info', '') %}
+              <div class="flex items-center gap-1 mt-2">
+                <span class="text-xs text-amber-400">Required colors:</span>
+                {% for color in request.query_params.get('filament_info', '').split('colors: ')[-1].split(',') %}
+                  <span class="inline-block w-5 h-5 rounded-full border border-white/20" style="background-color: {{ color.strip() }}"></span>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% elif request.query_params.get('sent_to_printer') == '1' %}
       <div class="mb-4 bg-emerald-900/30 border border-emerald-700 rounded-lg p-3 text-emerald-200 text-sm">
-        ✓ G-code sent to printer via Moonraker
+        ✓ G-code sent to printer — print starting in background (check Fluidd to confirm)
+      </div>
+    {% elif request.query_params.get('sent_to_printer') == 'start_failed' %}
+      <div class="mb-4 bg-red-900/30 border border-red-700 rounded-lg p-3 text-red-200 text-sm">
+        <p class="font-semibold">⚠ File uploaded but print failed to start</p>
+        <p class="mt-1 text-red-300/80 text-xs">The G-code was uploaded to the printer but Moonraker could not start the print. The printer may be busy or in an error state. Try starting the print from Fluidd instead.</p>
+      </div>
+    {% elif request.query_params.get('sent_to_printer') %}
+      <div class="mb-4 bg-emerald-900/30 border border-emerald-700 rounded-lg p-3 text-emerald-200 text-sm">
+        ✓ G-code uploaded to printer via Moonraker
       </div>
     {% endif %}
     
@@ -1425,7 +1455,7 @@
     <!-- Send to Printer Modal -->
     {% if moonraker_available %}
     <div id="send-to-printer-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-sm w-full">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full">
         <h2 class="text-xl font-bold mb-2">🖨 Send to Printer</h2>
         <p class="text-sm text-zinc-400 mb-2">Upload G-code to your AD5X via Moonraker</p>
         <p id="send-file-name" class="font-mono text-sm text-indigo-300 mb-4 break-all"></p>
@@ -1435,7 +1465,10 @@
             <input type="checkbox" name="start_print" value="1" class="scale-125 accent-emerald-500" checked />
             <span class="text-sm text-zinc-300">Start printing immediately</span>
           </label>
-          <p class="text-xs text-zinc-500 ml-8">Triggers your PRINT_START macro (include BED_MESH_CALIBRATE there for auto-leveling). For multi-color prints, uncheck and start from Fluidd to set AMS spool mapping.</p>
+          <div class="bg-zinc-800/50 rounded-lg p-3 ml-1 border border-zinc-700/50">
+            <p class="text-xs text-zinc-400">🔍 <strong class="text-zinc-300">Smart detection:</strong> After upload, the file's metadata is checked for multi-color info. Multi-color prints will be uploaded but <em>not</em> auto-started — configure AMS spool mapping via ZMOD's prompt or Fluidd.</p>
+            <p class="text-xs text-zinc-500 mt-1">Single-color prints bypass ZMOD's material dialog automatically via <code class="text-zinc-400">SILENT</code> mode.</p>
+          </div>
           <input type="hidden" name="printer" value="AD5X" />
 
           <div class="flex gap-3 pt-2">

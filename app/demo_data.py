@@ -826,6 +826,24 @@ def seed_demo_data(db_func, force: bool = False):
             except Exception as e:
                 print(f"[DEMO] Error inserting message: {e}")
     
+    # ── Enable Moonraker for local testing ──
+    # Use MOONRAKER_URL env var to point at real printer, defaults to real AD5X
+    moonraker_url = os.environ.get("MOONRAKER_URL", "http://192.168.0.157:7125")
+    try:
+        # Enable moonraker_ad5x feature flag
+        cur.execute("""
+            INSERT OR REPLACE INTO feature_flags (key, enabled, description, rollout_percentage, allowed_users, allowed_emails, created_by, updated_at)
+            VALUES ('moonraker_ad5x', 1, 'Moonraker/Klipper API integration for AD5X (replaces FlashForge API when enabled)', 100, '[]', '[]', 'demo', ?)
+        """, (now_iso,))
+        # Set Moonraker URL
+        cur.execute("""
+            INSERT OR REPLACE INTO settings (key, value, updated_at)
+            VALUES ('moonraker_ad5x_url', ?, ?)
+        """, (moonraker_url, now_iso))
+        print(f"[DEMO] ✓ Moonraker AD5X enabled → {moonraker_url}")
+    except Exception as e:
+        print(f"[DEMO] Could not configure Moonraker: {e}")
+
     # ── Mark as seeded ──
     try:
         cur.execute("""
