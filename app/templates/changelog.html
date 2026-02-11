@@ -65,12 +65,130 @@
         </p>
       </div>
 
+      <!-- v0.14.0 -->
+      <div id="v0.14" class="bg-gradient-to-br from-zinc-900/80 via-indigo-900/20 to-zinc-900/80 border border-indigo-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.14" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.14.0</a>
+          <span class="text-zinc-400 text-sm">February 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">ETA times in your local timezone</h3>
+        <p class="text-sm text-zinc-400 mb-4">All ETA displays now automatically convert to the user's local timezone with a clear timezone label.</p>
+        
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🕐 Local timezone conversion</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>ETA times automatically show in your local timezone (EST, PST, etc.)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Timezone abbreviation displayed alongside every ETA (e.g. "Today at 3:45 PM CST")</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Works across all pages: public queue, admin queue, request details, My Prints</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Live AJAX polling updates also convert to your local time</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Server-side defaults to US Central Time (CST/CDT) as fallback</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🔧 Technical improvements</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>UTC ISO strings now include proper "Z" suffix for correct browser parsing</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>API <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/api/queue</code> now returns <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">smart_eta</code> (UTC ISO) alongside display text</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>Fixed <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">moonraker_time_remaining</code> not being passed in API queue endpoint</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>282 automated tests passing</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v0.13.0 -->
+      <div id="v0.13" class="bg-gradient-to-br from-zinc-900/80 via-blue-900/20 to-zinc-900/80 border border-blue-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-blue-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.13" class="px-3 py-1 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-500 transition">v0.13.0</a>
+          <span class="text-zinc-400 text-sm">February 2026</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Moonraker live ETA, send-to-printer & file management</h3>
+        <p class="text-sm text-zinc-400 mb-4">Major printer integration update — real-time ETA from Moonraker/Klipper, one-click send-to-printer, and a new file management system.</p>
+        
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🖨️ Moonraker / Klipper integration</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400 mt-1">•</span>
+            <span><strong>Live ETA from the printer</strong> — Moonraker reports actual time remaining, used to calculate a real completion ETA</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400 mt-1">•</span>
+            <span><strong>Send-to-printer</strong> — Upload G-code and start printing directly from the admin request page (with ZMOD bypass for AD5X)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400 mt-1">•</span>
+            <span><strong>Thumbnail proxy</strong> — G-code thumbnail images load through the app, no CORS issues</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400 mt-1">•</span>
+            <span><strong>Smart ETA</strong> — Combines slicer estimates, Moonraker live data, and print progress for the most accurate ETA</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📁 File linking & management</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400 mt-1">•</span>
+            <span><strong>G-code ↔ STL/3MF linking</strong> — Associate sliced G-code files with their source models</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400 mt-1">•</span>
+            <span><strong>Card-based file browser</strong> — New visual file UI replacing the old list view</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-blue-400 mt-1">•</span>
+            <span><strong>File preview</strong> — Preview uploaded files with metadata and linked files</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🔧 Fixes & improvements</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>Fixed ETA UTC/local time mismatch — server was using inconsistent timezone offsets</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>Auto-start next build after completion, auto-match IN_PROGRESS requests</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>260 automated tests (94 Moonraker + 28 file linking)</span>
+          </li>
+        </ul>
+      </div>
+
       <!-- v0.12 -->
       <div id="v0.12" class="bg-gradient-to-br from-zinc-900/80 via-emerald-900/20 to-zinc-900/80 border border-emerald-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-emerald-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.12" class="px-3 py-1 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-500 transition">v0.12</a>
           <span class="text-zinc-400 text-sm">February 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Major UX overhaul & fun new features</h3>

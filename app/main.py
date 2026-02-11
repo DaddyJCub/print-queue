@@ -29,7 +29,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.13.0"
+APP_VERSION = "0.14.0"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -41,6 +41,7 @@ APP_VERSION = "0.13.0"
 #   - 0.x.PATCH = Bug fixes only
 #
 # Changelog:
+# 0.14.0 - [FEATURE] ETA local timezone: server defaults to CST/CDT, client-side JS converts to user's local time with timezone label, 282 tests
 # 0.13.0 - [FEATURE] Moonraker live ETA integration, file linking (G-code ↔ STL/3MF), card-based files UI, 260 tests (94 Moonraker + 28 file linking)
 # 0.12.1 - [PATCH] Auto-start next build after completion, auto-match IN_PROGRESS requests, improved error logging
 # 0.12.0 - [FEATURE] Guest account creation tips in emails: subtle CTAs in all notification emails, pre-filled registration, auto-link existing requests
