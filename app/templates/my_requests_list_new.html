@@ -579,7 +579,7 @@
           {% if req.printer_status.is_offline and req.printer_status.last_seen %}
           <p class="text-xs text-amber-400/80 mt-2">⚠️ Connection lost</p>
           {% elif req.smart_eta_display %}
-          <p class="text-xs text-zinc-400 mt-2">ETA: {{ req.smart_eta_display }}</p>
+          <p class="text-xs text-zinc-400 mt-2">ETA: <span class="eta-local" {% if req.smart_eta %}data-utc="{{ req.smart_eta }}"{% endif %}>{{ req.smart_eta_display }}</span></p>
           {% endif %}
         </div>
         {% endif %}

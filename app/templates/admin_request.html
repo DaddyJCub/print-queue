@@ -287,16 +287,17 @@
               <p class="text-sm font-medium text-zinc-200">⏱️ {{ (b.print_time_minutes // 60) }}h {{ (b.print_time_minutes % 60) }}m</p>
             </div>
             {% endif %}
-            {% set ns_eta = namespace(eta=None) %}
+            {% set ns_eta = namespace(eta=None, utc=None) %}
             {% for bi in build_eta_info.get('builds_info', []) %}
               {% if bi.id == b.id and bi.eta_display %}
                 {% set ns_eta.eta = bi.eta_display %}
+                {% set ns_eta.utc = bi.eta_utc %}
               {% endif %}
             {% endfor %}
             {% if ns_eta.eta %}
             <div>
               <p class="text-xs text-zinc-500 uppercase mb-1">ETA</p>
-              <p class="text-sm font-medium text-amber-400 current-build-eta" data-build-id="{{ b.id }}">⏱ {{ ns_eta.eta }}</p>
+              <p class="text-sm font-medium text-amber-400 current-build-eta" data-build-id="{{ b.id }}">⏱ <span class="eta-local" {% if ns_eta.utc %}data-utc="{{ ns_eta.utc }}"{% endif %}>{{ ns_eta.eta }}</span></p>
             </div>
             {% endif %}
           </div>
@@ -964,13 +965,13 @@
               {% if build_eta_info and build_eta_info.get('current_build_eta') and not build_eta_info.get('blocked') %}
                 <div class="flex justify-between text-sm mb-2">
                   <span class="text-zinc-400">Current Build ETA</span>
-                  <span class="text-amber-400 font-medium" id="request-build-eta">⏱ {{ build_eta_info.current_build_eta }}</span>
+                  <span class="text-amber-400 font-medium" id="request-build-eta">⏱ <span class="eta-local" {% if build_eta_info.current_build_eta_dt %}data-utc="{{ build_eta_info.current_build_eta_dt }}"{% endif %}>{{ build_eta_info.current_build_eta }}</span></span>
                 </div>
               {% endif %}
               {% if build_eta_info and build_eta_info.get('total_eta') and not build_eta_info.get('blocked') %}
                 <div class="flex justify-between text-sm">
                   <span class="text-zinc-400">All Builds Complete</span>
-                  <span class="text-emerald-400 font-medium" id="request-total-eta">📅 {{ build_eta_info.total_eta }}</span>
+                  <span class="text-emerald-400 font-medium" id="request-total-eta">📅 <span class="eta-local" {% if build_eta_info.total_eta_dt %}data-utc="{{ build_eta_info.total_eta_dt }}"{% endif %}>{{ build_eta_info.total_eta }}</span></span>
                 </div>
               {% elif build_eta_info and build_eta_info.get('blocked') %}
                 <div class="flex justify-between text-sm">
@@ -1044,10 +1045,11 @@
                     {% endif %}
                   </div>
                   {% if b.progress and b.status == 'PRINTING' %}
-                    {% set build_info = namespace(eta=None) %}
+                    {% set build_info = namespace(eta=None, utc=None) %}
                     {% for bi in build_eta_info.get('builds_info', []) %}
                       {% if bi.id == b.id and bi.eta_display %}
                         {% set build_info.eta = bi.eta_display %}
+                        {% set build_info.utc = bi.eta_utc %}
                       {% endif %}
                     {% endfor %}
                     <div class="mt-2">
@@ -1057,7 +1059,7 @@
                       <div class="flex items-center justify-between mt-1">
                         <span class="text-xs text-zinc-500 build-progress-text" data-build-id="{{ b.id }}">{{ b.progress }}%</span>
                         {% if build_info.eta %}
-                          <span class="text-xs text-amber-400 build-eta-text" data-build-id="{{ b.id }}">⏱ {{ build_info.eta }}</span>
+                          <span class="text-xs text-amber-400 build-eta-text" data-build-id="{{ b.id }}">⏱ <span class="eta-local" {% if build_info.utc %}data-utc="{{ build_info.utc }}"{% endif %}>{{ build_info.eta }}</span></span>
                         {% else %}
                           <span class="text-xs text-amber-400 build-eta-text hidden" data-build-id="{{ b.id }}"></span>
                         {% endif %}
@@ -1995,14 +1997,16 @@
               const etaEl = document.querySelector(`.build-eta-text[data-build-id="${bi.id}"]`);
               if (etaEl) {
                 if (bi.eta_display) {
-                  etaEl.textContent = '⏱ ' + bi.eta_display;
+                  var localEta = bi.eta_utc && window._formatLocalEta ? window._formatLocalEta(bi.eta_utc) : null;
+                  etaEl.innerHTML = '⏱ <span class="eta-local"' + (bi.eta_utc ? ' data-utc="' + bi.eta_utc + '"' : '') + '>' + (localEta || bi.eta_display) + '</span>';
                   etaEl.classList.remove('hidden');
                 }
               }
               // Update "Currently Printing" card ETA
               const currentEta = document.querySelector(`.current-build-eta[data-build-id="${bi.id}"]`);
               if (currentEta && bi.eta_display) {
-                currentEta.textContent = '⏱ ' + bi.eta_display;
+                var localEta2 = bi.eta_utc && window._formatLocalEta ? window._formatLocalEta(bi.eta_utc) : null;
+                currentEta.innerHTML = '⏱ <span class="eta-local"' + (bi.eta_utc ? ' data-utc="' + bi.eta_utc + '"' : '') + '>' + (localEta2 || bi.eta_display) + '</span>';
               }
             });
             
@@ -2015,11 +2019,13 @@
             // Update multi-build summary ETA
             const buildEtaEl = document.getElementById('request-build-eta');
             if (buildEtaEl && eta.current_build_eta) {
-              buildEtaEl.textContent = '⏱ ' + eta.current_build_eta;
+              var localBuild = eta.current_build_eta_dt && window._formatLocalEta ? window._formatLocalEta(eta.current_build_eta_dt) : null;
+              buildEtaEl.innerHTML = '⏱ <span class="eta-local"' + (eta.current_build_eta_dt ? ' data-utc="' + eta.current_build_eta_dt + '"' : '') + '>' + (localBuild || eta.current_build_eta) + '</span>';
             }
             const totalEtaEl = document.getElementById('request-total-eta');
             if (totalEtaEl && eta.total_eta) {
-              totalEtaEl.textContent = '📅 ' + eta.total_eta;
+              var localTotal = eta.total_eta_dt && window._formatLocalEta ? window._formatLocalEta(eta.total_eta_dt) : null;
+              totalEtaEl.innerHTML = '📅 <span class="eta-local"' + (eta.total_eta_dt ? ' data-utc="' + eta.total_eta_dt + '"' : '') + '>' + (localTotal || eta.total_eta) + '</span>';
             }
             
           } catch (e) {
@@ -2035,5 +2041,39 @@
       {% endif %}
     </script>
   </div>
+  <script>
+  (function(){
+    function formatLocalEta(utcIso) {
+      try {
+        var d = new Date(utcIso);
+        if (isNaN(d.getTime())) return null;
+        if (d - new Date() < 0) return 'Any moment now';
+        var today = new Date(); today.setHours(0,0,0,0);
+        var tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+        var etaDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        var h = d.getHours() % 12; if (h === 0) h = 12;
+        var m = ('0' + d.getMinutes()).slice(-2);
+        var ap = d.getHours() < 12 ? 'AM' : 'PM';
+        var tz;
+        try { tz = Intl.DateTimeFormat('en-US', {timeZoneName:'short'}).formatToParts(d).find(function(p){return p.type==='timeZoneName'}).value; }
+        catch(e) { tz = 'local'; }
+        var timeStr = h + ':' + m + ' ' + ap + ' ' + tz;
+        if (etaDate.getTime() === today.getTime()) return 'Today at ' + timeStr;
+        if (etaDate.getTime() === tomorrow.getTime()) return 'Tomorrow at ' + timeStr;
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return months[d.getMonth()] + ' ' + d.getDate() + ', ' + timeStr;
+      } catch(e) { return null; }
+    }
+    function convertEtas() {
+      document.querySelectorAll('.eta-local[data-utc]').forEach(function(el) {
+        var local = formatLocalEta(el.getAttribute('data-utc'));
+        if (local) el.textContent = local;
+      });
+    }
+    window._formatLocalEta = formatLocalEta;
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', convertEtas);
+    else convertEtas();
+  })();
+  </script>
 </body>
 </html>

@@ -265,7 +265,7 @@
                   <div><span class="text-zinc-500">Material:</span> <span class="text-zinc-300">{{ pit.material }}</span></div>
                   <div><span class="text-zinc-500">Colors:</span> <span class="text-zinc-300">{{ pit.colors }}</span></div>
                   {% if pit.smart_eta_display %}
-                    <div><span class="text-zinc-500">ETA:</span> <span class="text-emerald-300">{{ pit.smart_eta_display }}</span></div>
+                    <div><span class="text-zinc-500">ETA:</span> <span class="text-emerald-300 eta-local" {% if pit.smart_eta %}data-utc="{{ pit.smart_eta }}"{% endif %}>{{ pit.smart_eta_display }}</span></div>
                   {% elif pit.remaining_minutes %}
                     <div><span class="text-zinc-500">Remaining:</span> <span class="text-emerald-300">~{{ pit.remaining_minutes }}m</span></div>
                   {% endif %}
@@ -361,7 +361,7 @@
                   <div><span class="text-zinc-500">Material:</span> <span class="text-zinc-300">{{ pit.material }}</span></div>
                   <div><span class="text-zinc-500">Colors:</span> <span class="text-zinc-300">{{ pit.colors }}</span></div>
                   {% if pit.smart_eta_display %}
-                    <div><span class="text-zinc-500">ETA:</span> <span class="text-emerald-300">{{ pit.smart_eta_display }}</span></div>
+                    <div><span class="text-zinc-500">ETA:</span> <span class="text-emerald-300 eta-local" {% if pit.smart_eta %}data-utc="{{ pit.smart_eta }}"{% endif %}>{{ pit.smart_eta_display }}</span></div>
                   {% elif pit.remaining_minutes %}
                     <div><span class="text-zinc-500">Remaining:</span> <span class="text-emerald-300">~{{ pit.remaining_minutes }}m</span></div>
                   {% endif %}
@@ -450,7 +450,7 @@
                       </div>
                     {% endif %}
                     {% if r.smart_eta_display %}
-                      <div class="text-xs text-zinc-400">Done ~{{ r.smart_eta_display }}</div>
+                      <div class="text-xs text-zinc-400">Done ~<span class="eta-local" {% if r.smart_eta %}data-utc="{{ r.smart_eta }}"{% endif %}>{{ r.smart_eta_display }}</span></div>
                     {% elif r.remaining_minutes %}
                       <div class="text-xs text-zinc-400">~{{ r.remaining_minutes }}m left</div>
                     {% endif %}
@@ -707,5 +707,39 @@
       </div>
     </div>
   </div>
+  <script>
+  (function(){
+    function formatLocalEta(utcIso) {
+      try {
+        var d = new Date(utcIso);
+        if (isNaN(d.getTime())) return null;
+        if (d - new Date() < 0) return 'Any moment now';
+        var today = new Date(); today.setHours(0,0,0,0);
+        var tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+        var etaDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        var h = d.getHours() % 12; if (h === 0) h = 12;
+        var m = ('0' + d.getMinutes()).slice(-2);
+        var ap = d.getHours() < 12 ? 'AM' : 'PM';
+        var tz;
+        try { tz = Intl.DateTimeFormat('en-US', {timeZoneName:'short'}).formatToParts(d).find(function(p){return p.type==='timeZoneName'}).value; }
+        catch(e) { tz = 'local'; }
+        var timeStr = h + ':' + m + ' ' + ap + ' ' + tz;
+        if (etaDate.getTime() === today.getTime()) return 'Today at ' + timeStr;
+        if (etaDate.getTime() === tomorrow.getTime()) return 'Tomorrow at ' + timeStr;
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return months[d.getMonth()] + ' ' + d.getDate() + ', ' + timeStr;
+      } catch(e) { return null; }
+    }
+    function convertEtas() {
+      document.querySelectorAll('.eta-local[data-utc]').forEach(function(el) {
+        var local = formatLocalEta(el.getAttribute('data-utc'));
+        if (local) el.textContent = local;
+      });
+    }
+    window._formatLocalEta = formatLocalEta;
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', convertEtas);
+    else convertEtas();
+  })();
+  </script>
 </body>
 </html>

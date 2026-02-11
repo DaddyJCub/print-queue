@@ -200,7 +200,7 @@ def test_request_eta_rolls_up_printing_and_queue():
     assert info["current_build_eta"]
     assert info["total_eta"]
 
-    expected_request_eta = (now + timedelta(seconds=8460)).isoformat()
+    expected_request_eta = (now + timedelta(seconds=8460)).isoformat() + "Z"
     assert info["request_eta_dt"] == expected_request_eta
 
 
@@ -233,7 +233,7 @@ def test_missing_estimates_fall_back_to_defaults():
 
     info = get_request_eta_info(rid, req, now=now)
     assert info["request_eta_dt"] is not None
-    expected_eta = (now + timedelta(minutes=120)).isoformat()
+    expected_eta = (now + timedelta(minutes=120)).isoformat() + "Z"
     assert info["request_eta_dt"] == expected_eta
 
 

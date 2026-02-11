@@ -142,7 +142,7 @@
           <span class="px-1.5 py-0.5 rounded bg-amber-700/50 border border-amber-500/50 text-amber-200 font-semibold">Build {{ pit.build_number or (pit.completed_builds + 1) }}/{{ pit.total_builds }}</span>
           {% endif %}
           {% if pit.smart_eta_display %}
-          <span class="ml-auto {% if is_likely %}text-amber-300{% else %}text-emerald-300{% endif %} font-medium">ETA: {{ pit.smart_eta_display }}</span>
+          <span class="ml-auto {% if is_likely %}text-amber-300{% else %}text-emerald-300{% endif %} font-medium">ETA: <span class="eta-local" {% if pit.smart_eta %}data-utc="{{ pit.smart_eta }}"{% endif %}>{{ pit.smart_eta_display }}</span></span>
           {% endif %}
         </div>
         {% if pit.total_builds > 1 %}
@@ -248,7 +248,7 @@
           <span class="px-1.5 py-0.5 rounded bg-amber-700/50 border border-amber-500/50 text-amber-200 font-semibold">Build {{ pit.build_number or (pit.completed_builds + 1) }}/{{ pit.total_builds }}</span>
           {% endif %}
           {% if pit.smart_eta_display %}
-          <span class="ml-auto {% if is_likely %}text-amber-300{% else %}text-emerald-300{% endif %} font-medium">ETA: {{ pit.smart_eta_display }}</span>
+          <span class="ml-auto {% if is_likely %}text-amber-300{% else %}text-emerald-300{% endif %} font-medium">ETA: <span class="eta-local" {% if pit.smart_eta %}data-utc="{{ pit.smart_eta }}"{% endif %}>{{ pit.smart_eta_display }}</span></span>
           {% endif %}
         </div>
         {% if pit.total_builds > 1 %}
@@ -704,7 +704,7 @@
               <div class="flex flex-wrap items-center gap-2 text-xs">
                 <span class="px-2 py-0.5 rounded bg-zinc-800/80 text-zinc-300">${printingItem.material}</span>
                 ${buildsHtml}
-                ${printingItem.smart_eta_display ? `<span class="ml-auto ${isLikely ? 'text-amber-300' : 'text-emerald-300'} font-medium">ETA: ${printingItem.smart_eta_display}</span>` : ''}
+                ${printingItem.smart_eta_display ? `<span class="ml-auto ${isLikely ? 'text-amber-300' : 'text-emerald-300'} font-medium">ETA: <span class="eta-local"${printingItem.smart_eta ? ` data-utc="${printingItem.smart_eta}"` : ''}>${(printingItem.smart_eta && window._formatLocalEta && window._formatLocalEta(printingItem.smart_eta)) || printingItem.smart_eta_display}</span></span>` : ''}
               </div>
             </div>
             

@@ -680,20 +680,20 @@
               {% if build_eta_info.current_build_eta %}
                 <div class="bg-zinc-900/50 rounded-xl p-3">
                   <span class="text-zinc-500 text-xs">This Build Done</span>
-                  <p class="font-semibold text-amber-300">{{ build_eta_info.current_build_eta }}</p>
+                  <p class="font-semibold text-amber-300 eta-local" {% if build_eta_info.current_build_eta_dt %}data-utc="{{ build_eta_info.current_build_eta_dt }}"{% endif %}>{{ build_eta_info.current_build_eta }}</p>
                 </div>
               {% endif %}
               {% if build_eta_info.total_eta or build_eta_info.request_eta %}
                 <div class="bg-zinc-900/50 rounded-xl p-3">
                   <span class="text-zinc-500 text-xs">All Builds Done</span>
-                  <p class="font-semibold text-emerald-300">{{ build_eta_info.total_eta or build_eta_info.request_eta }}</p>
+                  <p class="font-semibold text-emerald-300 eta-local" {% if build_eta_info.total_eta_dt or build_eta_info.request_eta_dt %}data-utc="{{ build_eta_info.total_eta_dt or build_eta_info.request_eta_dt }}"{% endif %}>{{ build_eta_info.total_eta or build_eta_info.request_eta }}</p>
                 </div>
               {% endif %}
             {% endif %}
           {% elif smart_eta_display %}
             <div class="bg-zinc-900/50 rounded-xl p-3">
               <span class="text-zinc-500 text-xs">Est. Completion</span>
-              <p class="font-semibold text-emerald-300">{{ smart_eta_display }}</p>
+              <p class="font-semibold text-emerald-300 eta-local" {% if smart_eta %}data-utc="{{ smart_eta }}"{% endif %}>{{ smart_eta_display }}</p>
             </div>
           {% endif %}
           
@@ -868,7 +868,7 @@
               </div>
               
               {% if eta_meta and eta_meta.eta_display %}
-                <div class="text-xs text-amber-300 mb-2">ETA: {{ eta_meta.eta_display }}</div>
+                <div class="text-xs text-amber-300 mb-2">ETA: <span class="eta-local" {% if eta_meta.eta_utc %}data-utc="{{ eta_meta.eta_utc }}"{% endif %}>{{ eta_meta.eta_display }}</span></div>
               {% elif build_eta_info and build_eta_info.blocked and b.status == 'FAILED' %}
                 <div class="text-xs text-red-300 mb-2">Blocked until admin retries</div>
               {% endif %}
@@ -1631,5 +1631,38 @@
       }
     })();
   </script>
+  <script>
+  (function(){
+    function formatLocalEta(utcIso) {
+      try {
+        var d = new Date(utcIso);
+        if (isNaN(d.getTime())) return null;
+        if (d - new Date() < 0) return 'Any moment now';
+        var today = new Date(); today.setHours(0,0,0,0);
+        var tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+        var etaDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        var h = d.getHours() % 12; if (h === 0) h = 12;
+        var m = ('0' + d.getMinutes()).slice(-2);
+        var ap = d.getHours() < 12 ? 'AM' : 'PM';
+        var tz;
+        try { tz = Intl.DateTimeFormat('en-US', {timeZoneName:'short'}).formatToParts(d).find(function(p){return p.type==='timeZoneName'}).value; }
+        catch(e) { tz = 'local'; }
+        var timeStr = h + ':' + m + ' ' + ap + ' ' + tz;
+        if (etaDate.getTime() === today.getTime()) return 'Today at ' + timeStr;
+        if (etaDate.getTime() === tomorrow.getTime()) return 'Tomorrow at ' + timeStr;
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return months[d.getMonth()] + ' ' + d.getDate() + ', ' + timeStr;
+      } catch(e) { return null; }
+    }
+    function convertEtas() {
+      document.querySelectorAll('.eta-local[data-utc]').forEach(function(el) {
+        var local = formatLocalEta(el.getAttribute('data-utc'));
+        if (local) el.textContent = local;
+      });
+    }
+    window._formatLocalEta = formatLocalEta;
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', convertEtas);
+    else convertEtas();
+  })();
+  </script>
 </body>
-</html>

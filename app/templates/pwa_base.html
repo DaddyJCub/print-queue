@@ -1104,6 +1104,44 @@
   window.clearInputError = clearInputError;
   </script>
 
+  <!-- ETA local time conversion -->
+  <script>
+  (function(){
+    function formatLocalEta(utcIso) {
+      try {
+        var d = new Date(utcIso);
+        if (isNaN(d.getTime())) return null;
+        var now = new Date();
+        var diff = d - now;
+        if (diff < 0) return 'Any moment now';
+        var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        var tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+        var etaDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        var h = d.getHours() % 12; if (h === 0) h = 12;
+        var m = ('0' + d.getMinutes()).slice(-2);
+        var ap = d.getHours() < 12 ? 'AM' : 'PM';
+        var tz;
+        try { tz = Intl.DateTimeFormat('en-US', {timeZoneName:'short'}).formatToParts(d).find(function(p){return p.type==='timeZoneName'}).value; }
+        catch(e) { tz = 'local'; }
+        var timeStr = h + ':' + m + ' ' + ap + ' ' + tz;
+        if (etaDate.getTime() === today.getTime()) return 'Today at ' + timeStr;
+        if (etaDate.getTime() === tomorrow.getTime()) return 'Tomorrow at ' + timeStr;
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return months[d.getMonth()] + ' ' + d.getDate() + ', ' + timeStr;
+      } catch(e) { return null; }
+    }
+    function convertEtas() {
+      document.querySelectorAll('.eta-local[data-utc]').forEach(function(el) {
+        var local = formatLocalEta(el.getAttribute('data-utc'));
+        if (local) el.textContent = local;
+      });
+    }
+    window._formatLocalEta = formatLocalEta;
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', convertEtas);
+    else convertEtas();
+  })();
+  </script>
+
   {% block scripts %}{% endblock %}
 </body>
 </html>

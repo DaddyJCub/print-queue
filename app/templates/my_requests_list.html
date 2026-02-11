@@ -206,7 +206,7 @@
                         <span>🌡 {{ req.printer_status.temp }}°C</span>
                       {% endif %}
                       {% if req.smart_eta_display %}
-                        <span>Est: <span class="text-indigo-300 font-medium">{{ req.smart_eta_display }}</span></span>
+                        <span>Est: <span class="text-indigo-300 font-medium eta-local" {% if req.smart_eta %}data-utc="{{ req.smart_eta }}"{% endif %}>{{ req.smart_eta_display }}</span></span>
                       {% endif %}
                     </div>
                     
@@ -342,6 +342,40 @@
       localStorage.setItem('my_requests_token', token);
       localStorage.setItem('my_requests_email', email);
     }
+  </script>
+  <script>
+  (function(){
+    function formatLocalEta(utcIso) {
+      try {
+        var d = new Date(utcIso);
+        if (isNaN(d.getTime())) return null;
+        if (d - new Date() < 0) return 'Any moment now';
+        var today = new Date(); today.setHours(0,0,0,0);
+        var tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+        var etaDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        var h = d.getHours() % 12; if (h === 0) h = 12;
+        var m = ('0' + d.getMinutes()).slice(-2);
+        var ap = d.getHours() < 12 ? 'AM' : 'PM';
+        var tz;
+        try { tz = Intl.DateTimeFormat('en-US', {timeZoneName:'short'}).formatToParts(d).find(function(p){return p.type==='timeZoneName'}).value; }
+        catch(e) { tz = 'local'; }
+        var timeStr = h + ':' + m + ' ' + ap + ' ' + tz;
+        if (etaDate.getTime() === today.getTime()) return 'Today at ' + timeStr;
+        if (etaDate.getTime() === tomorrow.getTime()) return 'Tomorrow at ' + timeStr;
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return months[d.getMonth()] + ' ' + d.getDate() + ', ' + timeStr;
+      } catch(e) { return null; }
+    }
+    function convertEtas() {
+      document.querySelectorAll('.eta-local[data-utc]').forEach(function(el) {
+        var local = formatLocalEta(el.getAttribute('data-utc'));
+        if (local) el.textContent = local;
+      });
+    }
+    window._formatLocalEta = formatLocalEta;
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', convertEtas);
+    else convertEtas();
+  })();
   </script>
 </body>
 </html>

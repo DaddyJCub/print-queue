@@ -428,7 +428,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                 moonraker_time_remaining=moonraker_remaining
             )
             if eta_dt:
-                smart_eta = eta_dt.isoformat()
+                smart_eta = eta_dt.isoformat() + "Z"
                 smart_eta_display = format_eta_display(eta_dt)
         
         # Get printer health status
@@ -531,6 +531,9 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                         )
                         if eta_dt:
                             build_eta_display = format_eta_display(eta_dt)
+                            build_eta_utc = eta_dt.isoformat() + "Z"
+                        else:
+                            build_eta_utc = None
                 
                 # Create entry for this printer
                 printer_entry = dict(parent_item)
@@ -539,6 +542,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
                 printer_entry["current_layer"] = build_layer
                 printer_entry["total_layers"] = build_total_layers
                 printer_entry["smart_eta_display"] = build_eta_display
+                printer_entry["smart_eta"] = build_eta_utc
                 printer_entry["printing_started_at"] = build["started_at"]
                 printer_entry["build_number"] = build["build_number"]
                 printer_entry["build_print_name"] = build["print_name"]
@@ -790,6 +794,7 @@ async def queue_data_api(mine: Optional[str] = None):
             
             # Calculate smart ETA
             if printing_started_at:
+                moonraker_remaining = cached_status.get("moonraker_time_remaining") if cached_status else None
                 eta_dt = get_smart_eta(
                     printer=active_printer,
                     material=r["material"],
@@ -797,9 +802,11 @@ async def queue_data_api(mine: Optional[str] = None):
                     printing_started_at=printing_started_at,
                     current_layer=current_layer or 0,
                     total_layers=total_layers or 0,
-                    estimated_minutes=r.get("print_time_minutes") or r.get("slicer_estimate_minutes")
+                    estimated_minutes=r.get("print_time_minutes") or r.get("slicer_estimate_minutes"),
+                    moonraker_time_remaining=moonraker_remaining
                 )
                 if eta_dt:
+                    smart_eta = eta_dt.isoformat() + "Z"
                     smart_eta_display = format_eta_display(eta_dt)
         
         items.append({
@@ -813,6 +820,7 @@ async def queue_data_api(mine: Optional[str] = None):
             "status": r["status"],
             "is_mine": bool(mine and mine == short_id),
             "printer_progress": printer_progress,
+            "smart_eta": smart_eta,
             "smart_eta_display": smart_eta_display,
             "current_layer": current_layer,
             "total_layers": total_layers,

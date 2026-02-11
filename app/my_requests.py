@@ -120,6 +120,7 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
     # Fetch printer status if currently printing or in progress
     printer_status = None
     smart_eta_display = None
+    smart_eta_utc = None
     active_printer = req["printer"]
     printing_started_at = req["printing_started_at"]
     
@@ -154,6 +155,7 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
                     moonraker_time_remaining=moonraker_remaining
                 )
                 if eta_dt:
+                    smart_eta_utc = eta_dt.isoformat() + "Z"
                     smart_eta_display = format_eta_display(eta_dt)
     
     # Get requester email for push diagnostics
@@ -213,6 +215,7 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
         "token": token,
         "version": APP_VERSION,
         "printer_status": printer_status,
+        "smart_eta": smart_eta_utc,
         "smart_eta_display": smart_eta_display,
         "build_eta_info": get_request_eta_info(rid, dict(req), printer_status=printer_status),
         "active_printer": active_printer,
@@ -801,6 +804,7 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
                         estimated_minutes=req_dict.get("print_time_minutes") or req_dict.get("slicer_estimate_minutes"),
                         moonraker_time_remaining=moonraker_remaining
                     )
+                    req_dict["smart_eta"] = (eta_dt.isoformat() + "Z") if eta_dt else None
                     req_dict["smart_eta_display"] = format_eta_display(eta_dt) if eta_dt else None
         
         enriched_requests.append(req_dict)

@@ -305,7 +305,7 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
         
         # Convert to dict and add ETA fields
         row_dict = dict(r)
-        row_dict["smart_eta"] = eta_dt.isoformat() if eta_dt else None
+        row_dict["smart_eta"] = (eta_dt.isoformat() + "Z") if eta_dt else None
         row_dict["smart_eta_display"] = format_eta_display(eta_dt) if eta_dt else None
         row_dict["printer_progress"] = printer_progress
         row_dict["active_printer"] = active_printer  # For display

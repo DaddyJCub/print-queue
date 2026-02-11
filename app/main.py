@@ -3033,17 +3033,39 @@ def format_eta_display(eta_dt: Optional[datetime]) -> str:
     """Format an ETA datetime for display in the UI.
     
     Note: eta_dt is expected in UTC (from get_smart_eta which uses utcnow).
-    We convert to local time for display.
+    We convert to US Central time (CST/CDT) as the default display timezone.
+    Client-side JS will further convert to the user's local time if available.
     """
     if not eta_dt:
         return "Unknown"
     
-    # eta_dt is in UTC; convert to local time for display
-    import time as _time
-    utc_offset = _time.timezone if _time.daylight == 0 else _time.altzone
-    local_eta = eta_dt - __import__('datetime').timedelta(seconds=utc_offset)
-    now = datetime.now()
-    diff = local_eta - now
+    # Convert UTC to US Central time (CST = UTC-6, CDT = UTC-5)
+    # Use a fixed-offset approach that handles DST correctly
+    from datetime import timezone as _tz
+    try:
+        from zoneinfo import ZoneInfo
+        central_tz = ZoneInfo("America/Chicago")
+        utc_eta = eta_dt.replace(tzinfo=_tz.utc)
+        central_eta = utc_eta.astimezone(central_tz)
+        # Determine label: CDT or CST
+        tz_label = central_eta.strftime("%Z")  # "CST" or "CDT"
+    except ImportError:
+        # Fallback: assume CST (UTC-6) if zoneinfo not available
+        central_eta = eta_dt - __import__('datetime').timedelta(hours=6)
+        tz_label = "CST"
+    
+    # Compare in Central time
+    utc_now = datetime.utcnow()
+    try:
+        central_now = utc_now.replace(tzinfo=_tz.utc).astimezone(central_tz)
+        # Make naive for comparison
+        central_eta_naive = central_eta.replace(tzinfo=None)
+        central_now_naive = central_now.replace(tzinfo=None)
+    except Exception:
+        central_eta_naive = eta_dt - __import__('datetime').timedelta(hours=6)
+        central_now_naive = utc_now - __import__('datetime').timedelta(hours=6)
+    
+    diff = central_eta_naive - central_now_naive
     
     if diff.total_seconds() < 0:
         return "Any moment now"
@@ -3057,14 +3079,14 @@ def format_eta_display(eta_dt: Optional[datetime]) -> str:
         ampm = "AM" if dt.hour < 12 else "PM"
         return f"{hour}:{minute:02d} {ampm}"
     
-    # Format as "Dec 14, 3:45 PM" if more than a day away
-    # or "Today at 3:45 PM" / "Tomorrow at 10:30 AM"
-    if local_eta.date() == now.date():
-        return f"Today at {format_time(local_eta)}"
-    elif local_eta.date() == (now + __import__('datetime').timedelta(days=1)).date():
-        return f"Tomorrow at {format_time(local_eta)}"
+    # Format as "Dec 14, 3:45 PM CST" if more than a day away
+    # or "Today at 3:45 PM CST" / "Tomorrow at 10:30 AM CST"
+    if central_eta_naive.date() == central_now_naive.date():
+        return f"Today at {format_time(central_eta_naive)} {tz_label}"
+    elif central_eta_naive.date() == (central_now_naive + __import__('datetime').timedelta(days=1)).date():
+        return f"Tomorrow at {format_time(central_eta_naive)} {tz_label}"
     else:
-        return f"{local_eta.strftime('%b %d')}, {format_time(local_eta)}"
+        return f"{central_eta_naive.strftime('%b %d')}, {format_time(central_eta_naive)} {tz_label}"
 
 
 
@@ -3208,6 +3230,7 @@ def get_request_eta_info(request_id: str, req: Dict = None,
             "progress": build_progress,
             "is_current": status == "PRINTING",
             "eta_display": build_eta_display,
+            "eta_utc": (build_eta_dt.isoformat() + "Z") if build_eta_dt else None,
         })
     
     remaining_builds = len([b for b in builds_list if b["status"] in ["PENDING", "READY", "PRINTING"]])
@@ -3224,11 +3247,11 @@ def get_request_eta_info(request_id: str, req: Dict = None,
         "current_build_num": current_build_number,
         "current_build_number": current_build_number,
         "current_build_eta": current_build_eta_display,
-        "current_build_eta_dt": current_build_eta_dt.isoformat() if current_build_eta_dt else None,
+        "current_build_eta_dt": (current_build_eta_dt.isoformat() + "Z") if current_build_eta_dt else None,
         "request_eta": request_eta_display,
-        "request_eta_dt": request_eta_dt.isoformat() if request_eta_dt else None,
+        "request_eta_dt": (request_eta_dt.isoformat() + "Z") if request_eta_dt else None,
         "total_eta": request_eta_display,
-        "total_eta_dt": request_eta_dt.isoformat() if request_eta_dt else None,
+        "total_eta_dt": (request_eta_dt.isoformat() + "Z") if request_eta_dt else None,
         "remaining_builds": remaining_builds,
         "builds_info": builds_info,
         "blocked": blocked,
