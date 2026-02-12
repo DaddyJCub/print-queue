@@ -5193,7 +5193,7 @@ def get_camera_url(printer_code: str) -> Optional[str]:
 
 
 async def get_camera_url_async(printer_code: str) -> Optional[str]:
-    """Get camera URL with Moonraker webcam auto-discovery (async).
+    """Get camera stream URL with Moonraker webcam auto-discovery (async).
     
     Tries in order:
     1. Manual camera URL from settings (always wins)
@@ -5235,52 +5235,144 @@ async def get_camera_url_async(printer_code: str) -> Optional[str]:
     return None
 
 
+async def get_camera_snapshot_url_async(printer_code: str) -> Optional[str]:
+    """Get a dedicated snapshot URL from Moonraker webcam config (async).
+    
+    Moonraker's [webcam] section can have a separate snapshot_url that
+    points directly to ustreamer's snapshot endpoint. This is more
+    reliable than extracting a frame from the MJPEG stream, as ustreamer
+    will wait for a real frame before responding (no placeholder).
+    
+    Returns the snapshot URL if available, or None.
+    """
+    if printer_code != "AD5X":
+        return None
+    if not is_feature_enabled("moonraker_ad5x"):
+        return None
+    moonraker_url = get_setting("moonraker_ad5x_url", "")
+    if not moonraker_url:
+        return None
+    api_key = get_setting("moonraker_ad5x_api_key", "")
+    api = MoonrakerAPI(moonraker_url, api_key)
+    try:
+        cam_urls = await api.get_camera_urls()
+        if cam_urls and cam_urls.get("snapshot_url"):
+            return cam_urls["snapshot_url"]
+    except Exception:
+        pass
+    return None
+
+
 async def capture_camera_snapshot(printer_code: str) -> Optional[bytes]:
-    """Capture a snapshot from the printer's camera by extracting a frame from MJPEG stream"""
-    # Use async discovery to get the correct camera URL (queries Moonraker webcam API)
+    """Capture a snapshot from the printer's camera.
+    
+    Strategy (in order):
+    1. Try Moonraker's dedicated snapshot_url (ustreamer waits for a real frame)
+    2. Extract a frame from the MJPEG stream, skipping initial placeholder frames
+       (ustreamer/crowsnest sends a 'Camera Off/Waiting' placeholder as the first
+       frame when the stream starts, then switches to real frames)
+    3. Fall back to derived snapshot URL (?action=snapshot)
+    """
     camera_url = await get_camera_url_async(printer_code)
     if not camera_url:
         logger.debug(f"[CAMERA] No camera URL configured for {printer_code}")
         return None
     
+    # ── Method 1: Moonraker's dedicated snapshot URL ──
+    # This goes directly to ustreamer's /snapshot endpoint which internally
+    # waits for a real camera frame (no placeholder). Only available if
+    # Moonraker has a [webcam] section with snapshot_url configured.
     try:
-        # Primary method: Extract a single frame from the MJPEG stream.
-        # This is more reliable than the snapshot endpoint which can return
-        # a "Camera Off / Waiting" placeholder JPEG even when the stream works.
+        snapshot_api_url = await get_camera_snapshot_url_async(printer_code)
+        if snapshot_api_url:
+            logger.debug(f"[CAMERA] Trying Moonraker snapshot URL for {printer_code}: {snapshot_api_url}")
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(snapshot_api_url)
+                if response.status_code == 200 and response.headers.get("content-type", "").startswith("image/"):
+                    logger.debug(f"[CAMERA] Got snapshot from {printer_code} via Moonraker snapshot URL ({len(response.content)} bytes)")
+                    return response.content
+    except Exception as e:
+        logger.debug(f"[CAMERA] Moonraker snapshot URL failed for {printer_code}: {e}")
+    
+    # ── Method 2: Extract frame from MJPEG stream, skip placeholders ──
+    # ustreamer sends a small placeholder JPEG ("Camera Off / Waiting...")
+    # as the first frame when the stream starts. Real camera frames follow
+    # shortly after. We skip up to 3 initial frames and return the first
+    # frame that looks like a real image (>15KB typically, placeholders are
+    # usually ~5-10KB).
+    try:
         logger.debug(f"[CAMERA] Extracting frame from MJPEG stream for {printer_code}: {camera_url}")
-        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=5.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=8.0)) as client:
             async with client.stream("GET", camera_url) as response:
                 buffer = b""
+                frames_found = 0
+                max_frames_to_check = 5
+                last_good_frame = None
+                
                 async for chunk in response.aiter_bytes(chunk_size=4096):
                     buffer += chunk
-                    # Look for JPEG markers: starts with FFD8, ends with FFD9
-                    start = buffer.find(b"\xff\xd8")
-                    if start != -1:
+                    
+                    # Look for complete JPEG frames (FFD8...FFD9)
+                    while True:
+                        start = buffer.find(b"\xff\xd8")
+                        if start == -1:
+                            break
                         end = buffer.find(b"\xff\xd9", start)
-                        if end != -1:
-                            jpeg_data = buffer[start:end + 2]
-                            logger.debug(f"[CAMERA] Extracted JPEG frame ({len(jpeg_data)} bytes) from {printer_code}")
+                        if end == -1:
+                            break
+                        
+                        jpeg_data = buffer[start:end + 2]
+                        buffer = buffer[end + 2:]  # consume the frame
+                        frames_found += 1
+                        frame_size = len(jpeg_data)
+                        
+                        logger.debug(f"[CAMERA] Frame {frames_found} from {printer_code}: {frame_size} bytes")
+                        
+                        # Placeholder frames from ustreamer are typically small
+                        # (<15KB). Real camera frames are usually >20KB.
+                        # Accept any frame after skipping the first one, or
+                        # accept a large first frame (camera already warmed up).
+                        if frame_size > 15000:
+                            logger.debug(f"[CAMERA] Using frame {frames_found} ({frame_size} bytes) - looks like real image")
                             return jpeg_data
-                    # Prevent buffer from growing too large
-                    if len(buffer) > 500000:  # 500KB max
-                        logger.warning(f"[CAMERA] Buffer too large, no JPEG found for {printer_code}")
+                        
+                        # Keep track of the last frame in case all are small
+                        last_good_frame = jpeg_data
+                        
+                        if frames_found >= max_frames_to_check:
+                            break
+                    
+                    if frames_found >= max_frames_to_check:
                         break
-        
-        # Fallback: Try snapshot URL (may return placeholder on some cameras)
-        # Handle both ?action=stream and ?action=stream2 style URLs
+                    
+                    # Prevent buffer from growing too large
+                    if len(buffer) > 1000000:  # 1MB max
+                        logger.warning(f"[CAMERA] Buffer too large, stopping frame search for {printer_code}")
+                        break
+                
+                # If we found frames but none were large enough, return the last one
+                # (it might just be a low-resolution camera)
+                if last_good_frame:
+                    logger.debug(f"[CAMERA] No large frames found for {printer_code}, using last of {frames_found} frames ({len(last_good_frame)} bytes)")
+                    return last_good_frame
+    except Exception as e:
+        logger.error(f"[CAMERA] MJPEG stream extraction error for {printer_code}: {e}")
+    
+    # ── Method 3: Derived snapshot URL (last resort) ──
+    # Derive ?action=snapshot from the stream URL. This may return a
+    # placeholder on some cameras, but it's better than nothing.
+    try:
         import re
         snapshot_url = re.sub(r'\?action=stream(\d*)', r'?action=snapshot\1', camera_url)
-        logger.debug(f"[CAMERA] MJPEG extraction failed, trying snapshot endpoint for {printer_code}: {snapshot_url}")
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            try:
+        if snapshot_url != camera_url:  # only try if we actually derived a different URL
+            logger.debug(f"[CAMERA] Trying derived snapshot URL for {printer_code}: {snapshot_url}")
+            async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(snapshot_url)
                 if response.status_code == 200 and response.headers.get("content-type", "").startswith("image/"):
-                    logger.debug(f"[CAMERA] Got snapshot from {printer_code} via snapshot endpoint ({len(response.content)} bytes)")
+                    logger.debug(f"[CAMERA] Got snapshot from {printer_code} via derived URL ({len(response.content)} bytes)")
                     return response.content
-            except httpx.TimeoutException:
-                logger.debug(f"[CAMERA] Snapshot endpoint timed out for {printer_code}")
     except Exception as e:
-        logger.error(f"[CAMERA] Error capturing snapshot from {printer_code}: {e}")
+        logger.debug(f"[CAMERA] Derived snapshot URL failed for {printer_code}: {e}")
     
     return None
 
