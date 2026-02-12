@@ -3577,12 +3577,18 @@ async def shippo_webhook(request: Request, path_token: Optional[str] = None):
             raise HTTPException(status_code=401, detail="Unauthorized")
         raise HTTPException(status_code=503, detail="Webhook authentication is not configured")
 
-    payload = await request.json()
+    payload_raw = await request.json()
+    if not isinstance(payload_raw, dict):
+        return JSONResponse({"ok": True, "ignored": "invalid_payload_shape"})
+
+    payload: Dict[str, Any] = payload_raw
     event_type = (payload.get("event") or payload.get("event_type") or "").strip().lower()
-    data = payload.get("data") or {}
-    provider_event_id = str(payload.get("object_id") or data.get("object_id") or "") or None
+    raw_data = payload.get("data")
+    data = raw_data if isinstance(raw_data, dict) else {}
+    data_object_id = data.get("object_id") if isinstance(data, dict) else None
+    provider_event_id = str(payload.get("object_id") or data_object_id or "") or None
     if provider_event_id:
-        provider_event_id = f"{event_type}:{provider_event_id}"
+        provider_event_id = f"{event_type or 'unknown'}:{provider_event_id}"
 
     conn = db()
     if provider_event_id:
@@ -3609,6 +3615,14 @@ async def shippo_webhook(request: Request, path_token: Optional[str] = None):
         row = conn.execute(
             "SELECT request_id FROM request_shipping WHERE provider_transaction_id = ? OR provider_shipment_id = ?",
             (data.get("object_id"), data.get("object_id")),
+        ).fetchone()
+        if row:
+            rid = row["request_id"]
+    if not rid and isinstance(raw_data, str) and raw_data.strip():
+        raw_object_id = raw_data.strip()
+        row = conn.execute(
+            "SELECT request_id FROM request_shipping WHERE provider_transaction_id = ? OR provider_shipment_id = ?",
+            (raw_object_id, raw_object_id),
         ).fetchone()
         if row:
             rid = row["request_id"]

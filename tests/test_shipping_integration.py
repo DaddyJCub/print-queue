@@ -109,3 +109,32 @@ def test_shippo_webhook_auth_with_url_token(client, monkeypatch):
     assert ok.status_code == 200
     assert ok_path.status_code == 200
     assert bad.status_code == 401
+
+
+def test_shippo_webhook_handles_string_data_payload(client, monkeypatch):
+    _set_shipping_enabled(True)
+    req = create_test_request(fulfillment_method="shipping", with_shipping=True, requester_email="shipstrdata@example.com")
+
+    conn = get_test_db()
+    conn.execute(
+        "UPDATE request_shipping SET provider_transaction_id = ? WHERE request_id = ?",
+        ("txn_str_123", req["request_id"]),
+    )
+    conn.execute(
+        """INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+        ("shippo_webhook_token", "tok_test_456", "2026-01-01T00:00:00Z"),
+    )
+    conn.commit()
+    conn.close()
+
+    from app import api_builds
+    monkeypatch.setattr(api_builds, "_notify_requester_shipping_status", lambda *args, **kwargs: None)
+
+    payload = {
+        "event": "transaction_updated",
+        "object_id": "evt_string_data_1",
+        "data": "txn_str_123",
+    }
+    resp = client.post("/webhooks/shippo?token=tok_test_456", json=payload)
+    assert resp.status_code == 200

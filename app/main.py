@@ -5244,21 +5244,10 @@ async def capture_camera_snapshot(printer_code: str) -> Optional[bytes]:
         return None
     
     try:
-        # Try snapshot URL first (quick attempt with short timeout)
-        # Handle both ?action=stream and ?action=stream2 style URLs
-        import re
-        snapshot_url = re.sub(r'\?action=stream(\d*)', r'?action=snapshot\1', camera_url)
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            try:
-                response = await client.get(snapshot_url)
-                if response.status_code == 200 and response.headers.get("content-type", "").startswith("image/"):
-                    logger.debug(f"[CAMERA] Got snapshot from {printer_code} via snapshot endpoint ({len(response.content)} bytes)")
-                    return response.content
-            except httpx.TimeoutException:
-                logger.debug(f"[CAMERA] Snapshot endpoint timed out for {printer_code}, trying stream method")
-        
-        # Fallback: Extract a single frame from the MJPEG stream
-        logger.debug(f"[CAMERA] Trying to extract frame from MJPEG stream for {printer_code}")
+        # Primary method: Extract a single frame from the MJPEG stream.
+        # This is more reliable than the snapshot endpoint which can return
+        # a "Camera Off / Waiting" placeholder JPEG even when the stream works.
+        logger.debug(f"[CAMERA] Extracting frame from MJPEG stream for {printer_code}: {camera_url}")
         async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=5.0)) as client:
             async with client.stream("GET", camera_url) as response:
                 buffer = b""
@@ -5276,6 +5265,20 @@ async def capture_camera_snapshot(printer_code: str) -> Optional[bytes]:
                     if len(buffer) > 500000:  # 500KB max
                         logger.warning(f"[CAMERA] Buffer too large, no JPEG found for {printer_code}")
                         break
+        
+        # Fallback: Try snapshot URL (may return placeholder on some cameras)
+        # Handle both ?action=stream and ?action=stream2 style URLs
+        import re
+        snapshot_url = re.sub(r'\?action=stream(\d*)', r'?action=snapshot\1', camera_url)
+        logger.debug(f"[CAMERA] MJPEG extraction failed, trying snapshot endpoint for {printer_code}: {snapshot_url}")
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            try:
+                response = await client.get(snapshot_url)
+                if response.status_code == 200 and response.headers.get("content-type", "").startswith("image/"):
+                    logger.debug(f"[CAMERA] Got snapshot from {printer_code} via snapshot endpoint ({len(response.content)} bytes)")
+                    return response.content
+            except httpx.TimeoutException:
+                logger.debug(f"[CAMERA] Snapshot endpoint timed out for {printer_code}")
     except Exception as e:
         logger.error(f"[CAMERA] Error capturing snapshot from {printer_code}: {e}")
     
