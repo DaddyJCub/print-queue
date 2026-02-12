@@ -104,6 +104,8 @@ def test_shippo_webhook_auth_with_url_token(client, monkeypatch):
     }
 
     ok = client.post("/webhooks/shippo?token=tok_test_123", json=payload)
+    ok_path = client.post("/webhooks/shippo/tok_test_123", json=payload)
     bad = client.post("/webhooks/shippo?token=wrong", json=payload)
     assert ok.status_code == 200
+    assert ok_path.status_code == 200
     assert bad.status_code == 401

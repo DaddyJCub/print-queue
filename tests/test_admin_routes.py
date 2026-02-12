@@ -8,6 +8,7 @@ Covers:
 - Admin settings and configuration
 - Audit logging
 """
+import json
 import pytest
 from datetime import datetime
 
@@ -196,6 +197,46 @@ class TestAdminShipping:
         ).fetchone()
         conn.close()
         assert snap is not None
+
+    def test_fetch_shipping_rates_with_flat_rate_template(self, admin_client, monkeypatch):
+        self._set_shipping_enabled(True)
+        req = create_test_request(fulfillment_method="shipping", with_shipping=True)
+
+        from app import api_builds
+
+        seen = {}
+
+        class FakeShippo:
+            def create_shipment_and_rates(self, address_from, address_to, parcel, metadata=None):
+                seen["parcel"] = parcel
+                return {
+                    "object_id": "shippo_shipment_flat_123",
+                    "rates": [
+                        {"object_id": "rate_flat_1", "provider": "USPS", "amount": "9.80", "servicelevel": {"name": "Priority Mail Flat Rate"}},
+                    ],
+                }
+
+        monkeypatch.setattr(api_builds, "ShippoClient", lambda **kw: FakeShippo())
+        response = admin_client.post(
+            f"/admin/request/{req['request_id']}/shipping/rates",
+            data={"flat_rate_template": "USPS_SmallFlatRateBox", "package_weight_oz": "10"},
+            follow_redirects=False,
+        )
+        assert response.status_code in (200, 303)
+        assert seen["parcel"]["template"] == "USPS_SmallFlatRateBox"
+
+        conn = get_test_db()
+        ship = conn.execute(
+            "SELECT metadata_json, package_length_in, package_width_in, package_height_in FROM request_shipping WHERE request_id = ?",
+            (req["request_id"],),
+        ).fetchone()
+        conn.close()
+        assert ship is not None
+        md = json.loads(ship["metadata_json"] or "{}")
+        assert md.get("flat_rate_template") == "USPS_SmallFlatRateBox"
+        assert ship["package_length_in"] is None
+        assert ship["package_width_in"] is None
+        assert ship["package_height_in"] is None
 
     def test_save_shipping_quote_updates_record(self, admin_client):
         self._set_shipping_enabled(True)

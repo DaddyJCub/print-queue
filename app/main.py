@@ -5237,14 +5237,17 @@ async def get_camera_url_async(printer_code: str) -> Optional[str]:
 
 async def capture_camera_snapshot(printer_code: str) -> Optional[bytes]:
     """Capture a snapshot from the printer's camera by extracting a frame from MJPEG stream"""
-    camera_url = get_camera_url(printer_code)
+    # Use async discovery to get the correct camera URL (queries Moonraker webcam API)
+    camera_url = await get_camera_url_async(printer_code)
     if not camera_url:
         logger.debug(f"[CAMERA] No camera URL configured for {printer_code}")
         return None
     
     try:
         # Try snapshot URL first (quick attempt with short timeout)
-        snapshot_url = camera_url.replace("?action=stream", "?action=snapshot")
+        # Handle both ?action=stream and ?action=stream2 style URLs
+        import re
+        snapshot_url = re.sub(r'\?action=stream(\d*)', r'?action=snapshot\1', camera_url)
         async with httpx.AsyncClient(timeout=3.0) as client:
             try:
                 response = await client.get(snapshot_url)

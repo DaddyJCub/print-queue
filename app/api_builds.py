@@ -36,6 +36,7 @@ from app.main import (
     logger,
     get_printer_api,
     get_camera_url,
+    get_camera_url_async,
     _printer_status_cache,
     _printer_failure_count,
     record_printer_failure,
@@ -97,6 +98,18 @@ SHIPPING_STATUSES = {
     "EXCEPTION",
     "RETURNED",
     "CANCELLED",
+}
+
+SHIPPO_USPS_FLAT_RATE_TEMPLATES: Dict[str, str] = {
+    "USPS_FlatRateEnvelope": "USPS Flat Rate Envelope",
+    "USPS_FlatRateLegalEnvelope": "USPS Flat Rate Legal Envelope",
+    "USPS_FlatRatePaddedEnvelope": "USPS Flat Rate Padded Envelope",
+    "USPS_FlatRateWindowEnvelope": "USPS Flat Rate Window Envelope",
+    "USPS_SmallFlatRateEnvelope": "USPS Small Flat Rate Envelope",
+    "USPS_SmallFlatRateBox": "USPS Small Flat Rate Box",
+    "USPS_MediumFlatRateBox1": "USPS Medium Flat Rate Box 1",
+    "USPS_MediumFlatRateBox2": "USPS Medium Flat Rate Box 2",
+    "USPS_LargeFlatRateBox": "USPS Large Flat Rate Box",
 }
 
 
@@ -1574,7 +1587,7 @@ async def camera_stream_proxy(request: Request, printer_code: str, _=Depends(req
     if printer_code not in ["ADVENTURER_4", "AD5X"]:
         raise HTTPException(status_code=400, detail="Invalid printer code")
     
-    camera_url = get_camera_url(printer_code)
+    camera_url = await get_camera_url_async(printer_code)
     if not camera_url:
         raise HTTPException(status_code=503, detail="Camera not configured for this printer")
     
@@ -1617,14 +1630,16 @@ async def camera_stream_proxy(request: Request, printer_code: str, _=Depends(req
 @router.get("/api/camera/status")
 async def camera_status(_=Depends(require_admin)):
     """Check which printers have cameras configured"""
+    adv4_url = get_camera_url("ADVENTURER_4")
+    ad5x_url = await get_camera_url_async("AD5X")
     return {
         "ADVENTURER_4": {
-            "configured": bool(get_camera_url("ADVENTURER_4")),
-            "url": get_camera_url("ADVENTURER_4"),
+            "configured": bool(adv4_url),
+            "url": adv4_url,
         },
         "AD5X": {
-            "configured": bool(get_camera_url("AD5X")),
-            "url": get_camera_url("AD5X"),
+            "configured": bool(ad5x_url),
+            "url": ad5x_url,
         },
     }
 
@@ -1940,7 +1955,7 @@ async def get_all_printers_status(_=Depends(require_admin)):
                         "current_file": extended.get("current_file") if extended else None,
                         "current_layer": extended.get("current_layer") if extended else None,
                         "total_layers": extended.get("total_layers") if extended else None,
-                        "camera_url": get_camera_url(printer_code),
+                        "camera_url": await get_camera_url_async(printer_code) if printer_code == "AD5X" else get_camera_url(printer_code),
                     }
                     
                     # Moonraker-specific enrichment
@@ -2700,6 +2715,15 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         "height_in": get_setting("shipping_default_height_in", "4"),
     }
     shipping_from = _shipping_from_address()
+    shipping_data = dict(shipping_row) if shipping_row else None
+    selected_flat_rate_template = ""
+    if shipping_data:
+        try:
+            shipping_meta = json.loads(shipping_data.get("metadata_json") or "{}")
+            if isinstance(shipping_meta, dict):
+                selected_flat_rate_template = (shipping_meta.get("flat_rate_template") or "").strip()
+        except Exception:
+            selected_flat_rate_template = ""
     
     return templates.TemplateResponse("admin_request.html", {
         "request": request,
@@ -2713,11 +2737,13 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         "builds": builds_list,
         "build_eta_info": build_eta_info,
         "assignments": assignments_list,
-        "shipping": dict(shipping_row) if shipping_row else None,
+        "shipping": shipping_data,
         "shipping_rates": shipping_rates,
         "shipping_events": [dict(e) for e in shipping_events],
         "shipping_defaults": shipping_defaults,
         "shipping_from": shipping_from,
+        "shippo_flat_rate_templates": list(SHIPPO_USPS_FLAT_RATE_TEMPLATES.items()),
+        "selected_flat_rate_template": selected_flat_rate_template,
         "shipping_enabled": get_bool_setting("shipping_enabled", False),
         "assignment_roles": [r.value for r in AssignmentRole],
         "status_flow": STATUS_FLOW,
@@ -3093,6 +3119,7 @@ def admin_save_shipping_destination(
 def admin_fetch_shipping_rates(
     request: Request,
     rid: str,
+    flat_rate_template: Optional[str] = Form(None),
     package_weight_oz: Optional[str] = Form(None),
     package_length_in: Optional[str] = Form(None),
     package_width_in: Optional[str] = Form(None),
@@ -3128,7 +3155,42 @@ def admin_fetch_shipping_rates(
         conn.close()
         raise HTTPException(status_code=400, detail="Shipping address is incomplete")
 
-    parcel = _parse_parcel_inputs(package_weight_oz, package_length_in, package_width_in, package_height_in)
+    parsed_parcel = _parse_parcel_inputs(package_weight_oz, package_length_in, package_width_in, package_height_in)
+    selected_template = (flat_rate_template or "").strip()
+    if selected_template and selected_template not in SHIPPO_USPS_FLAT_RATE_TEMPLATES:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Invalid flat-rate package template")
+
+    if selected_template:
+        parcel = {
+            "template": selected_template,
+            "mass_unit": "oz",
+            "weight": parsed_parcel["weight"],
+        }
+        parcel_weight = float(parsed_parcel["weight"])
+        parcel_length = None
+        parcel_width = None
+        parcel_height = None
+    else:
+        parcel = parsed_parcel
+        parcel_weight = float(parsed_parcel["weight"])
+        parcel_length = float(parsed_parcel["length"])
+        parcel_width = float(parsed_parcel["width"])
+        parcel_height = float(parsed_parcel["height"])
+
+    metadata: Dict[str, Any] = {}
+    try:
+        existing_metadata = json.loads(shipping.get("metadata_json") or "{}")
+        if isinstance(existing_metadata, dict):
+            metadata.update(existing_metadata)
+    except Exception:
+        metadata = {}
+    if selected_template:
+        metadata["flat_rate_template"] = selected_template
+    else:
+        metadata.pop("flat_rate_template", None)
+    metadata_json = json.dumps(metadata) if metadata else None
+
     try:
         client = ShippoClient(api_key=_shippo_api_key())
         shipment = client.create_shipment_and_rates(
@@ -3151,19 +3213,19 @@ def admin_fetch_shipping_rates(
             str(uuid.uuid4()),
             rid,
             now,
-            float(parcel["weight"]),
-            float(parcel["length"]),
-            float(parcel["width"]),
-            float(parcel["height"]),
+            parcel_weight,
+            parcel_length,
+            parcel_width,
+            parcel_height,
             json.dumps(rates),
         ),
     )
     conn.execute(
         """UPDATE request_shipping
            SET updated_at = ?, package_weight_oz = ?, package_length_in = ?, package_width_in = ?, package_height_in = ?,
-               provider = 'shippo', provider_shipment_id = ?
+               metadata_json = ?, provider = 'shippo', provider_shipment_id = ?
            WHERE request_id = ?""",
-        (now, float(parcel["weight"]), float(parcel["length"]), float(parcel["width"]), float(parcel["height"]), shipment.get("object_id"), rid),
+        (now, parcel_weight, parcel_length, parcel_width, parcel_height, metadata_json, shipment.get("object_id"), rid),
     )
     _insert_shipping_event(
         conn,
@@ -3173,7 +3235,7 @@ def admin_fetch_shipping_rates(
         provider="shippo",
         provider_event_id=None,
         message=f"Fetched {len(rates)} live rates",
-        payload={"shipment_id": shipment.get("object_id"), "rate_count": len(rates)},
+        payload={"shipment_id": shipment.get("object_id"), "rate_count": len(rates), "flat_rate_template": selected_template or None},
     )
     conn.execute(
         "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
@@ -3480,7 +3542,8 @@ def admin_mark_shipping_delivered(
 
 
 @router.post("/webhooks/shippo")
-async def shippo_webhook(request: Request):
+@router.post("/webhooks/shippo/{path_token}")
+async def shippo_webhook(request: Request, path_token: Optional[str] = None):
     configured_user, configured_pass = _shippo_webhook_credentials()
     configured_token = _shippo_webhook_token()
     auth_ok = False
@@ -3488,7 +3551,9 @@ async def shippo_webhook(request: Request):
     # Preferred for Shippo webhooks: shared secret token in callback URL.
     if configured_token:
         supplied_token = (
-            request.query_params.get("token")
+            path_token
+            or request.path_params.get("path_token")
+            or request.query_params.get("token")
             or request.headers.get("X-Shippo-Webhook-Token")
             or ""
         ).strip()

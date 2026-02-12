@@ -271,6 +271,13 @@
 
             <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/rates" class="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
               <div class="text-xs uppercase tracking-wide text-zinc-500">Rate Suggestions</div>
+              <select name="flat_rate_template" class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs">
+                <option value="">Custom package (non flat-rate)</option>
+                {% for token, label in shippo_flat_rate_templates %}
+                  <option value="{{ token }}" {% if selected_flat_rate_template == token %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              <p class="text-[11px] text-zinc-500">Pick a USPS flat-rate package to get flat-rate suggestions. Size fields are used only for custom packages.</p>
               <div class="grid grid-cols-2 gap-2">
                 <input name="package_weight_oz" placeholder="Weight oz" value="{{ shipping.package_weight_oz if shipping and shipping.package_weight_oz else shipping_defaults.weight_oz }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
                 <input name="package_length_in" placeholder="Length in" value="{{ shipping.package_length_in if shipping and shipping.package_length_in else shipping_defaults.length_in }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
