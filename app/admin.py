@@ -574,6 +574,7 @@ def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[s
         "shippo_webhook_user": get_setting("shippo_webhook_user", "").strip() or os.getenv("SHIPPO_WEBHOOK_USER", "").strip(),
         "shippo_api_key_configured": bool(get_setting("shippo_api_key", "").strip() or os.getenv("SHIPPO_API_KEY", "").strip()),
         "shippo_webhook_pass_configured": bool(get_setting("shippo_webhook_pass", "").strip() or os.getenv("SHIPPO_WEBHOOK_PASS", "").strip()),
+        "shippo_webhook_token_configured": bool(get_setting("shippo_webhook_token", "").strip() or os.getenv("SHIPPO_WEBHOOK_TOKEN", "").strip()),
         "saved": bool(saved == "1"),
     }
     return templates.TemplateResponse("admin_settings.html", {"request": request, "s": model, "version": APP_VERSION})
@@ -633,6 +634,8 @@ def admin_settings_post(
     shippo_webhook_user: str = Form(""),
     shippo_webhook_pass: Optional[str] = Form(None),
     clear_shippo_webhook_pass: Optional[str] = Form(None),
+    shippo_webhook_token: Optional[str] = Form(None),
+    clear_shippo_webhook_token: Optional[str] = Form(None),
     _=Depends(require_admin),
 ):
     # checkboxes: present => "on", missing => None
@@ -691,6 +694,10 @@ def admin_settings_post(
         set_setting("shippo_webhook_pass", "")
     elif shippo_webhook_pass and shippo_webhook_pass.strip():
         set_setting("shippo_webhook_pass", shippo_webhook_pass.strip())
+    if clear_shippo_webhook_token:
+        set_setting("shippo_webhook_token", "")
+    elif shippo_webhook_token and shippo_webhook_token.strip():
+        set_setting("shippo_webhook_token", shippo_webhook_token.strip())
 
     return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
 

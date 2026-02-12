@@ -2743,6 +2743,7 @@ DEFAULT_SETTINGS: Dict[str, str] = {
     "shippo_api_key": "",
     "shippo_webhook_user": "",
     "shippo_webhook_pass": "",
+    "shippo_webhook_token": "",
 }
 
 

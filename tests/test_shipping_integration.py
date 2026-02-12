@@ -70,3 +70,40 @@ def test_shippo_webhook_idempotency(client, monkeypatch):
     assert row is not None
     assert row["shipping_status"] == "IN_TRANSIT"
     assert events["c"] == 1
+
+
+def test_shippo_webhook_auth_with_url_token(client, monkeypatch):
+    _set_shipping_enabled(True)
+    req = create_test_request(fulfillment_method="shipping", with_shipping=True, requester_email="shiptoken@example.com")
+
+    conn = get_test_db()
+    conn.execute(
+        "UPDATE request_shipping SET tracking_number = ?, carrier = ? WHERE request_id = ?",
+        ("9400111899223847000000", "USPS", req["request_id"]),
+    )
+    conn.execute(
+        """INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+        ("shippo_webhook_token", "tok_test_123", "2026-01-01T00:00:00Z"),
+    )
+    conn.commit()
+    conn.close()
+
+    from app import api_builds
+    monkeypatch.setattr(api_builds, "_notify_requester_shipping_status", lambda *args, **kwargs: None)
+
+    payload = {
+        "event": "track_updated",
+        "object_id": "evt_tok_1",
+        "data": {
+            "object_id": "trk_tok_1",
+            "tracking_number": "9400111899223847000000",
+            "carrier": "USPS",
+            "tracking_status": {"status": "OUT_FOR_DELIVERY"},
+        },
+    }
+
+    ok = client.post("/webhooks/shippo?token=tok_test_123", json=payload)
+    bad = client.post("/webhooks/shippo?token=wrong", json=payload)
+    assert ok.status_code == 200
+    assert bad.status_code == 401

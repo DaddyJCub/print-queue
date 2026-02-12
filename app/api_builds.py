@@ -141,6 +141,10 @@ def _shippo_webhook_credentials() -> tuple[str, str]:
     return user, password
 
 
+def _shippo_webhook_token() -> str:
+    return get_setting("shippo_webhook_token", "").strip() or os.getenv("SHIPPO_WEBHOOK_TOKEN", "").strip()
+
+
 def _parse_parcel_inputs(weight_oz: Optional[str], length_in: Optional[str], width_in: Optional[str], height_in: Optional[str]) -> Dict[str, str]:
     def _as_float(raw: Optional[str], fallback: str) -> str:
         try:
@@ -3478,19 +3482,35 @@ def admin_mark_shipping_delivered(
 @router.post("/webhooks/shippo")
 async def shippo_webhook(request: Request):
     configured_user, configured_pass = _shippo_webhook_credentials()
-    if not configured_user or not configured_pass:
-        raise HTTPException(status_code=503, detail="Webhook authentication is not configured")
+    configured_token = _shippo_webhook_token()
+    auth_ok = False
 
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Basic "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    try:
-        raw = base64.b64decode(auth_header.split(" ", 1)[1]).decode("utf-8")
-        user, pwd = raw.split(":", 1)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    if user != configured_user or pwd != configured_pass:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    # Preferred for Shippo webhooks: shared secret token in callback URL.
+    if configured_token:
+        supplied_token = (
+            request.query_params.get("token")
+            or request.headers.get("X-Shippo-Webhook-Token")
+            or ""
+        ).strip()
+        if supplied_token and secrets.compare_digest(supplied_token, configured_token):
+            auth_ok = True
+
+    # Fallback: HTTP Basic auth if configured.
+    if not auth_ok and configured_user and configured_pass:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Basic "):
+            try:
+                raw = base64.b64decode(auth_header.split(" ", 1)[1]).decode("utf-8")
+                user, pwd = raw.split(":", 1)
+                if secrets.compare_digest(user, configured_user) and secrets.compare_digest(pwd, configured_pass):
+                    auth_ok = True
+            except Exception:
+                pass
+
+    if not auth_ok:
+        if configured_token or (configured_user and configured_pass):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        raise HTTPException(status_code=503, detail="Webhook authentication is not configured")
 
     payload = await request.json()
     event_type = (payload.get("event") or payload.get("event_type") or "").strip().lower()

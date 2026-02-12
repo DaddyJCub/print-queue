@@ -466,6 +466,18 @@
                 <span>Clear stored webhook password</span>
               </label>
             </label>
+
+            <label class="block md:col-span-2">
+              <span class="text-sm text-zinc-300">Webhook URL token (recommended)</span>
+              <input name="shippo_webhook_token" type="password"
+                     placeholder="{% if s.shippo_webhook_token_configured %}Configured (enter new value to replace){% else %}Enter random token used in webhook URL{% endif %}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+              <p class="text-xs text-zinc-500 mt-1">Use this with Shippo URL like: <code>/webhooks/shippo?token=YOUR_TOKEN</code></p>
+              <label class="mt-2 inline-flex items-center gap-2 text-xs text-zinc-400">
+                <input type="checkbox" name="clear_shippo_webhook_token" />
+                <span>Clear stored webhook URL token</span>
+              </label>
+            </label>
           </div>
         </div>
       </section>
