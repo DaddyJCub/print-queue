@@ -5299,10 +5299,15 @@ async def capture_camera_snapshot(printer_code: str) -> Optional[bytes]:
         logger.debug(f"[CAMERA] No camera URL configured for {printer_code}")
         return None
     
+    # Minimum size threshold for a "real" camera image vs placeholder.
+    # ustreamer/crowsnest "Camera Off / Waiting..." placeholder JPEGs are
+    # typically 5-12KB. Real camera frames are usually >20KB.
+    MIN_REAL_FRAME_SIZE = 15000
+    
     # ── Method 1: Moonraker's dedicated snapshot URL ──
-    # This goes directly to ustreamer's /snapshot endpoint which internally
-    # waits for a real camera frame (no placeholder). Only available if
-    # Moonraker has a [webcam] section with snapshot_url configured.
+    # This goes directly to ustreamer's /snapshot endpoint. If it returns
+    # a large enough image, it's real. If it's small, it's likely the
+    # "Camera Off" placeholder and we fall through to stream extraction.
     try:
         snapshot_api_url = await get_camera_snapshot_url_async(printer_code)
         if snapshot_api_url:
@@ -5310,17 +5315,20 @@ async def capture_camera_snapshot(printer_code: str) -> Optional[bytes]:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(snapshot_api_url)
                 if response.status_code == 200 and response.headers.get("content-type", "").startswith("image/"):
-                    logger.debug(f"[CAMERA] Got snapshot from {printer_code} via Moonraker snapshot URL ({len(response.content)} bytes)")
-                    return response.content
+                    content_size = len(response.content)
+                    if content_size > MIN_REAL_FRAME_SIZE:
+                        logger.debug(f"[CAMERA] Got snapshot from {printer_code} via Moonraker snapshot URL ({content_size} bytes)")
+                        return response.content
+                    else:
+                        logger.debug(f"[CAMERA] Snapshot URL returned small image ({content_size} bytes) - likely placeholder, trying stream extraction")
     except Exception as e:
         logger.debug(f"[CAMERA] Moonraker snapshot URL failed for {printer_code}: {e}")
     
     # ── Method 2: Extract frame from MJPEG stream, skip placeholders ──
     # ustreamer sends a small placeholder JPEG ("Camera Off / Waiting...")
     # as the first frame when the stream starts. Real camera frames follow
-    # shortly after. We skip up to 3 initial frames and return the first
-    # frame that looks like a real image (>15KB typically, placeholders are
-    # usually ~5-10KB).
+    # shortly after. We read up to 5 frames and return the first one that
+    # exceeds MIN_REAL_FRAME_SIZE bytes.
     try:
         logger.debug(f"[CAMERA] Extracting frame from MJPEG stream for {printer_code}: {camera_url}")
         async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=8.0)) as client:
@@ -5349,11 +5357,9 @@ async def capture_camera_snapshot(printer_code: str) -> Optional[bytes]:
                         
                         logger.debug(f"[CAMERA] Frame {frames_found} from {printer_code}: {frame_size} bytes")
                         
-                        # Placeholder frames from ustreamer are typically small
-                        # (<15KB). Real camera frames are usually >20KB.
-                        # Accept any frame after skipping the first one, or
-                        # accept a large first frame (camera already warmed up).
-                        if frame_size > 15000:
+                        # Placeholder frames from ustreamer are typically small.
+                        # Real camera frames exceed MIN_REAL_FRAME_SIZE.
+                        if frame_size > MIN_REAL_FRAME_SIZE:
                             logger.debug(f"[CAMERA] Using frame {frames_found} ({frame_size} bytes) - looks like real image")
                             return jpeg_data
                         
@@ -5371,17 +5377,18 @@ async def capture_camera_snapshot(printer_code: str) -> Optional[bytes]:
                         logger.warning(f"[CAMERA] Buffer too large, stopping frame search for {printer_code}")
                         break
                 
-                # If we found frames but none were large enough, return the last one
-                # (it might just be a low-resolution camera)
+                # If we found frames but none were large enough, the camera is
+                # likely off/idle. Return None so the caller shows "camera unavailable"
+                # rather than a confusing "Camera Off / Waiting..." placeholder image.
                 if last_good_frame:
-                    logger.debug(f"[CAMERA] No large frames found for {printer_code}, using last of {frames_found} frames ({len(last_good_frame)} bytes)")
-                    return last_good_frame
+                    logger.debug(f"[CAMERA] All {frames_found} frames from {printer_code} were small (placeholder-sized), camera appears off/idle")
+                    return None
     except Exception as e:
         logger.error(f"[CAMERA] MJPEG stream extraction error for {printer_code}: {e}")
     
     # ── Method 3: Derived snapshot URL (last resort) ──
-    # Derive ?action=snapshot from the stream URL. This may return a
-    # placeholder on some cameras, but it's better than nothing.
+    # Derive ?action=snapshot from the stream URL. Also checks size to
+    # avoid returning a placeholder.
     try:
         import re
         snapshot_url = re.sub(r'\?action=stream(\d*)', r'?action=snapshot\1', camera_url)
@@ -5390,8 +5397,12 @@ async def capture_camera_snapshot(printer_code: str) -> Optional[bytes]:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(snapshot_url)
                 if response.status_code == 200 and response.headers.get("content-type", "").startswith("image/"):
-                    logger.debug(f"[CAMERA] Got snapshot from {printer_code} via derived URL ({len(response.content)} bytes)")
-                    return response.content
+                    content_size = len(response.content)
+                    if content_size > MIN_REAL_FRAME_SIZE:
+                        logger.debug(f"[CAMERA] Got snapshot from {printer_code} via derived URL ({content_size} bytes)")
+                        return response.content
+                    else:
+                        logger.debug(f"[CAMERA] Derived snapshot returned small image ({content_size} bytes) - likely placeholder")
     except Exception as e:
         logger.debug(f"[CAMERA] Derived snapshot URL failed for {printer_code}: {e}")
     
