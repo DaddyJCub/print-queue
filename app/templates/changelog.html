@@ -65,12 +65,75 @@
         </p>
       </div>
 
-      <!-- v0.15.0 -->
-      <div id="v0.15" class="bg-gradient-to-br from-zinc-900/80 via-indigo-900/20 to-zinc-900/80 border border-indigo-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
+      <!-- v0.15.1 -->
+      <div id="v0.15.1" class="bg-gradient-to-br from-zinc-900/80 via-indigo-900/20 to-zinc-900/80 border border-indigo-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
-          <a href="#v0.15" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.15.0</a>
+          <a href="#v0.15.1" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.15.1</a>
           <span class="text-zinc-400 text-sm">February 2026</span>
           <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Camera fix & stability improvements</h3>
+        <p class="text-sm text-zinc-400 mb-4">Fixed AD5X camera always showing "Camera Off" by handling ustreamer's initial placeholder frame, plus shipping robustness improvements.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📷 Camera</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Fixed camera snapshots always showing "Camera Off / Waiting" placeholder image</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Snapshot extraction now skips ustreamer's initial placeholder frames and grabs a real camera frame</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>New <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">get_camera_snapshot_url_async()</code> uses Moonraker's dedicated snapshot URL when available</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Smart frame selection: reads up to 5 MJPEG frames, skips small placeholders (&lt;15KB), returns first real frame</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>3-layer fallback: Moonraker snapshot URL → MJPEG stream extraction → derived snapshot URL</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📦 Shipping</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Shippo webhook processing hardened against malformed payloads and edge cases</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Admins can override the ship-from address on a per-shipment basis</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Save-destination endpoint for persisting shipping preferences</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🔧 Technical</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>295 automated tests passing</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>Extended MJPEG read timeout to 8s to allow time for real frames to arrive</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v0.15.0 -->
+      <div id="v0.15" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.15" class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg hover:bg-zinc-600 transition">v0.15.0</a>
+          <span class="text-zinc-400 text-sm">February 2026</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Shipping fulfillment (Shippo integration)</h3>
