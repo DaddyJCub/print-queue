@@ -68,6 +68,7 @@ from app.main import (
     _human_printer,
     _human_material,
     is_feature_enabled,
+    get_camera_snapshot_url_async,
 )
 from app.main import MoonrakerAPI
 from app.auth import (
@@ -1629,18 +1630,58 @@ async def camera_stream_proxy(request: Request, printer_code: str, _=Depends(req
 
 @router.get("/api/camera/status")
 async def camera_status(_=Depends(require_admin)):
-    """Check which printers have cameras configured"""
+    """Check which printers have cameras configured, with full diagnostics"""
     adv4_url = get_camera_url("ADVENTURER_4")
     ad5x_url = await get_camera_url_async("AD5X")
+    
+    # Full diagnostics for AD5X camera auto-discovery
+    ad5x_diag = {
+        "configured": bool(ad5x_url),
+        "stream_url": ad5x_url,
+        "manual_url": get_setting("camera_ad5x_url", ""),
+        "moonraker_enabled": is_feature_enabled("moonraker_ad5x"),
+        "moonraker_url": get_setting("moonraker_ad5x_url", ""),
+    }
+    
+    # Try to get webcam list from Moonraker for diagnostics
+    if is_feature_enabled("moonraker_ad5x"):
+        moonraker_url = get_setting("moonraker_ad5x_url", "")
+        if moonraker_url:
+            api_key = get_setting("moonraker_ad5x_api_key", "")
+            api = MoonrakerAPI(moonraker_url, api_key)
+            try:
+                raw_webcams = await api.get_webcams()
+                ad5x_diag["raw_webcams"] = raw_webcams
+                cam_urls = await api.get_camera_urls()
+                ad5x_diag["resolved_urls"] = cam_urls
+            except Exception as e:
+                ad5x_diag["webcam_error"] = str(e)
+            
+            # Try snapshot URL
+            try:
+                snapshot_url = await get_camera_snapshot_url_async("AD5X")
+                ad5x_diag["snapshot_url"] = snapshot_url
+            except Exception as e:
+                ad5x_diag["snapshot_url_error"] = str(e)
+            
+            # Test connectivity to the stream URL
+            if ad5x_url:
+                try:
+                    async with httpx.AsyncClient(timeout=3.0) as client:
+                        resp = await client.head(ad5x_url)
+                        ad5x_diag["stream_reachable"] = resp.status_code < 500
+                        ad5x_diag["stream_status_code"] = resp.status_code
+                        ad5x_diag["stream_content_type"] = resp.headers.get("content-type", "")
+                except Exception as e:
+                    ad5x_diag["stream_reachable"] = False
+                    ad5x_diag["stream_error"] = str(e)
+    
     return {
         "ADVENTURER_4": {
             "configured": bool(adv4_url),
             "url": adv4_url,
         },
-        "AD5X": {
-            "configured": bool(ad5x_url),
-            "url": ad5x_url,
-        },
+        "AD5X": ad5x_diag,
     }
 
 
