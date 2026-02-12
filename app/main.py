@@ -1309,10 +1309,7 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_request_assignments_request ON request_assignments(request_id);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_request_assignments_account ON request_assignments(account_id);")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_requests_fulfillment_method ON requests(fulfillment_method);")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_request_shipping_status ON request_shipping(shipping_status);")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_request_shipping_tracking ON request_shipping(tracking_number);")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_request_shipping_events_provider_event ON request_shipping_events(provider, provider_event_id);")
+    # Shipping indexes are created in ensure_migrations() after the column/tables are guaranteed to exist
 
     conn.commit()
     conn.close()
