@@ -193,6 +193,11 @@ def _upsert_shipping_record(conn, rid: str, req: Dict[str, Any]):
     return conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
 
 
+def _clean_optional_text(raw: Optional[str]) -> Optional[str]:
+    value = (raw or "").strip()
+    return value or None
+
+
 def _insert_shipping_event(
     conn,
     rid: str,
@@ -3003,6 +3008,81 @@ def admin_dismiss_match_suggestion(
     """Dismiss a print match suggestion."""
     clear_print_match_suggestion(printer)
     return RedirectResponse(url="/admin", status_code=303)
+
+
+@router.post("/admin/request/{rid}/shipping/save-destination")
+def admin_save_shipping_destination(
+    request: Request,
+    rid: str,
+    ship_recipient_name: Optional[str] = Form(None),
+    ship_recipient_phone: Optional[str] = Form(None),
+    ship_address_line1: Optional[str] = Form(None),
+    ship_address_line2: Optional[str] = Form(None),
+    ship_city: Optional[str] = Form(None),
+    ship_state: Optional[str] = Form(None),
+    ship_postal_code: Optional[str] = Form(None),
+    ship_country: str = Form("US"),
+    ship_service_preference: Optional[str] = Form(None),
+    _=Depends(require_permission("manage_queue")),
+):
+    conn = db()
+    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    req = dict(req_row)
+
+    now = now_iso()
+    was_shipping = (req.get("fulfillment_method") or "pickup") == "shipping"
+    conn.execute(
+        "UPDATE requests SET fulfillment_method = 'shipping', updated_at = ? WHERE id = ?",
+        (now, rid),
+    )
+    shipping = _upsert_shipping_record(conn, rid, req)
+    shipping_status = (shipping["shipping_status"] if shipping else "REQUESTED") or "REQUESTED"
+
+    conn.execute(
+        """UPDATE request_shipping
+           SET updated_at = ?, recipient_name = ?, recipient_phone = ?, address_line1 = ?, address_line2 = ?,
+               city = ?, state = ?, postal_code = ?, country = ?, service_preference = ?
+           WHERE request_id = ?""",
+        (
+            now,
+            _clean_optional_text(ship_recipient_name) or req.get("requester_name"),
+            _clean_optional_text(ship_recipient_phone),
+            _clean_optional_text(ship_address_line1),
+            _clean_optional_text(ship_address_line2),
+            _clean_optional_text(ship_city),
+            _clean_optional_text(ship_state),
+            _clean_optional_text(ship_postal_code),
+            (ship_country or "US").strip().upper(),
+            _clean_optional_text(ship_service_preference),
+            rid,
+        ),
+    )
+    event_type = "shipping_destination_updated" if was_shipping else "shipping_enabled"
+    message = "Shipping destination updated" if was_shipping else "Shipping enabled for request"
+    _insert_shipping_event(
+        conn,
+        rid,
+        event_type=event_type,
+        shipping_status=shipping_status,
+        message=message,
+    )
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            str(uuid.uuid4()),
+            rid,
+            now,
+            req["status"],
+            req["status"],
+            "Shipping enabled and destination saved" if not was_shipping else "Shipping destination updated",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url=f"/admin/request/{rid}#shipping", status_code=303)
 
 
 @router.post("/admin/request/{rid}/shipping/rates")

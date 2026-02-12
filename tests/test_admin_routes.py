@@ -214,6 +214,46 @@ class TestAdminShipping:
         assert row["shipping_status"] == "QUOTED"
         assert row["quote_amount_cents"] == 1499
 
+    def test_save_shipping_destination_converts_pickup_request(self, admin_client):
+        req = create_test_request(fulfillment_method="pickup")
+        response = admin_client.post(
+            f"/admin/request/{req['request_id']}/shipping/save-destination",
+            data={
+                "ship_recipient_name": "Alex Johnson",
+                "ship_recipient_phone": "555-111-2222",
+                "ship_address_line1": "123 Main St",
+                "ship_address_line2": "Apt 4B",
+                "ship_city": "Dallas",
+                "ship_state": "TX",
+                "ship_postal_code": "75201",
+                "ship_country": "US",
+                "ship_service_preference": "priority",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code in (200, 303)
+
+        conn = get_test_db()
+        req_row = conn.execute(
+            "SELECT fulfillment_method FROM requests WHERE id = ?",
+            (req["request_id"],),
+        ).fetchone()
+        ship_row = conn.execute(
+            "SELECT recipient_name, address_line1, city, state, postal_code, service_preference FROM request_shipping WHERE request_id = ?",
+            (req["request_id"],),
+        ).fetchone()
+        conn.close()
+
+        assert req_row is not None
+        assert req_row["fulfillment_method"] == "shipping"
+        assert ship_row is not None
+        assert ship_row["recipient_name"] == "Alex Johnson"
+        assert ship_row["address_line1"] == "123 Main St"
+        assert ship_row["city"] == "Dallas"
+        assert ship_row["state"] == "TX"
+        assert ship_row["postal_code"] == "75201"
+        assert ship_row["service_preference"] == "priority"
+
     def test_buy_label_persists_tracking(self, admin_client, monkeypatch):
         self._set_shipping_enabled(True)
         req = create_test_request(fulfillment_method="shipping", with_shipping=True)

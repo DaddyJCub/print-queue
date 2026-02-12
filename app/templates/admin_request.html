@@ -168,6 +168,37 @@
           {% endif %}
         </div>
 
+        {% if req["fulfillment_method"] != "shipping" and can_manage_queue %}
+        <div id="shipping" class="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4">
+          <div class="flex items-center justify-between gap-3 mb-3">
+            <h2 class="text-lg font-semibold">📦 Enable Shipping</h2>
+            <span class="px-2 py-1 rounded-lg text-xs border border-zinc-600/40 bg-zinc-500/15 text-zinc-300">Pickup</span>
+          </div>
+          <p class="text-sm text-zinc-400 mb-3">Convert this request from pickup to shipping and save destination details.</p>
+          <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/save-destination" class="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 space-y-2">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <input name="ship_recipient_name" placeholder="Recipient name" value="{{ req['requester_name'] or '' }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm" />
+              <input name="ship_recipient_phone" placeholder="Recipient phone" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm" />
+              <input name="ship_address_line1" placeholder="Address line 1" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm" />
+              <input name="ship_address_line2" placeholder="Address line 2 (optional)" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm" />
+              <input name="ship_city" placeholder="City" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm" />
+              <input name="ship_state" placeholder="State" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm" />
+              <input name="ship_postal_code" placeholder="Postal code" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm" />
+              <input name="ship_country" placeholder="Country" value="US" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm" />
+              <select name="ship_service_preference" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm">
+                <option value="">Service preference (optional)</option>
+                <option value="standard">Standard</option>
+                <option value="priority">Priority</option>
+                <option value="express">Express</option>
+              </select>
+            </div>
+            <button type="submit" class="w-full rounded-lg bg-sky-700 hover:bg-sky-600 transition py-2 text-sm font-medium">
+              Enable Shipping
+            </button>
+          </form>
+        </div>
+        {% endif %}
+
         {% if req["fulfillment_method"] == "shipping" %}
         <div id="shipping" class="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4">
           <div class="flex items-center justify-between gap-3 mb-3">
@@ -191,6 +222,29 @@
                 <p class="text-zinc-300">{{ shipping.city or "—" }}, {{ shipping.state or "—" }} {{ shipping.postal_code or "" }}</p>
                 <p class="text-zinc-400">{{ shipping.country or "US" }}</p>
                 <p class="mt-2 text-xs text-zinc-500">Validation: {{ shipping.address_validation_status or "pending" }}</p>
+                <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/save-destination" class="mt-3 space-y-2">
+                  <div class="grid grid-cols-1 gap-2">
+                    <input name="ship_recipient_name" placeholder="Recipient name" value="{{ shipping.recipient_name or req['requester_name'] or '' }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+                    <input name="ship_recipient_phone" placeholder="Recipient phone" value="{{ shipping.recipient_phone or '' }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+                    <input name="ship_address_line1" placeholder="Address line 1" value="{{ shipping.address_line1 or '' }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+                    <input name="ship_address_line2" placeholder="Address line 2" value="{{ shipping.address_line2 or '' }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+                    <div class="grid grid-cols-3 gap-2">
+                      <input name="ship_city" placeholder="City" value="{{ shipping.city or '' }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+                      <input name="ship_state" placeholder="State" value="{{ shipping.state or '' }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+                      <input name="ship_postal_code" placeholder="Postal" value="{{ shipping.postal_code or '' }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                      <input name="ship_country" placeholder="Country" value="{{ shipping.country or 'US' }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+                      <select name="ship_service_preference" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs">
+                        <option value="" {% if not shipping.service_preference %}selected{% endif %}>Service preference</option>
+                        <option value="standard" {% if shipping.service_preference == 'standard' %}selected{% endif %}>Standard</option>
+                        <option value="priority" {% if shipping.service_preference == 'priority' %}selected{% endif %}>Priority</option>
+                        <option value="express" {% if shipping.service_preference == 'express' %}selected{% endif %}>Express</option>
+                      </select>
+                    </div>
+                  </div>
+                  <button type="submit" class="w-full rounded-lg bg-zinc-700 hover:bg-zinc-600 transition py-1.5 text-xs font-medium">Save Destination</button>
+                </form>
               {% else %}
                 <p class="text-zinc-500">No shipping record yet.</p>
               {% endif %}
