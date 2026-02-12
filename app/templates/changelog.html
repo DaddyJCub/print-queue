@@ -65,12 +65,99 @@
         </p>
       </div>
 
-      <!-- v0.14.0 -->
-      <div id="v0.14" class="bg-gradient-to-br from-zinc-900/80 via-indigo-900/20 to-zinc-900/80 border border-indigo-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
+      <!-- v0.15.0 -->
+      <div id="v0.15" class="bg-gradient-to-br from-zinc-900/80 via-indigo-900/20 to-zinc-900/80 border border-indigo-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
-          <a href="#v0.14" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.14.0</a>
+          <a href="#v0.15" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.15.0</a>
           <span class="text-zinc-400 text-sm">February 2026</span>
           <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Shipping fulfillment (Shippo integration)</h3>
+        <p class="text-sm text-zinc-400 mb-4">Full end-to-end shipping support as an alternative to pickup, powered by Shippo for live rates, label purchase, and tracking.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📦 Requester experience</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Choose "Ship to me" or "Pickup" when submitting a print request</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Enter shipping address, recipient name, and speed preference on the form</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Shipping details card on your request page with carrier, tracking, and status</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Shipping timeline showing status updates as they happen</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Shipping badges on My Prints list (tracking number, fulfillment type)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Form draft saved to localStorage so nothing is lost during registration</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🛠️ Admin tools</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>New Shipping dashboard (<code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/admin/shipping</code>) with task filters, status counts, and search</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Shipping panel on request detail: address, tracking, rates, quote, label purchase, timeline</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Fetch live Shippo rates with configurable parcel dimensions</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Buy labels, validate addresses, save manual quotes, set tracking manually</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Shipping settings in admin: enable toggle, package defaults, ship-from profile, Shippo API config</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Shipping badges on all queue cards with status indicators</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🔧 Technical</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>New <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">ShippoClient</code> API client for address validation, shipment rates, label purchase, and tracking</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>DB tables: <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">request_shipping</code>, <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">request_shipping_rate_snapshots</code>, <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">request_shipping_events</code></span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>Shippo webhook endpoint (<code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/webhooks/shippo</code>) with idempotent event processing</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>291 automated tests passing</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v0.14.0 -->
+      <div id="v0.14" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.14" class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg hover:bg-zinc-600 transition">v0.14.0</a>
+          <span class="text-zinc-400 text-sm">February 2026</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">ETA times in your local timezone</h3>
