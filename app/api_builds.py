@@ -1652,7 +1652,7 @@ async def camera_status(_=Depends(require_admin)):
             try:
                 raw_webcams = await api.get_webcams()
                 ad5x_diag["raw_webcams"] = raw_webcams
-                cam_urls = await api.get_camera_urls()
+                cam_urls = await api.get_camera_urls(printer_code="AD5X")
                 ad5x_diag["resolved_urls"] = cam_urls
             except Exception as e:
                 ad5x_diag["webcam_error"] = str(e)

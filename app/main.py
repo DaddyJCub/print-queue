@@ -5075,28 +5075,48 @@ class MoonrakerAPI:
             print(f"[MOONRAKER] Error listing webcams: {e}")
         return None
     
-    async def get_camera_urls(self) -> Optional[Dict[str, str]]:
+    async def get_camera_urls(self, printer_code: str = "") -> Optional[Dict[str, str]]:
         """Get the best camera stream and snapshot URLs from Moonraker.
         
-        Auto-discovers webcams via the Moonraker webcam API. Picks the first
-        enabled webcam and resolves relative URLs against the Moonraker host.
+        Auto-discovers webcams via the Moonraker webcam API. Uses smart selection:
+        1. Prefer webcam whose name matches the printer code (case-insensitive)
+        2. Prefer webcam from 'database' source (user-configured in Fluidd/Mainsail)
+        3. Fall back to first enabled webcam
         
-        Returns dict with 'stream_url' and 'snapshot_url' keys, or None.
+        Returns dict with 'stream_url', 'snapshot_url', 'name', 'service' keys, or None.
         """
         webcams = await self.get_webcams()
         if not webcams:
             return None
         
-        # Find the first enabled webcam (or first webcam if none explicitly enabled)
+        # Filter to enabled webcams
+        enabled_cams = [wc for wc in webcams if wc.get("enabled", True)]
+        if not enabled_cams:
+            enabled_cams = webcams  # fallback: use all if none explicitly enabled
+        
+        # Smart selection: try to match by printer code name first
         cam = None
-        for wc in webcams:
-            if wc.get("enabled", True):
-                cam = wc
-                break
-        if cam is None and webcams:
-            cam = webcams[0]
+        if printer_code:
+            code_lower = printer_code.lower()
+            for wc in enabled_cams:
+                wc_name = wc.get("name", "").lower()
+                if wc_name == code_lower or code_lower in wc_name or wc_name in code_lower:
+                    cam = wc
+                    logger.info(f"[CAMERA] Selected webcam '{wc.get('name')}' by name match for {printer_code}")
+                    break
+        
+        # If no name match, prefer database-sourced (user-configured in Fluidd/Mainsail)
         if cam is None:
-            return None
+            for wc in enabled_cams:
+                if wc.get("source") == "database":
+                    cam = wc
+                    logger.info(f"[CAMERA] Selected webcam '{wc.get('name')}' (database source) for {printer_code}")
+                    break
+        
+        # Last resort: first enabled webcam
+        if cam is None:
+            cam = enabled_cams[0]
+            logger.info(f"[CAMERA] Selected first webcam '{cam.get('name')}' for {printer_code}")
         
         stream_url = cam.get("stream_url", "")
         snapshot_url = cam.get("snapshot_url", "")
@@ -5216,7 +5236,7 @@ async def get_camera_url_async(printer_code: str) -> Optional[str]:
                 api_key = get_setting("moonraker_ad5x_api_key", "")
                 api = MoonrakerAPI(moonraker_url, api_key)
                 try:
-                    cam_urls = await api.get_camera_urls()
+                    cam_urls = await api.get_camera_urls(printer_code="AD5X")
                     if cam_urls and cam_urls.get("stream_url"):
                         logger.info(f"[CAMERA] Auto-discovered AD5X camera via Moonraker API: {cam_urls['stream_url']} (name={cam_urls.get('name', '?')}, service={cam_urls.get('service', '?')})")
                         return cam_urls["stream_url"]
@@ -5256,7 +5276,7 @@ async def get_camera_snapshot_url_async(printer_code: str) -> Optional[str]:
     api_key = get_setting("moonraker_ad5x_api_key", "")
     api = MoonrakerAPI(moonraker_url, api_key)
     try:
-        cam_urls = await api.get_camera_urls()
+        cam_urls = await api.get_camera_urls(printer_code=printer_code)
         if cam_urls and cam_urls.get("snapshot_url"):
             return cam_urls["snapshot_url"]
     except Exception:
