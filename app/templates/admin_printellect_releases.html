@@ -4,32 +4,60 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin Printellect Releases</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: #0a1318;
+      --panel: #101d25;
+      --panel-2: #13242e;
+      --line: #284250;
+      --text: #d8e8ef;
+      --muted: #89a1ad;
+      --accent: #ffb347;
+      --accent-2: #34c3ff;
+    }
+    body { font-family: "Space Grotesk", sans-serif; color: var(--text); background: radial-gradient(1200px 650px at -10% -20%, #263f34 0%, #0a1318 60%); }
+    .mono { font-family: "IBM Plex Mono", monospace; }
+  </style>
 </head>
-<body class="bg-zinc-950 text-zinc-100">
-  <main class="max-w-6xl mx-auto p-6 space-y-4">
-    <h1 class="text-2xl font-bold">Printellect Releases</h1>
+<body>
+  <main class="max-w-7xl mx-auto px-4 py-6 md:px-6 md:py-8 space-y-4 md:space-y-5">
+    <section class="rounded-2xl border p-4 md:p-5" style="background:linear-gradient(130deg,var(--panel),#0e1a21);border-color:var(--line)">
+      <p class="text-xs tracking-[0.22em] uppercase" style="color:var(--accent)">Release Pipeline</p>
+      <h1 class="text-2xl md:text-3xl font-semibold">Printellect Releases</h1>
+      <p class="text-sm mt-1" style="color:var(--muted)">Upload bundles, promote current channel, and monitor rollout metadata.</p>
+    </section>
 
-    <form id="uploadForm" class="space-y-2 bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+    <form id="uploadForm" class="space-y-2 rounded-2xl border p-4" style="background:var(--panel);border-color:var(--line)">
       <div class="grid md:grid-cols-4 gap-2">
-        <input type="file" name="manifest" accept="application/json" class="text-sm" required />
-        <input type="file" name="bundle" accept=".zip,application/zip" class="text-sm" required />
-        <select name="channel" class="rounded bg-zinc-950 border border-zinc-700 p-2 text-sm">
+        <input type="file" name="manifest" accept="application/json" class="text-sm rounded-lg border p-2" style="background:#0d1720;border-color:var(--line)" required />
+        <input type="file" name="bundle" accept=".zip,application/zip" class="text-sm rounded-lg border p-2" style="background:#0d1720;border-color:var(--line)" required />
+        <select name="channel" class="rounded-lg border p-2 text-sm" style="background:#0d1720;border-color:var(--line)">
           <option value="stable">stable</option>
           <option value="beta">beta</option>
         </select>
-        <button class="rounded bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm">Upload release</button>
+        <button class="rounded-lg px-3 py-2 text-sm font-semibold" style="background:var(--accent);color:#2a1a00">Upload release</button>
       </div>
-      <input name="notes" placeholder="notes (optional)" class="w-full rounded bg-zinc-950 border border-zinc-700 p-2 text-sm" />
+      <input name="notes" placeholder="notes (optional)" class="w-full rounded-lg border p-2 text-sm" style="background:#0d1720;border-color:var(--line)" />
     </form>
 
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+    <div class="rounded-2xl border p-4" style="background:var(--panel);border-color:var(--line)">
       <h2 class="font-semibold mb-2">Last Upload/Promote Output</h2>
-      <pre id="output" class="text-xs text-zinc-200 whitespace-pre-wrap"></pre>
+      <pre id="output" class="text-xs mono whitespace-pre-wrap overflow-x-auto p-3 rounded-lg border" style="background:#0d1720;border-color:var(--line)"></pre>
     </div>
 
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+    <div class="rounded-2xl border p-4" style="background:var(--panel);border-color:var(--line)">
       <h2 class="font-semibold mb-2">Releases</h2>
+      <div class="hidden md:grid grid-cols-12 text-xs uppercase tracking-wider mb-2 px-3 py-2 mono" style="color:var(--muted)">
+        <div class="col-span-3">Version</div>
+        <div class="col-span-2">Channel</div>
+        <div class="col-span-4">Created</div>
+        <div class="col-span-2">Current</div>
+        <div class="col-span-1 text-right">Action</div>
+      </div>
       <div id="releases" class="space-y-2"></div>
     </div>
   </main>
@@ -42,14 +70,18 @@
       root.innerHTML = "";
       for (const r of (data.releases || [])) {
         const row = document.createElement("div");
-        row.className = "border border-zinc-800 rounded p-3 text-sm";
+        row.className = "rounded-xl border px-3 py-3 text-sm";
+        row.style.borderColor = "var(--line)";
+        row.style.background = "#0e1922";
         row.innerHTML = `
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <div class="font-semibold">v${r.version} ${r.is_current ? "(current)" : ""}</div>
-              <div class="text-xs text-zinc-400">${r.channel} | ${r.created_at} | notes: ${r.notes || "-"}</div>
+          <div class="grid md:grid-cols-12 md:items-center gap-2">
+            <div class="md:col-span-3 font-semibold mono">v${r.version}</div>
+            <div class="md:col-span-2 text-xs">${r.channel}</div>
+            <div class="md:col-span-4 text-xs mono" style="color:var(--muted)">${r.created_at}</div>
+            <div class="md:col-span-2 text-xs ${r.is_current ? "text-emerald-300" : "text-slate-300"}">${r.is_current ? "current" : "inactive"}</div>
+            <div class="md:col-span-1 text-right">
+              <button data-promote="${r.version}" class="rounded-md px-2 py-1 text-xs font-medium border" style="border-color:var(--line);background:#162530">Promote</button>
             </div>
-            <button data-promote="${r.version}" class="rounded bg-zinc-800 hover:bg-zinc-700 px-2 py-1 text-xs">Promote current</button>
           </div>
         `;
         root.appendChild(row);

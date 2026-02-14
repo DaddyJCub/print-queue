@@ -4,26 +4,70 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin Printellect Devices</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: #091217;
+      --panel: #101d25;
+      --panel-2: #13252f;
+      --line: #26404f;
+      --text: #d9e9ef;
+      --muted: #8ca5b2;
+      --accent: #30d5c8;
+      --accent-2: #f7a64a;
+      --ok: #35cf83;
+      --off: #78909c;
+    }
+    body { font-family: "Space Grotesk", sans-serif; color: var(--text); background: radial-gradient(1300px 700px at 90% -5%, #163040 0%, #091217 60%); }
+    .mono { font-family: "IBM Plex Mono", monospace; }
+  </style>
 </head>
-<body class="bg-zinc-950 text-zinc-100">
-  <main class="max-w-6xl mx-auto p-6 space-y-4">
-    <h1 class="text-2xl font-bold">Printellect Device Registry</h1>
+<body>
+  <main class="max-w-7xl mx-auto px-4 py-6 md:px-6 md:py-8 space-y-4 md:space-y-5">
+    <section class="rounded-2xl border p-4 md:p-5" style="background:linear-gradient(130deg,var(--panel),#0e1a21);border-color:var(--line)">
+      <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p class="text-xs tracking-[0.22em] uppercase" style="color:var(--accent)">Admin Console</p>
+          <h1 class="text-2xl md:text-3xl font-semibold">Printellect Device Registry</h1>
+          <p class="text-sm mt-1" style="color:var(--muted)">Fast provisioning, claim code rotation, and fleet visibility.</p>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-xs mono">
+          <div class="rounded-lg border p-2" style="border-color:var(--line);background:var(--panel-2)">
+            <div style="color:var(--muted)">Environment</div>
+            <div>QA Local</div>
+          </div>
+          <div class="rounded-lg border p-2" style="border-color:var(--line);background:var(--panel-2)">
+            <div style="color:var(--muted)">API</div>
+            <div>/api/printellect</div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <form id="createDeviceForm" class="grid md:grid-cols-4 gap-2 bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-      <input name="device_id" placeholder="device_id (optional)" class="rounded bg-zinc-950 border border-zinc-700 p-2 text-sm" />
-      <input name="name" placeholder="name" class="rounded bg-zinc-950 border border-zinc-700 p-2 text-sm" />
-      <input name="claim_code" placeholder="claim_code (optional)" class="rounded bg-zinc-950 border border-zinc-700 p-2 text-sm" />
-      <button class="rounded bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm">Create</button>
+    <form id="createDeviceForm" class="grid md:grid-cols-4 gap-2 rounded-2xl border p-4" style="border-color:var(--line);background:var(--panel)">
+      <input name="device_id" placeholder="device_id (optional)" class="rounded-lg border p-2 text-sm mono" style="background:#0d1720;border-color:var(--line)" />
+      <input name="name" placeholder="name" class="rounded-lg border p-2 text-sm" style="background:#0d1720;border-color:var(--line)" />
+      <input name="claim_code" placeholder="claim_code (optional)" class="rounded-lg border p-2 text-sm mono" style="background:#0d1720;border-color:var(--line)" />
+      <button class="rounded-lg px-3 py-2 text-sm font-semibold transition-colors" style="background:var(--accent);color:#082127">Create</button>
     </form>
 
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+    <div class="rounded-2xl border p-4" style="border-color:var(--line);background:var(--panel)">
       <h2 class="font-semibold mb-2">Last Create/Rotate Output</h2>
-      <pre id="createOutput" class="text-xs text-zinc-200 whitespace-pre-wrap"></pre>
+      <pre id="createOutput" class="text-xs whitespace-pre-wrap mono overflow-x-auto p-3 rounded-lg border" style="border-color:var(--line);background:#0d1720;color:#d7e9f5"></pre>
     </div>
 
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+    <div class="rounded-2xl border p-4" style="border-color:var(--line);background:var(--panel)">
       <h2 class="font-semibold mb-2">Devices</h2>
+      <div class="hidden md:grid grid-cols-12 text-xs uppercase tracking-wider mb-2 px-3 py-2 mono" style="color:var(--muted)">
+        <div class="col-span-3">Device</div>
+        <div class="col-span-3">Owner</div>
+        <div class="col-span-3">Versions</div>
+        <div class="col-span-2">Status</div>
+        <div class="col-span-1 text-right">Actions</div>
+      </div>
       <div id="devices" class="space-y-2"></div>
     </div>
   </main>
@@ -36,15 +80,30 @@
       root.innerHTML = "";
       for (const d of (data.devices || [])) {
         const row = document.createElement("div");
-        row.className = "border border-zinc-800 rounded p-3 text-sm";
+        row.className = "rounded-xl border px-3 py-3 text-sm";
+        row.style.borderColor = "var(--line)";
+        row.style.background = "#0e1922";
+        const stateClass = d.online ? "text-emerald-300" : "text-slate-300";
+        const stateDot = d.online ? "var(--ok)" : "var(--off)";
         row.innerHTML = `
-          <div class="flex items-center justify-between gap-3">
-            <div>
+          <div class="grid md:grid-cols-12 md:items-center gap-2">
+            <div class="md:col-span-3">
               <div class="font-semibold">${d.name || d.device_id}</div>
-              <div class="text-xs text-zinc-400">${d.device_id} | owner: ${d.owner_user_id || "unclaimed"}</div>
-              <div class="text-xs text-zinc-400">fw ${d.fw_version || "-"} app ${d.app_version || "-"} | ${d.online ? "online" : "offline"}</div>
+              <div class="text-xs mono" style="color:var(--muted)">${d.device_id}</div>
             </div>
-            <button data-rotate="${d.device_id}" class="rounded bg-zinc-800 hover:bg-zinc-700 px-2 py-1 text-xs">Rotate claim code</button>
+            <div class="md:col-span-3 text-xs" style="color:var(--muted)">
+              ${d.owner_user_id || "unclaimed"}
+            </div>
+            <div class="md:col-span-3 text-xs mono" style="color:var(--muted)">
+              fw ${d.fw_version || "-"} / app ${d.app_version || "-"}
+            </div>
+            <div class="md:col-span-2 text-xs ${stateClass} flex items-center gap-2">
+              <span class="inline-block h-2.5 w-2.5 rounded-full" style="background:${stateDot}"></span>
+              ${d.online ? "online" : "offline"}
+            </div>
+            <div class="md:col-span-1 text-right">
+              <button data-rotate="${d.device_id}" class="rounded-md px-2 py-1 text-xs font-medium border" style="border-color:var(--line);background:#162530">Rotate</button>
+            </div>
           </div>
         `;
         root.appendChild(row);

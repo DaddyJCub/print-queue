@@ -4,41 +4,76 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Add Device | Printellect</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: #0b171d;
+      --bg-2: #0f1d26;
+      --card: #13232d;
+      --line: #2c4958;
+      --text: #e0edf3;
+      --muted: #91acb9;
+      --accent: #3ad5a8;
+      --accent-2: #ffb35b;
+    }
+    body { font-family: "Space Grotesk", sans-serif; color: var(--text); background: radial-gradient(1200px 640px at 100% -10%, #213c48 0%, var(--bg) 60%); }
+    .mono { font-family: "IBM Plex Mono", monospace; }
+  </style>
 </head>
-<body class="bg-zinc-950 text-zinc-100">
-  <main class="max-w-3xl mx-auto p-6 space-y-6">
-    <h1 class="text-2xl font-bold">Add Device Wizard</h1>
-    <ol class="space-y-4 text-sm text-zinc-200 list-decimal list-inside">
-      <li>Power on the Printellect base.</li>
-      <li>Join phone Wi-Fi network <code>PRINTELLECT-SETUP-xxxx</code>.</li>
-      <li>Open <a class="text-indigo-300 underline" href="http://192.168.4.1/">http://192.168.4.1/</a> and save SSID/password + claim code.</li>
-      <li>Return here and claim by scanning QR or entering device ID + claim code.</li>
-      <li>Wait for online confirmation.</li>
-    </ol>
+<body>
+  <main class="max-w-6xl mx-auto px-4 py-6 md:px-6 md:py-8 space-y-5">
+    <section class="rounded-2xl border p-5 md:p-6" style="border-color:var(--line);background:linear-gradient(130deg,var(--bg-2),#122733)">
+      <p class="text-xs uppercase tracking-[0.23em]" style="color:var(--accent)">Onboarding Wizard</p>
+      <h1 class="text-2xl md:text-4xl font-semibold mt-1">Add your Printellect base</h1>
+      <p class="text-sm mt-2 max-w-3xl" style="color:var(--muted)">Local Wi-Fi setup happens on the device AP first. Claiming and cloud provisioning happen here after setup is complete.</p>
+    </section>
 
-    <div class="grid md:grid-cols-2 gap-4">
-      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-2">
+    <section class="grid md:grid-cols-5 gap-3">
+      <div class="md:col-span-3 rounded-2xl border p-4" style="border-color:var(--line);background:var(--card)">
+        <h2 class="font-semibold">Setup flow</h2>
+        <div class="mt-3 space-y-2 text-sm">
+          <div class="flex gap-3 rounded-lg border p-3" style="border-color:var(--line);background:#10202a"><span class="mono" style="color:var(--accent-2)">01</span><span>Power on the Printellect base.</span></div>
+          <div class="flex gap-3 rounded-lg border p-3" style="border-color:var(--line);background:#10202a"><span class="mono" style="color:var(--accent-2)">02</span><span>Join phone Wi-Fi network <span class="mono">PRINTELLECT-SETUP-xxxx</span>.</span></div>
+          <div class="flex gap-3 rounded-lg border p-3" style="border-color:var(--line);background:#10202a"><span class="mono" style="color:var(--accent-2)">03</span><span>Open <a class="underline" style="color:var(--accent)" href="http://192.168.4.1/">http://192.168.4.1/</a> and save SSID/password + claim code.</span></div>
+          <div class="flex gap-3 rounded-lg border p-3" style="border-color:var(--line);background:#10202a"><span class="mono" style="color:var(--accent-2)">04</span><span>Return here and claim by scanning QR or entering device details.</span></div>
+          <div class="flex gap-3 rounded-lg border p-3" style="border-color:var(--line);background:#10202a"><span class="mono" style="color:var(--accent-2)">05</span><span>Wait for online confirmation in <a href="/printellect/devices" class="underline" style="color:var(--accent)">My Devices</a>.</span></div>
+        </div>
+      </div>
+
+      <div class="md:col-span-2 rounded-2xl border p-4 space-y-2" style="border-color:var(--line);background:var(--card)">
         <h2 class="font-semibold text-sm">Scan QR (optional)</h2>
-        <button id="startScan" class="bg-zinc-800 hover:bg-zinc-700 rounded px-3 py-2 text-sm">Start camera scan</button>
-        <video id="preview" class="w-full rounded border border-zinc-800 hidden" muted playsinline></video>
-        <p id="scanResult" class="text-xs text-zinc-400"></p>
+        <button id="startScan" class="rounded-lg px-3 py-2 text-sm font-semibold" style="background:var(--accent-2);color:#2d1800">Start camera scan</button>
+        <video id="preview" class="w-full rounded-lg border hidden" style="border-color:var(--line)" muted playsinline></video>
+        <p id="scanResult" class="text-xs" style="color:var(--muted)"></p>
       </div>
-      <form id="claimForm" class="space-y-3 bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-      <div>
-        <label class="text-xs text-zinc-400">Device ID</label>
-        <input name="device_id" class="w-full mt-1 rounded bg-zinc-950 border border-zinc-700 p-2" required />
-      </div>
-      <div>
-        <label class="text-xs text-zinc-400">Claim Code</label>
-        <input name="claim_code" class="w-full mt-1 rounded bg-zinc-950 border border-zinc-700 p-2" required />
-      </div>
-      <button class="bg-indigo-600 hover:bg-indigo-500 rounded px-4 py-2 font-medium">Claim Device</button>
-      <p id="result" class="text-xs text-zinc-400"></p>
-      </form>
-    </div>
+    </section>
 
-    <a href="/printellect/devices" class="inline-block text-indigo-300 underline">View my devices</a>
+    <section class="grid md:grid-cols-5 gap-3">
+      <form id="claimForm" class="md:col-span-3 space-y-3 rounded-2xl border p-4" style="border-color:var(--line);background:var(--card)">
+      <h2 class="font-semibold">Claim device</h2>
+      <div>
+        <label class="text-xs" style="color:var(--muted)">Device ID</label>
+        <input name="device_id" class="w-full mt-1 rounded-lg border p-2 mono" style="background:#0e1922;border-color:var(--line)" required />
+      </div>
+      <div>
+        <label class="text-xs" style="color:var(--muted)">Claim Code</label>
+        <input name="claim_code" class="w-full mt-1 rounded-lg border p-2 mono" style="background:#0e1922;border-color:var(--line)" required />
+      </div>
+      <button class="rounded-lg px-4 py-2 font-semibold" style="background:var(--accent);color:#062116">Claim Device</button>
+      <p id="result" class="text-xs" style="color:var(--muted)"></p>
+      </form>
+
+      <div class="md:col-span-2 rounded-2xl border p-4 text-sm" style="border-color:var(--line);background:var(--card)">
+        <h3 class="font-semibold">Need a reset?</h3>
+        <p class="mt-2" style="color:var(--muted)">Hold reset button 10s to clear Wi-Fi only, or 20s for full factory unpair.</p>
+        <p class="mt-2 mono text-xs" style="color:var(--muted)">10s = wifi reset | 20s = factory reset</p>
+      </div>
+    </section>
+
+    <a href="/printellect/devices" class="inline-block underline text-sm" style="color:var(--accent)">View my devices</a>
   </main>
 
   <script>

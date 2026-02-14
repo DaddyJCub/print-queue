@@ -36,22 +36,22 @@ def _create_account_session(email: str = "owner@example.com", enable_printellect
         (session_id, account_id, session_token, now, expires, now),
     )
 
-    if enable_printellect:
-        # Enable Printellect feature access for this test account via email allow-list.
-        flag_row = conn.execute(
-            "SELECT allowed_emails FROM feature_flags WHERE key = 'printellect_device_control'"
-        ).fetchone()
-        if flag_row:
-            try:
-                allowed_emails = json.loads(flag_row["allowed_emails"] or "[]")
-            except Exception:
-                allowed_emails = []
-            if email not in allowed_emails:
-                allowed_emails.append(email)
-            conn.execute(
-                "UPDATE feature_flags SET enabled = 1, rollout_percentage = 0, allowed_emails = ?, updated_at = ? WHERE key = 'printellect_device_control'",
-                (json.dumps(allowed_emails), now),
-            )
+    # Always normalize the Printellect flag to an allow-list model in test setup.
+    flag_row = conn.execute(
+        "SELECT allowed_emails FROM feature_flags WHERE key = 'printellect_device_control'"
+    ).fetchone()
+    if flag_row:
+        try:
+            allowed_emails = json.loads(flag_row["allowed_emails"] or "[]")
+        except Exception:
+            allowed_emails = []
+        allowed_emails = [e for e in allowed_emails if e != email]
+        if enable_printellect:
+            allowed_emails.append(email)
+        conn.execute(
+            "UPDATE feature_flags SET enabled = 1, rollout_percentage = 0, allowed_emails = ?, updated_at = ? WHERE key = 'printellect_device_control'",
+            (json.dumps(allowed_emails), now),
+        )
     conn.commit()
     conn.close()
 
@@ -63,6 +63,14 @@ def _admin_cookie() -> dict:
 
 
 def test_printellect_feature_flag_blocks_unassigned_user(client):
+    # Force known flag state regardless of prior tests.
+    conn = get_test_db()
+    conn.execute(
+        "UPDATE feature_flags SET enabled = 1, rollout_percentage = 0, allowed_emails = '[]' WHERE key = 'printellect_device_control'"
+    )
+    conn.commit()
+    conn.close()
+
     _, session_token = _create_account_session(email="blocked-user@example.com", enable_printellect=False)
     client.cookies.set("session", session_token)
 
