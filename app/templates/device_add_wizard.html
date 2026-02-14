@@ -131,9 +131,9 @@ async function tryBarcodeDetector(stream) {
       scanResult.textContent = `Scanned: ${raw}`;
       try {
         const url = new URL(raw.replace('printellect://pair', 'https://print.jcubhub.com/pair'));
-        const deviceId = url.searchParams.get('device_id');
-        const claim = url.searchParams.get('claim');
-        const name = url.searchParams.get('name');
+        const deviceId = url.searchParams.get('device_id') || url.searchParams.get('d');
+        const claim = url.searchParams.get('claim') || url.searchParams.get('c');
+        const name = url.searchParams.get('name') || url.searchParams.get('n');
         if (deviceId && claim) {
           const form = document.getElementById('claimForm');
           form.querySelector('input[name="device_id"]').value = deviceId;

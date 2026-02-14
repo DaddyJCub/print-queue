@@ -15,6 +15,7 @@
    - QR SVG label
 7. QR labels are generated from the HTTPS fallback URL (`/pair?...`) for scanner compatibility.
 8. If you change `/device.json` identity on an already-provisioned board, delete `/token.json` before reboot.
+9. QR payload uses compact query keys (`d`, `c`, optional `n`) to keep sticker QR density low.
 
 ---
 

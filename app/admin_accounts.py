@@ -587,6 +587,14 @@ def admin_account_reset_password(
     
     new_hash = hash_password(password)
     update_account(account_id, password_hash=new_hash)
+    # Keep legacy `users` login table in sync with unified account resets.
+    conn = db()
+    conn.execute(
+        "UPDATE users SET password_hash = ?, updated_at = ? WHERE LOWER(email) = LOWER(?)",
+        (new_hash, datetime.utcnow().isoformat(timespec="seconds") + "Z", account.email),
+    )
+    conn.commit()
+    conn.close()
     
     # Force logout all sessions
     try:

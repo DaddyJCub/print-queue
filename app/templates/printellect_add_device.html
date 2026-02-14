@@ -117,8 +117,8 @@
           const raw = codes[0].rawValue || '';
           scanResult.textContent = `Scanned: ${raw}`;
           const url = new URL(raw.replace('printellect://pair', 'https://print.jcubhub.com/pair'));
-          const deviceId = url.searchParams.get('device_id');
-          const claim = url.searchParams.get('claim');
+          const deviceId = url.searchParams.get('device_id') || url.searchParams.get('d');
+          const claim = url.searchParams.get('claim') || url.searchParams.get('c');
           if (deviceId && claim) {
             document.querySelector('input[name="device_id"]').value = deviceId;
             document.querySelector('input[name="claim_code"]').value = claim;

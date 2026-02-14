@@ -1050,9 +1050,9 @@ async function runPrintellectQrScan() {
       scanResult.textContent = `Scanned: ${raw}`;
       try {
         const url = new URL(raw.replace('printellect://pair', 'https://print.jcubhub.com/pair'));
-        const deviceId = url.searchParams.get('device_id');
-        const claim = url.searchParams.get('claim');
-        const name = url.searchParams.get('name');
+        const deviceId = url.searchParams.get('device_id') || url.searchParams.get('d');
+        const claim = url.searchParams.get('claim') || url.searchParams.get('c');
+        const name = url.searchParams.get('name') || url.searchParams.get('n');
         if (deviceId && claim) {
           const form = document.getElementById('printellect-claim-form');
           form.querySelector('input[name="device_id"]').value = deviceId;
@@ -1122,9 +1122,9 @@ if (window.location.hash === '#printellect') {
 
 (() => {
   const params = new URLSearchParams(window.location.search);
-  const pairDevice = params.get('pair_device_id');
-  const pairClaim = params.get('pair_claim');
-  const pairName = params.get('pair_name');
+  const pairDevice = params.get('pair_device_id') || params.get('device_id') || params.get('d');
+  const pairClaim = params.get('pair_claim') || params.get('claim') || params.get('c');
+  const pairName = params.get('pair_name') || params.get('name') || params.get('n');
   if (!pairDevice || !pairClaim) return;
   const form = document.getElementById('printellect-claim-form');
   if (!form) return;

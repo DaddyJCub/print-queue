@@ -117,9 +117,10 @@ def _hash_bytes(data: bytes) -> str:
 
 
 def _build_pairing_urls(device_id: str, claim_code: str, name: str = "") -> Dict[str, str]:
-    params: Dict[str, str] = {"device_id": device_id, "claim": claim_code}
+    # Keep QR payload compact for sticker-size printing and better camera reliability.
+    params: Dict[str, str] = {"d": device_id, "c": claim_code}
     if name:
-        params["name"] = name
+        params["n"] = name
     query = urlencode(params)
     return {
         "qr_payload": f"printellect://pair?{query}",
@@ -587,11 +588,14 @@ async def pair_entry(
     device_id: str = "",
     claim: str = "",
     name: str = "",
+    d: str = "",
+    c: str = "",
+    n: str = "",
     account=Depends(get_current_account),
 ):
-    device_id = (device_id or "").strip().lower()
-    claim = (claim or "").strip()
-    name = (name or "").strip()
+    device_id = (device_id or d or "").strip().lower()
+    claim = (claim or c or "").strip()
+    name = (name or n or "").strip()
     if not account:
         next_qs = urlencode({"next": str(request.url)})
         return RedirectResponse(url=f"/auth/login?{next_qs}", status_code=303)
