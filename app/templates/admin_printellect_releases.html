@@ -17,22 +17,28 @@
     </div>
 
     <form id="uploadForm" class="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
-      <div class="grid md:grid-cols-5 gap-2">
-        <input type="file" name="package" accept=".zip,application/zip" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm md:col-span-2" />
-        <input name="version" placeholder="version (required if no manifest)" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm font-mono" />
-        <input name="entrypoint" placeholder="entrypoint (default main.py)" value="main.py" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm font-mono" />
-        <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm font-semibold">Upload release</button>
+      <div class="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3 space-y-2">
+        <p class="text-xs uppercase tracking-wider text-zinc-400">Preferred upload (single zip)</p>
+        <div class="grid md:grid-cols-5 gap-2">
+          <input type="file" name="package" accept=".zip,application/zip" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm md:col-span-2" />
+          <input name="version" placeholder="version (required if zip has no manifest)" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm font-mono" />
+          <input name="entrypoint" placeholder="entrypoint (default main.py)" value="main.py" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm font-mono" />
+          <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm font-semibold">Upload release</button>
+        </div>
       </div>
-      <div class="grid md:grid-cols-3 gap-2">
-        <input type="file" name="manifest" accept="application/json" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm" />
-        <input type="file" name="bundle" accept=".zip,application/zip" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm" />
-        <select name="channel" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm">
-          <option value="stable">stable</option>
-          <option value="beta">beta</option>
-        </select>
+      <div class="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3 space-y-2">
+        <p class="text-xs uppercase tracking-wider text-zinc-500">Legacy compatibility (manifest + bundle)</p>
+        <div class="grid md:grid-cols-3 gap-2">
+          <input type="file" name="manifest" accept="application/json" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm" />
+          <input type="file" name="bundle" accept=".zip,application/zip" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm" />
+          <select name="channel" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm">
+            <option value="stable">stable</option>
+            <option value="beta">beta</option>
+          </select>
+        </div>
       </div>
       <input name="notes" placeholder="notes (optional)" class="w-full rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm" />
-      <p class="text-xs text-zinc-400">Preferred: upload one firmware zip in <span class="font-mono">package</span>. Legacy mode: manifest + bundle fields.</p>
+      <p class="text-xs text-zinc-400">Use either a single firmware zip or the legacy manifest/bundle pair. Keep both empty fields unused.</p>
     </form>
 
     <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
@@ -47,7 +53,15 @@
   </div>
 
   <script>
+    let releaseRefreshPauseUntil = 0;
+
+    function pauseReleaseRefresh(ms = 30000) {
+      releaseRefreshPauseUntil = Math.max(releaseRefreshPauseUntil, Date.now() + ms);
+    }
+
     async function loadReleases() {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() < releaseRefreshPauseUntil) return;
       const resp = await fetch('/api/printellect/admin/releases');
       const data = await resp.json();
       const root = document.getElementById('releases');
@@ -98,8 +112,16 @@
       await loadReleases();
     });
 
+    document.getElementById('uploadForm')?.addEventListener('focusin', () => pauseReleaseRefresh(60000));
+    document.getElementById('uploadForm')?.addEventListener('input', () => pauseReleaseRefresh(60000));
+
     loadReleases();
-    setInterval(loadReleases, 10000);
+    setInterval(() => loadReleases(), 30000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        loadReleases();
+      }
+    });
   </script>
 </body>
 </html>

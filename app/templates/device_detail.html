@@ -119,6 +119,25 @@
 <script>
 const deviceId = {{ device_id|tojson }};
 let lastDevice = null;
+let loadingDevice = false;
+const POLL_INTERVAL_MS = 3000;
+const dirtyUntil = {
+  volume: 0,
+  brightness: 0,
+  idle_mode: 0,
+};
+
+function markDirty(field, durationMs = 8000) {
+  dirtyUntil[field] = Date.now() + durationMs;
+}
+
+function clearDirty(field) {
+  dirtyUntil[field] = 0;
+}
+
+function canSyncField(field) {
+  return Date.now() >= (dirtyUntil[field] || 0);
+}
 
 function showActionStatus(ok, message) {
   const box = document.getElementById('actionStatus');
@@ -141,30 +160,42 @@ function setControlsEnabled(isOnline) {
 }
 
 async function postAction(action, payload) {
-  const resp = await fetch(`/api/printellect/devices/${deviceId}/actions/${action}`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(payload || {}),
-  });
-  const raw = await resp.text();
-  let data = {};
-  try { data = JSON.parse(raw); } catch (_) {}
-  if (!resp.ok) {
-    showActionStatus(false, data.detail || data.error || 'Action failed');
-    return;
+  try {
+    const resp = await fetch(`/api/printellect/devices/${deviceId}/actions/${action}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload || {}),
+    });
+    const raw = await resp.text();
+    let data = {};
+    try { data = JSON.parse(raw); } catch (_) {}
+    if (!resp.ok) {
+      showActionStatus(false, data.detail || data.error || 'Action failed');
+      return;
+    }
+    showActionStatus(true, `Queued ${action}${data.cmd_id ? ` (cmd ${data.cmd_id})` : ''}`);
+    await loadDevice();
+  } catch (error) {
+    showActionStatus(false, 'Network error while sending action');
   }
-  showActionStatus(true, `Queued ${action}${data.cmd_id ? ` (cmd ${data.cmd_id})` : ''}`);
-  await loadDevice();
 }
 
 function syncControlValues(state) {
   if (typeof state.volume === 'number') {
-    document.getElementById('volumeRange').value = state.volume;
-    document.getElementById('volumeValue').textContent = String(state.volume);
+    const volumeRange = document.getElementById('volumeRange');
+    if (canSyncField('volume') || Number(volumeRange.value) === state.volume) {
+      volumeRange.value = state.volume;
+      document.getElementById('volumeValue').textContent = String(state.volume);
+      clearDirty('volume');
+    }
   }
   if (typeof state.brightness === 'number') {
-    document.getElementById('brightnessRange').value = state.brightness;
-    document.getElementById('brightnessValue').textContent = String(state.brightness);
+    const brightnessRange = document.getElementById('brightnessRange');
+    if (canSyncField('brightness') || Number(brightnessRange.value) === state.brightness) {
+      brightnessRange.value = state.brightness;
+      document.getElementById('brightnessValue').textContent = String(state.brightness);
+      clearDirty('brightness');
+    }
   }
   if (typeof state.idle_mode === 'string') {
     const idle = document.getElementById('idleMode');
@@ -175,33 +206,50 @@ function syncControlValues(state) {
       opt.textContent = state.idle_mode;
       idle.appendChild(opt);
     }
-    idle.value = state.idle_mode;
+    if (canSyncField('idle_mode') || idle.value === state.idle_mode) {
+      idle.value = state.idle_mode;
+      clearDirty('idle_mode');
+    }
   }
 }
 
 async function loadDevice() {
-  const resp = await fetch(`/api/printellect/devices/${deviceId}`);
-  if (!resp.ok) {
-    showActionStatus(false, 'Failed to load device');
-    return;
+  if (loadingDevice) return;
+  loadingDevice = true;
+  try {
+    const resp = await fetch(`/api/printellect/devices/${deviceId}`);
+    if (!resp.ok) {
+      showActionStatus(false, 'Failed to load device');
+      return;
+    }
+    const data = await resp.json();
+    const d = data.device || {};
+    lastDevice = d;
+    const status = d.online ? 'online' : 'offline';
+    document.getElementById('deviceMeta').textContent = `${d.name || d.device_id} (${d.device_id}) • ${status} • fw ${d.fw_version || '-'} • app ${d.app_version || '-'}`;
+    document.getElementById('state').textContent = JSON.stringify(d.state || {}, null, 2);
+    document.getElementById('commands').textContent = JSON.stringify(d.recent_commands || [], null, 2);
+    syncControlValues(d.state || {});
+    setControlsEnabled(Boolean(d.online));
+  } catch (error) {
+    showActionStatus(false, 'Network error while loading device');
+  } finally {
+    loadingDevice = false;
   }
-  const data = await resp.json();
-  const d = data.device || {};
-  lastDevice = d;
-  const status = d.online ? 'online' : 'offline';
-  document.getElementById('deviceMeta').textContent = `${d.name || d.device_id} (${d.device_id}) • ${status} • fw ${d.fw_version || '-'} • app ${d.app_version || '-'}`;
-  document.getElementById('state').textContent = JSON.stringify(d.state || {}, null, 2);
-  document.getElementById('commands').textContent = JSON.stringify(d.recent_commands || [], null, 2);
-  syncControlValues(d.state || {});
-  setControlsEnabled(Boolean(d.online));
 }
 
 document.getElementById('volumeRange').addEventListener('input', (event) => {
   document.getElementById('volumeValue').textContent = event.target.value;
+  markDirty('volume', 5000);
 });
 
 document.getElementById('brightnessRange').addEventListener('input', (event) => {
   document.getElementById('brightnessValue').textContent = event.target.value;
+  markDirty('brightness', 5000);
+});
+
+document.getElementById('idleMode').addEventListener('change', () => {
+  markDirty('idle_mode', 10000);
 });
 
 document.getElementById('playBtn').addEventListener('click', () => {
@@ -210,9 +258,18 @@ document.getElementById('playBtn').addEventListener('click', () => {
 });
 document.getElementById('stopBtn').addEventListener('click', () => postAction('stop', {}));
 document.getElementById('rebootBtn').addEventListener('click', () => postAction('reboot', {}));
-document.getElementById('volumeBtn').addEventListener('click', () => postAction('volume', {level: parseInt(document.getElementById('volumeRange').value, 10)}));
-document.getElementById('brightnessBtn').addEventListener('click', () => postAction('brightness', {level: parseInt(document.getElementById('brightnessRange').value, 10)}));
-document.getElementById('idleBtn').addEventListener('click', () => postAction('idle', {mode: document.getElementById('idleMode').value}));
+document.getElementById('volumeBtn').addEventListener('click', () => {
+  markDirty('volume', 10000);
+  postAction('volume', {level: parseInt(document.getElementById('volumeRange').value, 10)});
+});
+document.getElementById('brightnessBtn').addEventListener('click', () => {
+  markDirty('brightness', 10000);
+  postAction('brightness', {level: parseInt(document.getElementById('brightnessRange').value, 10)});
+});
+document.getElementById('idleBtn').addEventListener('click', () => {
+  markDirty('idle_mode', 10000);
+  postAction('idle', {mode: document.getElementById('idleMode').value});
+});
 document.getElementById('testLightsBtn').addEventListener('click', () => {
   const pattern = document.getElementById('lightsPattern').value.trim();
   const duration_ms = parseInt(document.getElementById('lightsDuration').value, 10);
@@ -228,6 +285,15 @@ document.getElementById('updateBtn').addEventListener('click', () => {
 });
 
 loadDevice();
-setInterval(loadDevice, 5000);
+setInterval(() => {
+  if (document.visibilityState === 'visible') {
+    loadDevice();
+  }
+}, POLL_INTERVAL_MS);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    loadDevice();
+  }
+});
 </script>
 {% endblock %}

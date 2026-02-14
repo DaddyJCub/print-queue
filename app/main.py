@@ -2005,6 +2005,15 @@ def start_build(build_id: str, printer: str, comment: Optional[str] = None) -> D
         conn.close()
         return {"success": False, "error": f"Cannot start build - current status is {build['status']}"}
     
+    # Block starting if another build for the same request is already PRINTING
+    already_printing = conn.execute(
+        "SELECT id, build_number FROM builds WHERE request_id = ? AND status = 'PRINTING' AND id != ?",
+        (build["request_id"], build_id)
+    ).fetchone()
+    if already_printing:
+        conn.close()
+        return {"success": False, "error": f"Build {already_printing['build_number']} is already printing for this request. Complete or fail it first."}
+    
     now = now_iso()
     old_status = build["status"]
     
@@ -6115,16 +6124,26 @@ async def poll_printer_status_worker():
                     if not current_file:
                         continue
                     
-                    # Check if there's already a PRINTING request for this printer
+                    # Check if there's already a PRINTING/IN_PROGRESS request for this printer,
+                    # or any build actively PRINTING on this printer
                     conn = db()
                     existing_printing = conn.execute(
-                        "SELECT id FROM requests WHERE printer = ? AND status = 'PRINTING'",
+                        "SELECT id FROM requests WHERE printer = ? AND status IN ('PRINTING', 'IN_PROGRESS')",
                         (printer_code,)
                     ).fetchone()
+                    if not existing_printing:
+                        # Also check at build level — a build may be PRINTING on this printer
+                        # even if the request status doesn't reflect it yet
+                        existing_build = conn.execute(
+                            "SELECT id FROM builds WHERE printer = ? AND status = 'PRINTING'",
+                            (printer_code,)
+                        ).fetchone()
+                    else:
+                        existing_build = None
                     conn.close()
                     
-                    if existing_printing:
-                        # Already have a request assigned to this printer, no need to match
+                    if existing_printing or existing_build:
+                        # Already have an active print on this printer, no need to match
                         clear_print_match_suggestion(printer_code)
                         continue
                     

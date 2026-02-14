@@ -37,11 +37,9 @@ PROVISION_POLL_INTERVAL_MS = int(os.getenv("DEVICE_PROVISION_POLL_MS", "1000"))
 RELEASES_DIR = os.getenv("RELEASES_DIR", os.path.join("local_data", "releases"))
 PAIRING_SESSION_MINUTES = int(os.getenv("PAIRING_SESSION_MINUTES", "10"))
 PRINTELLECT_FEATURE_KEY = os.getenv("PRINTELLECT_FEATURE_KEY", "printellect_device_control")
-DEMO_MODE = os.getenv("DEMO_MODE", "").lower() in ("true", "1", "yes", "demo")
-TEST_MODE = os.getenv("TEST_MODE", "").lower() in ("true", "1", "yes")
 PRINTELLECT_DEMO_OPEN_ACCESS = os.getenv(
     "PRINTELLECT_DEMO_OPEN_ACCESS",
-    "1" if DEMO_MODE and not TEST_MODE else "0",
+    "0",
 ).lower() in ("true", "1", "yes", "on")
 
 _poll_lock = threading.Lock()
@@ -1123,7 +1121,7 @@ async def device_next_command(device=Depends(_device_from_bearer)):
         last = _last_poll_at.get(device_id)
         if last is not None and (now_mono - last) < DEVICE_MIN_POLL_SECONDS:
             retry_after = max(1, int(DEVICE_MIN_POLL_SECONDS - (now_mono - last)))
-            raise HTTPException(status_code=429, detail="Poll interval too frequent", headers={"Retry-After": str(retry_after)})
+            return Response(status_code=204, headers={"Retry-After": str(retry_after)})
         _last_poll_at[device_id] = now_mono
 
     conn = db()
