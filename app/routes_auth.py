@@ -57,6 +57,14 @@ templates = Jinja2Templates(directory="app/templates")
 # Timezone for display (default to US Eastern)
 DISPLAY_TIMEZONE = os.getenv("DISPLAY_TIMEZONE", "America/New_York")
 
+
+def _printellect_demo_open_access() -> bool:
+    demo_mode = os.getenv("DEMO_MODE", "").lower() in ("true", "1", "yes", "demo")
+    test_mode = os.getenv("TEST_MODE", "").lower() in ("true", "1", "yes")
+    default_open = demo_mode and not test_mode
+    raw = os.getenv("PRINTELLECT_DEMO_OPEN_ACCESS", "1" if default_open else "0").lower()
+    return raw in ("true", "1", "yes", "on")
+
 def format_datetime_local(value, fmt="%b %d, %Y at %I:%M %p"):
     """Convert ISO datetime string to local timezone for display"""
     if not value:
@@ -1769,6 +1777,10 @@ async def user_profile_page(
     
     # Check if trips feature is enabled for this user
     trips_enabled = is_feature_enabled("trips", user_id=user.id, email=user.email)
+    printellect_enabled = (
+        is_feature_enabled("printellect_device_control", user_id=user.id, email=user.email)
+        or _printellect_demo_open_access()
+    )
     
     return templates.TemplateResponse("user_profile.html", {
         "request": request,
@@ -1780,6 +1792,7 @@ async def user_profile_page(
         "error": error,
         "from_page": from_page,
         "trips_enabled": trips_enabled,
+        "printellect_enabled": printellect_enabled,
     })
 
 

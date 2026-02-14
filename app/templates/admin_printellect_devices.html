@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Printellect Devices</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-7xl mx-auto p-6">
+    {% set active_page = 'features' %}
+    {% include 'admin_nav.html' %}
+
+    <div class="mb-5">
+      <h1 class="text-2xl font-bold">Printellect Device Registry</h1>
+      <p class="text-sm text-zinc-400 mt-1">Create devices, rotate claim codes, and monitor status.</p>
+    </div>
+
+    <form id="createDeviceForm" class="grid md:grid-cols-4 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
+      <input name="device_id" placeholder="device_id (optional)" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-mono" />
+      <input name="name" placeholder="name" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
+      <input name="claim_code" placeholder="claim_code (optional)" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-mono" />
+      <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm font-semibold">Create</button>
+    </form>
+
+    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
+      <h2 class="font-semibold mb-2">Last Create/Rotate Output</h2>
+      <pre id="createOutput" class="text-xs whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-3 overflow-x-auto"></pre>
+    </div>
+
+    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+      <h2 class="font-semibold mb-3">Devices</h2>
+      <div id="devices" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <script>
+    async function loadDevices() {
+      const resp = await fetch('/api/printellect/admin/devices');
+      const data = await resp.json();
+      const root = document.getElementById('devices');
+      root.innerHTML = '';
+
+      for (const d of (data.devices || [])) {
+        const row = document.createElement('div');
+        row.className = 'rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm';
+        row.innerHTML = `
+          <div class="grid md:grid-cols-12 md:items-center gap-2">
+            <div class="md:col-span-3">
+              <div class="font-semibold">${d.name || d.device_id}</div>
+              <div class="text-xs text-zinc-400 font-mono">${d.device_id}</div>
+            </div>
+            <div class="md:col-span-3 text-xs text-zinc-400">${d.owner_user_id || 'unclaimed'}</div>
+            <div class="md:col-span-3 text-xs text-zinc-400 font-mono">fw ${d.fw_version || '-'} / app ${d.app_version || '-'}</div>
+            <div class="md:col-span-2 text-xs ${d.online ? 'text-emerald-300' : 'text-zinc-400'}">${d.online ? 'online' : 'offline'}</div>
+            <div class="md:col-span-1 text-right">
+              <button data-rotate="${d.device_id}" class="rounded-md border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-2 py-1 text-xs">Rotate</button>
+            </div>
+          </div>
+        `;
+        root.appendChild(row);
+      }
+
+      for (const btn of root.querySelectorAll('button[data-rotate]')) {
+        btn.addEventListener('click', async () => {
+          const deviceId = btn.getAttribute('data-rotate');
+          const resp = await fetch(`/api/printellect/admin/devices/${deviceId}/claim-code/rotate`, {method: 'POST'});
+          const data = await resp.json();
+          document.getElementById('createOutput').textContent = JSON.stringify(data, null, 2);
+          await loadDevices();
+        });
+      }
+    }
+
+    document.getElementById('createDeviceForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const payload = Object.fromEntries(new FormData(event.target).entries());
+      const resp = await fetch('/api/printellect/admin/devices', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+      });
+      const text = await resp.text();
+      let data = {};
+      try { data = JSON.parse(text); } catch (_) { data = {raw: text}; }
+      document.getElementById('createOutput').textContent = JSON.stringify(data, null, 2);
+      await loadDevices();
+    });
+
+    loadDevices();
+    setInterval(loadDevices, 10000);
+  </script>
+</body>
+</html>

@@ -196,37 +196,51 @@
       <h2 class="text-lg font-semibold mb-4">🔒 Private Features</h2>
       <p class="text-sm text-zinc-500 mb-4">Features restricted to specific users. Add email addresses to grant access.</p>
       <div class="space-y-3">
-        {% set trips_flag = flags.get('trips') %}
-        {% if trips_flag %}
+        {% set private_flag_details = {
+          'trips': {
+            'icon': '✈️',
+            'title': 'Trips / Itineraries',
+            'desc': 'Private travel itinerary feature with push reminders. Only granted users can access this feature.'
+          },
+          'printellect_device_control': {
+            'icon': '🕹️',
+            'title': 'Printellect Device Control',
+            'desc': 'Device onboarding/control pages and API access for the Printellect base workflow.'
+          }
+        } %}
+        {% for key in ['trips', 'printellect_device_control'] %}
+        {% set private_flag = flags.get(key) %}
+        {% set details = private_flag_details.get(key, {}) %}
+        {% if private_flag %}
         <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
           <div class="flex items-start justify-between gap-4">
             <div class="flex-1">
               <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-lg">✈️</span>
-                <span class="font-medium">Trips / Itineraries</span>
-                {% if trips_flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
+                <span class="text-lg">{{ details.icon }}</span>
+                <span class="font-medium">{{ details.title }}</span>
+                {% if private_flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
                 {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
                 <span class="px-2 py-0.5 bg-purple-600/20 text-purple-300 text-xs rounded-lg">User-Gated</span>
               </div>
-              <p class="text-sm text-zinc-400 mt-2">Private travel itinerary feature with push reminders. Only granted users can see and access this feature.</p>
+              <p class="text-sm text-zinc-400 mt-2">{{ details.desc }}</p>
               
               <!-- Allowed Emails Section -->
               <div class="mt-4 p-3 bg-zinc-950 border border-zinc-800 rounded-lg">
-                <p class="text-xs text-zinc-400 mb-2 font-medium">👥 Allowed Users ({{ trips_flag.allowed_emails|length if trips_flag.allowed_emails else 0 }} emails)</p>
-                <div class="flex flex-wrap gap-1 mb-3" id="trips-emails-list">
-                  {% if trips_flag.allowed_emails %}
-                    {% for email in trips_flag.allowed_emails %}
+                <p class="text-xs text-zinc-400 mb-2 font-medium">👥 Allowed Users ({{ private_flag.allowed_emails|length if private_flag.allowed_emails else 0 }} emails)</p>
+                <div class="flex flex-wrap gap-1 mb-3">
+                  {% if private_flag.allowed_emails %}
+                    {% for email in private_flag.allowed_emails %}
                     <span class="inline-flex items-center gap-1 px-2 py-1 bg-indigo-600/20 text-indigo-300 text-xs rounded-lg">
                       {{ email }}
-                      <button type="button" onclick="removeTripsEmail('{{ email }}')" class="hover:text-red-400">×</button>
+                      <button type="button" onclick="removeFeatureEmail('{{ key }}', '{{ email }}')" class="hover:text-red-400">×</button>
                     </span>
                     {% endfor %}
                   {% else %}
                     <span class="text-xs text-zinc-500">No users granted access yet</span>
                   {% endif %}
                 </div>
-                <form onsubmit="addTripsEmail(event)" class="flex gap-2">
-                  <input type="email" id="trips-new-email" placeholder="user@example.com" 
+                <form onsubmit="addFeatureEmail(event, '{{ key }}', '{{ key }}-new-email')" class="flex gap-2">
+                  <input type="email" id="{{ key }}-new-email" placeholder="user@example.com" 
                          class="flex-1 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm focus:border-indigo-500 outline-none">
                   <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium transition">
                     Add Email
@@ -236,12 +250,13 @@
               </div>
             </div>
             <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
-              <input type="checkbox" class="sr-only peer" {% if trips_flag.enabled %}checked{% endif %} onchange="toggleFlag('trips', this.checked)">
+              <input type="checkbox" class="sr-only peer" {% if private_flag.enabled %}checked{% endif %} onchange="toggleFlag('{{ private_flag.key }}', this.checked)">
               <div class="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
             </label>
           </div>
         </div>
         {% endif %}
+        {% endfor %}
       </div>
     </div>
 
@@ -309,14 +324,14 @@
     } catch (e) { alert('Failed to update feature flag'); location.reload(); }
   }
 
-  async function addTripsEmail(event) {
+  async function addFeatureEmail(event, key, inputId) {
     event.preventDefault();
-    const input = document.getElementById('trips-new-email');
+    const input = document.getElementById(inputId);
     const email = input.value.trim();
     if (!email) return;
     
     try {
-      const response = await fetch('/admin/features/trips/allowed-emails', {
+      const response = await fetch('/admin/features/' + key + '/allowed-emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'add', email: email })
@@ -328,11 +343,11 @@
     }
   }
 
-  async function removeTripsEmail(email) {
-    if (!confirm('Remove ' + email + ' from trips access?')) return;
+  async function removeFeatureEmail(key, email) {
+    if (!confirm('Remove ' + email + ' from access list?')) return;
     
     try {
-      const response = await fetch('/admin/features/trips/allowed-emails', {
+      const response = await fetch('/admin/features/' + key + '/allowed-emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'remove', email: email })

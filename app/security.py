@@ -185,6 +185,10 @@ RATE_LIMIT_CONFIG = {
     "/auth/magic-link": (3, 300),     # 3 magic link requests per 5 minutes
     "/auth/reset-password": (3, 300), # 3 reset requests per 5 minutes
     "/api/push/subscribe": (10, 60),  # 10 subscriptions per minute
+    # Printellect provisioning/control API
+    "/api/printellect/device/v1/provision": (30, 60),
+    "/api/printellect/device/v1/commands/next": (240, 60),
+    "/api/printellect/devices/": (120, 60),
 }
 
 

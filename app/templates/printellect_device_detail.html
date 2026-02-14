@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Device Detail | Printellect</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: #0b171d;
+      --panel: #13232d;
+      --line: #2a4756;
+      --text: #dcecf3;
+      --muted: #90a9b6;
+      --accent: #37c8ff;
+      --accent-2: #ffb35b;
+      --ok: #30d58a;
+      --off: #9db2bf;
+    }
+    body { font-family: "Space Grotesk", sans-serif; color: var(--text); background: radial-gradient(1200px 700px at 90% -20%, #213746 0%, var(--bg) 60%); }
+    .mono { font-family: "IBM Plex Mono", monospace; }
+  </style>
+</head>
+<body>
+  <main class="max-w-6xl mx-auto px-4 py-6 md:px-6 md:py-8 space-y-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <p class="text-xs uppercase tracking-[0.2em]" style="color:var(--accent)">Device Control</p>
+        <h1 class="text-2xl md:text-3xl font-semibold">Device Detail</h1>
+        <p id="deviceMeta" class="text-xs mt-1 mono" style="color:var(--muted)">{{ device_id }}</p>
+      </div>
+      <a href="/printellect/devices" class="underline text-sm" style="color:var(--accent-2)">Back to devices</a>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-2">
+      <button data-action="play" class="rounded-lg px-3 py-2 text-sm font-semibold" style="background:var(--accent);color:#05202b">Play Juggernog</button>
+      <button data-action="stop" class="rounded-lg px-3 py-2 text-sm border" style="background:#10202a;border-color:var(--line)">Stop</button>
+      <button data-action="reboot" class="rounded-lg px-3 py-2 text-sm border" style="background:#10202a;border-color:var(--line)">Reboot</button>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-3">
+      <div class="rounded-2xl border p-4" style="border-color:var(--line);background:var(--panel)">
+        <h2 class="font-semibold mb-2">Live State</h2>
+        <pre id="state" class="text-xs whitespace-pre-wrap mono overflow-x-auto p-3 rounded-lg border" style="border-color:var(--line);background:#0f1d26"></pre>
+      </div>
+
+      <div class="rounded-2xl border p-4" style="border-color:var(--line);background:var(--panel)">
+        <h2 class="font-semibold mb-2">Recent Commands</h2>
+        <pre id="commands" class="text-xs whitespace-pre-wrap mono overflow-x-auto p-3 rounded-lg border" style="border-color:var(--line);background:#0f1d26"></pre>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const deviceId = {{ device_id|tojson }};
+
+    async function postAction(action, payload) {
+      const resp = await fetch(`/api/printellect/devices/${deviceId}/actions/${action}`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload || {}),
+      });
+      const raw = await resp.text();
+      let data = {};
+      try { data = JSON.parse(raw); } catch (_) {}
+      if (!resp.ok) {
+        alert(data.detail || data.error || "Action failed");
+      }
+      await load();
+    }
+
+    async function load() {
+      const resp = await fetch(`/api/printellect/devices/${deviceId}`);
+      if (!resp.ok) {
+        return;
+      }
+      const data = await resp.json();
+      const d = data.device || {};
+      const meta = `${d.name || d.device_id} (${d.device_id}) - ${d.online ? "online" : "offline"} - fw ${d.fw_version || "-"} app ${d.app_version || "-"}`;
+      document.getElementById("deviceMeta").textContent = meta;
+      document.getElementById("state").textContent = JSON.stringify(d.state || {}, null, 2);
+      document.getElementById("commands").textContent = JSON.stringify(d.recent_commands || [], null, 2);
+    }
+
+    document.querySelector('[data-action="play"]').addEventListener("click", () => postAction("play", {perk: "juggernog"}));
+    document.querySelector('[data-action="stop"]').addEventListener("click", () => postAction("stop", {}));
+    document.querySelector('[data-action="reboot"]').addEventListener("click", () => postAction("reboot", {}));
+
+    load();
+    setInterval(load, 5000);
+  </script>
+</body>
+</html>

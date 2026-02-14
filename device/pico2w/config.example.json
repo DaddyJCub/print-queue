@@ -1,0 +1,10 @@
+{
+  "api_base": "https://print.jcubhub.com",
+  "heartbeat_interval_s": 20,
+  "command_poll_interval_s": 1,
+  "provision_poll_interval_s": 3,
+  "sta_connect_timeout_s": 10,
+  "sta_connect_retries": 3,
+  "wifi_reset_hold_s": 10,
+  "factory_reset_hold_s": 20
+}

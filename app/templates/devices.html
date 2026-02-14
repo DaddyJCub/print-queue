@@ -1,0 +1,63 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}My Devices | Printellect{% endblock %}
+{% block nav_myrequests %}text-white bg-zinc-800{% endblock %}
+{% block bnav_myrequests %}active{% endblock %}
+{% block header_title %}My Devices{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-4">
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold">Printellect Devices</h1>
+      <p class="text-sm text-zinc-400">Monitor status and open control panels.</p>
+    </div>
+    <a href="/user/profile#printellect" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold">Quick Add</a>
+  </div>
+
+  <div id="deviceList" class="space-y-3"></div>
+</div>
+
+<script>
+  async function loadDevices() {
+    const root = document.getElementById('deviceList');
+    root.innerHTML = '<div class="skeleton h-24"></div>';
+    try {
+      const resp = await fetch('/api/printellect/devices');
+      const data = await resp.json();
+      if (!resp.ok) {
+        root.innerHTML = `<div class="bg-red-900/20 border border-red-500/40 rounded-xl p-4 text-sm text-red-200">${data.detail || 'Failed to load devices'}</div>`;
+        return;
+      }
+      const devices = data.devices || [];
+      if (!devices.length) {
+        root.innerHTML = '<div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 text-sm text-zinc-400">No devices claimed yet.</div>';
+        return;
+      }
+      root.innerHTML = devices.map((d) => `
+        <div class="stagger-item bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 card-interactive">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="font-semibold">${d.name || d.device_id}</div>
+              <div class="text-xs text-zinc-400 font-mono mt-1">${d.device_id}</div>
+            </div>
+            <span class="text-xs px-2 py-1 rounded-full ${d.online ? 'bg-emerald-700/30 text-emerald-300' : 'bg-zinc-700 text-zinc-300'}">${d.online ? 'online' : 'offline'}</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2 mt-3 text-xs">
+            <div class="bg-zinc-800/60 border border-zinc-700 rounded-lg px-2 py-1">FW ${d.fw_version || '-'}</div>
+            <div class="bg-zinc-800/60 border border-zinc-700 rounded-lg px-2 py-1">APP ${d.app_version || '-'}</div>
+            <div class="bg-zinc-800/60 border border-zinc-700 rounded-lg px-2 py-1">RSSI ${d.rssi ?? '-'}</div>
+          </div>
+          <div class="mt-3">
+            <a href="/printellect/devices/${d.device_id}" class="text-sm text-indigo-400 hover:text-indigo-300 underline">Open device</a>
+          </div>
+        </div>
+      `).join('');
+    } catch (error) {
+      root.innerHTML = '<div class="bg-red-900/20 border border-red-500/40 rounded-xl p-4 text-sm text-red-200">Network error while loading devices.</div>';
+    }
+  }
+  loadDevices();
+  setInterval(loadDevices, 5000);
+</script>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}Device Detail | Printellect{% endblock %}
+{% block nav_myrequests %}text-white bg-zinc-800{% endblock %}
+{% block bnav_myrequests %}active{% endblock %}
+{% block header_title %}Device Control{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-4">
+  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h1 class="text-xl font-bold">Printellect Device</h1>
+        <p id="deviceMeta" class="text-sm text-zinc-400 mt-1 font-mono">{{ device_id }}</p>
+      </div>
+      <div class="flex gap-2">
+        <a href="/printellect/devices" class="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium">Back</a>
+        <a href="/user/profile#printellect" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium">Quick Add</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+    <h2 class="font-semibold mb-3">Actions</h2>
+    <div class="grid sm:grid-cols-3 gap-2">
+      <button data-action="play" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold">Play Juggernog</button>
+      <button data-action="stop" class="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-semibold">Stop Audio</button>
+      <button data-action="reboot" class="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-semibold">Reboot</button>
+    </div>
+  </section>
+
+  <div class="grid lg:grid-cols-2 gap-4">
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+      <h2 class="font-semibold mb-2">Live State</h2>
+      <pre id="state" class="text-xs whitespace-pre-wrap overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900 p-3"></pre>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+      <h2 class="font-semibold mb-2">Recent Commands</h2>
+      <pre id="commands" class="text-xs whitespace-pre-wrap overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900 p-3"></pre>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const deviceId = {{ device_id|tojson }};
+
+async function postAction(action, payload) {
+  const resp = await fetch(`/api/printellect/devices/${deviceId}/actions/${action}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload || {}),
+  });
+  const raw = await resp.text();
+  let data = {};
+  try { data = JSON.parse(raw); } catch (_) {}
+  if (!resp.ok) {
+    alert(data.detail || data.error || 'Action failed');
+    return;
+  }
+  await loadDevice();
+}
+
+async function loadDevice() {
+  const resp = await fetch(`/api/printellect/devices/${deviceId}`);
+  if (!resp.ok) return;
+  const data = await resp.json();
+  const d = data.device || {};
+  const status = d.online ? 'online' : 'offline';
+  document.getElementById('deviceMeta').textContent = `${d.name || d.device_id} (${d.device_id}) • ${status} • fw ${d.fw_version || '-'} • app ${d.app_version || '-'}`;
+  document.getElementById('state').textContent = JSON.stringify(d.state || {}, null, 2);
+  document.getElementById('commands').textContent = JSON.stringify(d.recent_commands || [], null, 2);
+}
+
+document.querySelector('[data-action="play"]')?.addEventListener('click', () => postAction('play', {perk: 'juggernog'}));
+document.querySelector('[data-action="stop"]')?.addEventListener('click', () => postAction('stop', {}));
+document.querySelector('[data-action="reboot"]')?.addEventListener('click', () => postAction('reboot', {}));
+
+loadDevice();
+setInterval(loadDevice, 5000);
+</script>
+{% endblock %}

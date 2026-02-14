@@ -1052,7 +1052,7 @@ def _row_to_feature_flag(row: sqlite3.Row) -> FeatureFlag:
         key=row["key"],
         enabled=bool(row["enabled"]),
         description=row["description"] or "",
-        rollout_percentage=row["rollout_percentage"] or 100,
+        rollout_percentage=100 if row["rollout_percentage"] is None else int(row["rollout_percentage"]),
         allowed_users=allowed_users,
         allowed_emails=allowed_emails,
         created_at=row["created_at"],
