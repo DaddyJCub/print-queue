@@ -1172,13 +1172,24 @@ def admin_store_add(
     estimated_time_minutes: int = Form(0),
     link_url: str = Form(""),
     notes: str = Form(""),
+    price: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
     _=Depends(require_admin)
 ):
     """Add a new store item"""
     item_id = str(uuid.uuid4())
     created = now_iso()
-    
+
+    # Parse price (dollars -> cents)
+    price_cents = None
+    if price and price.strip():
+        try:
+            price_cents = int(float(price.strip()) * 100)
+            if price_cents <= 0:
+                price_cents = None
+        except (ValueError, TypeError):
+            price_cents = None
+
     # Handle image upload
     image_data = None
     if image and image.filename:
@@ -1186,19 +1197,19 @@ def admin_store_add(
         content = image.file.read()
         if len(content) < 5 * 1024 * 1024:  # Max 5MB
             image_data = base64.b64encode(content).decode('utf-8')
-    
+
     conn = db()
     conn.execute("""
         INSERT INTO store_items (
             id, name, description, category, material, colors,
             estimated_time_minutes, image_data, link_url, notes,
-            is_active, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+            is_active, price_cents, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
     """, (
         item_id, name.strip(), description.strip() or None, category.strip() or None,
         material, colors.strip() or None, estimated_time_minutes or None,
         image_data, link_url.strip() or None, notes.strip() or None,
-        created, created
+        price_cents, created, created
     ))
     conn.commit()
     conn.close()
@@ -1241,6 +1252,7 @@ def admin_store_item_update(
     estimated_time_minutes: int = Form(0),
     link_url: str = Form(""),
     notes: str = Form(""),
+    price: Optional[str] = Form(None),
     is_active: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
     _=Depends(require_admin)
@@ -1251,7 +1263,17 @@ def admin_store_item_update(
     if not item:
         conn.close()
         raise HTTPException(status_code=404, detail="Store item not found")
-    
+
+    # Parse price (dollars -> cents)
+    price_cents = None
+    if price and price.strip():
+        try:
+            price_cents = int(float(price.strip()) * 100)
+            if price_cents <= 0:
+                price_cents = None
+        except (ValueError, TypeError):
+            price_cents = None
+
     # Handle image upload
     image_data = item["image_data"]  # Keep existing if no new upload
     if image and image.filename:
@@ -1259,18 +1281,18 @@ def admin_store_item_update(
         content = image.file.read()
         if len(content) < 5 * 1024 * 1024:
             image_data = base64.b64encode(content).decode('utf-8')
-    
+
     conn.execute("""
         UPDATE store_items SET
             name = ?, description = ?, category = ?, material = ?, colors = ?,
             estimated_time_minutes = ?, image_data = ?, link_url = ?, notes = ?,
-            is_active = ?, updated_at = ?
+            is_active = ?, price_cents = ?, updated_at = ?
         WHERE id = ?
     """, (
         name.strip(), description.strip() or None, category.strip() or None,
         material, colors.strip() or None, estimated_time_minutes or None,
         image_data, link_url.strip() or None, notes.strip() or None,
-        1 if is_active else 0, now_iso(), item_id
+        1 if is_active else 0, price_cents, now_iso(), item_id
     ))
     conn.commit()
     conn.close()

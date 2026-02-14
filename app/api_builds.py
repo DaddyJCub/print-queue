@@ -943,6 +943,96 @@ def admin_set_admin_notes(
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
 
 
+@router.post("/admin/request/{rid}/set-quote")
+def admin_set_quote(
+    request: Request,
+    rid: str,
+    quote_amount: str = Form(...),
+    quote_notes: Optional[str] = Form(None),
+    _=Depends(require_permission("manage_queue"))
+):
+    """Admin sets a price/quote on a request. Sends payment link to requester."""
+    try:
+        amount_dollars = float(quote_amount)
+        amount_cents = int(amount_dollars * 100)
+        if amount_cents <= 0:
+            raise ValueError("Amount must be positive")
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid quote amount")
+
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Not found")
+
+    now = now_iso()
+    conn.execute(
+        "UPDATE requests SET quote_amount_cents = ?, quote_set_at = ?, updated_at = ? WHERE id = ?",
+        (amount_cents, now, now, rid),
+    )
+
+    note = f"Quote set: ${amount_dollars:.2f}"
+    if quote_notes and quote_notes.strip():
+        note += f" - {quote_notes.strip()}"
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now, req["status"], req["status"], note),
+    )
+    conn.commit()
+    conn.close()
+
+    # Create Stripe Checkout URL and email it to the requester
+    from app.payments import is_payments_enabled, create_quote_checkout
+    payment_link = None
+    if is_payments_enabled():
+        checkout_url, result = create_quote_checkout(
+            request_id=rid,
+            amount_cents=amount_cents,
+            request_dict=dict(req),
+        )
+        if checkout_url:
+            payment_link = checkout_url
+
+    # Send notification email to requester with payment link
+    requester_email = (req["requester_email"] or "").strip()
+    if requester_email and payment_link:
+        subject = f"[{APP_TITLE}] Quote for your print request ({rid[:8]})"
+        text = (
+            f"A quote has been set for your print request.\n\n"
+            f"Amount: ${amount_dollars:.2f}\n"
+            f"Request: {req.get('print_name', rid[:8])}\n\n"
+            f"Pay now: {payment_link}\n"
+        )
+        html = build_email_html(
+            title="Quote for your print request",
+            subtitle=f"${amount_dollars:.2f}",
+            rows=[
+                ("Print", req.get("print_name") or rid[:8]),
+                ("Amount", f"${amount_dollars:.2f}"),
+                ("Notes", quote_notes.strip() if quote_notes else "-"),
+            ],
+            cta_url=payment_link,
+            cta_label="Pay Now",
+        )
+        send_email([requester_email], subject, text, html)
+
+    from app.auth import log_audit
+    from app.models import AuditAction
+    admin = get_current_admin(request)
+    log_audit(
+        action=AuditAction.QUOTE_SET,
+        actor_type="admin",
+        actor_id=admin.get("id") if admin else None,
+        actor_name=admin.get("name") if admin else None,
+        target_type="request",
+        target_id=rid,
+        details={"amount_cents": amount_cents, "notes": quote_notes},
+    )
+
+    return RedirectResponse(url=f"/admin/request/{rid}?quote_set=1", status_code=303)
+
+
 @router.post("/admin/request/{rid}/update-account")
 def admin_update_request_account(
     request: Request,
@@ -2771,6 +2861,15 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         except Exception:
             selected_flat_rate_template = ""
     
+    # --- Payment data ---
+    payment_data = None
+    req_dict = dict(req)
+    if req_dict.get("payment_id"):
+        from app.payments import get_payment_by_id
+        payment_data = get_payment_by_id(req_dict["payment_id"])
+    from app.payments import is_payments_enabled as _is_payments_enabled
+    _payments_enabled = _is_payments_enabled()
+
     return templates.TemplateResponse("admin_request.html", {
         "request": request,
         "req": req,
@@ -2809,6 +2908,11 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         "current_admin_can_manage_queue": admin.has_permission("manage_queue") if hasattr(admin, "has_permission") else True,
         "current_admin_can_manage_designs": admin.has_permission("manage_designs") if hasattr(admin, "has_permission") else False,
         "design_enabled": design_enabled,
+        "payment": payment_data,
+        "payments_enabled": _payments_enabled,
+        "quote_amount_cents": req_dict.get("quote_amount_cents"),
+        "quote_set_at": req_dict.get("quote_set_at"),
+        "quote_paid_at": req_dict.get("quote_paid_at"),
     })
 
 

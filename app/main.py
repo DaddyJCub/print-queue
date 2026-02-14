@@ -1351,6 +1351,38 @@ def init_db():
     init_printellect_tables(cur)
     # Shipping indexes are created in ensure_migrations() after the column/tables are guaranteed to exist
 
+    # ─────────────────────────────────────────────────────────────────────────────
+    # PAYMENTS TABLE (Stripe Checkout integration)
+    # ─────────────────────────────────────────────────────────────────────────────
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS payments (
+        id TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        stripe_checkout_session_id TEXT UNIQUE,
+        stripe_payment_intent_id TEXT,
+        payment_type TEXT NOT NULL,
+        request_id TEXT,
+        store_item_id TEXT,
+        account_id TEXT,
+        amount_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'usd',
+        status TEXT NOT NULL DEFAULT 'pending',
+        payer_email TEXT,
+        payer_name TEXT,
+        description TEXT,
+        metadata TEXT DEFAULT '{}',
+        stripe_event_id TEXT,
+        FOREIGN KEY(request_id) REFERENCES requests(id),
+        FOREIGN KEY(store_item_id) REFERENCES store_items(id),
+        FOREIGN KEY(account_id) REFERENCES accounts(id)
+    );
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_session ON payments(stripe_checkout_session_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_request ON payments(request_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_type ON payments(payment_type);")
+
     conn.commit()
     conn.close()
 
@@ -1857,6 +1889,28 @@ def ensure_migrations():
     # Printellect schema migrations
     from app.printellect import ensure_printellect_migrations
     ensure_printellect_migrations(cur)
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # PAYMENTS MIGRATIONS
+    # ─────────────────────────────────────────────────────────────────────────────
+
+    # Add price_cents to store_items (NULL = free, backwards compatible)
+    cur.execute("PRAGMA table_info(store_items)")
+    store_cols = {row[1] for row in cur.fetchall()}
+    if store_cols and "price_cents" not in store_cols:
+        cur.execute("ALTER TABLE store_items ADD COLUMN price_cents INTEGER")
+
+    # Re-read request columns for payment fields
+    cur.execute("PRAGMA table_info(requests)")
+    req_pay_cols = {row[1] for row in cur.fetchall()}
+    if "quote_amount_cents" not in req_pay_cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN quote_amount_cents INTEGER")
+    if "quote_set_at" not in req_pay_cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN quote_set_at TEXT")
+    if "quote_paid_at" not in req_pay_cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN quote_paid_at TEXT")
+    if "payment_id" not in req_pay_cols:
+        cur.execute("ALTER TABLE requests ADD COLUMN payment_id TEXT")
 
     conn.commit()
     conn.close()
@@ -7557,6 +7611,7 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any], us
         "printer_status": printer_status,
         "fun_stats": fun_stats,
         "recent_prints": recent_prints,
+        "payments_enabled": is_payments_enabled(),
     }, status_code=400 if error else 200)
 
 
@@ -7569,6 +7624,7 @@ from app.api_push import router as api_push_router
 from app.api_builds import router as api_builds_router
 from app.trips import router as trips_router
 from app.printellect import router as printellect_router
+from app.payments import router as payments_router, is_payments_enabled
 
 app.include_router(public_router)
 app.include_router(my_requests_router)
@@ -7578,3 +7634,4 @@ app.include_router(api_push_router)
 app.include_router(api_builds_router)
 app.include_router(trips_router)
 app.include_router(printellect_router)
+app.include_router(payments_router)

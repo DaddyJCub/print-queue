@@ -478,6 +478,49 @@
       </div>
     </div>
 
+    <!-- Quote / Payment Banner -->
+    {% if quote_amount_cents and not quote_paid_at %}
+    <div class="rounded-2xl border border-amber-500/40 bg-amber-900/20 p-4 mb-6">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h3 class="font-semibold text-amber-100">💳 Payment Required</h3>
+          <p class="text-sm text-amber-200/80 mt-1">
+            A quote of <span class="font-bold">${{ '%.2f' | format(quote_amount_cents / 100.0) }}</span> has been set for this request.
+          </p>
+        </div>
+        {% if quote_payment_url %}
+        <a href="{{ quote_payment_url }}" class="shrink-0 rounded-xl bg-amber-600 hover:bg-amber-500 transition px-4 py-2 text-sm font-semibold text-white">
+          Pay Now
+        </a>
+        {% endif %}
+      </div>
+    </div>
+    {% elif quote_amount_cents and quote_paid_at %}
+    <div class="rounded-2xl border border-emerald-500/40 bg-emerald-900/20 p-4 mb-6">
+      <div class="flex items-center gap-3">
+        <span class="text-xl">✅</span>
+        <div>
+          <h3 class="font-semibold text-emerald-100">Payment Received</h3>
+          <p class="text-sm text-emerald-200/80 mt-1">
+            ${{ '%.2f' | format(quote_amount_cents / 100.0) }} paid {{ quote_paid_at|localtime }}
+          </p>
+        </div>
+      </div>
+    </div>
+    {% elif payment and payment["payment_type"] != "quote" %}
+    <div class="rounded-2xl border border-emerald-500/40 bg-emerald-900/20 p-4 mb-6">
+      <div class="flex items-center gap-3">
+        <span class="text-xl">✅</span>
+        <div>
+          <h3 class="font-semibold text-emerald-100">Payment Received</h3>
+          <p class="text-sm text-emerald-200/80 mt-1">
+            ${{ '%.2f' | format(payment["amount_cents"] / 100.0) }} paid
+          </p>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     {% if shipping %}
       <div class="rounded-2xl border border-sky-700/40 bg-sky-900/20 p-4 mb-6">
         <div class="flex items-center justify-between gap-3">

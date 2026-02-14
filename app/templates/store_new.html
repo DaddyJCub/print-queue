@@ -80,6 +80,11 @@
       {% if item.estimated_time_minutes %}
       <p class="text-xs text-zinc-500 mt-2">⏱ ~{{ (item.estimated_time_minutes / 60)|round(1) }}h</p>
       {% endif %}
+      {% if item.price_cents and item.price_cents > 0 %}
+      <p class="text-sm font-semibold text-emerald-400 mt-2">${{ '%.2f' | format(item.price_cents / 100.0) }}</p>
+      {% else %}
+      <p class="text-xs text-zinc-600 mt-2">Free</p>
+      {% endif %}
     </div>
   </a>
   {% endfor %}

@@ -216,7 +216,29 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
             break
     
     conn.close()
-    
+
+    # Payment/quote data for the template
+    payment = None
+    quote_payment_url = None
+    req_dict = dict(req)
+    if req_dict.get("payment_id"):
+        pconn = db()
+        prow = pconn.execute("SELECT * FROM payments WHERE id = ?", (req_dict["payment_id"],)).fetchone()
+        pconn.close()
+        if prow:
+            payment = dict(prow)
+
+    if req_dict.get("quote_amount_cents") and not req_dict.get("quote_paid_at"):
+        from app.payments import is_payments_enabled, create_quote_checkout
+        if is_payments_enabled():
+            checkout_url, _ = create_quote_checkout(
+                request_id=rid,
+                amount_cents=req_dict["quote_amount_cents"],
+                request_dict=req_dict,
+            )
+            if checkout_url:
+                quote_payment_url = checkout_url
+
     return templates.TemplateResponse("my_request.html", {
         "request": request,
         "req": req,
@@ -239,6 +261,10 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
         "designer_name": designer_name,
         "report_mode": bool(report),
         "report_build_id": build_id,
+        "payment": payment,
+        "quote_payment_url": quote_payment_url,
+        "quote_amount_cents": req_dict.get("quote_amount_cents"),
+        "quote_paid_at": req_dict.get("quote_paid_at"),
     })
 
 

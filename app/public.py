@@ -181,18 +181,90 @@ async def submit(
     rid = str(uuid.uuid4())
     access_token = secrets.token_urlsafe(32)  # Secure token for requester access
     created = now_iso()
-    
+
     # Calculate dynamic rush pricing at submission time
     printer_suggestions = get_printer_suggestions()
     queue_size = printer_suggestions.get("total_queue", 0)
     rush_pricing = calculate_rush_price(queue_size, requester_name)
     final_rush_price = rush_pricing["final_price"]
     is_brandon = rush_pricing["is_special"]
-    
-    # Priority: P1 if rush requested AND payment confirmed, P3 default
+
+    # If rush requested and Stripe payments are enabled, redirect to Stripe Checkout
+    if rush_request:
+        from app.payments import is_payments_enabled, create_rush_fee_checkout
+        if is_payments_enabled():
+            rush_price_cents = int(final_rush_price * 100)
+
+            # Save files to disk first (they'll be linked to the request by the webhook)
+            uploaded_file_ids = []
+            max_bytes = MAX_UPLOAD_MB * 1024 * 1024
+            if has_file:
+                conn_files = db()
+                for file in valid_files:
+                    ext = safe_ext(file.filename)
+                    if ext not in ALLOWED_EXTS:
+                        conn_files.close()
+                        return render_form(request, f"File '{file.filename}' not allowed.", form_state)
+                    data = await file.read()
+                    if len(data) > max_bytes:
+                        conn_files.close()
+                        return render_form(request, f"File '{file.filename}' too large. Max size is {MAX_UPLOAD_MB}MB.", form_state)
+                    stored = f"{uuid.uuid4()}{ext}"
+                    out_path = os.path.join(UPLOAD_DIR, stored)
+                    sha = hashlib.sha256(data).hexdigest()
+                    with open(out_path, "wb") as f:
+                        f.write(data)
+                    file_metadata = parse_3d_file_metadata(out_path, file.filename)
+                    file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
+                    fid = str(uuid.uuid4())
+                    conn_files.execute(
+                        """INSERT INTO files (id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (fid, now_iso(), file.filename, stored, len(data), sha, file_metadata_json)
+                    )
+                    uploaded_file_ids.append(fid)
+                conn_files.commit()
+                conn_files.close()
+
+            rush_form_data = {
+                "requester_name": requester_name.strip(),
+                "requester_email": requester_email.strip(),
+                "print_name": print_name.strip() if print_name else "",
+                "printer": printer,
+                "material": material,
+                "colors": colors.strip(),
+                "link_url": link_url.strip() if link_url else "",
+                "notes": notes or "",
+                "fulfillment_method": fulfillment_method,
+                "ship_recipient_name": (ship_recipient_name or "").strip(),
+                "ship_recipient_phone": (ship_recipient_phone or "").strip(),
+                "ship_address_line1": (ship_address_line1 or "").strip(),
+                "ship_address_line2": (ship_address_line2 or "").strip(),
+                "ship_city": (ship_city or "").strip(),
+                "ship_state": (ship_state or "").strip(),
+                "ship_postal_code": (ship_postal_code or "").strip(),
+                "ship_country": (ship_country or "US").strip(),
+                "ship_service_preference": (ship_service_preference or "").strip(),
+            }
+
+            checkout_url, result = create_rush_fee_checkout(
+                rush_price_cents=rush_price_cents,
+                requester_name=requester_name.strip(),
+                requester_email=requester_email.strip(),
+                print_name=print_name.strip() if print_name else "",
+                form_data=rush_form_data,
+                file_ids=uploaded_file_ids,
+                account_id=user.id if user else None,
+            )
+            if checkout_url:
+                return RedirectResponse(url=checkout_url, status_code=303)
+            logger.error(f"[SUBMIT] Stripe rush checkout failed: {result}")
+            # Fall through to legacy flow on Stripe error
+
+    # Priority: P1 if rush requested AND payment confirmed (legacy Venmo), P3 default
     is_rush = rush_request and rush_payment_confirmed
     priority = 1 if is_rush else 3
-    
+
     # Build rush note for admin (stored in admin_notes, not special_notes)
     admin_notes = None
     if is_rush:
@@ -200,7 +272,7 @@ async def submit(
             admin_notes = f"🚀 RUSH REQUEST (${final_rush_price} paid - Brandon Tax™ x5) - Priority processing"
         else:
             admin_notes = f"🚀 RUSH REQUEST (${final_rush_price} paid) - Priority processing"
-    
+
     # If rush requested but no payment, add note for admin
     if rush_request and not rush_payment_confirmed:
         admin_notes = f"⚠️ Rush requested (${final_rush_price}) but payment NOT confirmed - verify before prioritizing"
@@ -1239,7 +1311,7 @@ def store_item_view(request: Request, item_id: str):
 
 
 @router.post("/submit-store-request/{item_id}")
-def submit_store_request(
+async def submit_store_request(
     request: Request,
     item_id: str,
     requester_name: str = Form(...),
@@ -1253,8 +1325,23 @@ def submit_store_request(
     if not item:
         conn.close()
         raise HTTPException(status_code=404, detail="Store item not found")
-    
-    # Create request
+    conn.close()
+
+    # If item has a price and payments are enabled, redirect to Stripe Checkout
+    if item["price_cents"] and item["price_cents"] > 0:
+        from app.payments import is_payments_enabled, create_store_item_checkout
+        if is_payments_enabled():
+            user = await optional_user(request)
+            checkout_url, result = create_store_item_checkout(
+                dict(item), requester_name, requester_email, colors, notes,
+                account_id=user.id if user else None,
+            )
+            if checkout_url:
+                return RedirectResponse(url=checkout_url, status_code=303)
+            logger.error(f"[STORE] Stripe checkout creation failed: {result}")
+
+    # Free item flow (original logic)
+    conn = db()
     rid = str(uuid.uuid4())
     created = now_iso()
     access_token = secrets.token_urlsafe(32)
@@ -1474,3 +1561,37 @@ async def email_unsubscribe_save(
     update_user_notification_prefs(email, current_prefs)
     
     return RedirectResponse(url=f"/email/unsubscribe?token={token}&saved=1", status_code=303)
+
+
+# ─────────────────────────── PAYMENT SUCCESS PAGE ─────────────────────────────
+
+
+@router.get("/payment/success", response_class=HTMLResponse)
+async def payment_success(request: Request, session_id: str = ""):
+    """Post-payment landing page after Stripe Checkout redirect."""
+    from app.payments import get_payment_by_session_id
+
+    payment = None
+    req = None
+    status = "processing"
+
+    if session_id:
+        payment = get_payment_by_session_id(session_id)
+
+    if payment:
+        status = payment.get("status", "processing")
+        if payment.get("request_id"):
+            conn = db()
+            req = conn.execute("SELECT * FROM requests WHERE id = ?", (payment["request_id"],)).fetchone()
+            conn.close()
+            if req:
+                req = dict(req)
+
+    return templates.TemplateResponse("payment_success.html", {
+        "request": request,
+        "payment": payment,
+        "req": req,
+        "status": status,
+        "version": APP_VERSION,
+        "app_title": APP_TITLE,
+    })

@@ -686,6 +686,18 @@
     <!-- Payment Section -->
     <div id="rush-payment-section" class="mt-4 pt-4 border-t border-amber-800/50 hidden">
       <div class="bg-zinc-950/60 rounded-xl p-4">
+        {% if payments_enabled is defined and payments_enabled %}
+        <div class="flex items-center gap-3 mb-2">
+          <span class="text-lg">🔒</span>
+          <div>
+            <p class="text-sm font-medium text-amber-200">Secure payment via Stripe</p>
+            <p class="text-xs text-zinc-400">You'll be redirected to Stripe Checkout after submitting</p>
+          </div>
+        </div>
+        <p class="text-sm text-zinc-400">
+          Rush fee: <span id="rush-price-amount" class="font-bold text-amber-300">${{ rush_settings.fee }}</span>
+        </p>
+        {% else %}
         <p class="text-sm text-zinc-300 mb-3">
           Send <span id="rush-price-amount" class="font-bold text-amber-300">${{ rush_settings.fee }}</span> via Venmo:
         </p>
@@ -702,6 +714,7 @@
                  class="w-4 h-4 rounded border-amber-600 text-amber-500 focus:ring-amber-500" />
           <span class="text-sm text-amber-200">I have sent payment</span>
         </label>
+        {% endif %}
       </div>
     </div>
   </div>

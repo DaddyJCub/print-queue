@@ -76,6 +76,12 @@
               <p class="font-medium text-zinc-200">{{ files|length }} file{% if files|length > 1 %}s{% endif %}</p>
             </div>
           {% endif %}
+          {% if item.price_cents and item.price_cents > 0 %}
+            <div>
+              <span class="text-zinc-500">Price</span>
+              <p class="font-bold text-emerald-400 text-lg">${{ '%.2f' | format(item.price_cents / 100.0) }}</p>
+            </div>
+          {% endif %}
         </div>
       </div>
       
@@ -114,7 +120,11 @@
           <input type="hidden" name="store_item_id" value="{{ item.id }}" />
           
           <button type="submit" class="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 transition px-4 py-3.5 text-sm font-bold shadow-lg shadow-indigo-900/30 flex items-center justify-center gap-2">
+            {% if item.price_cents and item.price_cents > 0 %}
+            <span>💳</span> Purchase &amp; Request — ${{ '%.2f' | format(item.price_cents / 100.0) }}
+            {% else %}
             <span>🖨️</span> Submit Request
+            {% endif %}
           </button>
         </form>
         

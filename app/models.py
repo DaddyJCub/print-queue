@@ -103,6 +103,13 @@ class AuditAction(str, Enum):
     PRINTER_PRINT_CANCELLED = "printer_print_cancelled"
     PRINTER_FILE_UPLOADED = "printer_file_uploaded"
 
+    # Payment actions
+    PAYMENT_INITIATED = "payment_initiated"
+    PAYMENT_COMPLETED = "payment_completed"
+    PAYMENT_FAILED = "payment_failed"
+    QUOTE_SET = "quote_set"
+    QUOTE_PAID = "quote_paid"
+
 
 class TripMemberRole(str, Enum):
     """Trip member permission levels"""
