@@ -145,9 +145,9 @@ def _qr_svg(payload: str) -> str:
         raise HTTPException(status_code=503, detail="QR generator unavailable") from exc
     qr = qrcode.QRCode(
         version=None,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
         box_size=8,
-        border=2,
+        border=4,
     )
     qr.add_data(payload)
     qr.make(fit=True)
@@ -356,6 +356,30 @@ def _get_device_for_owner(conn: sqlite3.Connection, device_id: str, owner_id: st
     if row["owner_user_id"] != owner_id:
         raise HTTPException(status_code=403, detail="Not allowed for this device")
     return row
+
+
+def _admin_device_payload(row: sqlite3.Row) -> Dict[str, Any]:
+    return {
+        "device_id": row["device_id"],
+        "name": row["name"],
+        "owner_user_id": row["owner_user_id"],
+        "claimed": bool(row["owner_user_id"]),
+        "created_at": row["created_at"],
+        "claimed_at": row["claimed_at"] if "claimed_at" in row.keys() else None,
+        "last_seen_at": row["last_seen_at"],
+        "online": _is_online(row["last_seen_at"]),
+        "fw_version": row["fw_version"],
+        "app_version": row["app_version"],
+        "rssi": row["rssi"],
+        "notes": row["notes"] if "notes" in row.keys() else None,
+        "state": _json_loads(row["state_json"], {}) if "state_json" in row.keys() else {},
+        "update": {
+            "status": (row["update_status"] if "update_status" in row.keys() else None) or "idle",
+            "target_version": row["target_version"] if "target_version" in row.keys() else None,
+            "progress": row["progress"] if ("progress" in row.keys() and row["progress"] is not None) else 0,
+            "last_error": row["last_error"] if "last_error" in row.keys() else None,
+        },
+    }
 
 
 def _validate_action_payload(action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -1459,6 +1483,154 @@ async def admin_rotate_claim_code(device_id: str, admin=Depends(require_admin)):
     )
 
 
+def _fetch_admin_device_row(conn: sqlite3.Connection, device_id: str) -> sqlite3.Row:
+    row = conn.execute(
+        """
+        SELECT d.*, ds.state_json, us.status as update_status, us.target_version, us.progress, us.last_error
+        FROM devices d
+        LEFT JOIN device_state ds ON ds.device_id = d.device_id
+        LEFT JOIN device_update_status us ON us.device_id = d.device_id
+        WHERE d.device_id = ?
+        """,
+        (device_id,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return row
+
+
+@router.patch("/api/printellect/admin/devices/{device_id}")
+async def admin_update_device(device_id: str, request: Request, admin=Depends(require_admin)):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    updates = {}
+    if "name" in payload:
+        updates["name"] = (payload.get("name") or device_id).strip()
+    if "notes" in payload:
+        notes = payload.get("notes")
+        updates["notes"] = (str(notes).strip() if notes is not None else None) or None
+    if "owner_user_id" in payload:
+        owner_user_id = (payload.get("owner_user_id") or "").strip()
+        updates["owner_user_id"] = owner_user_id or None
+
+    if not updates:
+        raise HTTPException(status_code=422, detail="No updatable fields provided")
+
+    conn = db()
+    row = conn.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    new_owner = updates.get("owner_user_id", row["owner_user_id"])
+    owner_changed = ("owner_user_id" in updates) and (new_owner != row["owner_user_id"])
+
+    if "owner_user_id" in updates and new_owner:
+        account_row = conn.execute("SELECT id FROM accounts WHERE id = ?", (new_owner,)).fetchone()
+        if not account_row:
+            conn.close()
+            raise HTTPException(status_code=422, detail="owner_user_id not found")
+
+    assignments = []
+    params: list[Any] = []
+    for key in ("name", "notes", "owner_user_id"):
+        if key in updates:
+            assignments.append(f"{key} = ?")
+            params.append(updates[key])
+
+    if owner_changed and not new_owner:
+        assignments.append("claimed_at = NULL")
+    elif owner_changed and new_owner:
+        assignments.append("claimed_at = COALESCE(claimed_at, ?)")
+        params.append(now_iso())
+
+    params.append(device_id)
+    conn.execute(f"UPDATE devices SET {', '.join(assignments)} WHERE device_id = ?", tuple(params))
+
+    if owner_changed:
+        conn.execute(
+            "UPDATE device_tokens SET revoked_at = ? WHERE device_id = ? AND revoked_at IS NULL",
+            (now_iso(), device_id),
+        )
+
+    _audit(
+        conn,
+        action="printellect_device_updated",
+        actor_type="user",
+        actor_id=getattr(admin, "id", None),
+        target_type="device",
+        target_id=device_id,
+        details={"updates": updates, "owner_changed": owner_changed},
+    )
+    conn.commit()
+    refreshed = _fetch_admin_device_row(conn, device_id)
+    conn.close()
+    return JSONResponse({"ok": True, "device": _admin_device_payload(refreshed)})
+
+
+@router.post("/api/printellect/admin/devices/{device_id}/unclaim")
+async def admin_unclaim_device(device_id: str, admin=Depends(require_admin)):
+    conn = db()
+    row = conn.execute("SELECT owner_user_id FROM devices WHERE device_id = ?", (device_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    conn.execute("UPDATE devices SET owner_user_id = NULL, claimed_at = NULL WHERE device_id = ?", (device_id,))
+    conn.execute(
+        "UPDATE device_tokens SET revoked_at = ? WHERE device_id = ? AND revoked_at IS NULL",
+        (now_iso(), device_id),
+    )
+    _audit(
+        conn,
+        action="printellect_device_unclaimed",
+        actor_type="user",
+        actor_id=getattr(admin, "id", None),
+        target_type="device",
+        target_id=device_id,
+        details={"previous_owner": row["owner_user_id"]},
+    )
+    conn.commit()
+    refreshed = _fetch_admin_device_row(conn, device_id)
+    conn.close()
+    return JSONResponse({"ok": True, "device": _admin_device_payload(refreshed)})
+
+
+@router.delete("/api/printellect/admin/devices/{device_id}")
+async def admin_delete_device(device_id: str, force: bool = False, admin=Depends(require_admin)):
+    conn = db()
+    row = conn.execute("SELECT owner_user_id FROM devices WHERE device_id = ?", (device_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Device not found")
+    if row["owner_user_id"] and not force:
+        conn.close()
+        raise HTTPException(status_code=409, detail="Device is claimed. Use force=1 to delete.")
+
+    conn.execute("DELETE FROM device_tokens WHERE device_id = ?", (device_id,))
+    conn.execute("DELETE FROM commands WHERE device_id = ?", (device_id,))
+    conn.execute("DELETE FROM device_state WHERE device_id = ?", (device_id,))
+    conn.execute("DELETE FROM device_update_status WHERE device_id = ?", (device_id,))
+    conn.execute("UPDATE pairing_sessions SET claimed_device_id = NULL WHERE claimed_device_id = ?", (device_id,))
+    conn.execute("DELETE FROM devices WHERE device_id = ?", (device_id,))
+
+    _audit(
+        conn,
+        action="printellect_device_deleted",
+        actor_type="user",
+        actor_id=getattr(admin, "id", None),
+        target_type="device",
+        target_id=device_id,
+        details={"force": bool(force), "had_owner": bool(row["owner_user_id"])},
+    )
+    conn.commit()
+    conn.close()
+    return JSONResponse({"ok": True, "deleted_device_id": device_id})
+
+
 @router.get("/api/printellect/admin/devices")
 async def admin_list_devices(admin=Depends(require_admin)):
     conn = db()
@@ -1475,25 +1647,7 @@ async def admin_list_devices(admin=Depends(require_admin)):
 
     devices = []
     for row in rows:
-        devices.append(
-            {
-                "device_id": row["device_id"],
-                "name": row["name"],
-                "owner_user_id": row["owner_user_id"],
-                "claimed": bool(row["owner_user_id"]),
-                "last_seen_at": row["last_seen_at"],
-                "online": _is_online(row["last_seen_at"]),
-                "fw_version": row["fw_version"],
-                "app_version": row["app_version"],
-                "state": _json_loads(row["state_json"], {}),
-                "update": {
-                    "status": row["update_status"] or "idle",
-                    "target_version": row["target_version"],
-                    "progress": row["progress"] if row["progress"] is not None else 0,
-                    "last_error": row["last_error"],
-                },
-            }
-        )
+        devices.append(_admin_device_payload(row))
 
     return JSONResponse({"ok": True, "devices": devices})
 

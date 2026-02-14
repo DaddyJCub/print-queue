@@ -41,7 +41,7 @@ APP_VERSION = "0.17.0"
 #   - 0.x.PATCH = Bug fixes only
 #
 # Changelog:
-# 0.17.0 - [FEATURE] Printellect production flow upgrades: /pair deep-link auto-claim + redirect, admin QR label generation/printing, OTA package-zip upload mode, expanded device control panel, finalized Pico provisioning contract docs
+# 0.17.0 - [FEATURE] Printellect production flow upgrades: /pair deep-link auto-claim + redirect, admin registry management (save/unclaim/delete), admin QR/device.json automation, OTA package-zip upload mode, expanded device control panel, finalized Pico provisioning contract docs
 # 0.16.0 - [FEATURE] Printellect device control foundation: user/account modal flow, private feature toggle management, device debug endpoint, Pico handoff docs, CI feature-flag fixes
 # 0.15.1 - [PATCH] Camera fix: skip ustreamer placeholder frames, use Moonraker snapshot URL, Shippo webhook hardening, shipping from-address override, 295 tests
 # 0.15.0 - [FEATURE] Shipping fulfillment: Shippo integration (rates, labels, tracking), admin shipping dashboard, requester shipping portal, webhook support, 291 tests

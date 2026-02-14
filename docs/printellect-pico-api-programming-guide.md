@@ -93,6 +93,7 @@ Rules:
 - Write only after `status=provisioned` from `/device/v1/provision`.
 - Delete on `401` from bearer endpoints.
 - Delete on factory reset.
+- Also delete when changing `/device.json` to a different `device_id`/`claim_code` identity.
 
 ### 3.4 `/app_state.json`
 Example:

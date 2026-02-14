@@ -63,6 +63,7 @@
 
     <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
       <h2 class="font-semibold mb-3">Devices</h2>
+      <p id="manageStatus" class="text-xs text-zinc-400 mb-2 min-h-4"></p>
       <div id="devices" class="space-y-2"></div>
     </div>
   </div>
@@ -73,6 +74,10 @@
 
     function qrSvgUrl(payload) {
       return `/api/printellect/admin/qr.svg?payload=${encodeURIComponent(payload)}`;
+    }
+
+    function qrLabelPayload(label) {
+      return (label?.fallback_url || label?.qr_payload || '').trim();
     }
 
     function htmlEscape(value) {
@@ -103,6 +108,12 @@
       };
     }
 
+    function setManageStatus(message, isError = false) {
+      const el = document.getElementById('manageStatus');
+      el.className = `text-xs mb-2 min-h-4 ${isError ? 'text-red-300' : 'text-zinc-400'}`;
+      el.textContent = message || '';
+    }
+
     function downloadText(filename, content, mimeType = 'text/plain;charset=utf-8') {
       const blob = new Blob([content], {type: mimeType});
       const url = URL.createObjectURL(blob);
@@ -117,7 +128,7 @@
 
     async function downloadQrSvg() {
       if (!lastLabel) return;
-      const resp = await fetch(qrSvgUrl(lastLabel.qr_payload));
+      const resp = await fetch(qrSvgUrl(qrLabelPayload(lastLabel)));
       if (!resp.ok) return;
       const text = await resp.text();
       downloadText(`${lastLabel.device_id}-pairing-qr.svg`, text, 'image/svg+xml');
@@ -134,7 +145,7 @@
       if (!label) return;
       lastLabel = label;
       document.getElementById('labelPanel').classList.remove('hidden');
-      document.getElementById('labelQr').src = qrSvgUrl(label.qr_payload);
+      document.getElementById('labelQr').src = qrSvgUrl(qrLabelPayload(label));
       document.getElementById('labelDeviceId').textContent = label.device_id;
       document.getElementById('labelName').textContent = label.name || label.device_id;
       document.getElementById('labelClaim').textContent = label.claim_code;
@@ -151,7 +162,7 @@
 
     function printLabel() {
       if (!lastLabel) return;
-      const qr = qrSvgUrl(lastLabel.qr_payload);
+      const qr = qrSvgUrl(qrLabelPayload(lastLabel));
       const safeDeviceId = htmlEscape(lastLabel.device_id);
       const safeName = htmlEscape(lastLabel.name || lastLabel.device_id);
       const safeClaimCode = htmlEscape(lastLabel.claim_code);
@@ -187,17 +198,38 @@
         devicesById.set(d.device_id, d);
         const row = document.createElement('div');
         row.className = 'rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm';
+        const safeName = htmlEscape(d.name || d.device_id);
+        const safeDeviceId = htmlEscape(d.device_id);
+        const safeOwner = htmlEscape(d.owner_user_id || '');
+        const safeNotes = htmlEscape(d.notes || '');
         row.innerHTML = `
-          <div class="grid md:grid-cols-12 md:items-center gap-2">
+          <div class="grid md:grid-cols-12 gap-2">
             <div class="md:col-span-3">
-              <div class="font-semibold">${d.name || d.device_id}</div>
-              <div class="text-xs text-zinc-400 font-mono">${d.device_id}</div>
+              <div class="font-semibold">${safeName}</div>
+              <div class="text-xs text-zinc-400 font-mono">${safeDeviceId}</div>
             </div>
-            <div class="md:col-span-3 text-xs text-zinc-400">${d.owner_user_id || 'unclaimed'}</div>
+            <div class="md:col-span-2 text-xs text-zinc-400">${d.owner_user_id || 'unclaimed'}</div>
             <div class="md:col-span-3 text-xs text-zinc-400 font-mono">fw ${d.fw_version || '-'} / app ${d.app_version || '-'}</div>
-            <div class="md:col-span-2 text-xs ${d.online ? 'text-emerald-300' : 'text-zinc-400'}">${d.online ? 'online' : 'offline'}</div>
-            <div class="md:col-span-1 text-right">
+            <div class="md:col-span-1 text-xs ${d.online ? 'text-emerald-300' : 'text-zinc-400'}">${d.online ? 'online' : 'offline'}</div>
+            <div class="md:col-span-3 text-right flex md:justify-end gap-1">
+              <button data-save="${d.device_id}" class="rounded-md border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-2 py-1 text-xs">Save</button>
+              <button data-unclaim="${d.device_id}" class="rounded-md border border-amber-700 bg-amber-950/40 hover:bg-amber-900/40 px-2 py-1 text-xs">Unclaim</button>
+              <button data-delete="${d.device_id}" class="rounded-md border border-red-700 bg-red-950/40 hover:bg-red-900/40 px-2 py-1 text-xs">Delete</button>
               <button data-rotate="${d.device_id}" class="rounded-md border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-2 py-1 text-xs">Rotate + Label</button>
+            </div>
+          </div>
+          <div class="grid md:grid-cols-3 gap-2 mt-3">
+            <div>
+              <label class="block text-[11px] text-zinc-500 mb-1">Name</label>
+              <input data-name="${d.device_id}" value="${safeName}" class="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-zinc-500 mb-1">Owner account id (blank = unclaimed)</label>
+              <input data-owner="${d.device_id}" value="${safeOwner}" class="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs font-mono" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-zinc-500 mb-1">Notes</label>
+              <input data-notes="${d.device_id}" value="${safeNotes}" class="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs" />
             </div>
           </div>
         `;
@@ -211,6 +243,68 @@
           const data = await resp.json();
           const autoDownload = document.getElementById('autoDownloadProvisioning')?.checked;
           showLabel(data, {autoDownload});
+          setManageStatus(`Rotated claim code for ${deviceId}.`);
+          await loadDevices();
+        });
+      }
+
+      for (const btn of root.querySelectorAll('button[data-save]')) {
+        btn.addEventListener('click', async () => {
+          const deviceId = btn.getAttribute('data-save');
+          const name = root.querySelector(`input[data-name="${deviceId}"]`)?.value || '';
+          const owner_user_id = root.querySelector(`input[data-owner="${deviceId}"]`)?.value || '';
+          const notes = root.querySelector(`input[data-notes="${deviceId}"]`)?.value || '';
+          setManageStatus(`Saving ${deviceId}...`);
+          const resp = await fetch(`/api/printellect/admin/devices/${deviceId}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, owner_user_id, notes}),
+          });
+          const raw = await resp.text();
+          let data = {};
+          try { data = JSON.parse(raw); } catch (_) {}
+          if (!resp.ok) {
+            setManageStatus(data.detail || 'Failed to save device', true);
+            return;
+          }
+          setManageStatus(`Saved ${deviceId}.`);
+          await loadDevices();
+        });
+      }
+
+      for (const btn of root.querySelectorAll('button[data-unclaim]')) {
+        btn.addEventListener('click', async () => {
+          const deviceId = btn.getAttribute('data-unclaim');
+          if (!confirm(`Unclaim ${deviceId} and revoke active tokens?`)) return;
+          setManageStatus(`Unclaiming ${deviceId}...`);
+          const resp = await fetch(`/api/printellect/admin/devices/${deviceId}/unclaim`, {method: 'POST'});
+          const raw = await resp.text();
+          let data = {};
+          try { data = JSON.parse(raw); } catch (_) {}
+          if (!resp.ok) {
+            setManageStatus(data.detail || 'Failed to unclaim device', true);
+            return;
+          }
+          setManageStatus(`Unclaimed ${deviceId}.`);
+          await loadDevices();
+        });
+      }
+
+      for (const btn of root.querySelectorAll('button[data-delete]')) {
+        btn.addEventListener('click', async () => {
+          const deviceId = btn.getAttribute('data-delete');
+          const force = confirm(`Delete ${deviceId} permanently? Click OK only if you understand this removes command/state/token history.`);
+          if (!force) return;
+          setManageStatus(`Deleting ${deviceId}...`);
+          const resp = await fetch(`/api/printellect/admin/devices/${deviceId}?force=1`, {method: 'DELETE'});
+          const raw = await resp.text();
+          let data = {};
+          try { data = JSON.parse(raw); } catch (_) {}
+          if (!resp.ok) {
+            setManageStatus(data.detail || 'Failed to delete device', true);
+            return;
+          }
+          setManageStatus(`Deleted ${deviceId}.`);
           await loadDevices();
         });
       }

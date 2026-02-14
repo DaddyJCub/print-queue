@@ -13,6 +13,8 @@
 6. Admin Device Registry now auto-generates and allows download of:
    - `device.json` (ready to copy to Pico)
    - QR SVG label
+7. QR labels are generated from the HTTPS fallback URL (`/pair?...`) for scanner compatibility.
+8. If you change `/device.json` identity on an already-provisioned board, delete `/token.json` before reboot.
 
 ---
 

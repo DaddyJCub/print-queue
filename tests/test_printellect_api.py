@@ -566,3 +566,49 @@ def test_admin_create_device_returns_device_json_bundle(client):
     assert device["device_json"]["device_id"] == device["device_id"]
     assert device["device_json"]["claim_code"] == device["claim_code"]
     assert device["device_json"]["hw_model"] == "pico2w"
+
+
+def test_admin_device_management_update_unclaim_delete(client):
+    created = client.post(
+        "/api/printellect/admin/devices",
+        json={"device_id": "perkbase-mgmt-1", "name": "Mgmt Device"},
+        cookies=_admin_cookie(),
+    )
+    assert created.status_code == 200
+    device = created.json()["device"]
+
+    owner_account_id, _ = _create_account_session(email="managed-owner@example.com")
+
+    updated = client.patch(
+        f"/api/printellect/admin/devices/{device['device_id']}",
+        json={"name": "Renamed Base", "notes": "bench test", "owner_user_id": owner_account_id},
+        cookies=_admin_cookie(),
+    )
+    assert updated.status_code == 200
+    updated_body = updated.json()["device"]
+    assert updated_body["name"] == "Renamed Base"
+    assert updated_body["owner_user_id"] == owner_account_id
+    assert updated_body["notes"] == "bench test"
+
+    blocked_delete = client.delete(
+        f"/api/printellect/admin/devices/{device['device_id']}",
+        cookies=_admin_cookie(),
+    )
+    assert blocked_delete.status_code == 409
+
+    unclaim = client.post(
+        f"/api/printellect/admin/devices/{device['device_id']}/unclaim",
+        cookies=_admin_cookie(),
+    )
+    assert unclaim.status_code == 200
+    assert unclaim.json()["device"]["owner_user_id"] is None
+
+    deleted = client.delete(
+        f"/api/printellect/admin/devices/{device['device_id']}",
+        cookies=_admin_cookie(),
+    )
+    assert deleted.status_code == 200
+
+    listed = client.get("/api/printellect/admin/devices", cookies=_admin_cookie())
+    assert listed.status_code == 200
+    assert all(d["device_id"] != device["device_id"] for d in listed.json().get("devices", []))
