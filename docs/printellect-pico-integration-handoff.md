@@ -197,7 +197,105 @@ Actions and payload contract from queue:
 
 ## 8) Useful docs
 
+- Final implementation guide (latest changes first): `docs/printellect-pico-final-implementation-guide.md`
 - Full Pico guide: `docs/printellect-pico-api-programming-guide.md`
 - Device API spec: `docs/printellect-device-api.md`
 - Device state machine: `docs/printellect-device-state-machine.md`
 - User setup guide: `docs/setup-my-printellect-base.md`
+
+## 9) Firmware implementation expectations (explicit)
+
+This is the minimum expected from Pico firmware for production readiness.
+
+### 9.1 Scheduler and timing
+
+- Main loop should be non-blocking (no long global sleeps).
+- Command poll cadence:
+  - target every 1.0-1.2s
+  - enforce minimum 1.0s between polls
+  - on `429`, read `Retry-After` and defer only command polling
+- Heartbeat cadence:
+  - every 15-30s on a separate timer
+  - must continue even when command poll is rate-limited
+- Provision cadence:
+  - every 2-5s while unclaimed
+
+### 9.2 Network and recovery behavior
+
+- If bearer endpoints return `401`, clear token and reprovision.
+- For transport errors (`status=0` or request exception):
+  - retry with bounded backoff
+  - keep local button controls active
+  - reconnect STA if repeated failures
+- Device must never hard-lock due to temporary cloud loss.
+
+### 9.3 Command execution contract
+
+For each remote command:
+1. POST `executing`
+2. Execute hardware action
+3. POST state update (if changed)
+4. POST `completed` or `failed` with error string
+
+Duplicate command defense:
+- Keep a short ring buffer of recent command IDs in `/app_state.json` and skip re-execution if replayed.
+
+### 9.4 Local controls parity
+
+- Physical button actions should use the same action code paths as remote commands.
+- Local state changes should still attempt state push best-effort.
+- Remote and local controls must not fight over shared hardware state (audio/LED lock discipline).
+
+### 9.5 Required local file semantics
+
+- `/device.json`: immutable identity (except factory reflash).
+- `/wifi.json`: rewritten only by setup portal after claim-code check.
+- `/token.json`: written only after `status=provisioned`.
+- `/app_state.json`: persisted for dedupe, settings defaults, OTA pending/rollback counters.
+
+### 9.6 OTA safety baseline
+
+- Validate downloaded file hashes before activation.
+- Stage update, set pending flag, reboot, then require boot-ok confirmation.
+- If pending version fails repeatedly, roll back to previous app set and report failure.
+
+### 9.7 Observability
+
+Serial logs should include:
+- current runtime state (`BOOT`, `TRY_STA`, `PROVISION_LOOP`, `NORMAL_RUN`)
+- API result status codes
+- command IDs and actions
+- reset events
+
+Security:
+- never print bearer token plaintext
+- avoid logging full claim code in production logs
+
+## 10) Provisioning model for production (what gets set before shipping)
+
+Recommended model (current backend contract):
+
+1. In admin registry, create device entry (or bulk create) with auto-generated:
+   - `device_id`
+   - `claim_code`
+2. Print label/QR from admin registry output:
+   - QR encodes `printellect://pair?device_id=...&claim=...`
+   - fallback URL encodes same values at `/pair` and can include `name`
+   - `/pair` flow auto-fills claim details in the signed-in account and redirects to device control when online
+3. Flash Pico with matching `/device.json`:
+   - same `device_id`
+   - same `claim_code`
+4. Ship device with no `/wifi.json` and no `/token.json`.
+
+Why this is the default:
+- Claim code is never stored plaintext in backend (hash-only), so the printed label and flashed `/device.json` are the source of truth.
+- Device can self-provision token only after owner claim; no USB token copy required.
+
+Alternative model (not current default):
+- Device generates random ID/claim at first boot and tries to self-register upstream.
+- This requires a separate bootstrap trust model (manufacturing key/cert) and extra backend API for secure registration.
+- Do not implement this in production without a signed manufacturing credential flow.
+
+Friendly names:
+- `name` is optional metadata and can be set at manufacturing time or during user claim.
+- Pico firmware should not depend on `name`; only `device_id` and `claim_code` are identity inputs.

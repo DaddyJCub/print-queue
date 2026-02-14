@@ -452,6 +452,71 @@ def test_release_upload_promote_and_fetch_files(client):
     assert "hello from ota" in file_resp.text
 
 
+def test_release_upload_package_zip_mode(client):
+    create = client.post(
+        "/api/printellect/admin/devices",
+        json={"device_id": "perkbase-1021", "name": "OTA Package Device"},
+        cookies=_admin_cookie(),
+    )
+    device = create.json()["device"]
+
+    _, session_token = _create_account_session(email="ota-package-owner@example.com")
+    client.cookies.set("session", session_token)
+    claim = client.post(
+        "/api/printellect/pairing/claim",
+        json={"device_id": device["device_id"], "claim_code": device["claim_code"]},
+    )
+    assert claim.status_code == 200
+
+    provision = client.post(
+        "/api/printellect/device/v1/provision",
+        json={
+            "device_id": device["device_id"],
+            "claim_code": device["claim_code"],
+            "fw_version": "1.0.0",
+            "app_version": "1.0.0",
+        },
+    )
+    token = provision.json()["device_token"]
+    auth = {"Authorization": f"Bearer {token}"}
+
+    with tempfile.TemporaryDirectory() as td:
+        package_path = Path(td) / "firmware_folder.zip"
+        with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("main.py", "print('package mode')\n")
+            zf.writestr("lib/audio.py", "VOLUME=20\n")
+
+        with package_path.open("rb") as package_fh:
+            upload = client.post(
+                "/api/printellect/admin/releases/upload",
+                data={"channel": "stable", "notes": "package mode", "version": "0.4.0-pkg", "entrypoint": "main.py"},
+                files={"package": ("firmware_folder.zip", package_fh, "application/zip")},
+                cookies=_admin_cookie(),
+            )
+
+    assert upload.status_code == 200
+    assert upload.json()["mode"] == "package"
+    assert upload.json()["version"] == "0.4.0-pkg"
+    assert upload.json()["file_count"] >= 2
+
+    promote = client.post(
+        "/api/printellect/admin/releases/0.4.0-pkg/promote",
+        json={},
+        cookies=_admin_cookie(),
+    )
+    assert promote.status_code == 200
+
+    latest = client.get("/api/printellect/device/v1/releases/latest?channel=stable", headers=auth)
+    assert latest.status_code == 200
+    latest_body = latest.json()
+    assert latest_body["version"] == "0.4.0-pkg"
+    assert latest_body["manifest"]["entrypoint"] == "main.py"
+
+    file_resp = client.get("/api/printellect/device/v1/releases/0.4.0-pkg/files/main.py", headers=auth)
+    assert file_resp.status_code == 200
+    assert "package mode" in file_resp.text
+
+
 def test_printellect_pages_render(client):
     _, session_token = _create_account_session(email="pages-owner@example.com")
     client.cookies.set("session", session_token)
@@ -459,6 +524,7 @@ def test_printellect_pages_render(client):
     owner_pages = [
         "/printellect/devices",
         "/printellect/add-device",
+        "/pair?device_id=perkbase-9999&claim=TEST&name=Demo",
     ]
     for path in owner_pages:
         resp = client.get(path)
@@ -471,3 +537,32 @@ def test_printellect_pages_render(client):
     for path in admin_pages:
         resp = client.get(path, cookies=_admin_cookie())
         assert resp.status_code == 200
+
+
+def test_admin_qr_svg_endpoint(client):
+    resp = client.get(
+        "/api/printellect/admin/qr.svg",
+        params={"payload": "printellect://pair?device_id=perkbase-001&claim=TEST"},
+        cookies=_admin_cookie(),
+    )
+    assert resp.status_code == 200
+    assert "svg" in (resp.headers.get("content-type") or "").lower()
+
+
+def test_admin_create_device_returns_device_json_bundle(client):
+    resp = client.post(
+        "/api/printellect/admin/devices",
+        json={"name": "Bench Device"},
+        cookies=_admin_cookie(),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    device = body["device"]
+    assert device["device_id"]
+    assert device["claim_code"]
+    assert device["qr_payload"].startswith("printellect://pair?")
+    assert "/pair?" in device["fallback_url"]
+    assert isinstance(device.get("device_json"), dict)
+    assert device["device_json"]["device_id"] == device["device_id"]
+    assert device["device_json"]["claim_code"] == device["claim_code"]
+    assert device["device_json"]["hw_model"] == "pico2w"

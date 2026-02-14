@@ -1,0 +1,154 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}Pair Device | Printellect{% endblock %}
+{% block nav_myrequests %}text-white bg-zinc-800{% endblock %}
+{% block bnav_myrequests %}active{% endblock %}
+{% block header_title %}Pair Device{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-4">
+  <section class="rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-600/15 via-zinc-900 to-zinc-900 p-5">
+    <p class="text-xs uppercase tracking-[0.2em] text-indigo-300">Printellect Pairing</p>
+    <h1 class="text-2xl font-bold mt-1">Claim your Printellect base</h1>
+    <p class="text-sm text-zinc-300 mt-2">Scan QR, claim to your account, then auto-open device controls when the base comes online.</p>
+  </section>
+
+  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+    <h2 class="font-semibold mb-3">Step 1 - Confirm local setup</h2>
+    <ol class="space-y-2 text-sm text-zinc-200 list-decimal list-inside">
+      <li>Join <span class="font-mono text-indigo-300">PRINTELLECT-SETUP-xxxx</span> from phone Wi-Fi settings.</li>
+      <li>Open <a class="text-indigo-300 underline" href="http://192.168.4.1/">http://192.168.4.1/</a> and save SSID/password + claim code.</li>
+      <li>Return here to claim and continue.</li>
+    </ol>
+  </section>
+
+  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+    <h2 class="font-semibold mb-3">Step 2 - Claim in your account</h2>
+    <form id="claimForm" class="space-y-3">
+      <div class="grid md:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-zinc-400 mb-1">Device ID</label>
+          <input id="deviceId" name="device_id" required class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 font-mono" />
+        </div>
+        <div>
+          <label class="block text-xs text-zinc-400 mb-1">Friendly Name (optional)</label>
+          <input id="deviceName" name="name" class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700" />
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs text-zinc-400 mb-1">Claim Code</label>
+        <input id="claimCode" name="claim_code" required class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 font-mono" />
+      </div>
+      <div class="flex gap-2">
+        <button id="claimBtn" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-semibold">Claim Device</button>
+        <a id="openDeviceBtn" href="#" class="hidden px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-semibold">Open Device Control</a>
+      </div>
+      <p id="status" class="text-xs text-zinc-400 min-h-4"></p>
+    </form>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const prefillDeviceId = {{ prefill_device_id|tojson }};
+const prefillClaim = {{ prefill_claim|tojson }};
+const prefillName = {{ prefill_name|tojson }};
+
+const form = document.getElementById('claimForm');
+const statusEl = document.getElementById('status');
+const claimBtn = document.getElementById('claimBtn');
+const openDeviceBtn = document.getElementById('openDeviceBtn');
+const deviceIdInput = document.getElementById('deviceId');
+const claimCodeInput = document.getElementById('claimCode');
+const nameInput = document.getElementById('deviceName');
+
+deviceIdInput.value = prefillDeviceId || '';
+claimCodeInput.value = prefillClaim || '';
+nameInput.value = prefillName || '';
+
+function setStatus(message, tone = 'muted') {
+  statusEl.className = 'text-xs min-h-4 ' + (
+    tone === 'ok' ? 'text-emerald-300' :
+    tone === 'error' ? 'text-red-300' :
+    'text-zinc-400'
+  );
+  statusEl.textContent = message;
+}
+
+async function pollUntilOnline(deviceId, timeoutMs = 90000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const resp = await fetch(`/api/printellect/devices/${encodeURIComponent(deviceId)}`);
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data?.device?.online) {
+        return true;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 2500));
+  }
+  return false;
+}
+
+async function runClaim() {
+  const device_id = (deviceIdInput.value || '').trim().toLowerCase();
+  const claim_code = (claimCodeInput.value || '').trim();
+  if (!device_id || !claim_code) {
+    setStatus('device_id and claim_code are required', 'error');
+    return;
+  }
+
+  setStatus('Claiming device...');
+  claimBtn.disabled = true;
+  claimBtn.classList.add('opacity-60', 'cursor-not-allowed');
+  openDeviceBtn.classList.add('hidden');
+
+  try {
+    const resp = await fetch('/api/printellect/pairing/claim', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({device_id, claim_code}),
+    });
+    const raw = await resp.text();
+    let data = {};
+    try { data = JSON.parse(raw); } catch (_) {}
+    if (!resp.ok) {
+      setStatus(data.detail || data.error || 'Claim failed', 'error');
+      return;
+    }
+
+    setStatus(`Claimed ${data.device_id || device_id}. Waiting for device to provision and come online...`, 'ok');
+    openDeviceBtn.href = `/printellect/devices/${encodeURIComponent(device_id)}`;
+    openDeviceBtn.classList.remove('hidden');
+
+    const online = await pollUntilOnline(device_id);
+    if (online) {
+      setStatus('Device is online. Opening control page...', 'ok');
+      window.location.href = `/printellect/devices/${encodeURIComponent(device_id)}`;
+      return;
+    }
+    setStatus('Claimed, but still offline. Open device control to monitor status.', 'muted');
+  } catch (_) {
+    setStatus('Network error while claiming device', 'error');
+  } finally {
+    claimBtn.disabled = false;
+    claimBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+  }
+}
+
+form?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  await runClaim();
+});
+
+if (prefillDeviceId && prefillClaim) {
+  const auto = new URLSearchParams(window.location.search).get('auto');
+  if (auto !== '0') {
+    runClaim();
+  } else {
+    setStatus('QR data loaded. Tap Claim Device to continue.', 'muted');
+  }
+}
+</script>
+{% endblock %}

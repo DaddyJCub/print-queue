@@ -9,6 +9,8 @@ Account-side note:
 
 Quick handoff summary:
 - `docs/printellect-pico-integration-handoff.md`
+- Final implementation guide (latest rollout notes first):
+- `docs/printellect-pico-final-implementation-guide.md`
 
 ## 1) Scope
 
@@ -39,6 +41,18 @@ Optional config override:
 Reference files:
 - `device/pico2w/device.json.example`
 - `device/pico2w/config.example.json`
+
+Manufacturing expectation (required for current cloud flow):
+- Backend admin must create each device record first (auto-generated IDs supported).
+- Printed label QR and flashed `/device.json` must carry the same `device_id` + `claim_code`.
+- Device ships without `/wifi.json` and `/token.json`.
+- QR fallback URL should be `/pair?device_id=...&claim=...&name=...` so the PWA can auto-claim for logged-in users.
+- Admin registry provides automated downloads for `device.json` and QR SVG during create/rotate flows.
+
+Identity decisions (current and future):
+- Current production path: server-assigned identity at manufacturing (`device_id` + `claim_code`), then hash stored server-side.
+- Not in current contract: first-boot random self-registration from Pico.
+- If self-registration is ever added, it must use a manufacturing trust credential and a dedicated bootstrap endpoint.
 
 ## 3) File Contract
 
@@ -151,7 +165,12 @@ Base path:
   - `GET /debug` (compact device-focused API map)
 - Full schema:
   - `GET https://<host>/openapi.json`
-  - `GET https://<host>/docs`
+- `GET https://<host>/docs`
+
+Factory/admin discovery endpoints useful during bring-up:
+- `GET /api/printellect/device/v1/debug` (firmware contract map)
+- `POST /api/printellect/admin/devices` (admin creates device identity + claim code)
+- `POST /api/printellect/admin/devices/{device_id}/claim-code/rotate` (admin rotates and reprints label)
 
 Client implementation:
 - `device/pico2w/lib/api_client.py`
@@ -197,6 +216,11 @@ Firmware behavior:
 - `provisioned`: write `/token.json`, enter bearer flow.
 - `403`: stop aggressive retries; surface local warning.
 - `429`: exponential backoff before retry.
+
+Provisioning identity source of truth:
+- Backend stores only `claim_code_hash`.
+- Firmware cannot recover a lost claim code from backend.
+- If label is lost, admin must rotate claim code and update/reflash `/device.json` to match.
 
 ## 7.2 Heartbeat (bearer)
 `POST /heartbeat`
@@ -410,12 +434,21 @@ Per device, backend/manufacturing must provide:
 - `device_id`
 - `claim_code` (printed in QR/label)
 - backend row with `claim_code_hash`
+- optional `name` (friendly label; not required by firmware)
 
 Recommended QR payload:
 - `printellect://pair?device_id=<id>&claim=<claim_code>`
+- optional: append `&name=<friendly_name>`
 
 Fallback URL QR payload:
 - `https://print.jcubhub.com/pair?device_id=<id>&claim=<claim_code>`
+- optional: append `&name=<friendly_name>`
+
+OTA publishing input for backend/admin:
+- You can upload either:
+  - one full firmware folder zip (`package` mode), or
+  - legacy `manifest.json` + `app_bundle.zip`.
+- Pico consumption is unchanged: it still reads cloud manifest/files endpoints only.
 
 ## 14) Local Bring-Up Steps
 

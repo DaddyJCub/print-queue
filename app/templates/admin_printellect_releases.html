@@ -8,25 +8,31 @@
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-7xl mx-auto p-6">
-    {% set active_page = 'features' %}
+    {% set active_page = 'printellect-releases' %}
     {% include 'admin_nav.html' %}
 
-    <div class="mb-5">
+    <div class="mb-5 rounded-2xl border border-cyan-900/60 bg-gradient-to-r from-cyan-950/30 to-zinc-900/80 p-4">
       <h1 class="text-2xl font-bold">Printellect Releases</h1>
-      <p class="text-sm text-zinc-400 mt-1">Upload OTA bundles, promote versions, and monitor release state.</p>
+      <p class="text-sm text-zinc-300 mt-1">Upload full firmware folder zips directly, or use legacy manifest + bundle mode.</p>
     </div>
 
-    <form id="uploadForm" class="space-y-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
-      <div class="grid md:grid-cols-4 gap-2">
-        <input type="file" name="manifest" accept="application/json" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm" required />
-        <input type="file" name="bundle" accept=".zip,application/zip" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm" required />
+    <form id="uploadForm" class="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
+      <div class="grid md:grid-cols-5 gap-2">
+        <input type="file" name="package" accept=".zip,application/zip" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm md:col-span-2" />
+        <input name="version" placeholder="version (required if no manifest)" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm font-mono" />
+        <input name="entrypoint" placeholder="entrypoint (default main.py)" value="main.py" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm font-mono" />
+        <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm font-semibold">Upload release</button>
+      </div>
+      <div class="grid md:grid-cols-3 gap-2">
+        <input type="file" name="manifest" accept="application/json" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm" />
+        <input type="file" name="bundle" accept=".zip,application/zip" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm" />
         <select name="channel" class="rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm">
           <option value="stable">stable</option>
           <option value="beta">beta</option>
         </select>
-        <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm font-semibold">Upload release</button>
       </div>
       <input name="notes" placeholder="notes (optional)" class="w-full rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-sm" />
+      <p class="text-xs text-zinc-400">Preferred: upload one firmware zip in <span class="font-mono">package</span>. Legacy mode: manifest + bundle fields.</p>
     </form>
 
     <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">

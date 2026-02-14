@@ -170,10 +170,17 @@
 
           <form id="printellect-claim-form" class="space-y-3 rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
             <p class="text-xs uppercase tracking-wider text-indigo-300">Step 2 - Claim in account</p>
-            <div>
-              <label class="block text-xs text-zinc-400 mb-1">Device ID</label>
-              <input name="device_id" required placeholder="perkbase-001" class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white font-mono" />
-              <p class="text-[11px] text-zinc-500 mt-1">From QR label or printed sticker.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs text-zinc-400 mb-1">Device ID</label>
+                <input name="device_id" required placeholder="perkbase-001" class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white font-mono" />
+                <p class="text-[11px] text-zinc-500 mt-1">From QR label or printed sticker.</p>
+              </div>
+              <div>
+                <label class="block text-xs text-zinc-400 mb-1">Friendly Name (optional)</label>
+                <input name="name" placeholder="Living Room Base" class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white" />
+                <p class="text-[11px] text-zinc-500 mt-1">Saved to your account during claim.</p>
+              </div>
             </div>
             <div>
               <label class="block text-xs text-zinc-400 mb-1">Claim Code</label>
@@ -1045,10 +1052,15 @@ async function runPrintellectQrScan() {
         const url = new URL(raw.replace('printellect://pair', 'https://print.jcubhub.com/pair'));
         const deviceId = url.searchParams.get('device_id');
         const claim = url.searchParams.get('claim');
+        const name = url.searchParams.get('name');
         if (deviceId && claim) {
           const form = document.getElementById('printellect-claim-form');
           form.querySelector('input[name="device_id"]').value = deviceId;
           form.querySelector('input[name="claim_code"]').value = claim;
+          if (name) {
+            const nameInput = form.querySelector('input[name="name"]');
+            if (nameInput) nameInput.value = name;
+          }
           stopPrintellectScan();
           return;
         }
@@ -1080,7 +1092,11 @@ document.getElementById('printellect-claim-form')?.addEventListener('submit', as
   try { data = JSON.parse(raw); } catch (_) {}
   if (resp.ok) {
     result.className = 'text-xs text-emerald-300 min-h-4';
-    result.textContent = `Claimed ${data.device_id || payload.device_id}. Device will show online after provisioning.`;
+    result.textContent = `Claimed ${data.name || data.device_id || payload.device_id}.`;
+    if (data.online && data.device_url) {
+      window.location.href = data.device_url;
+      return;
+    }
   } else {
     result.className = 'text-xs text-red-300 min-h-4';
     result.textContent = data.detail || data.error || 'Claim failed';
@@ -1103,6 +1119,23 @@ loadPrintellectSummary();
 if (window.location.hash === '#printellect') {
   openPrintellectModal();
 }
+
+(() => {
+  const params = new URLSearchParams(window.location.search);
+  const pairDevice = params.get('pair_device_id');
+  const pairClaim = params.get('pair_claim');
+  const pairName = params.get('pair_name');
+  if (!pairDevice || !pairClaim) return;
+  const form = document.getElementById('printellect-claim-form');
+  if (!form) return;
+  form.querySelector('input[name="device_id"]').value = pairDevice;
+  form.querySelector('input[name="claim_code"]').value = pairClaim;
+  if (pairName) {
+    const nameInput = form.querySelector('input[name="name"]');
+    if (nameInput) nameInput.value = pairName;
+  }
+  openPrintellectModal();
+})();
 {% endif %}
 </script>
 {% endblock %}

@@ -6,7 +6,7 @@
 {% block header_title %}Device Control{% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto space-y-4">
+<div class="max-w-6xl mx-auto space-y-4">
   <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
     <div class="flex items-start justify-between gap-3">
       <div>
@@ -20,14 +20,86 @@
     </div>
   </section>
 
-  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
-    <h2 class="font-semibold mb-3">Actions</h2>
-    <div class="grid sm:grid-cols-3 gap-2">
-      <button data-action="play" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold">Play Juggernog</button>
-      <button data-action="stop" class="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-semibold">Stop Audio</button>
-      <button data-action="reboot" class="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-semibold">Reboot</button>
+  <section id="actionStatus" class="hidden border rounded-2xl p-3 text-sm"></section>
+
+  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 space-y-4">
+    <h2 class="font-semibold">Playback</h2>
+    <div class="grid md:grid-cols-4 gap-2">
+      <select id="perkSelect" class="md:col-span-2 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm">
+        <option value="juggernog">Juggernog</option>
+        <option value="quick_revive">Quick Revive</option>
+        <option value="double_tap">Double Tap</option>
+        <option value="speed_cola">Speed Cola</option>
+        <option value="deadshot">Deadshot</option>
+        <option value="staminup">Stamin-Up</option>
+        <option value="mulekick">Mule Kick</option>
+      </select>
+      <button id="playBtn" class="device-action-control px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold">Play Perk</button>
+      <button id="stopBtn" class="device-action-control px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-semibold">Stop Audio</button>
     </div>
   </section>
+
+  <div class="grid lg:grid-cols-3 gap-4">
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+      <h2 class="font-semibold mb-3">Volume</h2>
+      <div class="space-y-3">
+        <input id="volumeRange" type="range" min="0" max="30" value="20" class="w-full accent-indigo-500">
+        <div class="flex items-center justify-between text-sm">
+          <span>Level: <span id="volumeValue" class="font-semibold">20</span>/30</span>
+          <button id="volumeBtn" class="device-action-control px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg">Apply</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+      <h2 class="font-semibold mb-3">Brightness</h2>
+      <div class="space-y-3">
+        <input id="brightnessRange" type="range" min="0" max="100" value="80" class="w-full accent-indigo-500">
+        <div class="flex items-center justify-between text-sm">
+          <span>Level: <span id="brightnessValue" class="font-semibold">80</span>/100</span>
+          <button id="brightnessBtn" class="device-action-control px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg">Apply</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+      <h2 class="font-semibold mb-3">Idle + System</h2>
+      <div class="space-y-2">
+        <select id="idleMode" class="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm">
+          <option value="default">default</option>
+          <option value="off">off</option>
+          <option value="ambient">ambient</option>
+          <option value="pulse">pulse</option>
+        </select>
+        <button id="idleBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm">Set Idle Mode</button>
+        <button id="rebootBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm">Reboot</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="grid lg:grid-cols-2 gap-4">
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+      <h2 class="font-semibold mb-3">Diagnostics</h2>
+      <div class="grid sm:grid-cols-2 gap-2 mb-3">
+        <input id="lightsPattern" value="pulse" placeholder="lights pattern" class="px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm">
+        <input id="lightsDuration" type="number" min="100" step="100" value="2000" placeholder="duration ms" class="px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm">
+      </div>
+      <button id="testLightsBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm mb-3">Run Light Test</button>
+      <div class="grid sm:grid-cols-[1fr_auto] gap-2">
+        <input id="testTrack" value="juggernog" placeholder="track id" class="px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm">
+        <button id="testAudioBtn" class="device-action-control px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm">Test Audio</button>
+      </div>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+      <h2 class="font-semibold mb-3">OTA</h2>
+      <div class="grid sm:grid-cols-[1fr_auto] gap-2">
+        <input id="updateVersion" value="latest" placeholder="latest or version" class="px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm font-mono">
+        <button id="updateBtn" class="device-action-control px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold">Apply Update</button>
+      </div>
+      <p class="text-xs text-zinc-500 mt-2">Use <span class="font-mono">latest</span> or a release version like <span class="font-mono">0.16.0</span>.</p>
+    </section>
+  </div>
 
   <div class="grid lg:grid-cols-2 gap-4">
     <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
@@ -46,6 +118,27 @@
 {% block scripts %}
 <script>
 const deviceId = {{ device_id|tojson }};
+let lastDevice = null;
+
+function showActionStatus(ok, message) {
+  const box = document.getElementById('actionStatus');
+  box.classList.remove('hidden', 'bg-emerald-900/20', 'border-emerald-500/40', 'text-emerald-200', 'bg-red-900/20', 'border-red-500/40', 'text-red-200');
+  if (ok) {
+    box.classList.add('bg-emerald-900/20', 'border-emerald-500/40', 'text-emerald-200');
+  } else {
+    box.classList.add('bg-red-900/20', 'border-red-500/40', 'text-red-200');
+  }
+  box.textContent = message;
+}
+
+function setControlsEnabled(isOnline) {
+  const controls = document.querySelectorAll('.device-action-control');
+  controls.forEach((control) => {
+    control.disabled = !isOnline;
+    control.classList.toggle('opacity-50', !isOnline);
+    control.classList.toggle('cursor-not-allowed', !isOnline);
+  });
+}
 
 async function postAction(action, payload) {
   const resp = await fetch(`/api/printellect/devices/${deviceId}/actions/${action}`, {
@@ -57,26 +150,82 @@ async function postAction(action, payload) {
   let data = {};
   try { data = JSON.parse(raw); } catch (_) {}
   if (!resp.ok) {
-    alert(data.detail || data.error || 'Action failed');
+    showActionStatus(false, data.detail || data.error || 'Action failed');
     return;
   }
+  showActionStatus(true, `Queued ${action}${data.cmd_id ? ` (cmd ${data.cmd_id})` : ''}`);
   await loadDevice();
+}
+
+function syncControlValues(state) {
+  if (typeof state.volume === 'number') {
+    document.getElementById('volumeRange').value = state.volume;
+    document.getElementById('volumeValue').textContent = String(state.volume);
+  }
+  if (typeof state.brightness === 'number') {
+    document.getElementById('brightnessRange').value = state.brightness;
+    document.getElementById('brightnessValue').textContent = String(state.brightness);
+  }
+  if (typeof state.idle_mode === 'string') {
+    const idle = document.getElementById('idleMode');
+    const exists = Array.from(idle.options).some((opt) => opt.value === state.idle_mode);
+    if (!exists) {
+      const opt = document.createElement('option');
+      opt.value = state.idle_mode;
+      opt.textContent = state.idle_mode;
+      idle.appendChild(opt);
+    }
+    idle.value = state.idle_mode;
+  }
 }
 
 async function loadDevice() {
   const resp = await fetch(`/api/printellect/devices/${deviceId}`);
-  if (!resp.ok) return;
+  if (!resp.ok) {
+    showActionStatus(false, 'Failed to load device');
+    return;
+  }
   const data = await resp.json();
   const d = data.device || {};
+  lastDevice = d;
   const status = d.online ? 'online' : 'offline';
   document.getElementById('deviceMeta').textContent = `${d.name || d.device_id} (${d.device_id}) • ${status} • fw ${d.fw_version || '-'} • app ${d.app_version || '-'}`;
   document.getElementById('state').textContent = JSON.stringify(d.state || {}, null, 2);
   document.getElementById('commands').textContent = JSON.stringify(d.recent_commands || [], null, 2);
+  syncControlValues(d.state || {});
+  setControlsEnabled(Boolean(d.online));
 }
 
-document.querySelector('[data-action="play"]')?.addEventListener('click', () => postAction('play', {perk: 'juggernog'}));
-document.querySelector('[data-action="stop"]')?.addEventListener('click', () => postAction('stop', {}));
-document.querySelector('[data-action="reboot"]')?.addEventListener('click', () => postAction('reboot', {}));
+document.getElementById('volumeRange').addEventListener('input', (event) => {
+  document.getElementById('volumeValue').textContent = event.target.value;
+});
+
+document.getElementById('brightnessRange').addEventListener('input', (event) => {
+  document.getElementById('brightnessValue').textContent = event.target.value;
+});
+
+document.getElementById('playBtn').addEventListener('click', () => {
+  const perk = document.getElementById('perkSelect').value;
+  postAction('play', {perk});
+});
+document.getElementById('stopBtn').addEventListener('click', () => postAction('stop', {}));
+document.getElementById('rebootBtn').addEventListener('click', () => postAction('reboot', {}));
+document.getElementById('volumeBtn').addEventListener('click', () => postAction('volume', {level: parseInt(document.getElementById('volumeRange').value, 10)}));
+document.getElementById('brightnessBtn').addEventListener('click', () => postAction('brightness', {level: parseInt(document.getElementById('brightnessRange').value, 10)}));
+document.getElementById('idleBtn').addEventListener('click', () => postAction('idle', {mode: document.getElementById('idleMode').value}));
+document.getElementById('testLightsBtn').addEventListener('click', () => {
+  const pattern = document.getElementById('lightsPattern').value.trim();
+  const duration_ms = parseInt(document.getElementById('lightsDuration').value, 10);
+  postAction('test-lights', {pattern, duration_ms});
+});
+document.getElementById('testAudioBtn').addEventListener('click', () => {
+  const track_id = document.getElementById('testTrack').value.trim();
+  postAction('test-audio', {track_id});
+});
+document.getElementById('updateBtn').addEventListener('click', () => {
+  const version = document.getElementById('updateVersion').value.trim() || 'latest';
+  postAction('update', {version});
+});
 
 loadDevice();
 setInterval(loadDevice, 5000);

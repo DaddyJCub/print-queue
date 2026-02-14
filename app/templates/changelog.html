@@ -65,12 +65,59 @@
         </p>
       </div>
 
+      <!-- v0.17.0 -->
+      <div id="v0.17.0" class="bg-gradient-to-br from-zinc-900/80 via-indigo-900/20 to-zinc-900/80 border border-indigo-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.17.0" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.17.0</a>
+          <span class="text-zinc-400 text-sm">February 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Printellect production onboarding + OTA packaging flow</h3>
+        <p class="text-sm text-zinc-400 mb-4">Completed the account-native claim flow, admin QR label workflow, OTA package zip upload mode, and final Pico implementation contract alignment.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🚀 Enhancements</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Added <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/pair</code> deep-link flow so QR/fallback links auto-fill claim data for the signed-in user and redirect to device control once online.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Admin Device Registry now auto-generates printable QR labels and includes copy/print actions for manufacturing handoff.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Admin OTA uploads now support a single full firmware folder zip (package mode) in addition to legacy manifest + bundle mode.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Expanded owner device control screen with volume, brightness, idle mode, diagnostics, and OTA trigger controls.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-indigo-400 mt-1">•</span>
+            <span>Added direct admin navigation entries for Printellect Devices and Printellect Releases.</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>Pico identity remains server-assigned at manufacturing (<code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">device_id + claim_code</code>), then provisioned token is fetched by device after account claim.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>QR fallback URLs now target <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/pair</code> and can include optional <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">name</code> metadata.</span>
+          </li>
+        </ul>
+      </div>
+
       <!-- v0.16.0 -->
       <div id="v0.16.0" class="bg-gradient-to-br from-zinc-900/80 via-indigo-900/20 to-zinc-900/80 border border-indigo-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.16.0" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.16.0</a>
           <span class="text-zinc-400 text-sm">February 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Printellect device control foundation</h3>

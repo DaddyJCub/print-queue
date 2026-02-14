@@ -8,25 +8,58 @@
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-7xl mx-auto p-6">
-    {% set active_page = 'features' %}
+    {% set active_page = 'printellect-devices' %}
     {% include 'admin_nav.html' %}
 
-    <div class="mb-5">
+    <div class="mb-5 rounded-2xl border border-cyan-900/60 bg-gradient-to-r from-cyan-950/30 to-zinc-900/80 p-4">
       <h1 class="text-2xl font-bold">Printellect Device Registry</h1>
-      <p class="text-sm text-zinc-400 mt-1">Create devices, rotate claim codes, and monitor status.</p>
+      <p class="text-sm text-zinc-300 mt-1">Auto-generate device IDs/claim codes, print QR labels, and track activation.</p>
     </div>
 
-    <form id="createDeviceForm" class="grid md:grid-cols-4 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
-      <input name="device_id" placeholder="device_id (optional)" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-mono" />
-      <input name="name" placeholder="name" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
-      <input name="claim_code" placeholder="claim_code (optional)" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-mono" />
-      <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm font-semibold">Create</button>
+    <form id="createDeviceForm" class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4 space-y-3">
+      <div class="grid md:grid-cols-4 gap-2">
+        <input name="device_id" placeholder="device_id (optional)" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-mono" />
+        <input name="name" placeholder="name (optional)" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
+        <input name="claim_code" placeholder="claim_code (optional)" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-mono" />
+        <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm font-semibold">Create + Generate Label</button>
+      </div>
+      <div class="flex items-center justify-between gap-3">
+        <p class="text-xs text-zinc-400">Leave fields blank to auto-generate. Save or print claim code now (hash only is stored server-side).</p>
+        <label class="text-xs text-zinc-300 inline-flex items-center gap-2">
+          <input id="autoDownloadProvisioning" type="checkbox" checked class="accent-indigo-500">
+          Auto-download `device.json` + QR
+        </label>
+      </div>
     </form>
 
-    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
-      <h2 class="font-semibold mb-2">Last Create/Rotate Output</h2>
-      <pre id="createOutput" class="text-xs whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-3 overflow-x-auto"></pre>
-    </div>
+    <section id="labelPanel" class="hidden rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h2 class="font-semibold">Ready-to-Print Device Label</h2>
+        <div class="flex gap-2">
+          <button id="copyPayloadBtn" class="rounded-md border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-3 py-1.5 text-xs">Copy Pairing URL</button>
+          <button id="downloadDeviceJsonBtn" class="rounded-md border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-3 py-1.5 text-xs">Download device.json</button>
+          <button id="downloadQrBtn" class="rounded-md border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-3 py-1.5 text-xs">Download QR SVG</button>
+          <button id="printLabelBtn" class="rounded-md bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-semibold">Print Label</button>
+        </div>
+      </div>
+      <div class="grid md:grid-cols-[220px,1fr] gap-4">
+        <div class="rounded-xl border border-zinc-700 bg-zinc-950 p-3 flex items-center justify-center">
+          <img id="labelQr" alt="Pairing QR code" class="w-48 h-48 bg-white p-2 rounded-lg" />
+        </div>
+        <div class="space-y-2 text-sm">
+          <div><span class="text-zinc-400">Device ID:</span> <span id="labelDeviceId" class="font-mono"></span></div>
+          <div><span class="text-zinc-400">Name:</span> <span id="labelName"></span></div>
+          <div><span class="text-zinc-400">Claim Code:</span> <span id="labelClaim" class="font-mono text-emerald-300"></span></div>
+          <div><span class="text-zinc-400">QR Payload:</span> <span id="labelQrPayload" class="font-mono break-all text-xs"></span></div>
+          <div><span class="text-zinc-400">Fallback URL:</span> <a id="labelFallback" target="_blank" class="underline break-all text-xs text-cyan-300"></a></div>
+          <div class="pt-2">
+            <div class="text-zinc-400 text-xs mb-1">device.json preview</div>
+            <pre id="labelDeviceJson" class="text-xs rounded-lg border border-zinc-800 bg-zinc-950 p-2 overflow-x-auto"></pre>
+          </div>
+          <p class="text-xs text-zinc-400 pt-1">Manufacturing note: flash the same <span class="font-mono">device_id</span> and <span class="font-mono">claim_code</span> into <span class="font-mono">/device.json</span>.</p>
+        </div>
+      </div>
+    </section>
 
     <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
       <h2 class="font-semibold mb-3">Devices</h2>
@@ -35,13 +68,123 @@
   </div>
 
   <script>
+    let lastLabel = null;
+    const devicesById = new Map();
+
+    function qrSvgUrl(payload) {
+      return `/api/printellect/admin/qr.svg?payload=${encodeURIComponent(payload)}`;
+    }
+
+    function htmlEscape(value) {
+      return String(value || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function normalizeLabel(payload) {
+      const data = payload.device || payload;
+      if (!data || !data.device_id || !data.claim_code || !data.qr_payload) {
+        return null;
+      }
+      return {
+        device_id: data.device_id,
+        name: data.name || devicesById.get(data.device_id)?.name || data.device_id,
+        claim_code: data.claim_code,
+        qr_payload: data.qr_payload,
+        fallback_url: data.fallback_url || '',
+        device_json: data.device_json || {
+          device_id: data.device_id,
+          claim_code: data.claim_code,
+          hw_model: 'pico2w',
+        },
+      };
+    }
+
+    function downloadText(filename, content, mimeType = 'text/plain;charset=utf-8') {
+      const blob = new Blob([content], {type: mimeType});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    }
+
+    async function downloadQrSvg() {
+      if (!lastLabel) return;
+      const resp = await fetch(qrSvgUrl(lastLabel.qr_payload));
+      if (!resp.ok) return;
+      const text = await resp.text();
+      downloadText(`${lastLabel.device_id}-pairing-qr.svg`, text, 'image/svg+xml');
+    }
+
+    function downloadDeviceJson() {
+      if (!lastLabel) return;
+      const content = JSON.stringify(lastLabel.device_json, null, 2) + '\n';
+      downloadText(`${lastLabel.device_id}-device.json`, content, 'application/json;charset=utf-8');
+    }
+
+    function showLabel(rawPayload, options = {}) {
+      const label = normalizeLabel(rawPayload);
+      if (!label) return;
+      lastLabel = label;
+      document.getElementById('labelPanel').classList.remove('hidden');
+      document.getElementById('labelQr').src = qrSvgUrl(label.qr_payload);
+      document.getElementById('labelDeviceId').textContent = label.device_id;
+      document.getElementById('labelName').textContent = label.name || label.device_id;
+      document.getElementById('labelClaim').textContent = label.claim_code;
+      document.getElementById('labelQrPayload').textContent = label.qr_payload;
+      const fallback = document.getElementById('labelFallback');
+      fallback.textContent = label.fallback_url || '(none)';
+      fallback.href = label.fallback_url || '#';
+      document.getElementById('labelDeviceJson').textContent = JSON.stringify(label.device_json, null, 2);
+      if (options.autoDownload) {
+        downloadDeviceJson();
+        downloadQrSvg();
+      }
+    }
+
+    function printLabel() {
+      if (!lastLabel) return;
+      const qr = qrSvgUrl(lastLabel.qr_payload);
+      const safeDeviceId = htmlEscape(lastLabel.device_id);
+      const safeName = htmlEscape(lastLabel.name || lastLabel.device_id);
+      const safeClaimCode = htmlEscape(lastLabel.claim_code);
+      const safePayload = htmlEscape(lastLabel.qr_payload);
+      const popup = window.open('', '_blank', 'width=420,height=620');
+      if (!popup) return;
+      popup.document.write(`
+        <html>
+          <head><title>Printellect Label</title></head>
+          <body style="font-family:system-ui,sans-serif;padding:20px">
+            <h2 style="margin:0 0 8px 0">Printellect Device Label</h2>
+            <div style="font-size:14px;margin-bottom:6px"><b>Device:</b> ${safeDeviceId}</div>
+            <div style="font-size:14px;margin-bottom:6px"><b>Name:</b> ${safeName}</div>
+            <div style="font-size:14px;margin-bottom:12px"><b>Claim:</b> ${safeClaimCode}</div>
+            <img src="${qr}" style="width:260px;height:260px;border:1px solid #ddd;padding:8px;background:white" />
+            <div style="margin-top:12px;font-size:12px;word-break:break-all">${safePayload}</div>
+          </body>
+        </html>
+      `);
+      popup.document.close();
+      popup.focus();
+      setTimeout(() => popup.print(), 250);
+    }
+
     async function loadDevices() {
       const resp = await fetch('/api/printellect/admin/devices');
       const data = await resp.json();
       const root = document.getElementById('devices');
       root.innerHTML = '';
+      devicesById.clear();
 
       for (const d of (data.devices || [])) {
+        devicesById.set(d.device_id, d);
         const row = document.createElement('div');
         row.className = 'rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm';
         row.innerHTML = `
@@ -54,7 +197,7 @@
             <div class="md:col-span-3 text-xs text-zinc-400 font-mono">fw ${d.fw_version || '-'} / app ${d.app_version || '-'}</div>
             <div class="md:col-span-2 text-xs ${d.online ? 'text-emerald-300' : 'text-zinc-400'}">${d.online ? 'online' : 'offline'}</div>
             <div class="md:col-span-1 text-right">
-              <button data-rotate="${d.device_id}" class="rounded-md border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-2 py-1 text-xs">Rotate</button>
+              <button data-rotate="${d.device_id}" class="rounded-md border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-2 py-1 text-xs">Rotate + Label</button>
             </div>
           </div>
         `;
@@ -66,7 +209,8 @@
           const deviceId = btn.getAttribute('data-rotate');
           const resp = await fetch(`/api/printellect/admin/devices/${deviceId}/claim-code/rotate`, {method: 'POST'});
           const data = await resp.json();
-          document.getElementById('createOutput').textContent = JSON.stringify(data, null, 2);
+          const autoDownload = document.getElementById('autoDownloadProvisioning')?.checked;
+          showLabel(data, {autoDownload});
           await loadDevices();
         });
       }
@@ -83,8 +227,20 @@
       const text = await resp.text();
       let data = {};
       try { data = JSON.parse(text); } catch (_) { data = {raw: text}; }
-      document.getElementById('createOutput').textContent = JSON.stringify(data, null, 2);
+      const autoDownload = document.getElementById('autoDownloadProvisioning')?.checked;
+      showLabel(data, {autoDownload});
       await loadDevices();
+      event.target.reset();
+    });
+
+    document.getElementById('printLabelBtn').addEventListener('click', printLabel);
+    document.getElementById('downloadDeviceJsonBtn').addEventListener('click', downloadDeviceJson);
+    document.getElementById('downloadQrBtn').addEventListener('click', downloadQrSvg);
+    document.getElementById('copyPayloadBtn').addEventListener('click', async () => {
+      if (!lastLabel) return;
+      try {
+        await navigator.clipboard.writeText(lastLabel.fallback_url || lastLabel.qr_payload);
+      } catch (_) {}
     });
 
     loadDevices();

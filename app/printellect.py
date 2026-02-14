@@ -1,4 +1,5 @@
 import json
+import io
 import logging
 import mimetypes
 import os
@@ -11,12 +12,13 @@ import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from app.auth import is_feature_enabled, require_account, require_admin
+from app.auth import get_current_account, is_feature_enabled, require_account, require_admin
 from app.printellect_service import (
     claim_hash,
     generate_device_token,
@@ -48,6 +50,7 @@ _claim_fail_lock = threading.Lock()
 _claim_failures: Dict[str, list[float]] = {}
 MAX_CLAIM_FAILURES = int(os.getenv("PRINTELLECT_MAX_CLAIM_FAILURES", "8"))
 CLAIM_FAIL_WINDOW_SECONDS = int(os.getenv("PRINTELLECT_CLAIM_FAIL_WINDOW_S", "300"))
+PRINTELLECT_PAIR_BASE_URL = os.getenv("PRINTELLECT_PAIR_BASE_URL", "https://print.jcubhub.com").rstrip("/")
 
 
 def db() -> sqlite3.Connection:
@@ -111,6 +114,48 @@ def _hash_bytes(data: bytes) -> str:
     import hashlib
 
     return hashlib.sha256(data).hexdigest()
+
+
+def _build_pairing_urls(device_id: str, claim_code: str, name: str = "") -> Dict[str, str]:
+    params: Dict[str, str] = {"device_id": device_id, "claim": claim_code}
+    if name:
+        params["name"] = name
+    query = urlencode(params)
+    return {
+        "qr_payload": f"printellect://pair?{query}",
+        "fallback_url": f"{PRINTELLECT_PAIR_BASE_URL}/pair?{query}",
+    }
+
+
+def _build_device_json(device_id: str, claim_code: str, hw_model: str = "pico2w") -> Dict[str, str]:
+    return {
+        "device_id": device_id,
+        "claim_code": claim_code,
+        "hw_model": hw_model,
+    }
+
+
+def _qr_svg(payload: str) -> str:
+    if not payload or len(payload) > 1024:
+        raise HTTPException(status_code=422, detail="Invalid QR payload")
+    try:
+        import qrcode
+        from qrcode.image.svg import SvgPathImage
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="QR generator unavailable") from exc
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=8,
+        border=2,
+    )
+    qr.add_data(payload)
+    qr.make(fit=True)
+    image = qr.make_image(image_factory=SvgPathImage)
+    data = image.to_string()
+    if isinstance(data, bytes):
+        return data.decode("utf-8")
+    return str(data)
 
 
 def _is_online(last_seen_at: Optional[str]) -> bool:
@@ -437,15 +482,18 @@ def _extract_bundle(bundle_path: Path, extracted_dir: Path) -> None:
                 dst.write(src.read())
 
 
-def _build_manifest_file_list(extracted_dir: Path) -> list[Dict[str, Any]]:
+def _build_manifest_file_list(extracted_dir: Path, exclude_paths: Optional[set[str]] = None) -> list[Dict[str, Any]]:
     files: list[Dict[str, Any]] = []
     if not extracted_dir.exists():
         return files
+    excluded = {p.lstrip("/") for p in (exclude_paths or set())}
 
     for file_path in sorted(extracted_dir.rglob("*")):
         if not file_path.is_file():
             continue
         rel = file_path.relative_to(extracted_dir).as_posix()
+        if rel in excluded:
+            continue
         files.append(
             {
                 "path": rel,
@@ -500,15 +548,40 @@ async def _device_from_bearer(request: Request) -> sqlite3.Row:
 
 
 async def _require_printellect_account(account=Depends(require_account)):
-    if PRINTELLECT_DEMO_OPEN_ACCESS:
-        return account
-    if not is_feature_enabled(
+    if not PRINTELLECT_DEMO_OPEN_ACCESS and not is_feature_enabled(
         PRINTELLECT_FEATURE_KEY,
         user_id=getattr(account, "id", None),
         email=getattr(account, "email", None),
     ):
         raise HTTPException(status_code=403, detail="Printellect feature is not enabled for this account")
     return account
+
+
+@router.get("/pair")
+async def pair_entry(
+    request: Request,
+    device_id: str = "",
+    claim: str = "",
+    name: str = "",
+    account=Depends(get_current_account),
+):
+    device_id = (device_id or "").strip().lower()
+    claim = (claim or "").strip()
+    name = (name or "").strip()
+    if not account:
+        next_qs = urlencode({"next": str(request.url)})
+        return RedirectResponse(url=f"/auth/login?{next_qs}", status_code=303)
+    await _require_printellect_account(account=account)
+    return templates.TemplateResponse(
+        "printellect_pair.html",
+        {
+            "request": request,
+            "account": account,
+            "prefill_device_id": device_id,
+            "prefill_claim": claim,
+            "prefill_name": name,
+        },
+    )
 
 
 @router.get("/printellect/devices", response_class=HTMLResponse)
@@ -588,6 +661,7 @@ async def claim_device(request: Request, account=Depends(_require_printellect_ac
 
     device_id = (payload.get("device_id") or "").strip().lower()
     claim_code = (payload.get("claim_code") or "").strip()
+    name = (payload.get("name") or "").strip()
     session_id = (payload.get("session_id") or "").strip()
 
     if not device_id or not claim_code:
@@ -626,10 +700,16 @@ async def claim_device(request: Request, account=Depends(_require_printellect_ac
         raise HTTPException(status_code=409, detail="Device is already claimed by another account")
 
     ts = now_iso()
-    conn.execute(
-        "UPDATE devices SET owner_user_id = ?, claimed_at = COALESCE(claimed_at, ?) WHERE device_id = ?",
-        (account.id, ts, device_id),
-    )
+    if name:
+        conn.execute(
+            "UPDATE devices SET owner_user_id = ?, name = ?, claimed_at = COALESCE(claimed_at, ?) WHERE device_id = ?",
+            (account.id, name, ts, device_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE devices SET owner_user_id = ?, claimed_at = COALESCE(claimed_at, ?) WHERE device_id = ?",
+            (account.id, ts, device_id),
+        )
     if session_id:
         conn.execute(
             "UPDATE pairing_sessions SET status = 'complete', claimed_device_id = ?, claimed_at = ? WHERE session_id = ?",
@@ -643,13 +723,30 @@ async def claim_device(request: Request, account=Depends(_require_printellect_ac
         actor_id=account.id,
         target_type="device",
         target_id=device_id,
-        details={"session_id": session_id or None},
+        details={"session_id": session_id or None, "name": name or None},
     )
     conn.commit()
     conn.close()
     _clear_claim_failures(request, device_id, claim_code)
 
-    return JSONResponse({"status": "claimed", "device_id": device_id, "next": "wait_for_online"})
+    latest = db()
+    latest_row = latest.execute(
+        "SELECT name, last_seen_at, fw_version, app_version FROM devices WHERE device_id = ?",
+        (device_id,),
+    ).fetchone()
+    latest.close()
+    return JSONResponse(
+        {
+            "status": "claimed",
+            "device_id": device_id,
+            "name": (latest_row["name"] if latest_row else None) or device_id,
+            "next": "wait_for_online",
+            "online": _is_online(latest_row["last_seen_at"] if latest_row else None),
+            "device_url": f"/printellect/devices/{device_id}",
+            "fw_version": latest_row["fw_version"] if latest_row else None,
+            "app_version": latest_row["app_version"] if latest_row else None,
+        }
+    )
 
 
 @router.get("/api/printellect/devices")
@@ -868,6 +965,12 @@ async def device_debug_contract():
             },
         }
     )
+
+
+@router.get("/api/printellect/admin/qr.svg")
+async def admin_qr_svg(payload: str, admin=Depends(require_admin)):
+    del admin
+    return Response(content=_qr_svg(payload), media_type="image/svg+xml")
 
 
 @router.post("/api/printellect/device/v1/provision")
@@ -1306,6 +1409,8 @@ async def admin_create_device(request: Request, admin=Depends(require_admin)):
     conn.commit()
     conn.close()
 
+    pairing = _build_pairing_urls(device_id, claim_code, name)
+    device_json = _build_device_json(device_id, claim_code)
     return JSONResponse(
         {
             "ok": True,
@@ -1313,8 +1418,8 @@ async def admin_create_device(request: Request, admin=Depends(require_admin)):
                 "device_id": device_id,
                 "name": name,
                 "claim_code": claim_code,
-                "qr_payload": f"printellect://pair?device_id={device_id}&claim={claim_code}",
-                "fallback_url": f"https://print.jcubhub.com/pair?device_id={device_id}&claim={claim_code}",
+                **pairing,
+                "device_json": device_json,
             },
         }
     )
@@ -1324,7 +1429,7 @@ async def admin_create_device(request: Request, admin=Depends(require_admin)):
 async def admin_rotate_claim_code(device_id: str, admin=Depends(require_admin)):
     claim_code = secrets.token_urlsafe(16)
     conn = db()
-    row = conn.execute("SELECT device_id FROM devices WHERE device_id = ?", (device_id,)).fetchone()
+    row = conn.execute("SELECT device_id, name FROM devices WHERE device_id = ?", (device_id,)).fetchone()
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Device not found")
@@ -1341,13 +1446,15 @@ async def admin_rotate_claim_code(device_id: str, admin=Depends(require_admin)):
     conn.commit()
     conn.close()
 
+    pairing = _build_pairing_urls(device_id, claim_code, row["name"] or device_id)
+    device_json = _build_device_json(device_id, claim_code)
     return JSONResponse(
         {
             "ok": True,
             "device_id": device_id,
             "claim_code": claim_code,
-            "qr_payload": f"printellect://pair?device_id={device_id}&claim={claim_code}",
-            "fallback_url": f"https://print.jcubhub.com/pair?device_id={device_id}&claim={claim_code}",
+            **pairing,
+            "device_json": device_json,
         }
     )
 
@@ -1393,45 +1500,82 @@ async def admin_list_devices(admin=Depends(require_admin)):
 
 @router.post("/api/printellect/admin/releases/upload")
 async def admin_upload_release(
-    manifest: UploadFile = File(...),
-    bundle: UploadFile = File(...),
+    manifest: Optional[UploadFile] = File(None),
+    bundle: Optional[UploadFile] = File(None),
+    package: Optional[UploadFile] = File(None),
+    version: str = Form(""),
+    entrypoint: str = Form("main.py"),
     channel: str = Form("stable"),
     notes: str = Form(""),
     admin=Depends(require_admin),
 ):
-    manifest_bytes = await manifest.read()
-    bundle_bytes = await bundle.read()
+    mode = "manifest_bundle"
+    bundle_bytes: bytes
+    manifest_json: Dict[str, Any] = {}
+    embedded_manifest = False
 
-    try:
-        manifest_json = json.loads(manifest_bytes.decode("utf-8"))
-    except Exception:
-        raise HTTPException(status_code=422, detail="manifest must be valid JSON")
+    if package is not None:
+        mode = "package"
+        bundle_bytes = await package.read()
+        if not bundle_bytes:
+            raise HTTPException(status_code=422, detail="package zip is empty")
+        try:
+            with zipfile.ZipFile(io.BytesIO(bundle_bytes), "r") as zf:
+                if zf.testzip() is not None:
+                    raise HTTPException(status_code=422, detail="package zip is invalid")
+                if "manifest.json" in zf.namelist():
+                    try:
+                        manifest_json = json.loads(zf.read("manifest.json").decode("utf-8"))
+                        embedded_manifest = True
+                    except Exception:
+                        raise HTTPException(status_code=422, detail="embedded manifest.json is invalid JSON")
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=422, detail="package must be a valid zip")
+        if manifest is not None or bundle is not None:
+            raise HTTPException(status_code=422, detail="Use either package zip or manifest+bundle, not both")
+    else:
+        if manifest is None or bundle is None:
+            raise HTTPException(status_code=422, detail="manifest and bundle are required unless package zip is provided")
+        manifest_bytes = await manifest.read()
+        bundle_bytes = await bundle.read()
+        if not bundle_bytes:
+            raise HTTPException(status_code=422, detail="bundle zip is empty")
+        try:
+            manifest_json = json.loads(manifest_bytes.decode("utf-8"))
+        except Exception:
+            raise HTTPException(status_code=422, detail="manifest must be valid JSON")
 
-    version = str(manifest_json.get("version") or "").strip()
+    version = (version or str(manifest_json.get("version") or "")).strip()
     if not version:
-        raise HTTPException(status_code=422, detail="manifest.version is required")
+        raise HTTPException(status_code=422, detail="version is required (form field or manifest.version)")
 
     manifest_channel = str(manifest_json.get("channel") or "").strip()
     if manifest_channel:
         channel = manifest_channel
-
     if channel not in {"stable", "beta"}:
         raise HTTPException(status_code=422, detail="channel must be stable or beta")
 
+    manifest_json["version"] = version
+    manifest_json["channel"] = channel
+    manifest_json["entrypoint"] = str(manifest_json.get("entrypoint") or entrypoint or "main.py").strip() or "main.py"
+
     paths = _release_paths(version)
     paths["root"].mkdir(parents=True, exist_ok=True)
-
-    paths["manifest"].write_bytes(manifest_bytes)
     paths["bundle"].write_bytes(bundle_bytes)
-
     _extract_bundle(paths["bundle"], paths["extracted"])
-    extracted_files = _build_manifest_file_list(paths["extracted"])
+    extracted_files = _build_manifest_file_list(
+        paths["extracted"],
+        exclude_paths={"manifest.json"} if embedded_manifest else None,
+    )
+
+    if mode == "package" and not extracted_files:
+        raise HTTPException(status_code=422, detail="package zip has no files")
 
     bundle_sha256 = _hash_bytes(bundle_bytes)
     manifest_json["bundle_sha256"] = bundle_sha256
     manifest_json["bundle_size"] = len(bundle_bytes)
-    manifest_json["channel"] = channel
-    manifest_json["version"] = version
 
     if not isinstance(manifest_json.get("files"), list) or not manifest_json.get("files"):
         manifest_json["files"] = extracted_files
@@ -1492,7 +1636,16 @@ async def admin_upload_release(
     conn.commit()
     conn.close()
 
-    return JSONResponse({"ok": True, "version": version, "channel": channel, "bundle_sha256": bundle_sha256})
+    return JSONResponse(
+        {
+            "ok": True,
+            "version": version,
+            "channel": channel,
+            "bundle_sha256": bundle_sha256,
+            "mode": mode,
+            "file_count": len(manifest_json.get("files") or []),
+        }
+    )
 
 
 @router.post("/api/printellect/admin/releases/{version}/promote")
