@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Printellect Devices</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <main class="max-w-6xl mx-auto p-6 space-y-4">
+    <h1 class="text-2xl font-bold">Printellect Device Registry</h1>
+
+    <form id="createDeviceForm" class="grid md:grid-cols-4 gap-2 bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <input name="device_id" placeholder="device_id (optional)" class="rounded bg-zinc-950 border border-zinc-700 p-2 text-sm" />
+      <input name="name" placeholder="name" class="rounded bg-zinc-950 border border-zinc-700 p-2 text-sm" />
+      <input name="claim_code" placeholder="claim_code (optional)" class="rounded bg-zinc-950 border border-zinc-700 p-2 text-sm" />
+      <button class="rounded bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm">Create</button>
+    </form>
+
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <h2 class="font-semibold mb-2">Last Create/Rotate Output</h2>
+      <pre id="createOutput" class="text-xs text-zinc-200 whitespace-pre-wrap"></pre>
+    </div>
+
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <h2 class="font-semibold mb-2">Devices</h2>
+      <div id="devices" class="space-y-2"></div>
+    </div>
+  </main>
+
+  <script>
+    async function loadDevices() {
+      const resp = await fetch("/api/printellect/admin/devices");
+      const data = await resp.json();
+      const root = document.getElementById("devices");
+      root.innerHTML = "";
+      for (const d of (data.devices || [])) {
+        const row = document.createElement("div");
+        row.className = "border border-zinc-800 rounded p-3 text-sm";
+        row.innerHTML = `
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <div class="font-semibold">${d.name || d.device_id}</div>
+              <div class="text-xs text-zinc-400">${d.device_id} | owner: ${d.owner_user_id || "unclaimed"}</div>
+              <div class="text-xs text-zinc-400">fw ${d.fw_version || "-"} app ${d.app_version || "-"} | ${d.online ? "online" : "offline"}</div>
+            </div>
+            <button data-rotate="${d.device_id}" class="rounded bg-zinc-800 hover:bg-zinc-700 px-2 py-1 text-xs">Rotate claim code</button>
+          </div>
+        `;
+        root.appendChild(row);
+      }
+
+      for (const btn of root.querySelectorAll("button[data-rotate]")) {
+        btn.addEventListener("click", async () => {
+          const deviceId = btn.getAttribute("data-rotate");
+          const resp = await fetch(`/api/printellect/admin/devices/${deviceId}/claim-code/rotate`, {method: "POST"});
+          const data = await resp.json();
+          document.getElementById("createOutput").textContent = JSON.stringify(data, null, 2);
+        });
+      }
+    }
+
+    document.getElementById("createDeviceForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const payload = Object.fromEntries(new FormData(event.target).entries());
+      const resp = await fetch("/api/printellect/admin/devices", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      document.getElementById("createOutput").textContent = JSON.stringify(data, null, 2);
+      await loadDevices();
+    });
+
+    loadDevices();
+    setInterval(loadDevices, 8000);
+  </script>
+</body>
+</html>

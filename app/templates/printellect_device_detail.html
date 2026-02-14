@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Device Detail | Printellect</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <main class="max-w-5xl mx-auto p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-bold">Device Detail</h1>
+        <p id="deviceMeta" class="text-xs text-zinc-400 mt-1">{{ device_id }}</p>
+      </div>
+      <a href="/printellect/devices" class="text-indigo-300 underline text-sm">Back to devices</a>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-3">
+      <button data-action="play" class="rounded bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm">Play Juggernog</button>
+      <button data-action="stop" class="rounded bg-zinc-800 hover:bg-zinc-700 px-3 py-2 text-sm">Stop</button>
+      <button data-action="reboot" class="rounded bg-zinc-800 hover:bg-zinc-700 px-3 py-2 text-sm">Reboot</button>
+    </div>
+
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <h2 class="font-semibold mb-2">Live State</h2>
+      <pre id="state" class="text-xs text-zinc-200 whitespace-pre-wrap"></pre>
+    </div>
+
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <h2 class="font-semibold mb-2">Recent Commands</h2>
+      <pre id="commands" class="text-xs text-zinc-200 whitespace-pre-wrap"></pre>
+    </div>
+  </main>
+
+  <script>
+    const deviceId = {{ device_id|tojson }};
+
+    async function postAction(action, payload) {
+      const resp = await fetch(`/api/printellect/devices/${deviceId}/actions/${action}`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload || {}),
+      });
+      const raw = await resp.text();
+      let data = {};
+      try { data = JSON.parse(raw); } catch (_) {}
+      if (!resp.ok) {
+        alert(data.detail || data.error || "Action failed");
+      }
+      await load();
+    }
+
+    async function load() {
+      const resp = await fetch(`/api/printellect/devices/${deviceId}`);
+      if (!resp.ok) {
+        return;
+      }
+      const data = await resp.json();
+      const d = data.device || {};
+      const meta = `${d.name || d.device_id} (${d.device_id}) - ${d.online ? "online" : "offline"} - fw ${d.fw_version || "-"} app ${d.app_version || "-"}`;
+      document.getElementById("deviceMeta").textContent = meta;
+      document.getElementById("state").textContent = JSON.stringify(d.state || {}, null, 2);
+      document.getElementById("commands").textContent = JSON.stringify(d.recent_commands || [], null, 2);
+    }
+
+    document.querySelector('[data-action="play"]').addEventListener("click", () => postAction("play", {perk: "juggernog"}));
+    document.querySelector('[data-action="stop"]').addEventListener("click", () => postAction("stop", {}));
+    document.querySelector('[data-action="reboot"]').addEventListener("click", () => postAction("reboot", {}));
+
+    load();
+    setInterval(load, 5000);
+  </script>
+</body>
+</html>

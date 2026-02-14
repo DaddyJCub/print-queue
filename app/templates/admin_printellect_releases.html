@@ -1,0 +1,91 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Printellect Releases</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <main class="max-w-6xl mx-auto p-6 space-y-4">
+    <h1 class="text-2xl font-bold">Printellect Releases</h1>
+
+    <form id="uploadForm" class="space-y-2 bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <div class="grid md:grid-cols-4 gap-2">
+        <input type="file" name="manifest" accept="application/json" class="text-sm" required />
+        <input type="file" name="bundle" accept=".zip,application/zip" class="text-sm" required />
+        <select name="channel" class="rounded bg-zinc-950 border border-zinc-700 p-2 text-sm">
+          <option value="stable">stable</option>
+          <option value="beta">beta</option>
+        </select>
+        <button class="rounded bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm">Upload release</button>
+      </div>
+      <input name="notes" placeholder="notes (optional)" class="w-full rounded bg-zinc-950 border border-zinc-700 p-2 text-sm" />
+    </form>
+
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <h2 class="font-semibold mb-2">Last Upload/Promote Output</h2>
+      <pre id="output" class="text-xs text-zinc-200 whitespace-pre-wrap"></pre>
+    </div>
+
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <h2 class="font-semibold mb-2">Releases</h2>
+      <div id="releases" class="space-y-2"></div>
+    </div>
+  </main>
+
+  <script>
+    async function loadReleases() {
+      const resp = await fetch("/api/printellect/admin/releases");
+      const data = await resp.json();
+      const root = document.getElementById("releases");
+      root.innerHTML = "";
+      for (const r of (data.releases || [])) {
+        const row = document.createElement("div");
+        row.className = "border border-zinc-800 rounded p-3 text-sm";
+        row.innerHTML = `
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <div class="font-semibold">v${r.version} ${r.is_current ? "(current)" : ""}</div>
+              <div class="text-xs text-zinc-400">${r.channel} | ${r.created_at} | notes: ${r.notes || "-"}</div>
+            </div>
+            <button data-promote="${r.version}" class="rounded bg-zinc-800 hover:bg-zinc-700 px-2 py-1 text-xs">Promote current</button>
+          </div>
+        `;
+        root.appendChild(row);
+      }
+
+      for (const btn of root.querySelectorAll("button[data-promote]")) {
+        btn.addEventListener("click", async () => {
+          const version = btn.getAttribute("data-promote");
+          const resp = await fetch(`/api/printellect/admin/releases/${version}/promote`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({}),
+          });
+          const data = await resp.json();
+          document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+          await loadReleases();
+        });
+      }
+    }
+
+    document.getElementById("uploadForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.target);
+      const resp = await fetch("/api/printellect/admin/releases/upload", {
+        method: "POST",
+        body: form,
+      });
+      const text = await resp.text();
+      let data = {};
+      try { data = JSON.parse(text); } catch (_) { data = {raw: text}; }
+      document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+      await loadReleases();
+    });
+
+    loadReleases();
+    setInterval(loadReleases, 10000);
+  </script>
+</body>
+</html>

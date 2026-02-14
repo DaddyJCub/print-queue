@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My Devices | Printellect</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <main class="max-w-5xl mx-auto p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <h1 class="text-2xl font-bold">My Devices</h1>
+      <a href="/printellect/add-device" class="bg-indigo-600 hover:bg-indigo-500 rounded px-3 py-2 text-sm">Add Device</a>
+    </div>
+
+    <div id="list" class="grid gap-3"></div>
+  </main>
+
+  <script>
+    async function loadDevices() {
+      const resp = await fetch('/api/printellect/devices');
+      const data = await resp.json();
+      const root = document.getElementById('list');
+      root.innerHTML = '';
+      for (const d of (data.devices || [])) {
+        const card = document.createElement('div');
+        card.className = 'bg-zinc-900 border border-zinc-800 rounded-xl p-4';
+        card.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-semibold">${d.name || d.device_id}</div>
+              <div class="text-xs text-zinc-400">${d.device_id}</div>
+            </div>
+            <span class="text-xs px-2 py-1 rounded ${d.online ? 'bg-emerald-700' : 'bg-zinc-700'}">${d.online ? 'online' : 'offline'}</span>
+          </div>
+          <div class="text-xs text-zinc-400 mt-2">FW ${d.fw_version || '-'} | APP ${d.app_version || '-'} | RSSI ${d.rssi ?? '-'}</div>
+          <a class="inline-block mt-3 text-xs text-indigo-300 underline" href="/printellect/devices/${d.device_id}">Open device</a>
+        `;
+        root.appendChild(card);
+      }
+    }
+    loadDevices();
+    setInterval(loadDevices, 5000);
+  </script>
+</body>
+</html>

@@ -931,6 +931,13 @@ DEFAULT_FEATURE_FLAGS = {
     ),
     
     # Private features (user-specific access)
+    "printellect_device_control": FeatureFlag(
+        key="printellect_device_control",
+        enabled=True,
+        description="Printellect device onboarding/control UI and user API access",
+        rollout_percentage=0,  # Explicit allow-list only by default
+        allowed_emails=[],
+    ),
     "trips": FeatureFlag(
         key="trips",
         enabled=True,  # Enabled but restricted to allowed_emails

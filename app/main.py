@@ -185,11 +185,15 @@ class PrintToLogger:
         return 1  # Dummy fd for handlers that expect one
 
 # Redirect stdout/stderr to capture print() statements
+# In test mode we skip stream redirection because TestClient lifespan can hang with wrapped stdio streams.
 import sys
-sys.stdout = PrintToLogger(logging.getLogger("printellect.stdout"), logging.INFO)
-sys.stderr = PrintToLogger(logging.getLogger("printellect.stderr"), logging.ERROR)
-
-logger.info(f"Logging initialized at level {LOG_LEVEL} - capturing all output")
+TEST_MODE = os.getenv("TEST_MODE", "0").strip().lower() in ("1", "true", "yes")
+if not TEST_MODE:
+    sys.stdout = PrintToLogger(logging.getLogger("printellect.stdout"), logging.INFO)
+    sys.stderr = PrintToLogger(logging.getLogger("printellect.stderr"), logging.ERROR)
+    logger.info(f"Logging initialized at level {LOG_LEVEL} - capturing all output")
+else:
+    logger.info(f"Logging initialized at level {LOG_LEVEL} (test mode, stdio passthrough)")
 
 # ─────────────────────────── HELPER FUNCTIONS ───────────────────────────
 def row_get(row, key, default=None):
@@ -1310,6 +1314,9 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_request_assignments_request ON request_assignments(request_id);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_request_assignments_account ON request_assignments(account_id);")
+    # Printellect device-control tables
+    from app.printellect import init_printellect_tables
+    init_printellect_tables(cur)
     # Shipping indexes are created in ensure_migrations() after the column/tables are guaranteed to exist
 
     conn.commit()
@@ -1788,6 +1795,10 @@ def ensure_migrations():
                            (account[0], req_id))
         
         logger.info(f"Migration complete: {len(migrated_emails)} accounts created")
+
+    # Printellect schema migrations
+    from app.printellect import ensure_printellect_migrations
+    ensure_printellect_migrations(cur)
 
     conn.commit()
     conn.close()
@@ -7297,6 +7308,7 @@ from app.admin_accounts import router as admin_accounts_router
 from app.api_push import router as api_push_router
 from app.api_builds import router as api_builds_router
 from app.trips import router as trips_router
+from app.printellect import router as printellect_router
 
 app.include_router(public_router)
 app.include_router(my_requests_router)
@@ -7305,3 +7317,4 @@ app.include_router(admin_accounts_router)
 app.include_router(api_push_router)
 app.include_router(api_builds_router)
 app.include_router(trips_router)
+app.include_router(printellect_router)

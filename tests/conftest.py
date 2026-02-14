@@ -41,6 +41,7 @@ def configure_test_environment():
     os.environ.setdefault("BASE_URL", "http://testserver")
     os.environ.setdefault("LOG_LEVEL", "WARNING")  # Reduce noise, but show warnings
     os.environ.setdefault("TURNSTILE_SECRET_KEY", "")  # Disable turnstile in tests
+    os.environ["TEST_MODE"] = "1"  # Keep stdio passthrough for stable TestClient lifespan
 
 configure_test_environment()
 
@@ -74,6 +75,8 @@ def clear_all_test_data():
         "users", "admins", "feedback", "request_templates",
         "request_assignments", "notification_prefs",
         "request_shipping", "request_shipping_rate_snapshots", "request_shipping_events",
+        "device_update_status", "releases", "device_state", "commands",
+        "pairing_sessions", "device_tokens", "devices",
     ]
     for table in tables:
         try:
