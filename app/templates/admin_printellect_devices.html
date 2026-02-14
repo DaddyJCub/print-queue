@@ -4,136 +4,91 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin Printellect Devices</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    :root {
-      --bg: #091217;
-      --panel: #101d25;
-      --panel-2: #13252f;
-      --line: #26404f;
-      --text: #d9e9ef;
-      --muted: #8ca5b2;
-      --accent: #30d5c8;
-      --accent-2: #f7a64a;
-      --ok: #35cf83;
-      --off: #78909c;
-    }
-    body { font-family: "Space Grotesk", sans-serif; color: var(--text); background: radial-gradient(1300px 700px at 90% -5%, #163040 0%, #091217 60%); }
-    .mono { font-family: "IBM Plex Mono", monospace; }
-  </style>
 </head>
-<body>
-  <main class="max-w-7xl mx-auto px-4 py-6 md:px-6 md:py-8 space-y-4 md:space-y-5">
-    <section class="rounded-2xl border p-4 md:p-5" style="background:linear-gradient(130deg,var(--panel),#0e1a21);border-color:var(--line)">
-      <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p class="text-xs tracking-[0.22em] uppercase" style="color:var(--accent)">Admin Console</p>
-          <h1 class="text-2xl md:text-3xl font-semibold">Printellect Device Registry</h1>
-          <p class="text-sm mt-1" style="color:var(--muted)">Fast provisioning, claim code rotation, and fleet visibility.</p>
-        </div>
-        <div class="grid grid-cols-2 gap-2 text-xs mono">
-          <div class="rounded-lg border p-2" style="border-color:var(--line);background:var(--panel-2)">
-            <div style="color:var(--muted)">Environment</div>
-            <div>QA Local</div>
-          </div>
-          <div class="rounded-lg border p-2" style="border-color:var(--line);background:var(--panel-2)">
-            <div style="color:var(--muted)">API</div>
-            <div>/api/printellect</div>
-          </div>
-        </div>
-      </div>
-    </section>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-7xl mx-auto p-6">
+    {% set active_page = 'features' %}
+    {% include 'admin_nav.html' %}
 
-    <form id="createDeviceForm" class="grid md:grid-cols-4 gap-2 rounded-2xl border p-4" style="border-color:var(--line);background:var(--panel)">
-      <input name="device_id" placeholder="device_id (optional)" class="rounded-lg border p-2 text-sm mono" style="background:#0d1720;border-color:var(--line)" />
-      <input name="name" placeholder="name" class="rounded-lg border p-2 text-sm" style="background:#0d1720;border-color:var(--line)" />
-      <input name="claim_code" placeholder="claim_code (optional)" class="rounded-lg border p-2 text-sm mono" style="background:#0d1720;border-color:var(--line)" />
-      <button class="rounded-lg px-3 py-2 text-sm font-semibold transition-colors" style="background:var(--accent);color:#082127">Create</button>
+    <div class="mb-5">
+      <h1 class="text-2xl font-bold">Printellect Device Registry</h1>
+      <p class="text-sm text-zinc-400 mt-1">Create devices, rotate claim codes, and monitor status.</p>
+    </div>
+
+    <form id="createDeviceForm" class="grid md:grid-cols-4 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
+      <input name="device_id" placeholder="device_id (optional)" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-mono" />
+      <input name="name" placeholder="name" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
+      <input name="claim_code" placeholder="claim_code (optional)" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-mono" />
+      <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm font-semibold">Create</button>
     </form>
 
-    <div class="rounded-2xl border p-4" style="border-color:var(--line);background:var(--panel)">
+    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
       <h2 class="font-semibold mb-2">Last Create/Rotate Output</h2>
-      <pre id="createOutput" class="text-xs whitespace-pre-wrap mono overflow-x-auto p-3 rounded-lg border" style="border-color:var(--line);background:#0d1720;color:#d7e9f5"></pre>
+      <pre id="createOutput" class="text-xs whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-3 overflow-x-auto"></pre>
     </div>
 
-    <div class="rounded-2xl border p-4" style="border-color:var(--line);background:var(--panel)">
-      <h2 class="font-semibold mb-2">Devices</h2>
-      <div class="hidden md:grid grid-cols-12 text-xs uppercase tracking-wider mb-2 px-3 py-2 mono" style="color:var(--muted)">
-        <div class="col-span-3">Device</div>
-        <div class="col-span-3">Owner</div>
-        <div class="col-span-3">Versions</div>
-        <div class="col-span-2">Status</div>
-        <div class="col-span-1 text-right">Actions</div>
-      </div>
+    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+      <h2 class="font-semibold mb-3">Devices</h2>
       <div id="devices" class="space-y-2"></div>
     </div>
-  </main>
+  </div>
 
   <script>
     async function loadDevices() {
-      const resp = await fetch("/api/printellect/admin/devices");
+      const resp = await fetch('/api/printellect/admin/devices');
       const data = await resp.json();
-      const root = document.getElementById("devices");
-      root.innerHTML = "";
+      const root = document.getElementById('devices');
+      root.innerHTML = '';
+
       for (const d of (data.devices || [])) {
-        const row = document.createElement("div");
-        row.className = "rounded-xl border px-3 py-3 text-sm";
-        row.style.borderColor = "var(--line)";
-        row.style.background = "#0e1922";
-        const stateClass = d.online ? "text-emerald-300" : "text-slate-300";
-        const stateDot = d.online ? "var(--ok)" : "var(--off)";
+        const row = document.createElement('div');
+        row.className = 'rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm';
         row.innerHTML = `
           <div class="grid md:grid-cols-12 md:items-center gap-2">
             <div class="md:col-span-3">
               <div class="font-semibold">${d.name || d.device_id}</div>
-              <div class="text-xs mono" style="color:var(--muted)">${d.device_id}</div>
+              <div class="text-xs text-zinc-400 font-mono">${d.device_id}</div>
             </div>
-            <div class="md:col-span-3 text-xs" style="color:var(--muted)">
-              ${d.owner_user_id || "unclaimed"}
-            </div>
-            <div class="md:col-span-3 text-xs mono" style="color:var(--muted)">
-              fw ${d.fw_version || "-"} / app ${d.app_version || "-"}
-            </div>
-            <div class="md:col-span-2 text-xs ${stateClass} flex items-center gap-2">
-              <span class="inline-block h-2.5 w-2.5 rounded-full" style="background:${stateDot}"></span>
-              ${d.online ? "online" : "offline"}
-            </div>
+            <div class="md:col-span-3 text-xs text-zinc-400">${d.owner_user_id || 'unclaimed'}</div>
+            <div class="md:col-span-3 text-xs text-zinc-400 font-mono">fw ${d.fw_version || '-'} / app ${d.app_version || '-'}</div>
+            <div class="md:col-span-2 text-xs ${d.online ? 'text-emerald-300' : 'text-zinc-400'}">${d.online ? 'online' : 'offline'}</div>
             <div class="md:col-span-1 text-right">
-              <button data-rotate="${d.device_id}" class="rounded-md px-2 py-1 text-xs font-medium border" style="border-color:var(--line);background:#162530">Rotate</button>
+              <button data-rotate="${d.device_id}" class="rounded-md border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-2 py-1 text-xs">Rotate</button>
             </div>
           </div>
         `;
         root.appendChild(row);
       }
 
-      for (const btn of root.querySelectorAll("button[data-rotate]")) {
-        btn.addEventListener("click", async () => {
-          const deviceId = btn.getAttribute("data-rotate");
-          const resp = await fetch(`/api/printellect/admin/devices/${deviceId}/claim-code/rotate`, {method: "POST"});
+      for (const btn of root.querySelectorAll('button[data-rotate]')) {
+        btn.addEventListener('click', async () => {
+          const deviceId = btn.getAttribute('data-rotate');
+          const resp = await fetch(`/api/printellect/admin/devices/${deviceId}/claim-code/rotate`, {method: 'POST'});
           const data = await resp.json();
-          document.getElementById("createOutput").textContent = JSON.stringify(data, null, 2);
+          document.getElementById('createOutput').textContent = JSON.stringify(data, null, 2);
+          await loadDevices();
         });
       }
     }
 
-    document.getElementById("createDeviceForm").addEventListener("submit", async (event) => {
+    document.getElementById('createDeviceForm').addEventListener('submit', async (event) => {
       event.preventDefault();
       const payload = Object.fromEntries(new FormData(event.target).entries());
-      const resp = await fetch("/api/printellect/admin/devices", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
+      const resp = await fetch('/api/printellect/admin/devices', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(payload),
       });
-      const data = await resp.json();
-      document.getElementById("createOutput").textContent = JSON.stringify(data, null, 2);
+      const text = await resp.text();
+      let data = {};
+      try { data = JSON.parse(text); } catch (_) { data = {raw: text}; }
+      document.getElementById('createOutput').textContent = JSON.stringify(data, null, 2);
       await loadDevices();
     });
 
     loadDevices();
-    setInterval(loadDevices, 8000);
+    setInterval(loadDevices, 10000);
   </script>
 </body>
 </html>

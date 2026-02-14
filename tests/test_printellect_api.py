@@ -49,7 +49,7 @@ def _create_account_session(email: str = "owner@example.com", enable_printellect
         if enable_printellect:
             allowed_emails.append(email)
         conn.execute(
-            "UPDATE feature_flags SET enabled = 1, rollout_percentage = 0, allowed_emails = ?, updated_at = ? WHERE key = 'printellect_device_control'",
+            "UPDATE feature_flags SET enabled = 1, rollout_percentage = 0, allowed_users = '[]', allowed_emails = ?, updated_at = ? WHERE key = 'printellect_device_control'",
             (json.dumps(allowed_emails), now),
         )
     conn.commit()
@@ -66,7 +66,7 @@ def test_printellect_feature_flag_blocks_unassigned_user(client):
     # Force known flag state regardless of prior tests.
     conn = get_test_db()
     conn.execute(
-        "UPDATE feature_flags SET enabled = 1, rollout_percentage = 0, allowed_emails = '[]' WHERE key = 'printellect_device_control'"
+        "UPDATE feature_flags SET enabled = 1, rollout_percentage = 0, allowed_users = '[]', allowed_emails = '[]' WHERE key = 'printellect_device_control'"
     )
     conn.commit()
     conn.close()

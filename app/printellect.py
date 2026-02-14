@@ -35,6 +35,12 @@ PROVISION_POLL_INTERVAL_MS = int(os.getenv("DEVICE_PROVISION_POLL_MS", "1000"))
 RELEASES_DIR = os.getenv("RELEASES_DIR", os.path.join("local_data", "releases"))
 PAIRING_SESSION_MINUTES = int(os.getenv("PAIRING_SESSION_MINUTES", "10"))
 PRINTELLECT_FEATURE_KEY = os.getenv("PRINTELLECT_FEATURE_KEY", "printellect_device_control")
+DEMO_MODE = os.getenv("DEMO_MODE", "").lower() in ("true", "1", "yes", "demo")
+TEST_MODE = os.getenv("TEST_MODE", "").lower() in ("true", "1", "yes")
+PRINTELLECT_DEMO_OPEN_ACCESS = os.getenv(
+    "PRINTELLECT_DEMO_OPEN_ACCESS",
+    "1" if DEMO_MODE and not TEST_MODE else "0",
+).lower() in ("true", "1", "yes", "on")
 
 _poll_lock = threading.Lock()
 _last_poll_at: Dict[str, float] = {}
@@ -494,6 +500,8 @@ async def _device_from_bearer(request: Request) -> sqlite3.Row:
 
 
 async def _require_printellect_account(account=Depends(require_account)):
+    if PRINTELLECT_DEMO_OPEN_ACCESS:
+        return account
     if not is_feature_enabled(
         PRINTELLECT_FEATURE_KEY,
         user_id=getattr(account, "id", None),
@@ -801,6 +809,65 @@ async def action_reboot(device_id: str, account=Depends(_require_printellect_acc
 @router.post("/api/printellect/devices/{device_id}/actions/update")
 async def action_update(device_id: str, request: Request, account=Depends(_require_printellect_account)):
     return await _enqueue_user_action(device_id, account, "ota_apply", request=request)
+
+
+@router.get("/api/printellect/device/v1/debug")
+async def device_debug_contract():
+    return JSONResponse(
+        {
+            "service": "printellect-device-api",
+            "version": "v1",
+            "base_path": "/api/printellect/device/v1",
+            "auth": {
+                "provision": "claim_code",
+                "device_endpoints": "bearer_token",
+                "header": "Authorization: Bearer <device_token>",
+            },
+            "timing_defaults": {
+                "provision_poll_interval_ms": PROVISION_POLL_INTERVAL_MS,
+                "min_command_poll_interval_ms": int(DEVICE_MIN_POLL_SECONDS * 1000),
+                "recommended_heartbeat_interval_ms": 15000,
+            },
+            "actions_supported": [
+                "play_perk",
+                "stop_audio",
+                "set_idle",
+                "set_brightness",
+                "set_volume",
+                "test_lights",
+                "test_audio",
+                "reboot",
+                "ota_apply",
+            ],
+            "command_status_values": ["executing", "completed", "failed"],
+            "update_status_values": [
+                "idle",
+                "available",
+                "downloading",
+                "applying",
+                "success",
+                "rollback",
+                "failed",
+            ],
+            "endpoints": [
+                {"method": "POST", "path": "/api/printellect/device/v1/provision", "auth": "claim_code"},
+                {"method": "POST", "path": "/api/printellect/device/v1/heartbeat", "auth": "bearer"},
+                {"method": "GET", "path": "/api/printellect/device/v1/commands/next", "auth": "bearer"},
+                {"method": "POST", "path": "/api/printellect/device/v1/commands/{cmd_id}/status", "auth": "bearer"},
+                {"method": "POST", "path": "/api/printellect/device/v1/state", "auth": "bearer"},
+                {"method": "GET", "path": "/api/printellect/device/v1/releases/latest", "auth": "bearer"},
+                {"method": "GET", "path": "/api/printellect/device/v1/releases/{version}/manifest", "auth": "bearer"},
+                {"method": "GET", "path": "/api/printellect/device/v1/releases/{version}/files/{file_path}", "auth": "bearer"},
+                {"method": "GET", "path": "/api/printellect/device/v1/releases/{version}/bundle", "auth": "bearer"},
+                {"method": "POST", "path": "/api/printellect/device/v1/update/status", "auth": "bearer"},
+                {"method": "POST", "path": "/api/printellect/device/v1/boot-ok", "auth": "bearer"},
+            ],
+            "openapi": {
+                "json_url": "/openapi.json",
+                "docs_url": "/docs",
+            },
+        }
+    )
 
 
 @router.post("/api/printellect/device/v1/provision")

@@ -7,6 +7,9 @@ Account-side note:
 - User-facing claim/control pages are gated by feature flag `printellect_device_control`.
 - Device endpoints are not feature-gated and continue to authenticate by claim code/token.
 
+Quick handoff summary:
+- `docs/printellect-pico-integration-handoff.md`
+
 ## 1) Scope
 
 This guide covers:
@@ -144,6 +147,11 @@ Implementation:
 
 Base path:
 - `https://<host>/api/printellect/device/v1`
+- Debug contract:
+  - `GET /debug` (compact device-focused API map)
+- Full schema:
+  - `GET https://<host>/openapi.json`
+  - `GET https://<host>/docs`
 
 Client implementation:
 - `device/pico2w/lib/api_client.py`

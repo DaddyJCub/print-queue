@@ -9,8 +9,25 @@ All endpoints use JSON unless noted.
 - Pre-token only: `POST /provision` (claim code based)
 - Bearer required: all other device endpoints
   - Header: `Authorization: Bearer <device_token>`
+- Debug contract endpoint (no bearer): `GET /debug`
 
-## 1) Provision (claim code)
+## 1) Debug / API discovery
+
+### 1.1 Device-focused contract
+`GET /debug`
+
+Returns a compact contract payload the Pico can fetch for debugging, including:
+- supported actions
+- status enums
+- auth mode
+- endpoint list
+- links to full FastAPI OpenAPI docs
+
+### 1.2 Full server OpenAPI
+- JSON schema: `GET /openapi.json`
+- Swagger UI: `GET /docs`
+
+## 2) Provision (claim code)
 
 `POST /provision`
 
@@ -59,7 +76,7 @@ Firmware rule:
 - `provisioned`: store token, switch to bearer mode.
 - `403`: pause and require operator check (wrong label/config).
 
-## 2) Heartbeat
+## 3) Heartbeat
 
 `POST /heartbeat` (Bearer)
 
@@ -78,7 +95,7 @@ Response:
 { "ok": true }
 ```
 
-## 3) Command poll and status
+## 4) Command poll and status
 
 ### 3.1 Get next command
 `GET /commands/next` (Bearer)
@@ -121,7 +138,7 @@ Response:
 { "ok": true }
 ```
 
-## 4) Device state push
+## 5) Device state push
 
 `POST /state` (Bearer)
 
@@ -142,7 +159,7 @@ Response:
 { "ok": true }
 ```
 
-## 5) OTA endpoints
+## 6) OTA endpoints
 
 ### 5.1 Latest release lookup
 `GET /releases/latest?channel=stable` (Bearer)
@@ -230,7 +247,7 @@ Response:
 { "ok": true }
 ```
 
-## 6) Common firmware behavior rules
+## 7) Common firmware behavior rules
 
 - `401` on any bearer endpoint:
   - delete `/token.json`
