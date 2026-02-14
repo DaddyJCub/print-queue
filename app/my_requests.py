@@ -673,6 +673,7 @@ def my_requests_send_link(request: Request, email: str = Form(...)):
         cta_label="View My Requests",
         header_color="#6366f1",
         footer_note="This link expires in 30 days. If you didn't request this, you can safely ignore this email.",
+        recipient_email=email,
     )
     send_email([email], subject, text, html)
     

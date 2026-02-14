@@ -64,6 +64,10 @@ from app.main import (
     send_push_notification_to_admins,
     get_filename_base,
     get_or_create_my_requests_token,
+    should_send_email,
+    should_send_push,
+    is_email_unsubscribed,
+    get_user_per_status_pref,
     first_name_only,
     _human_printer,
     _human_material,
@@ -257,7 +261,7 @@ def _notify_requester_shipping_status(req: Dict[str, Any], shipping: Dict[str, A
     if not email:
         return
     user_prefs = get_user_notification_prefs(email)
-    if not user_prefs.get("status_email", True):
+    if not should_send_email(email, "shipping", req["id"]):
         return
 
     rid = req["id"]
@@ -304,6 +308,7 @@ def _notify_requester_shipping_status(req: Dict[str, Any], shipping: Dict[str, A
         header_color="#0ea5e9",
         secondary_cta_url=f"{BASE_URL}/my/{rid}?token={req['access_token']}",
         secondary_cta_label="Open Request",
+        recipient_email=email,
     )
     text = (
         f"Request: {req.get('print_name') or rid[:8]}\n"
@@ -313,7 +318,7 @@ def _notify_requester_shipping_status(req: Dict[str, Any], shipping: Dict[str, A
     )
     send_email([email], subject, text, html)
 
-    if user_prefs.get("status_push", True):
+    if should_send_push(email, "shipping", req["id"]):
         try:
             send_push_notification(
                 email=email,
@@ -3933,8 +3938,14 @@ def admin_set_status(
     user_prefs = get_user_notification_prefs(req.get("requester_email", ""))
     user_wants_email = user_prefs.get("status_email", True)
     user_wants_push = user_prefs.get("status_push", True)  # Default to True for push notifications
+    
+    # Per-status user preference check (user can disable specific statuses)
+    user_wants_this_status = get_user_per_status_pref(req.get("requester_email", ""), to_status)
+    
+    # Also check master unsubscribe
+    email_unsubscribed = is_email_unsubscribed(req.get("requester_email", ""))
 
-    if requester_email_on_status and should_notify_requester and user_wants_email:
+    if requester_email_on_status and should_notify_requester and user_wants_email and user_wants_this_status and not email_unsubscribed:
         print_label = req["print_name"] or f"Request {rid[:8]}"
         subject = f"[{APP_TITLE}] {status_title} - {print_label}"
         
@@ -4037,6 +4048,7 @@ def admin_set_status(
             secondary_cta_label="All My Requests",
             show_account_tip=show_account_tip,
             tip_register_url=tip_register_url,
+            recipient_email=req["requester_email"],
         )
         send_email([req["requester_email"]], subject, text, html)
 
@@ -4044,7 +4056,7 @@ def admin_set_status(
     # NOTE: PRINTING is excluded because poll_printer_status_worker sends a better notification
     # with layer count and ETA once the printer reports those
     push_statuses = ["NEEDS_INFO", "APPROVED", "DONE", "CANCELLED", "REJECTED", "BLOCKED"]
-    if to_status in push_statuses and user_wants_push:
+    if to_status in push_statuses and user_wants_push and user_wants_this_status:
         push_titles = {
             "NEEDS_INFO": "📝 Action Needed",
             "APPROVED": "✅ Request Approved",
@@ -4254,6 +4266,7 @@ def admin_update_design(
                 header_color="#14b8a6",
                 secondary_cta_url=f"{BASE_URL}/admin/request/{rid}",
                 secondary_cta_label="Open in Admin",
+                recipient_email=assigned_admin.email,
             )
             send_email([assigned_admin.email], subject, text, html)
     
@@ -4289,10 +4302,11 @@ def admin_update_design(
             footer_note="If anything looks off, reply to this email or send a message in the portal.",
             show_account_tip=show_account_tip,
             tip_register_url=tip_register_url,
+            recipient_email=requester_email,
         )
-        if prefs.get("status_email", True):
+        if should_send_email(requester_email, "design", rid):
             send_email([requester_email], subject, text, html)
-        if prefs.get("status_push", True):
+        if should_send_push(requester_email, "design", rid):
             send_push_notification(
                 email=requester_email,
                 title="Design Complete",
@@ -4361,8 +4375,10 @@ def admin_send_reminder(
         footer_note="Please respond so we can continue processing your print request.",
         show_account_tip=show_account_tip,
         tip_register_url=tip_register_url,
+        recipient_email=req["requester_email"],
     )
-    send_email([req["requester_email"]], subject, text, html)
+    if should_send_email(req["requester_email"], "messages", rid):
+        send_email([req["requester_email"]], subject, text, html)
     
     return RedirectResponse(url=f"/admin/request/{rid}?reminder_sent=1", status_code=303)
 
@@ -4393,7 +4409,7 @@ def admin_send_message(
     
     # Notify requester via email
     requester_email_on_status = get_bool_setting("requester_email_on_status", True)
-    if requester_email_on_status and req["requester_email"]:
+    if requester_email_on_status and req["requester_email"] and should_send_email(req["requester_email"], "messages", rid):
         print_label = req["print_name"] or f"Request {rid[:8]}"
         subject = f"[{APP_TITLE}] New message about '{print_label}'"
         text = f"New message from admin:\n\n{message}\n\nRespond here: {BASE_URL}/open/{rid}?token={req['access_token']}"
@@ -4419,13 +4435,13 @@ def admin_send_message(
             header_color="#6366f1",
             show_account_tip=show_account_tip,
             tip_register_url=tip_register_url,
+            recipient_email=req["requester_email"],
         )
         send_email([req["requester_email"]], subject, text, html)
     
     # Send push notification to requester
     if req["requester_email"]:
-        user_prefs = get_user_notification_prefs(req["requester_email"])
-        if user_prefs.get("status_push", True):  # Use status_push for messages too
+        if should_send_push(req["requester_email"], "messages", rid):
             print_label = req["print_name"] or f"Request {rid[:8]}"
             truncated_msg = message[:80] + "..." if len(message) > 80 else message
             try:

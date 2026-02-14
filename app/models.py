@@ -251,16 +251,11 @@ class User:
     preferred_colors: Optional[str] = None
     notes_template: Optional[str] = None
     
-    # Notification preferences
+    # Notification preferences (DEPRECATED: actual prefs now in user_notification_prefs table)
+    # Only trip_reminders_enabled and trip_default_reminder_minutes are still read from here
     notification_prefs: Dict[str, Any] = field(default_factory=lambda: {
-        "email_status_updates": True,
-        "email_print_ready": True,
-        "push_enabled": False,
-        "push_progress": True,
-        "push_milestones": [50, 75],
-        # Trip notification preferences
         "trip_reminders_enabled": True,
-        "trip_default_reminder_minutes": 30,  # Default reminder offset
+        "trip_default_reminder_minutes": 30,
     })
     avatar_url: Optional[str] = None
     
@@ -337,14 +332,8 @@ class Account:
     notes_template: Optional[str] = None
     avatar_url: Optional[str] = None
     
-    # Notification preferences (JSON)
-    notification_prefs: Dict[str, Any] = field(default_factory=lambda: {
-        "email_status_updates": True,
-        "email_print_ready": True,
-        "push_enabled": False,
-        "push_progress": True,
-        "push_milestones": [50, 75],
-    })
+    # Notification preferences (DEPRECATED: actual prefs now in user_notification_prefs table)
+    notification_prefs: Dict[str, Any] = field(default_factory=dict)
     
     # Stats
     total_requests: int = 0

@@ -1,0 +1,241 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}Email Preferences | {{ app_title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto py-8">
+  <!-- Header -->
+  <div class="text-center mb-8">
+    <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center">
+      <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+      </svg>
+    </div>
+    <h1 class="text-2xl font-bold mb-2">Email Preferences</h1>
+    <p class="text-zinc-400 text-sm">Manage notifications for <span class="text-zinc-300">{{ masked_email }}</span></p>
+  </div>
+
+  {% if success_message %}
+  <div class="mb-6 bg-emerald-900/30 border border-emerald-500/50 text-emerald-200 rounded-xl p-4">
+    <div class="flex items-center gap-2">
+      <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+      </svg>
+      <span class="text-sm">{{ success_message }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if error_message %}
+  <div class="mb-6 bg-red-900/30 border border-red-500/50 text-red-200 rounded-xl p-4">
+    <div class="flex items-center gap-2">
+      <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01"/>
+      </svg>
+      <span class="text-sm">{{ error_message }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <form method="POST" action="/email/unsubscribe" id="prefs-form">
+    <input type="hidden" name="token" value="{{ token }}"/>
+
+    <!-- Master Unsubscribe Toggle -->
+    <div class="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-5 mb-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="font-semibold text-white">Receive Email Notifications</h3>
+          <p class="text-zinc-400 text-xs mt-1">Turn off to unsubscribe from all non-essential emails</p>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" name="email_enabled" value="1" class="sr-only peer master-toggle"
+                 {% if not prefs.email_unsubscribed_all %}checked{% endif %}>
+          <div class="w-11 h-6 bg-zinc-600 peer-focus:ring-2 peer-focus:ring-indigo-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Category Preferences (disabled when master is off) -->
+    <div id="category-prefs" class="space-y-4 {% if prefs.email_unsubscribed_all %}opacity-50 pointer-events-none{% endif %}">
+
+      <!-- Print Updates -->
+      <div class="bg-zinc-800/50 border border-zinc-700/50 rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-zinc-700/50">
+          <h3 class="font-semibold text-white text-sm flex items-center gap-2">
+            <span class="text-lg">🖨️</span> Print Updates
+          </h3>
+        </div>
+        <div class="divide-y divide-zinc-700/30">
+
+          <!-- Status Changes -->
+          <div class="px-5 py-3">
+            <div class="flex items-center justify-between mb-2">
+              <div>
+                <span class="text-sm text-zinc-200">Status Changes</span>
+                <p class="text-xs text-zinc-500">Approved, printing, done, etc.</p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" name="status_email" value="1" class="sr-only peer"
+                       {% if prefs.status_email %}checked{% endif %}>
+                <div class="w-9 h-5 bg-zinc-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+              </label>
+            </div>
+            <!-- Per-status toggles (collapsible) -->
+            <details class="ml-4">
+              <summary class="text-xs text-zinc-500 cursor-pointer hover:text-zinc-300">Per-status settings</summary>
+              <div class="mt-2 space-y-2 pl-2 border-l border-zinc-700/50">
+                {% set statuses = [
+                  ("notify_needs_info", "Needs Info", prefs.notify_needs_info),
+                  ("notify_approved", "Approved", prefs.notify_approved),
+                  ("notify_printing", "Printing", prefs.notify_printing),
+                  ("notify_done", "Done", prefs.notify_done),
+                  ("notify_picked_up", "Picked Up", prefs.notify_picked_up),
+                  ("notify_rejected", "Rejected", prefs.notify_rejected),
+                  ("notify_cancelled", "Cancelled", prefs.notify_cancelled),
+                  ("notify_blocked", "Blocked", prefs.notify_blocked),
+                ] %}
+                {% for key, label, checked in statuses %}
+                <label class="flex items-center justify-between text-xs py-1">
+                  <span class="text-zinc-400">{{ label }}</span>
+                  <input type="checkbox" name="{{ key }}" value="1" {% if checked %}checked{% endif %}
+                         class="rounded border-zinc-600 bg-zinc-700 text-indigo-500 focus:ring-indigo-500 h-3.5 w-3.5">
+                </label>
+                {% endfor %}
+              </div>
+            </details>
+          </div>
+
+          <!-- Progress Updates -->
+          <div class="px-5 py-3 flex items-center justify-between">
+            <div>
+              <span class="text-sm text-zinc-200">Progress Milestones</span>
+              <p class="text-xs text-zinc-500">Updates at 50%, 75% during printing</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" name="progress_email" value="1" class="sr-only peer"
+                     {% if prefs.progress_email %}checked{% endif %}>
+              <div class="w-9 h-5 bg-zinc-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+            </label>
+          </div>
+
+          <!-- Submission Confirmations -->
+          <div class="px-5 py-3 flex items-center justify-between">
+            <div>
+              <span class="text-sm text-zinc-200">Submission Confirmations</span>
+              <p class="text-xs text-zinc-500">Confirmation when you submit a request</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" name="submission_email" value="1" class="sr-only peer"
+                     {% if prefs.submission_email %}checked{% endif %}>
+              <div class="w-9 h-5 bg-zinc-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Communication -->
+      <div class="bg-zinc-800/50 border border-zinc-700/50 rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-zinc-700/50">
+          <h3 class="font-semibold text-white text-sm flex items-center gap-2">
+            <span class="text-lg">💬</span> Communication
+          </h3>
+        </div>
+        <div class="divide-y divide-zinc-700/30">
+          <div class="px-5 py-3 flex items-center justify-between">
+            <div>
+              <span class="text-sm text-zinc-200">Admin Messages</span>
+              <p class="text-xs text-zinc-500">Messages and reminders about your requests</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" name="messages_email" value="1" class="sr-only peer"
+                     {% if prefs.messages_email %}checked{% endif %}>
+              <div class="w-9 h-5 bg-zinc-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+            </label>
+          </div>
+          <div class="px-5 py-3 flex items-center justify-between">
+            <div>
+              <span class="text-sm text-zinc-200">Design Updates</span>
+              <p class="text-xs text-zinc-500">When design work completes on your request</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" name="design_email" value="1" class="sr-only peer"
+                     {% if prefs.design_email %}checked{% endif %}>
+              <div class="w-9 h-5 bg-zinc-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Shipping -->
+      <div class="bg-zinc-800/50 border border-zinc-700/50 rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-zinc-700/50">
+          <h3 class="font-semibold text-white text-sm flex items-center gap-2">
+            <span class="text-lg">📦</span> Shipping
+          </h3>
+        </div>
+        <div class="px-5 py-3 flex items-center justify-between">
+          <div>
+            <span class="text-sm text-zinc-200">Shipping Updates</span>
+            <p class="text-xs text-zinc-500">Tracking and delivery notifications</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" name="shipping_email" value="1" class="sr-only peer"
+                   {% if prefs.shipping_email %}checked{% endif %}>
+            <div class="w-9 h-5 bg-zinc-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+          </label>
+        </div>
+      </div>
+
+      <!-- General -->
+      <div class="bg-zinc-800/50 border border-zinc-700/50 rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-zinc-700/50">
+          <h3 class="font-semibold text-white text-sm flex items-center gap-2">
+            <span class="text-lg">📢</span> General
+          </h3>
+        </div>
+        <div class="divide-y divide-zinc-700/30">
+          <div class="px-5 py-3 flex items-center justify-between">
+            <div>
+              <span class="text-sm text-zinc-200">Announcements</span>
+              <p class="text-xs text-zinc-500">App updates and system announcements</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" name="broadcast_email" value="1" class="sr-only peer"
+                     {% if prefs.broadcast_email %}checked{% endif %}>
+              <div class="w-9 h-5 bg-zinc-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Save Button -->
+    <div class="mt-6">
+      <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors">
+        Save Preferences
+      </button>
+    </div>
+
+    <!-- Account link -->
+    <div class="mt-4 text-center">
+      <p class="text-zinc-500 text-xs">
+        Have an account?
+        <a href="/auth/login" class="text-indigo-400 hover:text-indigo-300 underline">Sign in</a>
+        for more notification options including push notifications.
+      </p>
+    </div>
+  </form>
+</div>
+
+<script>
+// Master toggle enables/disables category toggles
+document.querySelector('.master-toggle').addEventListener('change', function() {
+  const categoryPrefs = document.getElementById('category-prefs');
+  if (this.checked) {
+    categoryPrefs.classList.remove('opacity-50', 'pointer-events-none');
+  } else {
+    categoryPrefs.classList.add('opacity-50', 'pointer-events-none');
+  }
+});
+</script>
+{% endblock %}

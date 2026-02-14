@@ -1122,9 +1122,39 @@ def init_db():
             status_push INTEGER DEFAULT 1,
             status_email INTEGER DEFAULT 1,
             broadcast_push INTEGER DEFAULT 1,
+            broadcast_email INTEGER DEFAULT 1,
+            shipping_email INTEGER DEFAULT 1,
+            shipping_push INTEGER DEFAULT 1,
+            messages_email INTEGER DEFAULT 1,
+            messages_push INTEGER DEFAULT 1,
+            design_email INTEGER DEFAULT 1,
+            design_push INTEGER DEFAULT 1,
+            trip_reminders_push INTEGER DEFAULT 1,
+            submission_email INTEGER DEFAULT 1,
+            notify_needs_info INTEGER DEFAULT 1,
+            notify_approved INTEGER DEFAULT 1,
+            notify_printing INTEGER DEFAULT 1,
+            notify_done INTEGER DEFAULT 1,
+            notify_picked_up INTEGER DEFAULT 1,
+            notify_rejected INTEGER DEFAULT 1,
+            notify_cancelled INTEGER DEFAULT 1,
+            notify_blocked INTEGER DEFAULT 1,
+            email_unsubscribed_all INTEGER DEFAULT 0,
             updated_at TEXT
         );
     """)
+
+    # Email unsubscribe tokens - permanent tokens for one-click unsubscribe links
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS email_unsubscribe_tokens (
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            token TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL
+        );
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_unsub_tokens_email ON email_unsubscribe_tokens(email);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_unsub_tokens_token ON email_unsubscribe_tokens(token);")
 
     # ──────────────────────────────────────────────────────────────────────────
     # TRIPS FEATURE - Private trip planning (not visible on public pages)
@@ -1522,6 +1552,32 @@ def ensure_migrations():
     prefs_cols = {row[1] for row in cur.fetchall()}
     if prefs_cols and "progress_milestones" not in prefs_cols:
         cur.execute("ALTER TABLE user_notification_prefs ADD COLUMN progress_milestones TEXT DEFAULT '50,75'")
+
+    # Add new notification preference columns (v0.12.0 notification revamp)
+    if prefs_cols:
+        new_pref_cols = {
+            "broadcast_email": "INTEGER DEFAULT 1",
+            "shipping_email": "INTEGER DEFAULT 1",
+            "shipping_push": "INTEGER DEFAULT 1",
+            "messages_email": "INTEGER DEFAULT 1",
+            "messages_push": "INTEGER DEFAULT 1",
+            "design_email": "INTEGER DEFAULT 1",
+            "design_push": "INTEGER DEFAULT 1",
+            "trip_reminders_push": "INTEGER DEFAULT 1",
+            "submission_email": "INTEGER DEFAULT 1",
+            "notify_needs_info": "INTEGER DEFAULT 1",
+            "notify_approved": "INTEGER DEFAULT 1",
+            "notify_printing": "INTEGER DEFAULT 1",
+            "notify_done": "INTEGER DEFAULT 1",
+            "notify_picked_up": "INTEGER DEFAULT 1",
+            "notify_rejected": "INTEGER DEFAULT 1",
+            "notify_cancelled": "INTEGER DEFAULT 1",
+            "notify_blocked": "INTEGER DEFAULT 1",
+            "email_unsubscribed_all": "INTEGER DEFAULT 0",
+        }
+        for col_name, col_type in new_pref_cols.items():
+            if col_name not in prefs_cols:
+                cur.execute(f"ALTER TABLE user_notification_prefs ADD COLUMN {col_name} {col_type}")
 
     # Add reminder columns to trip_events if missing
     cur.execute("PRAGMA table_info(trip_events)")
@@ -3553,6 +3609,7 @@ def send_build_start_notification(build: Dict, request: Dict):
             secondary_cta_label="All My Requests",
             show_account_tip=show_account_tip,
             tip_register_url=tip_register_url,
+            recipient_email=request["requester_email"],
         )
         send_email([request["requester_email"]], subject, text, html)
     
@@ -3660,6 +3717,7 @@ def send_build_complete_notification(build: Dict, request: Dict, snapshot_b64: O
             secondary_cta_label="Report a Problem",
             show_account_tip=show_account_tip,
             tip_register_url=tip_register_url,
+            recipient_email=request["requester_email"],
         )
         send_email([request["requester_email"]], subject, text, html, image_base64=snapshot_to_send)
     
@@ -3748,6 +3806,7 @@ def send_build_fail_notification(build: Dict, request: Dict, reason: Optional[st
             secondary_cta_label="All My Requests",
             show_account_tip=show_account_tip,
             tip_register_url=tip_register_url,
+            recipient_email=request["requester_email"],
         )
         send_email([request["requester_email"]], subject, text, html)
     
@@ -3837,6 +3896,7 @@ def send_request_complete_notification(request: Dict, snapshot_b64: Optional[str
             footer_note=f"<a href=\"{BASE_URL}{my_requests_url}\">All My Requests</a> • If the snapshot looks off, report a problem so we can pause the job.",
             show_account_tip=show_account_tip,
             tip_register_url=tip_register_url,
+            recipient_email=request["requester_email"],
         )
         send_email([request["requester_email"]], subject, text, html, image_base64=snapshot_to_send)
     
@@ -3905,65 +3965,91 @@ def clear_progress_milestones(build_id: str):
 
 
 # ─────────────────────────── USER NOTIFICATION PREFERENCES ───────────────────────────
+
+# All notification preference keys with their defaults
+NOTIFICATION_PREF_DEFAULTS = {
+    "progress_push": True,
+    "progress_email": False,
+    "progress_milestones": "50,75",
+    "status_push": True,
+    "status_email": True,
+    "broadcast_push": True,
+    "broadcast_email": True,
+    "shipping_email": True,
+    "shipping_push": True,
+    "messages_email": True,
+    "messages_push": True,
+    "design_email": True,
+    "design_push": True,
+    "trip_reminders_push": True,
+    "submission_email": True,
+    "notify_needs_info": True,
+    "notify_approved": True,
+    "notify_printing": True,
+    "notify_done": True,
+    "notify_picked_up": True,
+    "notify_rejected": True,
+    "notify_cancelled": True,
+    "notify_blocked": True,
+    "email_unsubscribed_all": False,
+}
+
+# Columns that are booleans (INTEGER in DB)
+_PREF_BOOL_COLS = [k for k, v in NOTIFICATION_PREF_DEFAULTS.items() if isinstance(v, bool)]
+# The one text column
+_PREF_TEXT_COLS = ["progress_milestones"]
+_ALL_PREF_COLS = _PREF_BOOL_COLS + _PREF_TEXT_COLS
+
+
 def get_user_notification_prefs(email: str) -> dict:
     """
     Get notification preferences for a user.
-    Returns dict with progress_push, progress_email, progress_milestones, status_push, status_email, broadcast_push.
-    Defaults to all push enabled, progress email disabled.
+    Returns dict with all notification preference keys.
+    Defaults: all push enabled, progress email off, everything else on.
     """
     conn = db()
     row = conn.execute(
-        "SELECT progress_push, progress_email, progress_milestones, status_push, status_email, broadcast_push FROM user_notification_prefs WHERE LOWER(email) = LOWER(?)",
+        f"SELECT {', '.join(_ALL_PREF_COLS)} FROM user_notification_prefs WHERE LOWER(email) = LOWER(?)",
         (email,)
     ).fetchone()
     conn.close()
     
     if row:
-        return {
-            "progress_push": bool(row["progress_push"]),
-            "progress_email": bool(row["progress_email"]),
-            "progress_milestones": row["progress_milestones"] if row["progress_milestones"] else "50,75",
-            "status_push": bool(row["status_push"]),
-            "status_email": bool(row["status_email"]),
-            "broadcast_push": bool(row["broadcast_push"]),
-        }
+        result = {}
+        for col in _PREF_BOOL_COLS:
+            result[col] = bool(row[col]) if row[col] is not None else NOTIFICATION_PREF_DEFAULTS[col]
+        for col in _PREF_TEXT_COLS:
+            result[col] = row[col] if row[col] else NOTIFICATION_PREF_DEFAULTS[col]
+        return result
     
-    # Default preferences - push on, progress email off (to avoid spam)
-    return {
-        "progress_push": True,
-        "progress_email": True,
-        "progress_milestones": "50,75",
-        "status_push": True,
-        "status_email": True,
-        "broadcast_push": True,
-    }
+    # Return defaults for users without a prefs record
+    return dict(NOTIFICATION_PREF_DEFAULTS)
 
 
 def update_user_notification_prefs(email: str, prefs: dict) -> bool:
     """Update notification preferences for a user. Creates record if doesn't exist."""
     conn = db()
     try:
-        conn.execute("""
-            INSERT INTO user_notification_prefs (email, progress_push, progress_email, progress_milestones, status_push, status_email, broadcast_push, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        # Build values from prefs dict, using defaults for missing keys
+        values = [email.lower()]
+        for col in _PREF_BOOL_COLS:
+            default = NOTIFICATION_PREF_DEFAULTS[col]
+            values.append(1 if prefs.get(col, default) else 0)
+        for col in _PREF_TEXT_COLS:
+            default = NOTIFICATION_PREF_DEFAULTS[col]
+            values.append(prefs.get(col, default))
+        values.append(now_iso())
+        
+        set_clause = ", ".join(f"{col} = excluded.{col}" for col in _ALL_PREF_COLS)
+        placeholders = ", ".join(["?"] * (len(_ALL_PREF_COLS) + 2))  # +2 for email and updated_at
+        
+        conn.execute(f"""
+            INSERT INTO user_notification_prefs (email, {', '.join(_ALL_PREF_COLS)}, updated_at)
+            VALUES ({placeholders})
             ON CONFLICT(email) DO UPDATE SET
-                progress_push = excluded.progress_push,
-                progress_email = excluded.progress_email,
-                progress_milestones = excluded.progress_milestones,
-                status_push = excluded.status_push,
-                status_email = excluded.status_email,
-                broadcast_push = excluded.broadcast_push,
+                {set_clause},
                 updated_at = excluded.updated_at
-        """, (
-            email.lower(),
-            1 if prefs.get("progress_push", True) else 0,
-            1 if prefs.get("progress_email", False) else 0,
-            prefs.get("progress_milestones", "50,75"),
-            1 if prefs.get("status_push", True) else 0,
-            1 if prefs.get("status_email", True) else 0,
-            1 if prefs.get("broadcast_push", True) else 0,
-            now_iso()
-        ))
+        """, values)
         conn.commit()
         conn.close()
         return True
@@ -3971,6 +4057,100 @@ def update_user_notification_prefs(email: str, prefs: dict) -> bool:
         print(f"[PREFS] Error updating notification prefs for {email}: {e}")
         conn.close()
         return False
+
+
+def is_email_unsubscribed(email: str) -> bool:
+    """Check if a user has globally unsubscribed from all non-transactional emails."""
+    prefs = get_user_notification_prefs(email)
+    return prefs.get("email_unsubscribed_all", False)
+
+
+def should_send_email(email: str, category: str = "status", request_id: str = None) -> bool:
+    """
+    Central guard for whether to send an email to a user.
+    
+    Categories: status, progress, broadcast, shipping, messages, design, submission, transactional
+    'transactional' (magic links, password resets) always returns True.
+    
+    Checks:
+      1. Master unsubscribe (email_unsubscribed_all)
+      2. Category-specific preference (e.g. status_email, shipping_email)
+      3. Per-request override (if request_id provided)
+    """
+    if category == "transactional":
+        return True
+    
+    prefs = get_user_notification_prefs(email)
+    
+    # Master unsubscribe kills all non-transactional emails
+    if prefs.get("email_unsubscribed_all", False):
+        return False
+    
+    # Category-specific check
+    category_key = f"{category}_email"
+    if category_key in prefs and not prefs[category_key]:
+        return False
+    
+    # Per-request override (if the user disabled email for a specific request)
+    if request_id:
+        try:
+            conn = db()
+            row = conn.execute(
+                "SELECT notification_prefs FROM requests WHERE id = ?", (request_id,)
+            ).fetchone()
+            conn.close()
+            if row and row["notification_prefs"]:
+                import json
+                req_prefs = json.loads(row["notification_prefs"])
+                if not req_prefs.get("email", True):
+                    return False
+        except Exception:
+            pass
+    
+    return True
+
+
+def should_send_push(email: str, category: str = "status", request_id: str = None) -> bool:
+    """
+    Central guard for whether to send a push notification to a user.
+    
+    Categories: status, progress, broadcast, shipping, messages, design, trip_reminders
+    
+    Checks:
+      1. Category-specific push preference
+      2. Per-request override (if request_id provided)
+    """
+    prefs = get_user_notification_prefs(email)
+    
+    # Category-specific check
+    category_key = f"{category}_push"
+    if category_key in prefs and not prefs[category_key]:
+        return False
+    
+    # Per-request override
+    if request_id:
+        try:
+            conn = db()
+            row = conn.execute(
+                "SELECT notification_prefs FROM requests WHERE id = ?", (request_id,)
+            ).fetchone()
+            conn.close()
+            if row and row["notification_prefs"]:
+                import json
+                req_prefs = json.loads(row["notification_prefs"])
+                if not req_prefs.get("push", True):
+                    return False
+        except Exception:
+            pass
+    
+    return True
+
+
+def get_user_per_status_pref(email: str, status: str) -> bool:
+    """Check if user wants notifications for a specific status."""
+    prefs = get_user_notification_prefs(email)
+    status_key = f"notify_{status.lower().replace(' ', '_')}"
+    return prefs.get(status_key, True)
 
 
 def send_progress_notification(build: Dict, request: Dict, current_percent: int):
@@ -5676,6 +5856,7 @@ async def poll_printer_status_worker():
                                 secondary_cta_label="All My Requests",
                                 show_account_tip=show_account_tip,
                                 tip_register_url=tip_register_url,
+                                recipient_email=req["requester_email"],
                             )
                             send_email([req["requester_email"]], subject, text, html)
                         
@@ -5874,6 +6055,7 @@ async def poll_printer_status_worker():
                             footer_note="If the photo looks off, click Report a Problem so we can pause the job.",
                             show_account_tip=show_account_tip,
                             tip_register_url=tip_register_url,
+                            recipient_email=req_row["requester_email"],
                         )
                         send_email([req_row["requester_email"]], subject, text, html, image_base64=snapshot_to_send)
                     
@@ -6389,7 +6571,7 @@ def _human_material(code: str) -> str:
     return code
 
 
-def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta_url: Optional[str] = None, cta_label: str = "Open", header_color: str = "#4f46e5", image_base64: Optional[str] = None, footer_note: Optional[str] = None, secondary_cta_url: Optional[str] = None, secondary_cta_label: str = "My Requests", show_account_tip: bool = False, tip_register_url: Optional[str] = None) -> str:
+def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta_url: Optional[str] = None, cta_label: str = "Open", header_color: str = "#4f46e5", image_base64: Optional[str] = None, footer_note: Optional[str] = None, secondary_cta_url: Optional[str] = None, secondary_cta_label: str = "My Requests", show_account_tip: bool = False, tip_register_url: Optional[str] = None, recipient_email: Optional[str] = None) -> str:
     """Build HTML email with optional header color customization and embedded image"""
     def esc(s: str) -> str:
         return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -6494,6 +6676,7 @@ def build_email_html(title: str, subtitle: str, rows: List[Tuple[str, str]], cta
         <div style="color:#9ca3af;font-size:12px;margin-top:16px;text-align:center;">
           {esc(APP_TITLE)} • {esc(datetime.utcnow().strftime("%B %d, %Y at %H:%M UTC"))}
           <br/><span style="color:#6b7280;font-size:11px;">💡 Install the app from your browser for instant push notifications</span>
+          {build_unsubscribe_footer_html(recipient_email) if recipient_email else ''}
         </div>
       </div>
     </div>
@@ -6608,6 +6791,54 @@ def get_or_create_my_requests_token(email: str) -> str:
     conn.close()
     
     return token
+
+
+def get_or_create_unsubscribe_token(email: str) -> str:
+    """
+    Get existing unsubscribe token or create a new one.
+    Tokens are permanent (no expiry) for unsubscribe links.
+    Returns the token string for use in /email/unsubscribe?token=XXX
+    """
+    email = email.strip().lower()
+    conn = db()
+    
+    existing = conn.execute(
+        "SELECT token FROM email_unsubscribe_tokens WHERE LOWER(email) = LOWER(?)",
+        (email,)
+    ).fetchone()
+    
+    if existing:
+        conn.close()
+        return existing["token"]
+    
+    # Generate new permanent token
+    token = secrets.token_urlsafe(32)
+    conn.execute(
+        "INSERT INTO email_unsubscribe_tokens (id, email, token, created_at) VALUES (?, ?, ?, ?)",
+        (str(uuid.uuid4()), email, token, now_iso())
+    )
+    conn.commit()
+    conn.close()
+    
+    return token
+
+
+def build_unsubscribe_footer_html(recipient_email: str) -> str:
+    """Build the unsubscribe / notification settings footer HTML for emails."""
+    try:
+        token = get_or_create_unsubscribe_token(recipient_email)
+        unsub_url = f"{BASE_URL}/email/unsubscribe?token={token}&amp;action=all"
+        prefs_url = f"{BASE_URL}/email/unsubscribe?token={token}"
+        return f"""
+          <div style="margin-top:8px;">
+            <a href="{unsub_url}" style="color:#9ca3af;font-size:11px;text-decoration:underline;">Unsubscribe</a>
+            <span style="color:#d1d5db;font-size:11px;"> • </span>
+            <a href="{prefs_url}" style="color:#9ca3af;font-size:11px;text-decoration:underline;">Notification Settings</a>
+          </div>
+        """
+    except Exception as e:
+        print(f"[EMAIL] Failed to build unsubscribe footer for {recipient_email}: {e}")
+        return ""
 
 
 def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Optional[str] = None, image_base64: Optional[str] = None):
@@ -6871,6 +7102,7 @@ def send_push_notification(email: str, title: str, body: str, url: str = None, i
             cta_label="Open My Account",
             header_color="#f59e0b",
             footer_note="This alert is sent only once per day while push remains disabled.",
+            recipient_email=email,
         )
         send_email([email], alert_subject, alert_text, alert_html)
 
@@ -6939,6 +7171,9 @@ def send_broadcast_notification(title: str, body: str, url: str = None,
             print(f"[BROADCAST] Sending '{broadcast_type}' push to {len(emails)} subscribers")
             for row in emails:
                 email = row["email"]
+                # Respect user's broadcast_push preference
+                if not should_send_push(email, "broadcast"):
+                    continue
                 push_result = send_push_notification(
                     email=email,
                     title=title,
@@ -6958,27 +7193,31 @@ def send_broadcast_notification(title: str, body: str, url: str = None,
     # Send EMAIL if requested
     if also_email and emails:
         print(f"[BROADCAST] Sending '{broadcast_type}' email to {len(emails)} subscribers")
-        email_list = [row["email"] for row in emails]
+        # Filter out users who have unsubscribed from broadcast emails
+        email_list = [row["email"] for row in emails if should_send_email(row["email"], "broadcast")]
         
-        # Build broadcast email
-        subject = f"[{APP_TITLE}] {title}"
-        text_body = f"{body}\n\nView: {full_url}"
-        html_body = build_email_html(
-            title=title,
-            subtitle=body,
-            rows=[],
-            cta_url=full_url,
-            cta_label="View Details",
-            header_color="#6366f1",  # Indigo for broadcasts
-        )
-        
-        try:
-            send_email(email_list, subject, text_body, html_body)
-            result["emails_sent"] = len(email_list)
-            print(f"[BROADCAST] Sent email to {len(email_list)} recipients")
-        except Exception as e:
-            result["errors"].append(f"Email error: {str(e)}")
-            print(f"[BROADCAST] Email error: {e}")
+        if not email_list:
+            print("[BROADCAST] All recipients opted out of broadcast emails")
+        else:
+            # Build broadcast email
+            subject = f"[{APP_TITLE}] {title}"
+            text_body = f"{body}\n\nView: {full_url}"
+            html_body = build_email_html(
+                title=title,
+                subtitle=body,
+                rows=[],
+                cta_url=full_url,
+                cta_label="View Details",
+                header_color="#6366f1",  # Indigo for broadcasts
+            )
+            
+            try:
+                send_email(email_list, subject, text_body, html_body)
+                result["emails_sent"] = len(email_list)
+                print(f"[BROADCAST] Sent email to {len(email_list)} recipients")
+            except Exception as e:
+                result["errors"].append(f"Email error: {str(e)}")
+                print(f"[BROADCAST] Email error: {e}")
     
     # Record the broadcast in history (include email count in metadata)
     broadcast_id = str(uuid.uuid4())

@@ -371,30 +371,74 @@
           <div class="bg-zinc-800/30 rounded-xl p-4 md:col-span-2">
             <dt class="text-xs text-zinc-500 uppercase tracking-wider">Notification Preferences</dt>
             {% if notification_prefs %}
-            <dd class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-              <div class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full {% if notification_prefs.status_email %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
-                Status Email: {{ 'On' if notification_prefs.status_email else 'Off' }}
+            <dd class="mt-2 space-y-2 text-sm">
+              {% if notification_prefs.email_unsubscribed_all %}
+              <div class="flex items-center gap-2 text-red-400 font-medium">
+                <span class="w-2 h-2 rounded-full bg-red-400"></span>
+                All emails unsubscribed
               </div>
-              <div class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full {% if notification_prefs.status_push %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
-                Status Push: {{ 'On' if notification_prefs.status_push else 'Off' }}
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full {% if notification_prefs.progress_email %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
-                Progress Email: {{ 'On' if notification_prefs.progress_email else 'Off' }} ({{ notification_prefs.progress_milestones or '50,75' }})
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full {% if notification_prefs.progress_push %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
-                Progress Push: {{ 'On' if notification_prefs.progress_push else 'Off' }}
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full {% if notification_prefs.broadcast_push %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
-                Broadcast Push: {{ 'On' if notification_prefs.broadcast_push else 'Off' }}
+              {% endif %}
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full {% if notification_prefs.status_email %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                  Status Email: {{ 'On' if notification_prefs.status_email else 'Off' }}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full {% if notification_prefs.status_push %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                  Status Push: {{ 'On' if notification_prefs.status_push else 'Off' }}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full {% if notification_prefs.progress_email %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                  Progress Email: {{ 'On' if notification_prefs.progress_email else 'Off' }} ({{ notification_prefs.progress_milestones or '50,75' }})
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full {% if notification_prefs.progress_push %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                  Progress Push: {{ 'On' if notification_prefs.progress_push else 'Off' }}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full {% if notification_prefs.broadcast_push %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                  Broadcast Push: {{ 'On' if notification_prefs.broadcast_push else 'Off' }}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full {% if notification_prefs.broadcast_email %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                  Broadcast Email: {{ 'On' if notification_prefs.broadcast_email else 'Off' }}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full {% if notification_prefs.shipping_email %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                  Shipping Email: {{ 'On' if notification_prefs.shipping_email else 'Off' }}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full {% if notification_prefs.shipping_push %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                  Shipping Push: {{ 'On' if notification_prefs.shipping_push else 'Off' }}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full {% if notification_prefs.messages_email %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                  Messages Email: {{ 'On' if notification_prefs.messages_email else 'Off' }}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full {% if notification_prefs.messages_push %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                  Messages Push: {{ 'On' if notification_prefs.messages_push else 'Off' }}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full {% if notification_prefs.design_email %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                  Design Email: {{ 'On' if notification_prefs.design_email else 'Off' }}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full {% if notification_prefs.design_push %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                  Design Push: {{ 'On' if notification_prefs.design_push else 'Off' }}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full {% if notification_prefs.submission_email %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                  Submission Email: {{ 'On' if notification_prefs.submission_email else 'Off' }}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full {% if notification_prefs.trip_reminders_push %}bg-emerald-400{% else %}bg-zinc-600{% endif %}"></span>
+                  Trip Reminders Push: {{ 'On' if notification_prefs.trip_reminders_push else 'Off' }}
+                </div>
               </div>
             </dd>
             {% else %}
-            <dd class="mt-2 text-sm text-zinc-400">No preference record; defaults apply (status email/push enabled, progress push on, progress email on at 50/75).</dd>
+            <dd class="mt-2 text-sm text-zinc-400">No preference record; defaults apply.</dd>
             {% endif %}
           </div>
           

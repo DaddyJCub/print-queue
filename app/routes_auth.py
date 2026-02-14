@@ -191,8 +191,9 @@ async def user_magic_link(
     
     # Always show success (don't reveal if email exists)
     if token:
-        from app.main import send_email
+        from app.main import send_email, build_unsubscribe_footer_html
         magic_url = f"https://print.jcubhub.com/auth/magic/{token}"
+        unsub_footer = build_unsubscribe_footer_html(email)
         
         html_body = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -204,6 +205,7 @@ async def user_magic_link(
             </a>
             <p style="color: #666; font-size: 14px;">This link expires in 15 minutes.</p>
             <p style="color: #666; font-size: 14px;">If you didn't request this link, you can safely ignore this email.</p>
+            {unsub_footer}
         </div>
         """
         
@@ -1197,8 +1199,9 @@ async def admin_reset_user_password(
         # Send magic link email
         token = create_magic_link(user.email)
         if token:
-            from app.main import send_email
+            from app.main import send_email, build_unsubscribe_footer_html
             magic_url = f"https://print.jcubhub.com/auth/magic/{token}"
+            unsub_footer = build_unsubscribe_footer_html(user.email)
             
             html_body = f"""
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -1211,6 +1214,7 @@ async def admin_reset_user_password(
                 </a>
                 <p style="color: #666; font-size: 14px;">This link expires in 15 minutes.</p>
                 <p style="color: #666; font-size: 14px;">Once signed in, go to My Account → Security to set a new password.</p>
+                {unsub_footer}
             </div>
             """
             

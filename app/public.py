@@ -40,6 +40,9 @@ from app.main import (
     get_smart_eta,
     first_name_only,
     is_feature_enabled,
+    get_user_notification_prefs,
+    update_user_notification_prefs,
+    should_send_email,
     logger,
 )
 
@@ -386,6 +389,7 @@ async def submit(
             secondary_cta_label="All My Requests",
             show_account_tip=show_tip,
             tip_register_url=register_url,
+            recipient_email=requester_email.strip(),
         )
         send_email([requester_email.strip()], subject, text, html)
 
@@ -1317,6 +1321,7 @@ def submit_store_request(
                 footer_note="You'll receive updates as your request is processed.",
                 cta_label="Track Your Request",
                 cta_url=f"{BASE_URL}/open/{rid}?token={access_token}",
+                recipient_email=requester_email.strip().lower(),
             )
             
             send_email([requester_email.strip().lower()], subject, text, html)
@@ -1334,3 +1339,138 @@ def submit_store_request(
             pass
     
     return RedirectResponse(url=f"/thanks?id={rid[:8]}", status_code=303)
+
+
+# ─────────────────────────── EMAIL UNSUBSCRIBE / NOTIFICATION PREFERENCES ───────────────────────────
+
+def _mask_email(email: str) -> str:
+    """Mask email for display: j***b@example.com"""
+    parts = email.split("@")
+    if len(parts) != 2:
+        return "***"
+    local = parts[0]
+    if len(local) <= 2:
+        masked = local[0] + "***"
+    else:
+        masked = local[0] + "***" + local[-1]
+    return f"{masked}@{parts[1]}"
+
+
+def _lookup_email_from_unsub_token(token: str):
+    """Look up email from unsubscribe token. Returns email string or None."""
+    conn = db()
+    row = conn.execute(
+        "SELECT email FROM email_unsubscribe_tokens WHERE token = ?", (token,)
+    ).fetchone()
+    conn.close()
+    return row["email"] if row else None
+
+
+@router.get("/email/unsubscribe", response_class=HTMLResponse)
+async def email_unsubscribe_page(request: Request, token: str = "", action: str = "", saved: str = ""):
+    """
+    Email unsubscribe / notification preferences page.
+    ?token=XXX — show preferences management page
+    ?token=XXX&action=all — one-click unsubscribe from all
+    """
+    if not token:
+        return templates.TemplateResponse("email_unsubscribe.html", {
+            "request": request,
+            "error_message": "Invalid or missing token. Please use the link from your email.",
+            "token": "",
+            "masked_email": "",
+            "prefs": {},
+            "success_message": "",
+            "app_title": APP_TITLE,
+            "version": APP_VERSION,
+        })
+    
+    email = _lookup_email_from_unsub_token(token)
+    if not email:
+        return templates.TemplateResponse("email_unsubscribe.html", {
+            "request": request,
+            "error_message": "This unsubscribe link is invalid or expired. Please use a link from a recent email.",
+            "token": "",
+            "masked_email": "",
+            "prefs": {},
+            "success_message": "",
+            "app_title": APP_TITLE,
+            "version": APP_VERSION,
+        })
+    
+    success_message = ""
+    
+    # One-click unsubscribe
+    if action == "all":
+        prefs = get_user_notification_prefs(email)
+        prefs["email_unsubscribed_all"] = True
+        update_user_notification_prefs(email, prefs)
+        success_message = "You've been unsubscribed from all email notifications. You can re-enable them below."
+    
+    if saved == "1":
+        success_message = "Your notification preferences have been saved."
+    
+    prefs = get_user_notification_prefs(email)
+    
+    return templates.TemplateResponse("email_unsubscribe.html", {
+        "request": request,
+        "token": token,
+        "masked_email": _mask_email(email),
+        "prefs": prefs,
+        "success_message": success_message,
+        "error_message": "",
+        "app_title": APP_TITLE,
+        "version": APP_VERSION,
+    })
+
+
+@router.post("/email/unsubscribe")
+async def email_unsubscribe_save(
+    request: Request,
+    token: str = Form(""),
+    email_enabled: str = Form(""),
+    status_email: str = Form(""),
+    progress_email: str = Form(""),
+    submission_email: str = Form(""),
+    messages_email: str = Form(""),
+    design_email: str = Form(""),
+    shipping_email: str = Form(""),
+    broadcast_email: str = Form(""),
+    notify_needs_info: str = Form(""),
+    notify_approved: str = Form(""),
+    notify_printing: str = Form(""),
+    notify_done: str = Form(""),
+    notify_picked_up: str = Form(""),
+    notify_rejected: str = Form(""),
+    notify_cancelled: str = Form(""),
+    notify_blocked: str = Form(""),
+):
+    """Save email notification preferences from unsubscribe page."""
+    email = _lookup_email_from_unsub_token(token)
+    if not email:
+        return RedirectResponse(url="/email/unsubscribe?error=invalid", status_code=303)
+    
+    # Get current prefs to preserve push settings
+    current_prefs = get_user_notification_prefs(email)
+    
+    # Update only the email-related preferences
+    current_prefs["email_unsubscribed_all"] = not bool(email_enabled)
+    current_prefs["status_email"] = bool(status_email)
+    current_prefs["progress_email"] = bool(progress_email)
+    current_prefs["submission_email"] = bool(submission_email)
+    current_prefs["messages_email"] = bool(messages_email)
+    current_prefs["design_email"] = bool(design_email)
+    current_prefs["shipping_email"] = bool(shipping_email)
+    current_prefs["broadcast_email"] = bool(broadcast_email)
+    current_prefs["notify_needs_info"] = bool(notify_needs_info)
+    current_prefs["notify_approved"] = bool(notify_approved)
+    current_prefs["notify_printing"] = bool(notify_printing)
+    current_prefs["notify_done"] = bool(notify_done)
+    current_prefs["notify_picked_up"] = bool(notify_picked_up)
+    current_prefs["notify_rejected"] = bool(notify_rejected)
+    current_prefs["notify_cancelled"] = bool(notify_cancelled)
+    current_prefs["notify_blocked"] = bool(notify_blocked)
+    
+    update_user_notification_prefs(email, current_prefs)
+    
+    return RedirectResponse(url=f"/email/unsubscribe?token={token}&saved=1", status_code=303)
