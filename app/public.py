@@ -1131,6 +1131,59 @@ def changelog(request: Request):
     return templates.TemplateResponse("changelog.html", {"request": request, "version": APP_VERSION})
 
 
+# ─────────────────────────── POLICIES (Terms / Privacy / Etc.) ───────────────────────────
+
+# NOTE: These values are intentionally simple and can be updated without touching templates.
+POLICY_EFFECTIVE_DATE = "February 15, 2026"
+POLICY_CONTACT_EMAIL = "admin@jcubhub.com"
+POLICY_GOVERNING_LAW = "Wisconsin, United States"
+
+
+@router.get("/terms", response_class=HTMLResponse)
+def terms_of_use(request: Request):
+    return templates.TemplateResponse("terms.html", {
+        "request": request,
+        "version": APP_VERSION,
+        "effective_date": POLICY_EFFECTIVE_DATE,
+        "contact_email": POLICY_CONTACT_EMAIL,
+        "governing_law": POLICY_GOVERNING_LAW,
+        "app_title": APP_TITLE,
+    })
+
+
+@router.get("/privacy", response_class=HTMLResponse)
+def privacy_policy(request: Request):
+    return templates.TemplateResponse("privacy.html", {
+        "request": request,
+        "version": APP_VERSION,
+        "effective_date": POLICY_EFFECTIVE_DATE,
+        "contact_email": POLICY_CONTACT_EMAIL,
+        "app_title": APP_TITLE,
+    })
+
+
+@router.get("/acceptable-use", response_class=HTMLResponse)
+def acceptable_use_policy(request: Request):
+    return templates.TemplateResponse("acceptable_use.html", {
+        "request": request,
+        "version": APP_VERSION,
+        "effective_date": POLICY_EFFECTIVE_DATE,
+        "contact_email": POLICY_CONTACT_EMAIL,
+        "app_title": APP_TITLE,
+    })
+
+
+@router.get("/refunds-and-shipping", response_class=HTMLResponse)
+def refunds_and_shipping_policy(request: Request):
+    return templates.TemplateResponse("refunds_shipping.html", {
+        "request": request,
+        "version": APP_VERSION,
+        "effective_date": POLICY_EFFECTIVE_DATE,
+        "contact_email": POLICY_CONTACT_EMAIL,
+        "app_title": APP_TITLE,
+    })
+
+
 
 # ─────────────────────────── FEEDBACK (Bug Reports & Suggestions) ───────────────────────────
 
@@ -1288,24 +1341,29 @@ def public_store(request: Request, category: Optional[str] = None):
 
 
 @router.get("/store/item/{item_id}", response_class=HTMLResponse)
-def store_item_view(request: Request, item_id: str):
+async def store_item_view(request: Request, item_id: str):
     """View a store item and request it"""
     conn = db()
     item = conn.execute("SELECT * FROM store_items WHERE id = ? AND is_active = 1", (item_id,)).fetchone()
     if not item:
         conn.close()
         raise HTTPException(status_code=404, detail="Item not found")
-    
+
     files = conn.execute(
         "SELECT * FROM store_item_files WHERE store_item_id = ? ORDER BY created_at DESC",
         (item_id,)
     ).fetchall()
     conn.close()
-    
+
+    from app.payments import is_payments_enabled
+    from app.auth import get_current_user
+    user = await get_current_user(request)
     return templates.TemplateResponse("store_item.html", {
         "request": request,
         "item": item,
         "files": files,
+        "payments_enabled": is_payments_enabled(),
+        "user": user,
         "version": APP_VERSION,
     })
 
@@ -1339,6 +1397,12 @@ async def submit_store_request(
             if checkout_url:
                 return RedirectResponse(url=checkout_url, status_code=303)
             logger.error(f"[STORE] Stripe checkout creation failed: {result}")
+        else:
+            # Price is set but payments not enabled - block submission
+            raise HTTPException(
+                status_code=503,
+                detail="Online payments are not currently available. Please contact us to place this order.",
+            )
 
     # Free item flow (original logic)
     conn = db()
@@ -1425,7 +1489,13 @@ async def submit_store_request(
         except Exception:
             pass
     
-    return RedirectResponse(url=f"/thanks?id={rid[:8]}", status_code=303)
+    return templates.TemplateResponse("thanks_new.html", {
+        "request": request,
+        "rid": rid,
+        "print_name": item["name"],
+        "access_token": access_token,
+        "version": APP_VERSION,
+    })
 
 
 # ─────────────────────────── EMAIL UNSUBSCRIBE / NOTIFICATION PREFERENCES ───────────────────────────

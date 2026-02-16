@@ -1,0 +1,99 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}Terms of Use | {{ app_title }}{% endblock %}
+{% block header_title %}Terms{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+  <div class="mb-6">
+    <div class="bg-gradient-to-br from-zinc-900/80 to-zinc-950/60 border border-zinc-800 rounded-2xl p-5">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h1 class="text-2xl sm:text-3xl font-bold text-white">Terms of Use</h1>
+          <p class="text-sm text-zinc-400 mt-1">Operated by <span class="font-medium text-zinc-200">{{ app_title }}</span></p>
+          <p class="text-xs text-zinc-500 mt-2">Effective {{ effective_date }} • Contact: <a class="underline hover:text-indigo-300" href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
+        </div>
+        <div class="hidden sm:flex items-center gap-2 text-xs">
+          <a href="/privacy" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition">Privacy</a>
+          <a href="/acceptable-use" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition">Acceptable Use</a>
+          <a href="/refunds-and-shipping" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition">Refunds &amp; Shipping</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="space-y-4">
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">1) What this covers</h2>
+      <p class="text-sm text-zinc-400">These Terms govern your use of {{ app_title }} (the “Service”), including submitting print requests, uploading files, providing links, making payments, and requesting shipping.</p>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">2) Eligibility and accounts</h2>
+      <ul class="text-sm text-zinc-400 space-y-2">
+        <li>• You must use the Service only if you can form a binding contract and comply with applicable law.</li>
+        <li>• You’re responsible for activity under your account/session and keeping access links or tokens secure.</li>
+        <li>• We may suspend, restrict, or refuse service if we reasonably believe there’s abuse, fraud, or prohibited activity.</li>
+      </ul>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">3) Your submissions (files, links, notes)</h2>
+      <ul class="text-sm text-zinc-400 space-y-2">
+        <li>• You represent that you have the rights to submit any files/links/content you provide.</li>
+        <li>• Don’t submit illegal content or content that infringes someone else’s intellectual property.</li>
+        <li>• Don’t submit sensitive information in notes (see the <a class="underline hover:text-indigo-300" href="/privacy">Privacy Policy</a>).</li>
+        <li>• We may refuse, pause, or cancel any request we can’t safely or lawfully fulfill.</li>
+      </ul>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">4) Intellectual property and takedowns</h2>
+      <p class="text-sm text-zinc-400">If you believe material submitted through the Service infringes your rights, contact us at <a class="underline hover:text-indigo-300" href="mailto:{{ contact_email }}">{{ contact_email }}</a> with enough information for us to identify and review the material (for example: the request ID, the work claimed to be infringed, and your contact information). We may remove or restrict access to content at our discretion while we review.</p>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">5) Payments</h2>
+      <p class="text-sm text-zinc-400">If payments are enabled, checkout is handled by third-party payment providers (for example, Stripe). Prices, fees (including rush fees), taxes, and shipping (if applicable) may apply. See the <a class="underline hover:text-indigo-300" href="/refunds-and-shipping">Refunds &amp; Shipping Policy</a> for cancellation/refund rules.</p>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">6) Quality, timing, and availability</h2>
+      <ul class="text-sm text-zinc-400 space-y-2">
+        <li>• 3D printing is iterative; minor cosmetic variation is normal.</li>
+        <li>• Any ETAs shown are estimates and may change based on queue conditions, printer downtime, or material availability.</li>
+        <li>• The Service may be unavailable from time to time for maintenance or reliability improvements.</li>
+      </ul>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">7) Disclaimers</h2>
+      <p class="text-sm text-zinc-400">To the extent permitted by law, the Service is provided “as is” and “as available” without warranties of any kind, whether express or implied.</p>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">8) Limitation of liability</h2>
+      <p class="text-sm text-zinc-400">To the extent permitted by law, {{ app_title }} is not liable for indirect, incidental, special, consequential, or punitive damages, or for loss of profits, data, or goodwill arising from your use of the Service.</p>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">9) Governing law and venue</h2>
+      <p class="text-sm text-zinc-400">These Terms are governed by the laws of {{ governing_law }} (without regard to conflict-of-laws principles). You agree that any dispute arising out of or relating to these Terms or the Service will be brought in the state or federal courts located in Wisconsin (as applicable), and you consent to personal jurisdiction in those courts.</p>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">10) Changes</h2>
+      <p class="text-sm text-zinc-400">We may update these Terms from time to time. The “Effective” date above reflects the latest version. Continued use of the Service after changes become effective means you accept the updated Terms.</p>
+    </section>
+
+    <div class="mt-6 pt-4 border-t border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-500">
+      <div class="flex items-center gap-3">
+        <a href="/privacy" class="hover:text-indigo-300 transition underline">Privacy</a>
+        <a href="/acceptable-use" class="hover:text-indigo-300 transition underline">Acceptable Use</a>
+        <a href="/refunds-and-shipping" class="hover:text-indigo-300 transition underline">Refunds &amp; Shipping</a>
+      </div>
+      <a href="/" class="hover:text-indigo-400 transition">Back to Submit</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

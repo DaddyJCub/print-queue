@@ -43,6 +43,24 @@ class TestHomePage:
         assert response.status_code == 200
 
 
+class TestPolicyPages:
+    """Basic smoke tests for legal/policy pages."""
+
+    @pytest.mark.parametrize(
+        "path, expected_text",
+        [
+            ("/terms", "Terms of Use"),
+            ("/privacy", "Privacy Policy"),
+            ("/acceptable-use", "Acceptable Use Policy"),
+            ("/refunds-and-shipping", "Refunds &amp; Shipping Policy"),
+        ],
+    )
+    def test_policy_pages_load(self, client, path, expected_text):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert_html_contains(response, expected_text)
+
+
 class TestRequestSubmission:
     """Tests for the /submit endpoint."""
 

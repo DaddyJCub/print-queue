@@ -1,0 +1,72 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}Acceptable Use Policy | {{ app_title }}{% endblock %}
+{% block header_title %}Acceptable Use{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+  <div class="mb-6">
+    <div class="bg-gradient-to-br from-zinc-900/80 to-zinc-950/60 border border-zinc-800 rounded-2xl p-5">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h1 class="text-2xl sm:text-3xl font-bold text-white">Acceptable Use Policy</h1>
+          <p class="text-sm text-zinc-400 mt-1">Rules for using {{ app_title }} safely and lawfully</p>
+          <p class="text-xs text-zinc-500 mt-2">Effective {{ effective_date }} • Contact: <a class="underline hover:text-indigo-300" href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
+        </div>
+        <div class="hidden sm:flex items-center gap-2 text-xs">
+          <a href="/terms" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition">Terms</a>
+          <a href="/privacy" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition">Privacy</a>
+          <a href="/refunds-and-shipping" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition">Refunds &amp; Shipping</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="space-y-4">
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">1) Be lawful and respectful</h2>
+      <p class="text-sm text-zinc-400">Use {{ app_title }} in a way that’s legal, respectful, and consistent with these rules and the <a class="underline hover:text-indigo-300" href="/terms">Terms of Use</a>.</p>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">2) Prohibited content and activities</h2>
+      <ul class="text-sm text-zinc-400 space-y-2">
+        <li>• Illegal content or instructions to do illegal things.</li>
+        <li>• Content that infringes copyrights, trademarks, or other intellectual property rights.</li>
+        <li>• Harassment, threats, or attempts to dox or invade someone’s privacy.</li>
+        <li>• Malware, exploits, automated abuse, or attempts to disrupt the Service.</li>
+        <li>• Fraudulent requests, payment abuse, chargeback fraud, or attempts to bypass security checks.</li>
+      </ul>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">3) Files and links</h2>
+      <ul class="text-sm text-zinc-400 space-y-2">
+        <li>• Only upload or link to files you have the right to use.</li>
+        <li>• Don’t submit links that require credentials we don’t have (unless you also provide access in a lawful way).</li>
+        <li>• Don’t upload files that are malicious or designed to exploit systems.</li>
+        <li>• Keep notes free of sensitive personal information.</li>
+      </ul>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">4) Reporting</h2>
+      <p class="text-sm text-zinc-400">If you see abuse or believe content infringes your rights, contact <a class="underline hover:text-indigo-300" href="mailto:{{ contact_email }}">{{ contact_email }}</a> and include the relevant request ID(s) if available.</p>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">5) Enforcement</h2>
+      <p class="text-sm text-zinc-400">We may remove content, refuse requests, pause work, cancel orders, or suspend access if we reasonably believe there’s a violation of this policy or the <a class="underline hover:text-indigo-300" href="/terms">Terms of Use</a>. We may also cooperate with lawful requests from authorities as required.</p>
+    </section>
+
+    <div class="mt-6 pt-4 border-t border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-500">
+      <div class="flex items-center gap-3">
+        <a href="/terms" class="hover:text-indigo-300 transition underline">Terms</a>
+        <a href="/privacy" class="hover:text-indigo-300 transition underline">Privacy</a>
+        <a href="/refunds-and-shipping" class="hover:text-indigo-300 transition underline">Refunds &amp; Shipping</a>
+      </div>
+      <a href="/" class="hover:text-indigo-400 transition">Back to Submit</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+<!-- Stripe Embedded Checkout shared component -->
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+const StripeCheckout = {
+  stripe: null,
+  checkout: null,
+
+  async init() {
+    if (this.stripe) return;
+    if (typeof Stripe === 'undefined') throw new Error('Stripe SDK failed to load. Check your network or ad blocker.');
+    const resp = await fetch('/api/payments/config');
+    const config = await resp.json();
+    if (!config.enabled) throw new Error('Payments not enabled');
+    this.stripe = Stripe(config.publishable_key);
+  },
+
+  async startCheckout(apiUrl, formData, { formContainer, checkoutContainer, onError, onLoading }) {
+    try {
+      onLoading?.();
+
+      // Call checkout API first (before Stripe init) so auth check happens early
+      const resp = await fetch(apiUrl, { method: 'POST', body: formData, credentials: 'include' });
+      const data = await resp.json();
+
+      // If not authenticated, redirect to register (like shipping flow)
+      if (resp.status === 401 && data.error === 'auth_required') {
+        const email = formData.get('requester_email') || '';
+        const name = formData.get('requester_name') || '';
+        const params = new URLSearchParams();
+        params.set('next', window.location.pathname + window.location.search);
+        params.set('flow', 'payment');
+        if (email.trim()) params.set('email', email.trim());
+        if (name.trim()) params.set('name', name.trim());
+        if (typeof window.saveRequestDraft === 'function') window.saveRequestDraft();
+        window.location.href = '/auth/register?' + params.toString();
+        return;
+      }
+
+      if (!resp.ok || data.error) {
+        onError?.(data.error || 'Checkout failed');
+        return;
+      }
+
+      // Only init Stripe SDK after we have a valid clientSecret
+      await this.init();
+      this.checkout = await this.stripe.initEmbeddedCheckout({
+        clientSecret: data.clientSecret,
+      });
+      if (formContainer) formContainer.style.display = 'none';
+      checkoutContainer.classList.remove('hidden');
+      this.checkout.mount('#stripe-checkout-mount');
+    } catch (err) {
+      onError?.(err.message || 'An unexpected error occurred');
+    }
+  },
+
+  cancel(formContainer, checkoutContainer) {
+    if (this.checkout) {
+      this.checkout.destroy();
+      this.checkout = null;
+    }
+    checkoutContainer.classList.add('hidden');
+    if (formContainer) formContainer.style.display = '';
+  },
+};
+</script>

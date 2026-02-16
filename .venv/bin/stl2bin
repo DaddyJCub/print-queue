@@ -1,0 +1,6 @@
+#!/home/jacob/repos/print-queue/.venv/bin/python
+import sys
+from stl.main import to_binary
+if __name__ == '__main__':
+    sys.argv[0] = sys.argv[0].removesuffix('.exe')
+    sys.exit(to_binary())

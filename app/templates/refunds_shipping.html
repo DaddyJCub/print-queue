@@ -1,0 +1,72 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}Refunds & Shipping | {{ app_title }}{% endblock %}
+{% block header_title %}Refunds & Shipping{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+  <div class="mb-6">
+    <div class="bg-gradient-to-br from-zinc-900/80 to-zinc-950/60 border border-zinc-800 rounded-2xl p-5">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h1 class="text-2xl sm:text-3xl font-bold text-white">Refunds &amp; Shipping Policy</h1>
+          <p class="text-sm text-zinc-400 mt-1">What to expect for cancellations, refunds, and deliveries</p>
+          <p class="text-xs text-zinc-500 mt-2">Effective {{ effective_date }} • Contact: <a class="underline hover:text-indigo-300" href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
+        </div>
+        <div class="hidden sm:flex items-center gap-2 text-xs">
+          <a href="/terms" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition">Terms</a>
+          <a href="/privacy" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition">Privacy</a>
+          <a href="/acceptable-use" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition">Acceptable Use</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="space-y-4">
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">1) Custom work</h2>
+      <p class="text-sm text-zinc-400">Most requests are custom-made to your specs. Once printing starts, refunds may be limited because materials and machine time have already been used.</p>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">2) Cancellations and refunds</h2>
+      <ul class="text-sm text-zinc-400 space-y-2">
+        <li>• If you need to cancel, contact us as soon as possible at <a class="underline hover:text-indigo-300" href="mailto:{{ contact_email }}">{{ contact_email }}</a>.</li>
+        <li>• If we can’t fulfill a request (for example due to safety, legality, or technical constraints), we may cancel and refund applicable amounts.</li>
+        <li>• Rush fees or expedited processing fees (if any) may be non-refundable once work has started.</li>
+      </ul>
+      <div class="mt-3 text-xs text-zinc-500">
+        Refunds (when issued) are typically returned to the original payment method. Timing can vary by payment provider and bank.
+      </div>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">3) Reprints and quality issues</h2>
+      <p class="text-sm text-zinc-400">If there’s a clear print defect or we made a mistake relative to agreed specs, contact us with your request ID. We’ll review and may offer a reprint, partial refund, or other resolution depending on the situation.</p>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">4) Shipping</h2>
+      <ul class="text-sm text-zinc-400 space-y-2">
+        <li>• Shipping may be offered only for supported destinations and services.</li>
+        <li>• You’re responsible for providing an accurate shipping address. Undeliverable or returned packages may require additional postage to resend.</li>
+        <li>• Tracking updates are provided by shipping carriers and may be delayed.</li>
+      </ul>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">5) Damaged or missing packages</h2>
+      <p class="text-sm text-zinc-400">If a shipped order arrives damaged or goes missing, contact us and include the request ID (if available). We’ll work with you and the carrier to determine the best next step.</p>
+    </section>
+
+    <div class="mt-6 pt-4 border-t border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-500">
+      <div class="flex items-center gap-3">
+        <a href="/terms" class="hover:text-indigo-300 transition underline">Terms</a>
+        <a href="/privacy" class="hover:text-indigo-300 transition underline">Privacy</a>
+        <a href="/acceptable-use" class="hover:text-indigo-300 transition underline">Acceptable Use</a>
+      </div>
+      <a href="/" class="hover:text-indigo-400 transition">Back to Submit</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

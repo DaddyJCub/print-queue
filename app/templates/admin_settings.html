@@ -21,6 +21,11 @@
         ✓ Settings saved successfully
       </div>
     {% endif %}
+    {% if request.query_params.get('stripe_warning') == '1' %}
+      <div class="mb-4 bg-amber-900/20 border border-amber-800 text-amber-200 rounded-xl p-4">
+        Stripe key saved, but validation failed. Please verify the key is correct in the Stripe Dashboard.
+      </div>
+    {% endif %}
 
     <form class="mt-6 space-y-6" method="POST" action="/admin/settings">
       <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
@@ -479,6 +484,55 @@
               </label>
             </label>
           </div>
+        </div>
+      </section>
+
+      <!-- Stripe / Payment section -->
+      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mt-6">
+        <h2 class="text-xl font-semibold flex items-center gap-2">
+          💳 Stripe Payments
+          {% if s.stripe_secret_key_configured and s.stripe_publishable_key %}
+            <span class="text-xs bg-emerald-600/30 text-emerald-300 px-2 py-0.5 rounded">Configured</span>
+          {% else %}
+            <span class="text-xs bg-zinc-700 text-zinc-400 px-2 py-0.5 rounded">Not configured</span>
+          {% endif %}
+        </h2>
+        <p class="text-xs text-zinc-500 mt-1 mb-4">
+          Get your keys from <a href="https://dashboard.stripe.com/apikeys" target="_blank" class="text-indigo-400 hover:underline">Stripe Dashboard &rarr; Developers &rarr; API Keys</a>.
+          Also enable the <strong>store_payments</strong> feature flag in <a href="/admin/features" class="text-indigo-400 hover:underline">Feature Flags</a>.
+        </p>
+
+        <div class="grid grid-cols-1 gap-3">
+          <label class="block">
+            <span class="text-sm text-zinc-300">Secret key</span>
+            <input name="stripe_secret_key" type="password"
+                   placeholder="{% if s.stripe_secret_key_configured %}Configured (enter new value to replace){% else %}sk_test_... or sk_live_...{% endif %}"
+                   class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm font-mono" />
+            <label class="mt-2 inline-flex items-center gap-2 text-xs text-zinc-400">
+              <input type="checkbox" name="clear_stripe_secret_key" />
+              <span>Clear stored secret key</span>
+            </label>
+          </label>
+
+          <label class="block">
+            <span class="text-sm text-zinc-300">Publishable key</span>
+            <input name="stripe_publishable_key" type="text"
+                   value="{{ s.stripe_publishable_key or '' }}"
+                   placeholder="pk_test_... or pk_live_..."
+                   class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm font-mono" />
+          </label>
+
+          <label class="block">
+            <span class="text-sm text-zinc-300">Webhook signing secret</span>
+            <input name="stripe_webhook_secret" type="password"
+                   placeholder="{% if s.stripe_webhook_secret_configured %}Configured (enter new value to replace){% else %}whsec_...{% endif %}"
+                   class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm font-mono" />
+            <p class="text-xs text-zinc-500 mt-1">From Stripe CLI: <code>stripe listen --forward-to localhost:3000/webhooks/stripe</code></p>
+            <label class="mt-2 inline-flex items-center gap-2 text-xs text-zinc-400">
+              <input type="checkbox" name="clear_stripe_webhook_secret" />
+              <span>Clear stored webhook secret</span>
+            </label>
+          </label>
         </div>
       </section>
 

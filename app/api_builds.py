@@ -982,6 +982,16 @@ def admin_set_quote(
     conn.commit()
     conn.close()
 
+    # Expire stale pending quote payments (amount may have changed)
+    from app.main import db as _db
+    pconn = _db()
+    pconn.execute(
+        "UPDATE payments SET status = 'expired', updated_at = ? WHERE request_id = ? AND payment_type = 'quote' AND status = 'pending'",
+        (now, rid),
+    )
+    pconn.commit()
+    pconn.close()
+
     # Create Stripe Checkout URL and email it to the requester
     from app.payments import is_payments_enabled, create_quote_checkout
     payment_link = None

@@ -1,0 +1,194 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Payments | Printellect</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-7xl mx-auto p-6">
+    {% set active_page = 'payments' %}
+    {% include 'admin_nav.html' %}
+
+    {% if request.query_params.get('refunded') %}
+    <div class="mb-4 bg-emerald-900/30 border border-emerald-700 rounded-xl p-3 flex items-center justify-between">
+      <span class="text-sm text-emerald-300">Refund initiated successfully. It may take a few minutes to process.</span>
+      <button onclick="this.parentElement.remove()" class="text-emerald-500 hover:text-emerald-300 ml-3">&times;</button>
+    </div>
+    {% endif %}
+    {% if request.query_params.get('refund_error') %}
+    <div class="mb-4 bg-red-900/30 border border-red-700 rounded-xl p-3 flex items-center justify-between">
+      <span class="text-sm text-red-300">
+        {% set err = request.query_params.get('refund_error') %}
+        {% if err == 'no_payment' %}Payment not found or not in a refundable state.
+        {% elif err == 'no_intent' %}No Stripe payment intent found for this payment.
+        {% elif err == 'not_configured' %}Stripe is not configured.
+        {% elif err == 'stripe_error' %}Stripe returned an error. Check server logs.
+        {% else %}Refund failed.{% endif %}
+      </span>
+      <button onclick="this.parentElement.remove()" class="text-red-500 hover:text-red-300 ml-3">&times;</button>
+    </div>
+    {% endif %}
+
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold">Payments</h1>
+      <p class="text-sm text-zinc-400 mt-1">All Stripe payment transactions</p>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+        <div class="text-xs text-zinc-500 uppercase tracking-wide">Total Revenue</div>
+        <div class="text-2xl font-bold text-emerald-400 mt-1">${{ '%.2f' | format(stats.total_revenue_cents / 100.0) }}</div>
+      </div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+        <div class="text-xs text-zinc-500 uppercase tracking-wide">Completed</div>
+        <div class="text-2xl font-bold text-zinc-100 mt-1">{{ stats.completed_count }}</div>
+      </div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+        <div class="text-xs text-zinc-500 uppercase tracking-wide">Pending</div>
+        <div class="text-2xl font-bold text-amber-400 mt-1">{{ stats.pending_count }}</div>
+      </div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+        <div class="text-xs text-zinc-500 uppercase tracking-wide">Refunded</div>
+        <div class="text-2xl font-bold text-red-400 mt-1">{{ stats.refunded_count }}</div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <form method="GET" action="/admin/payments" class="flex flex-wrap gap-3 mb-4">
+      <select name="status" class="rounded-lg bg-zinc-900 border border-zinc-700 text-sm px-3 py-2">
+        <option value="">All statuses</option>
+        <option value="pending" {% if filters.status == 'pending' %}selected{% endif %}>Pending</option>
+        <option value="completed" {% if filters.status == 'completed' %}selected{% endif %}>Completed</option>
+        <option value="refunded" {% if filters.status == 'refunded' %}selected{% endif %}>Refunded</option>
+        <option value="partially_refunded" {% if filters.status == 'partially_refunded' %}selected{% endif %}>Partially Refunded</option>
+        <option value="failed" {% if filters.status == 'failed' %}selected{% endif %}>Failed</option>
+        <option value="expired" {% if filters.status == 'expired' %}selected{% endif %}>Expired</option>
+        <option value="fulfillment_error" {% if filters.status == 'fulfillment_error' %}selected{% endif %}>Fulfillment Error</option>
+      </select>
+      <select name="payment_type" class="rounded-lg bg-zinc-900 border border-zinc-700 text-sm px-3 py-2">
+        <option value="">All types</option>
+        <option value="store_item" {% if filters.payment_type == 'store_item' %}selected{% endif %}>Store Item</option>
+        <option value="rush_fee" {% if filters.payment_type == 'rush_fee' %}selected{% endif %}>Rush Fee</option>
+        <option value="quote" {% if filters.payment_type == 'quote' %}selected{% endif %}>Quote</option>
+      </select>
+      <button type="submit" class="rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-medium">Filter</button>
+      {% if filters.status or filters.payment_type %}
+      <a href="/admin/payments" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm text-zinc-300">Clear</a>
+      {% endif %}
+    </form>
+
+    <!-- Payments Table -->
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+      {% if payments %}
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-zinc-800 text-xs text-zinc-500 uppercase tracking-wide">
+              <th class="text-left px-4 py-3">Date</th>
+              <th class="text-left px-4 py-3">ID</th>
+              <th class="text-left px-4 py-3">Type</th>
+              <th class="text-right px-4 py-3">Amount</th>
+              <th class="text-left px-4 py-3">Status</th>
+              <th class="text-left px-4 py-3">Payer</th>
+              <th class="text-left px-4 py-3">Request</th>
+              <th class="text-left px-4 py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-800/50">
+            {% for p in payments %}
+            <tr class="hover:bg-zinc-800/30 transition">
+              <td class="px-4 py-3 text-zinc-400 whitespace-nowrap">{{ p.created_at[:16].replace('T', ' ') }}</td>
+              <td class="px-4 py-3 font-mono text-xs text-zinc-500">{{ p.id[:8] }}</td>
+              <td class="px-4 py-3">
+                {% if p.payment_type == 'store_item' %}
+                  <span class="px-2 py-0.5 rounded text-xs bg-purple-800/40 text-purple-300 border border-purple-700/40">Store</span>
+                {% elif p.payment_type == 'rush_fee' %}
+                  <span class="px-2 py-0.5 rounded text-xs bg-indigo-800/40 text-indigo-300 border border-indigo-700/40">Rush</span>
+                {% elif p.payment_type == 'quote' %}
+                  <span class="px-2 py-0.5 rounded text-xs bg-cyan-800/40 text-cyan-300 border border-cyan-700/40">Quote</span>
+                {% else %}
+                  <span class="px-2 py-0.5 rounded text-xs bg-zinc-800 text-zinc-400">{{ p.payment_type }}</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 text-right font-medium">${{ '%.2f' | format(p.amount_cents / 100.0) }}</td>
+              <td class="px-4 py-3">
+                {% if p.status == 'completed' %}
+                  <span class="px-2 py-0.5 rounded text-xs bg-emerald-800/40 text-emerald-300 border border-emerald-700/40">Completed</span>
+                {% elif p.status == 'pending' %}
+                  <span class="px-2 py-0.5 rounded text-xs bg-amber-800/40 text-amber-300 border border-amber-700/40">Pending</span>
+                {% elif p.status == 'refunded' %}
+                  <span class="px-2 py-0.5 rounded text-xs bg-red-800/40 text-red-300 border border-red-700/40">Refunded</span>
+                {% elif p.status == 'partially_refunded' %}
+                  <span class="px-2 py-0.5 rounded text-xs bg-red-800/40 text-red-300 border border-red-700/40">Partial Refund</span>
+                {% elif p.status == 'failed' or p.status == 'fulfillment_error' %}
+                  <span class="px-2 py-0.5 rounded text-xs bg-red-900/40 text-red-400 border border-red-800/40">{{ p.status.replace('_', ' ').title() }}</span>
+                {% elif p.status == 'expired' %}
+                  <span class="px-2 py-0.5 rounded text-xs bg-zinc-800 text-zinc-500 border border-zinc-700">Expired</span>
+                {% else %}
+                  <span class="px-2 py-0.5 rounded text-xs bg-zinc-800 text-zinc-400">{{ p.status }}</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 text-zinc-300">
+                {{ p.payer_name or '' }}
+                {% if p.payer_email %}
+                <div class="text-xs text-zinc-500">{{ p.payer_email }}</div>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3">
+                {% if p.request_id %}
+                <a href="/admin/request/{{ p.request_id }}" class="text-indigo-400 hover:text-indigo-300 font-mono text-xs">{{ p.request_id[:8] }}</a>
+                {% else %}
+                <span class="text-zinc-600">-</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3">
+                {% if p.status == 'completed' and p.stripe_payment_intent_id %}
+                <form method="POST" action="/admin/payments/{{ p.id }}/refund" class="inline"
+                      onsubmit="return confirm('Refund ${{ '%.2f' | format(p.amount_cents / 100.0) }} to {{ p.payer_name or p.payer_email or 'customer' }}?')">
+                  <button type="submit" class="px-2 py-1 rounded text-xs bg-red-900/40 text-red-400 border border-red-800/40 hover:bg-red-800/60 transition">Refund</button>
+                </form>
+                {% elif p.status in ('refunded', 'partially_refunded') %}
+                <span class="text-xs text-zinc-500">Refunded</span>
+                {% else %}
+                <span class="text-zinc-700">-</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-12 text-zinc-500">
+        {% if filters.status or filters.payment_type %}
+          No payments match the current filters.
+        {% else %}
+          No payments recorded yet.
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div class="flex items-center justify-between mt-4 text-sm text-zinc-400">
+      <span>Showing {{ ((page - 1) * per_page) + 1 }}-{{ [page * per_page, total] | min }} of {{ total }}</span>
+      <div class="flex gap-2">
+        {% if page > 1 %}
+        <a href="/admin/payments?page={{ page - 1 }}{% if filters.status %}&status={{ filters.status }}{% endif %}{% if filters.payment_type %}&payment_type={{ filters.payment_type }}{% endif %}"
+           class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition">Prev</a>
+        {% endif %}
+        {% if page < total_pages %}
+        <a href="/admin/payments?page={{ page + 1 }}{% if filters.status %}&status={{ filters.status }}{% endif %}{% if filters.payment_type %}&payment_type={{ filters.payment_type }}{% endif %}"
+           class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition">Next</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</body>
+</html>

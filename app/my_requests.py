@@ -220,6 +220,7 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
     # Payment/quote data for the template
     payment = None
     quote_payment_url = None
+    payments_enabled = False
     req_dict = dict(req)
     if req_dict.get("payment_id"):
         pconn = db()
@@ -229,15 +230,9 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
             payment = dict(prow)
 
     if req_dict.get("quote_amount_cents") and not req_dict.get("quote_paid_at"):
-        from app.payments import is_payments_enabled, create_quote_checkout
+        from app.payments import is_payments_enabled
         if is_payments_enabled():
-            checkout_url, _ = create_quote_checkout(
-                request_id=rid,
-                amount_cents=req_dict["quote_amount_cents"],
-                request_dict=req_dict,
-            )
-            if checkout_url:
-                quote_payment_url = checkout_url
+            payments_enabled = True
 
     return templates.TemplateResponse("my_request.html", {
         "request": request,
@@ -263,6 +258,7 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
         "report_build_id": build_id,
         "payment": payment,
         "quote_payment_url": quote_payment_url,
+        "payments_enabled": payments_enabled,
         "quote_amount_cents": req_dict.get("quote_amount_cents"),
         "quote_paid_at": req_dict.get("quote_paid_at"),
     })
@@ -786,6 +782,7 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
         """SELECT r.id, r.print_name, r.status, r.created_at, r.updated_at, r.printer, r.material, r.colors,
                   r.access_token, r.completion_snapshot, r.printing_started_at, r.print_time_minutes,
                   r.active_build_id, r.total_builds, r.completed_builds, r.fulfillment_method,
+                  r.payment_id, r.quote_amount_cents, r.quote_paid_at,
                   rs.shipping_status, rs.tracking_number, rs.tracking_url, rs.carrier
            FROM requests r
            LEFT JOIN request_shipping rs ON rs.request_id = r.id
@@ -849,6 +846,17 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
                     req_dict["smart_eta"] = (eta_dt.isoformat() + "Z") if eta_dt else None
                     req_dict["smart_eta_display"] = format_eta_display(eta_dt) if eta_dt else None
         
+        # Payment badge for display
+        if req_dict.get("quote_amount_cents") and not req_dict.get("quote_paid_at"):
+            req_dict["payment_badge"] = "quote_pending"
+            req_dict["payment_badge_text"] = f"${req_dict['quote_amount_cents'] / 100:.2f} due"
+        elif req_dict.get("quote_paid_at"):
+            req_dict["payment_badge"] = "paid"
+            req_dict["payment_badge_text"] = "Paid"
+        elif req_dict.get("payment_id"):
+            req_dict["payment_badge"] = "paid"
+            req_dict["payment_badge_text"] = "Paid"
+
         enriched_requests.append(req_dict)
     
     conn.close()

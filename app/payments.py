@@ -14,8 +14,10 @@ import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, Tuple, List
 
-from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+import hashlib
+
+from fastapi import APIRouter, Request, Depends, Form, UploadFile, File
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 
 from app.main import (
     db,
@@ -24,49 +26,89 @@ from app.main import (
     get_bool_setting,
     BASE_URL,
     APP_TITLE,
+    APP_VERSION,
+    templates,
+    require_admin,
     send_email,
     build_email_html,
     send_push_notification_to_admins,
     parse_email_list,
+    UPLOAD_DIR,
+    MAX_UPLOAD_MB,
+    ALLOWED_EXTS,
+    safe_ext,
+    parse_3d_file_metadata,
+    safe_json_dumps,
+    get_printer_suggestions,
+    calculate_rush_price,
+    verify_turnstile,
 )
 from app.models import AuditAction, AssignmentRole
-from app.auth import is_feature_enabled, log_audit, create_request_assignment
+from app.auth import is_feature_enabled, log_audit, create_request_assignment, get_current_user
 
 logger = logging.getLogger("printellect.payments")
 
-# Environment variables -- only source from env, never store in DB
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
-STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+
+def _log_ctx(payment_id: Optional[str] = None, payment_type: Optional[str] = None, **kw) -> str:
+    """Build a consistent log prefix for payment operations."""
+    parts = []
+    if payment_id:
+        parts.append(f"payment={payment_id[:12]}")
+    if payment_type:
+        parts.append(f"type={payment_type}")
+    for k, v in kw.items():
+        parts.append(f"{k}={v}")
+    return f"[{' '.join(parts)}]" if parts else "[payments]"
+
+
+def _stripe_secret_key() -> str:
+    """Get Stripe secret key from DB setting or env var."""
+    return (get_setting("stripe_secret_key", "").strip() or os.getenv("STRIPE_SECRET_KEY", "").strip())
+
+
+def _stripe_publishable_key() -> str:
+    """Get Stripe publishable key from DB setting or env var."""
+    return (get_setting("stripe_publishable_key", "").strip() or os.getenv("STRIPE_PUBLISHABLE_KEY", "").strip())
+
+
+def _stripe_webhook_secret() -> str:
+    """Get Stripe webhook secret from DB setting or env var."""
+    return (get_setting("stripe_webhook_secret", "").strip() or os.getenv("STRIPE_WEBHOOK_SECRET", "").strip())
+
 
 router = APIRouter()
 
 # ─────────────────────────── STRIPE CLIENT ────────────────────────────────────
 
 _stripe = None
+_stripe_configured_key = None
 
 
 def _get_stripe():
     """Lazy-load and configure the stripe module."""
-    global _stripe
-    if _stripe is not None:
-        return _stripe
-    if not STRIPE_SECRET_KEY:
+    global _stripe, _stripe_configured_key
+    key = _stripe_secret_key()
+    if not key:
         return None
+    # Re-configure if key changed (e.g. updated via admin UI)
+    if _stripe is not None and _stripe_configured_key == key:
+        return _stripe
     import stripe
-    stripe.api_key = STRIPE_SECRET_KEY
+    stripe.api_key = key
     _stripe = stripe
+    _stripe_configured_key = key
     return _stripe
 
 
 def is_stripe_configured() -> bool:
     """Check if Stripe keys are set."""
-    return bool(STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY)
+    return bool(_stripe_secret_key() and _stripe_publishable_key())
 
 
 def is_payments_enabled() -> bool:
     """Check if both Stripe is configured AND the feature flag is on."""
     return is_stripe_configured() and is_feature_enabled("store_payments")
+
 
 
 # ─────────────────────────── CHECKOUT SESSION CREATORS ────────────────────────
@@ -79,11 +121,14 @@ def create_store_item_checkout(
     colors: str,
     notes: str,
     account_id: Optional[str] = None,
+    embedded: bool = False,
 ) -> Tuple[Optional[str], Optional[str]]:
     """
     Create Stripe Checkout Session for a store item purchase.
 
-    Returns (checkout_url, payment_id) on success, (None, error_message) on failure.
+    When embedded=False (default): returns (checkout_url, payment_id).
+    When embedded=True: returns (client_secret, payment_id).
+    On failure: returns (None, error_message).
     """
     stripe = _get_stripe()
     if not stripe:
@@ -108,33 +153,40 @@ def create_store_item_checkout(
     conn.commit()
     conn.close()
 
-    try:
-        session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            line_items=[{
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {
-                        "name": item["name"],
-                        "description": f"3D Print - {item.get('material', '')}",
-                    },
-                    "unit_amount": price_cents,
+    session_params = {
+        "payment_method_types": ["card"],
+        "line_items": [{
+            "price_data": {
+                "currency": "usd",
+                "product_data": {
+                    "name": item["name"],
+                    "description": f"3D Print - {item.get('material', '')}",
                 },
-                "quantity": 1,
-            }],
-            mode="payment",
-            success_url=f"{BASE_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{BASE_URL}/store?payment_cancelled=1",
-            customer_email=requester_email.strip().lower(),
-            metadata={
-                "payment_id": payment_id,
-                "payment_type": "store_item",
-                "store_item_id": item["id"],
-                "requester_name": requester_name.strip(),
+                "unit_amount": price_cents,
             },
-        )
+            "quantity": 1,
+        }],
+        "mode": "payment",
+        "customer_email": requester_email.strip().lower(),
+        "metadata": {
+            "payment_id": payment_id,
+            "payment_type": "store_item",
+            "store_item_id": item["id"],
+            "requester_name": requester_name.strip(),
+        },
+    }
+
+    if embedded:
+        session_params["ui_mode"] = "embedded"
+        session_params["return_url"] = f"{BASE_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}"
+    else:
+        session_params["success_url"] = f"{BASE_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}"
+        session_params["cancel_url"] = f"{BASE_URL}/store?payment_cancelled=1"
+
+    try:
+        session = stripe.checkout.Session.create(**session_params)
     except Exception as e:
-        logger.error(f"[PAYMENTS] Stripe session creation failed: {e}")
+        logger.error(f"{_log_ctx(payment_id, 'store_item')} Stripe session creation failed: {e}")
         conn = db()
         conn.execute(
             "UPDATE payments SET status = 'failed', updated_at = ? WHERE id = ?",
@@ -152,7 +204,8 @@ def create_store_item_checkout(
     conn.commit()
     conn.close()
 
-    return session.url, payment_id
+    logger.info(f"{_log_ctx(payment_id, 'store_item', session=session.id)} Checkout session created")
+    return (session.client_secret if embedded else session.url), payment_id
 
 
 def create_rush_fee_checkout(
@@ -163,6 +216,7 @@ def create_rush_fee_checkout(
     form_data: Dict[str, Any],
     file_ids: List[str],
     account_id: Optional[str] = None,
+    embedded: bool = False,
 ) -> Tuple[Optional[str], Optional[str]]:
     """
     Create Stripe Checkout Session for a rush fee.
@@ -170,7 +224,9 @@ def create_rush_fee_checkout(
     form_data contains all the request form fields needed to create the request
     after payment succeeds. file_ids lists files already saved to disk.
 
-    Returns (checkout_url, payment_id) on success, (None, error_message) on failure.
+    When embedded=False (default): returns (checkout_url, payment_id).
+    When embedded=True: returns (client_secret, payment_id).
+    On failure: returns (None, error_message).
     """
     stripe = _get_stripe()
     if not stripe:
@@ -199,31 +255,38 @@ def create_rush_fee_checkout(
     conn.commit()
     conn.close()
 
-    try:
-        session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            line_items=[{
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {
-                        "name": f"Rush Fee - {print_name}",
-                        "description": "Priority processing for your 3D print request",
-                    },
-                    "unit_amount": rush_price_cents,
+    session_params = {
+        "payment_method_types": ["card"],
+        "line_items": [{
+            "price_data": {
+                "currency": "usd",
+                "product_data": {
+                    "name": f"Rush Fee - {print_name}",
+                    "description": "Priority processing for your 3D print request",
                 },
-                "quantity": 1,
-            }],
-            mode="payment",
-            success_url=f"{BASE_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{BASE_URL}/?payment_cancelled=1",
-            customer_email=requester_email.strip().lower(),
-            metadata={
-                "payment_id": payment_id,
-                "payment_type": "rush_fee",
+                "unit_amount": rush_price_cents,
             },
-        )
+            "quantity": 1,
+        }],
+        "mode": "payment",
+        "customer_email": requester_email.strip().lower(),
+        "metadata": {
+            "payment_id": payment_id,
+            "payment_type": "rush_fee",
+        },
+    }
+
+    if embedded:
+        session_params["ui_mode"] = "embedded"
+        session_params["return_url"] = f"{BASE_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}"
+    else:
+        session_params["success_url"] = f"{BASE_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}"
+        session_params["cancel_url"] = f"{BASE_URL}/?payment_cancelled=1"
+
+    try:
+        session = stripe.checkout.Session.create(**session_params)
     except Exception as e:
-        logger.error(f"[PAYMENTS] Stripe rush session creation failed: {e}")
+        logger.error(f"{_log_ctx(payment_id, 'rush_fee')} Stripe session creation failed: {e}")
         conn = db()
         conn.execute(
             "UPDATE payments SET status = 'failed', updated_at = ? WHERE id = ?",
@@ -241,18 +304,22 @@ def create_rush_fee_checkout(
     conn.commit()
     conn.close()
 
-    return session.url, payment_id
+    logger.info(f"{_log_ctx(payment_id, 'rush_fee', session=session.id)} Checkout session created")
+    return (session.client_secret if embedded else session.url), payment_id
 
 
 def create_quote_checkout(
     request_id: str,
     amount_cents: int,
     request_dict: dict,
+    embedded: bool = False,
 ) -> Tuple[Optional[str], Optional[str]]:
     """
     Create Stripe Checkout Session for an admin-set quote on a request.
 
-    Returns (checkout_url, payment_id) on success, (None, error_message) on failure.
+    When embedded=False (default): returns (checkout_url, payment_id).
+    When embedded=True: returns (client_secret, payment_id).
+    On failure: returns (None, error_message).
     """
     stripe = _get_stripe()
     if not stripe:
@@ -281,33 +348,41 @@ def create_quote_checkout(
     conn.commit()
     conn.close()
 
-    try:
-        access_token = request_dict.get("access_token", "")
-        session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            line_items=[{
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {
-                        "name": f"Print Quote - {print_name}",
-                        "description": f"3D print request {request_id[:8]}",
-                    },
-                    "unit_amount": amount_cents,
+    access_token = request_dict.get("access_token", "")
+
+    session_params = {
+        "payment_method_types": ["card"],
+        "line_items": [{
+            "price_data": {
+                "currency": "usd",
+                "product_data": {
+                    "name": f"Print Quote - {print_name}",
+                    "description": f"3D print request {request_id[:8]}",
                 },
-                "quantity": 1,
-            }],
-            mode="payment",
-            success_url=f"{BASE_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{BASE_URL}/open/{request_id}?token={access_token}&payment_cancelled=1",
-            customer_email=payer_email if payer_email else None,
-            metadata={
-                "payment_id": payment_id,
-                "payment_type": "quote",
-                "request_id": request_id,
+                "unit_amount": amount_cents,
             },
-        )
+            "quantity": 1,
+        }],
+        "mode": "payment",
+        "customer_email": payer_email if payer_email else None,
+        "metadata": {
+            "payment_id": payment_id,
+            "payment_type": "quote",
+            "request_id": request_id,
+        },
+    }
+
+    if embedded:
+        session_params["ui_mode"] = "embedded"
+        session_params["return_url"] = f"{BASE_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}"
+    else:
+        session_params["success_url"] = f"{BASE_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}"
+        session_params["cancel_url"] = f"{BASE_URL}/open/{request_id}?token={access_token}&payment_cancelled=1"
+
+    try:
+        session = stripe.checkout.Session.create(**session_params)
     except Exception as e:
-        logger.error(f"[PAYMENTS] Stripe quote session creation failed: {e}")
+        logger.error(f"{_log_ctx(payment_id, 'quote', request=request_id[:12])} Stripe session creation failed: {e}")
         conn = db()
         conn.execute(
             "UPDATE payments SET status = 'failed', updated_at = ? WHERE id = ?",
@@ -325,7 +400,8 @@ def create_quote_checkout(
     conn.commit()
     conn.close()
 
-    return session.url, payment_id
+    logger.info(f"{_log_ctx(payment_id, 'quote', session=session.id, request=request_id[:12])} Checkout session created")
+    return (session.client_secret if embedded else session.url), payment_id
 
 
 # ─────────────────────────── LOOKUP HELPERS ───────────────────────────────────
@@ -347,21 +423,79 @@ def get_payment_by_session_id(session_id: str) -> Optional[dict]:
     return dict(row) if row else None
 
 
+def get_existing_quote_checkout_url(request_id: str) -> Optional[str]:
+    """Check for a reusable pending quote checkout session to avoid creating duplicates."""
+    conn = db()
+    row = conn.execute(
+        """SELECT * FROM payments
+           WHERE request_id = ? AND payment_type = 'quote' AND status = 'pending'
+             AND stripe_checkout_session_id IS NOT NULL
+           ORDER BY created_at DESC LIMIT 1""",
+        (request_id,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    stripe = _get_stripe()
+    if not stripe:
+        return None
+    try:
+        session = stripe.checkout.Session.retrieve(row["stripe_checkout_session_id"])
+        if session.status == "open":
+            return session.url
+    except Exception:
+        pass
+    return None
+
+
+def get_existing_quote_checkout_secret(request_id: str) -> Optional[str]:
+    """Check for a reusable pending quote checkout session and return its client_secret."""
+    conn = db()
+    row = conn.execute(
+        """SELECT * FROM payments
+           WHERE request_id = ? AND payment_type = 'quote' AND status = 'pending'
+             AND stripe_checkout_session_id IS NOT NULL
+           ORDER BY created_at DESC LIMIT 1""",
+        (request_id,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    stripe = _get_stripe()
+    if not stripe:
+        return None
+    try:
+        session = stripe.checkout.Session.retrieve(row["stripe_checkout_session_id"])
+        if session.status == "open":
+            return session.client_secret
+    except Exception:
+        pass
+    return None
+
+
+def _reset_stripe_cache():
+    """Reset cached Stripe module so it picks up new keys."""
+    global _stripe, _stripe_configured_key
+    _stripe = None
+    _stripe_configured_key = None
+
+
 # ─────────────────────────── WEBHOOK ──────────────────────────────────────────
 
 
 def verify_webhook_signature(payload: bytes, sig_header: str):
     """Verify Stripe webhook signature and return the event object."""
     stripe = _get_stripe()
-    if not stripe or not STRIPE_WEBHOOK_SECRET:
+    webhook_secret = _stripe_webhook_secret()
+    if not stripe or not webhook_secret:
         return None
     try:
         event = stripe.Webhook.construct_event(
-            payload, sig_header, STRIPE_WEBHOOK_SECRET
+            payload, sig_header, webhook_secret
         )
         return event
     except Exception as e:
-        logger.warning(f"[PAYMENTS] Webhook signature verification failed: {e}")
+        logger.warning(f"[payments] Webhook signature verification failed: {e}")
         return None
 
 
@@ -371,8 +505,8 @@ async def stripe_webhook(request: Request):
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature", "")
 
-    if not STRIPE_WEBHOOK_SECRET:
-        logger.error("[PAYMENTS] Webhook received but STRIPE_WEBHOOK_SECRET not configured")
+    if not _stripe_webhook_secret():
+        logger.error("[payments] Webhook received but STRIPE_WEBHOOK_SECRET not configured")
         return JSONResponse({"error": "Webhook not configured"}, status_code=503)
 
     event = verify_webhook_signature(payload, sig_header)
@@ -381,8 +515,9 @@ async def stripe_webhook(request: Request):
 
     event_type = event.get("type", "")
     event_data = event.get("data", {}).get("object", {})
+    event_id = event.get("id", "")
 
-    logger.info(f"[PAYMENTS] Webhook received: {event_type}")
+    logger.info(f"[payments] Webhook received: {event_type} event={event_id}")
 
     if event_type == "checkout.session.completed":
         result = _handle_checkout_completed(event_data)
@@ -390,6 +525,10 @@ async def stripe_webhook(request: Request):
 
     if event_type == "checkout.session.expired":
         result = _handle_checkout_expired(event_data)
+        return JSONResponse(result)
+
+    if event_type == "charge.refunded":
+        result = _handle_charge_refunded(event_data)
         return JSONResponse(result)
 
     return JSONResponse({"ok": True, "ignored": event_type})
@@ -419,13 +558,6 @@ def _handle_checkout_completed(session: dict) -> dict:
 
     now = now_iso()
 
-    conn.execute(
-        """UPDATE payments SET status = 'completed', updated_at = ?,
-            stripe_payment_intent_id = ?, stripe_event_id = ?
-        WHERE id = ?""",
-        (now, session.get("payment_intent"), session.get("id"), payment_id),
-    )
-
     try:
         if payment_type == "store_item":
             _fulfill_store_item_payment(conn, payment, now)
@@ -434,11 +566,24 @@ def _handle_checkout_completed(session: dict) -> dict:
         elif payment_type == "quote":
             _fulfill_quote_payment(conn, payment, now)
     except Exception as e:
-        logger.error(f"[PAYMENTS] Fulfillment error for {payment_id}: {e}", exc_info=True)
+        logger.error(f"{_log_ctx(payment_id, payment_type)} Fulfillment error: {e}", exc_info=True)
+        conn.execute(
+            """UPDATE payments SET status = 'fulfillment_error', updated_at = ?,
+                stripe_payment_intent_id = ?, stripe_event_id = ?
+            WHERE id = ?""",
+            (now, session.get("payment_intent"), session.get("id"), payment_id),
+        )
         conn.commit()
         conn.close()
         return {"ok": False, "error": str(e)}
 
+    # Only mark completed after fulfillment succeeds
+    conn.execute(
+        """UPDATE payments SET status = 'completed', updated_at = ?,
+            stripe_payment_intent_id = ?, stripe_event_id = ?
+        WHERE id = ?""",
+        (now, session.get("payment_intent"), session.get("id"), payment_id),
+    )
     conn.commit()
     conn.close()
 
@@ -470,17 +615,93 @@ def _handle_checkout_expired(session: dict) -> dict:
     return {"ok": True, "action": "expired"}
 
 
+def _handle_charge_refunded(charge: dict) -> dict:
+    """Process a charge.refunded event from Stripe."""
+    payment_intent_id = charge.get("payment_intent")
+    if not payment_intent_id:
+        return {"ok": True, "ignored": "no_payment_intent"}
+
+    conn = db()
+    payment = conn.execute(
+        "SELECT * FROM payments WHERE stripe_payment_intent_id = ?",
+        (payment_intent_id,),
+    ).fetchone()
+    if not payment:
+        conn.close()
+        return {"ok": True, "ignored": "payment_not_found"}
+
+    if payment["status"] in ("refunded", "partially_refunded"):
+        conn.close()
+        return {"ok": True, "duplicate": True}
+
+    now = now_iso()
+    refund_amount = charge.get("amount_refunded", 0)
+    is_partial = refund_amount < charge.get("amount", 0)
+    new_status = "partially_refunded" if is_partial else "refunded"
+
+    conn.execute(
+        "UPDATE payments SET status = ?, updated_at = ? WHERE id = ?",
+        (new_status, now, payment["id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    log_audit(
+        action=AuditAction.PAYMENT_REFUNDED,
+        actor_type="system",
+        target_type="payment",
+        target_id=payment["id"],
+        details={
+            "refund_amount_cents": refund_amount,
+            "is_partial": is_partial,
+            "stripe_charge_id": charge.get("id"),
+        },
+    )
+
+    admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))
+    if admin_emails:
+        subject = f"[{APP_TITLE}] Payment {'partially ' if is_partial else ''}refunded ({payment['id'][:8]})"
+        text = (
+            f"Payment {payment['id'][:8]} has been {'partially ' if is_partial else ''}refunded.\n\n"
+            f"Refund amount: ${refund_amount / 100:.2f}\n"
+            f"Original amount: ${payment['amount_cents'] / 100:.2f}\n"
+            f"Payer: {payment['payer_name']} ({payment['payer_email']})\n"
+        )
+        html = build_email_html(
+            title=f"Payment {'partially ' if is_partial else ''}refunded",
+            subtitle=f"${refund_amount / 100:.2f} refunded",
+            rows=[
+                ("Payer", f"{payment['payer_name']} ({payment['payer_email']})"),
+                ("Refund Amount", f"${refund_amount / 100:.2f}"),
+                ("Original Amount", f"${payment['amount_cents'] / 100:.2f}"),
+                ("Payment ID", payment["id"][:8]),
+            ],
+        )
+        send_email(admin_emails, subject, text, html)
+
+    logger.info(f"{_log_ctx(payment['id'])} Refund processed: amount={refund_amount}, partial={is_partial}")
+    return {"ok": True, "action": "refunded"}
+
+
 # ─────────────────────────── FULFILLMENT ──────────────────────────────────────
 
 
 def _fulfill_store_item_payment(conn, payment, now: str):
     """Create the print request after successful store item payment."""
+    # Idempotency guard: skip if request already created for this payment
+    existing = conn.execute(
+        "SELECT id FROM requests WHERE payment_id = ?", (payment["id"],)
+    ).fetchone()
+    if existing:
+        logger.info(f"{_log_ctx(payment['id'], 'store_item')} Already fulfilled: request={existing['id']}")
+        return
+
     meta = json.loads(payment["metadata"] or "{}")
     item = conn.execute(
         "SELECT * FROM store_items WHERE id = ?", (payment["store_item_id"],)
     ).fetchone()
     if not item:
-        logger.error(f"[PAYMENTS] Store item {payment['store_item_id']} not found for payment {payment['id']}")
+        logger.error(f"{_log_ctx(payment['id'], 'store_item')} Store item {payment['store_item_id']} not found")
         return
 
     rid = str(uuid.uuid4())
@@ -569,11 +790,19 @@ def _fulfill_store_item_payment(conn, payment, now: str):
     except Exception:
         pass
 
-    logger.info(f"[PAYMENTS] Store item fulfilled: payment={payment['id']}, request={rid}")
+    logger.info(f"{_log_ctx(payment['id'], 'store_item', request=rid[:12])} Fulfilled: item={item['name']}")
 
 
 def _fulfill_rush_fee_payment(conn, payment, now: str):
     """Create the rush-priority request after successful payment."""
+    # Idempotency guard: skip if request already created for this payment
+    existing = conn.execute(
+        "SELECT id FROM requests WHERE payment_id = ?", (payment["id"],)
+    ).fetchone()
+    if existing:
+        logger.info(f"{_log_ctx(payment['id'], 'rush_fee')} Already fulfilled: request={existing['id']}")
+        return
+
     meta = json.loads(payment["metadata"] or "{}")
     form_data = meta.get("form_data", {})
     file_ids = meta.get("file_ids", [])
@@ -695,14 +924,20 @@ def _fulfill_rush_fee_payment(conn, payment, now: str):
     except Exception:
         pass
 
-    logger.info(f"[PAYMENTS] Rush fee fulfilled: payment={payment['id']}, request={rid}")
+    logger.info(f"{_log_ctx(payment['id'], 'rush_fee', request=rid[:12])} Fulfilled")
 
 
 def _fulfill_quote_payment(conn, payment, now: str):
     """Mark the quoted request as paid."""
     rid = payment["request_id"]
     if not rid:
-        logger.error(f"[PAYMENTS] Quote payment {payment['id']} has no request_id")
+        logger.error(f"{_log_ctx(payment['id'], 'quote')} Missing request_id")
+        return
+
+    # Idempotency guard: skip if quote already marked as paid
+    req_row = conn.execute("SELECT quote_paid_at FROM requests WHERE id = ?", (rid,)).fetchone()
+    if req_row and req_row["quote_paid_at"]:
+        logger.info(f"{_log_ctx(payment['id'], 'quote', request=rid[:12])} Already fulfilled")
         return
 
     conn.execute(
@@ -750,4 +985,391 @@ def _fulfill_quote_payment(conn, payment, now: str):
     except Exception:
         pass
 
-    logger.info(f"[PAYMENTS] Quote fulfilled: payment={payment['id']}, request={rid}")
+    logger.info(f"{_log_ctx(payment['id'], 'quote', request=rid[:12])} Fulfilled: ${payment['amount_cents'] / 100:.2f}")
+
+
+# ─────────────────────────── ADMIN ROUTES ────────────────────────────────────
+
+
+@router.get("/admin/payments", response_class=HTMLResponse)
+def admin_payments_list(
+    request: Request,
+    status: str = "",
+    payment_type: str = "",
+    page: int = 1,
+    _=Depends(require_admin),
+):
+    """Admin payments dashboard."""
+    conn = db()
+
+    # Summary stats
+    total_revenue = conn.execute(
+        "SELECT COALESCE(SUM(amount_cents), 0) FROM payments WHERE status = 'completed'"
+    ).fetchone()[0]
+    pending_count = conn.execute(
+        "SELECT COUNT(*) FROM payments WHERE status = 'pending'"
+    ).fetchone()[0]
+    completed_count = conn.execute(
+        "SELECT COUNT(*) FROM payments WHERE status = 'completed'"
+    ).fetchone()[0]
+    refunded_count = conn.execute(
+        "SELECT COUNT(*) FROM payments WHERE status IN ('refunded', 'partially_refunded')"
+    ).fetchone()[0]
+
+    # Build query with filters
+    where_clauses = []
+    params: list = []
+    if status:
+        where_clauses.append("status = ?")
+        params.append(status)
+    if payment_type:
+        where_clauses.append("payment_type = ?")
+        params.append(payment_type)
+
+    where_sql = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    per_page = 50
+    offset = (page - 1) * per_page
+    total = conn.execute(f"SELECT COUNT(*) FROM payments{where_sql}", params).fetchone()[0]
+    payments = conn.execute(
+        f"SELECT * FROM payments{where_sql} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+        params + [per_page, offset],
+    ).fetchall()
+    conn.close()
+
+    return templates.TemplateResponse("admin_payments.html", {
+        "request": request,
+        "payments": [dict(p) for p in payments],
+        "stats": {
+            "total_revenue_cents": total_revenue,
+            "pending_count": pending_count,
+            "completed_count": completed_count,
+            "refunded_count": refunded_count,
+        },
+        "filters": {"status": status, "payment_type": payment_type},
+        "page": page,
+        "total": total,
+        "per_page": per_page,
+        "total_pages": max(1, (total + per_page - 1) // per_page),
+        "active_page": "payments",
+        "version": APP_VERSION,
+    })
+
+
+@router.post("/admin/request/{rid}/refund")
+def admin_refund_payment(
+    request: Request,
+    rid: str,
+    _=Depends(require_admin),
+):
+    """Initiate a Stripe refund for a completed payment on this request."""
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+    payment = None
+    if req["payment_id"]:
+        payment = conn.execute("SELECT * FROM payments WHERE id = ?", (req["payment_id"],)).fetchone()
+    conn.close()
+
+    if not payment or payment["status"] != "completed":
+        return RedirectResponse(url=f"/admin/request/{rid}?refund_error=no_payment", status_code=303)
+
+    if not payment["stripe_payment_intent_id"]:
+        return RedirectResponse(url=f"/admin/request/{rid}?refund_error=no_intent", status_code=303)
+
+    stripe = _get_stripe()
+    if not stripe:
+        return RedirectResponse(url=f"/admin/request/{rid}?refund_error=not_configured", status_code=303)
+
+    try:
+        stripe.Refund.create(payment_intent=payment["stripe_payment_intent_id"])
+    except Exception as e:
+        logger.error(f"{_log_ctx(payment['id'])} Admin refund failed: {e}")
+        return RedirectResponse(url=f"/admin/request/{rid}?refund_error=stripe_error", status_code=303)
+
+    # Update local status immediately (webhook will also fire)
+    conn = db()
+    conn.execute(
+        "UPDATE payments SET status = 'refunded', updated_at = ? WHERE id = ?",
+        (now_iso(), payment["id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    log_audit(
+        action=AuditAction.PAYMENT_REFUNDED,
+        actor_type="admin",
+        target_type="payment",
+        target_id=payment["id"],
+        details={"refund_amount_cents": payment["amount_cents"], "request_id": rid},
+    )
+
+    return RedirectResponse(url=f"/admin/request/{rid}?refunded=1", status_code=303)
+
+
+@router.post("/admin/payments/{payment_id}/refund")
+def admin_refund_payment_by_id(
+    request: Request,
+    payment_id: str,
+    _=Depends(require_admin),
+):
+    """Initiate a Stripe refund for a completed payment (from payments dashboard)."""
+    conn = db()
+    payment = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
+    conn.close()
+
+    if not payment or payment["status"] != "completed":
+        return RedirectResponse(url="/admin/payments?refund_error=no_payment", status_code=303)
+
+    if not payment["stripe_payment_intent_id"]:
+        return RedirectResponse(url="/admin/payments?refund_error=no_intent", status_code=303)
+
+    stripe = _get_stripe()
+    if not stripe:
+        return RedirectResponse(url="/admin/payments?refund_error=not_configured", status_code=303)
+
+    try:
+        stripe.Refund.create(payment_intent=payment["stripe_payment_intent_id"])
+    except Exception as e:
+        logger.error(f"{_log_ctx(payment['id'])} Admin refund failed: {e}")
+        return RedirectResponse(url="/admin/payments?refund_error=stripe_error", status_code=303)
+
+    conn = db()
+    conn.execute(
+        "UPDATE payments SET status = 'refunded', updated_at = ? WHERE id = ?",
+        (now_iso(), payment["id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    log_audit(
+        action=AuditAction.PAYMENT_REFUNDED,
+        actor_type="admin",
+        target_type="payment",
+        target_id=payment["id"],
+        details={"refund_amount_cents": payment["amount_cents"], "request_id": payment["request_id"]},
+    )
+
+    return RedirectResponse(url="/admin/payments?refunded=1", status_code=303)
+
+
+# ─────────────────────────── EMBEDDED CHECKOUT API ────────────────────────────
+
+
+@router.get("/api/payments/config")
+def api_payments_config():
+    """Return Stripe publishable key for client-side initialization."""
+    if not is_payments_enabled():
+        return JSONResponse({"enabled": False})
+    return JSONResponse({
+        "enabled": True,
+        "publishable_key": _stripe_publishable_key(),
+    })
+
+
+@router.post("/api/payments/store-checkout/{item_id}")
+async def api_store_checkout(
+    request: Request,
+    item_id: str,
+    requester_name: str = Form(...),
+    requester_email: str = Form(...),
+    colors: str = Form(""),
+    notes: str = Form(""),
+):
+    """Create embedded checkout session for a store item purchase."""
+    if not is_payments_enabled():
+        return JSONResponse({"error": "Payments not enabled"}, status_code=400)
+
+    conn = db()
+    item = conn.execute("SELECT * FROM store_items WHERE id = ? AND is_active = 1", (item_id,)).fetchone()
+    conn.close()
+
+    if not item:
+        return JSONResponse({"error": "Item not found"}, status_code=404)
+    if not item["price_cents"] or item["price_cents"] <= 0:
+        return JSONResponse({"error": "Item has no price"}, status_code=400)
+
+    # Require authenticated user for payment
+    user = await get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth_required"}, status_code=401)
+    account_id = user.id
+
+    client_secret, result = create_store_item_checkout(
+        item=dict(item),
+        requester_name=requester_name,
+        requester_email=requester_email,
+        colors=colors,
+        notes=notes,
+        account_id=account_id,
+        embedded=True,
+    )
+    if not client_secret:
+        return JSONResponse({"error": result or "Checkout creation failed"}, status_code=500)
+
+    return JSONResponse({"clientSecret": client_secret})
+
+
+@router.post("/api/payments/rush-checkout")
+async def api_rush_checkout(
+    request: Request,
+    requester_name: str = Form(...),
+    requester_email: str = Form(...),
+    print_name: str = Form(""),
+    printer: str = Form("ANY"),
+    material: str = Form("PLA"),
+    colors: str = Form(""),
+    link_url: str = Form(""),
+    notes: str = Form(""),
+    fulfillment_method: str = Form("pickup"),
+    ship_recipient_name: str = Form(""),
+    ship_recipient_phone: str = Form(""),
+    ship_address_line1: str = Form(""),
+    ship_address_line2: str = Form(""),
+    ship_city: str = Form(""),
+    ship_state: str = Form(""),
+    ship_postal_code: str = Form(""),
+    ship_country: str = Form("US"),
+    ship_service_preference: str = Form(""),
+    turnstile_token: Optional[str] = Form(None, alias="cf-turnstile-response"),
+    upload: List[UploadFile] = File(default=[]),
+):
+    """Create embedded checkout session for a rush fee payment."""
+    if not is_payments_enabled():
+        return JSONResponse({"error": "Payments not enabled"}, status_code=400)
+
+    # Require authenticated user for payment
+    user = await get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth_required"}, status_code=401)
+
+    # Turnstile verification
+    client_ip = request.client.host if request.client else None
+    if not await verify_turnstile(turnstile_token or "", client_ip):
+        return JSONResponse({"error": "Bot verification failed"}, status_code=403)
+
+    # Calculate rush price
+    printer_suggestions = get_printer_suggestions()
+    queue_size = printer_suggestions.get("total_queue", 0)
+    rush_pricing = calculate_rush_price(queue_size, requester_name)
+    rush_price_cents = int(rush_pricing["final_price"] * 100)
+
+    # Save uploaded files (without request_id — linked later by webhook)
+    uploaded_file_ids = []
+    max_bytes = MAX_UPLOAD_MB * 1024 * 1024
+    valid_files = [f for f in upload if f.filename and f.size and f.size > 0]
+    if valid_files:
+        conn = db()
+        for file in valid_files:
+            ext = safe_ext(file.filename)
+            if ext not in ALLOWED_EXTS:
+                conn.close()
+                return JSONResponse({"error": f"File '{file.filename}' not allowed."}, status_code=400)
+            data = await file.read()
+            if len(data) > max_bytes:
+                conn.close()
+                return JSONResponse({"error": f"File '{file.filename}' too large."}, status_code=400)
+            stored = f"{uuid.uuid4()}{ext}"
+            out_path = os.path.join(UPLOAD_DIR, stored)
+            sha = hashlib.sha256(data).hexdigest()
+            with open(out_path, "wb") as f:
+                f.write(data)
+            file_metadata = parse_3d_file_metadata(out_path, file.filename)
+            file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
+            fid = str(uuid.uuid4())
+            conn.execute(
+                """INSERT INTO files (id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (fid, now_iso(), file.filename, stored, len(data), sha, file_metadata_json),
+            )
+            uploaded_file_ids.append(fid)
+        conn.commit()
+        conn.close()
+
+    rush_form_data = {
+        "requester_name": requester_name.strip(),
+        "requester_email": requester_email.strip(),
+        "print_name": print_name.strip(),
+        "printer": printer,
+        "material": material,
+        "colors": colors.strip(),
+        "link_url": link_url.strip(),
+        "notes": notes or "",
+        "fulfillment_method": fulfillment_method,
+        "ship_recipient_name": ship_recipient_name.strip(),
+        "ship_recipient_phone": ship_recipient_phone.strip(),
+        "ship_address_line1": ship_address_line1.strip(),
+        "ship_address_line2": ship_address_line2.strip(),
+        "ship_city": ship_city.strip(),
+        "ship_state": ship_state.strip(),
+        "ship_postal_code": ship_postal_code.strip(),
+        "ship_country": (ship_country or "US").strip(),
+        "ship_service_preference": ship_service_preference.strip(),
+    }
+
+    account_id = user.id
+
+    client_secret, result = create_rush_fee_checkout(
+        rush_price_cents=rush_price_cents,
+        requester_name=requester_name.strip(),
+        requester_email=requester_email.strip(),
+        print_name=print_name.strip(),
+        form_data=rush_form_data,
+        file_ids=uploaded_file_ids,
+        account_id=account_id,
+        embedded=True,
+    )
+    if not client_secret:
+        return JSONResponse({"error": result or "Checkout creation failed"}, status_code=500)
+
+    return JSONResponse({"clientSecret": client_secret})
+
+
+@router.post("/api/payments/quote-checkout/{request_id}")
+async def api_quote_checkout(
+    request: Request,
+    request_id: str,
+    token: str = Form(...),
+):
+    """Create embedded checkout session for a quote payment."""
+    if not is_payments_enabled():
+        return JSONResponse({"error": "Payments not enabled"}, status_code=400)
+
+    # Require authenticated user for payment
+    user = await get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth_required"}, status_code=401)
+
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (request_id,)).fetchone()
+    conn.close()
+
+    if not req:
+        return JSONResponse({"error": "Request not found"}, status_code=404)
+    if req["access_token"] != token:
+        return JSONResponse({"error": "Invalid token"}, status_code=403)
+    if not req["quote_amount_cents"]:
+        return JSONResponse({"error": "No quote set"}, status_code=400)
+    if req["quote_paid_at"]:
+        return JSONResponse({"error": "Quote already paid"}, status_code=400)
+
+    # Try to reuse existing session
+    existing_secret = get_existing_quote_checkout_secret(request_id)
+    if existing_secret:
+        return JSONResponse({"clientSecret": existing_secret})
+
+    client_secret, result = create_quote_checkout(
+        request_id=request_id,
+        amount_cents=req["quote_amount_cents"],
+        request_dict=dict(req),
+        embedded=True,
+    )
+    if not client_secret:
+        return JSONResponse({"error": result or "Checkout creation failed"}, status_code=500)
+
+    return JSONResponse({"clientSecret": client_secret})
+
+

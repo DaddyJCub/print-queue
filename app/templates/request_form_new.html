@@ -59,6 +59,12 @@
 {% endblock %}
 
 {% block content %}
+{% if request.query_params.get('payment_cancelled') == '1' %}
+<div class="mb-4 bg-amber-900/30 border border-amber-700 rounded-xl p-3 flex items-center justify-between">
+  <span class="text-sm text-amber-200">Rush fee payment was cancelled. Your request was not submitted. You can try again or submit without rush.</span>
+  <button onclick="this.parentElement.remove()" class="text-amber-400 hover:text-amber-200 ml-3 text-lg leading-none">&times;</button>
+</div>
+{% endif %}
 <!-- Hero Section -->
 <div class="relative mb-8 -mx-4 -mt-4 px-4 pt-8 pb-6 bg-gradient-to-br from-indigo-950/80 via-zinc-900 to-purple-950/50 border-b border-indigo-500/20 overflow-hidden">
   <!-- Background decoration -->
@@ -691,7 +697,7 @@
           <span class="text-lg">🔒</span>
           <div>
             <p class="text-sm font-medium text-amber-200">Secure payment via Stripe</p>
-            <p class="text-xs text-zinc-400">You'll be redirected to Stripe Checkout after submitting</p>
+            <p class="text-xs text-zinc-400">Checkout will appear on this page after submitting</p>
           </div>
         </div>
         <p class="text-sm text-zinc-400">
@@ -746,10 +752,96 @@
   </div>
 </form>
 
+<!-- Embedded Rush Checkout Container -->
+{% if rush_settings and rush_settings.enabled and payments_enabled is defined and payments_enabled %}
+<div id="rush-checkout-container" class="hidden mt-6">
+  <div class="bg-gradient-to-br from-indigo-900/30 to-purple-900/20 border border-indigo-500/30 rounded-2xl p-5 shadow-lg shadow-indigo-900/20">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="font-semibold text-indigo-200 flex items-center gap-2">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+        Complete Rush Payment
+      </h3>
+      <button type="button" id="cancel-rush-checkout-btn"
+              class="text-sm text-zinc-400 hover:text-white transition flex items-center gap-1">
+        &larr; Cancel
+      </button>
+    </div>
+    <div id="stripe-checkout-mount"></div>
+  </div>
+</div>
+{% include '_components/stripe_checkout.html' %}
+<script>
+(function() {
+  const form = document.getElementById('request-form');
+  const rushCheckbox = document.getElementById('rush-checkbox');
+  const checkoutContainer = document.getElementById('rush-checkout-container');
+  const cancelBtn = document.getElementById('cancel-rush-checkout-btn');
+  if (!form || !rushCheckbox || !checkoutContainer) return;
+
+  const submitBtn = document.getElementById('submit-btn');
+  const submitText = document.getElementById('submit-text');
+  const submitSpinner = document.getElementById('submit-spinner');
+  const originalSubmitHTML = submitText ? submitText.textContent : '';
+
+  // Track whether we're doing embedded checkout
+  let doingEmbeddedCheckout = false;
+  window._rushEmbeddedCheckoutActive = false;
+
+  form.addEventListener('submit', function(e) {
+    // Only intercept when rush is checked AND payments are enabled
+    if (!rushCheckbox.checked) return; // Let normal submission proceed
+
+    e.preventDefault();
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+
+    doingEmbeddedCheckout = true;
+    window._rushEmbeddedCheckoutActive = true;
+
+    // Show loading state
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('opacity-75', 'cursor-wait'); }
+    if (submitText) submitText.textContent = 'Loading checkout...';
+    if (submitSpinner) submitSpinner.classList.remove('hidden');
+
+    const fd = new FormData(form);
+    StripeCheckout.startCheckout(
+      '/api/payments/rush-checkout',
+      fd,
+      {
+        formContainer: form,
+        checkoutContainer: checkoutContainer,
+        onLoading: function() {},
+        onError: function(msg) {
+          doingEmbeddedCheckout = false;
+          window._rushEmbeddedCheckoutActive = false;
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('opacity-75', 'cursor-wait'); }
+          if (submitText) submitText.textContent = originalSubmitHTML;
+          if (submitSpinner) submitSpinner.classList.add('hidden');
+          if (window.showToast) showToast(msg, 'error', 5000);
+          else if (window.showToastLocal) showToastLocal(msg);
+          else alert(msg);
+        },
+      }
+    );
+  });
+
+  cancelBtn?.addEventListener('click', function() {
+    StripeCheckout.cancel(form, checkoutContainer);
+    doingEmbeddedCheckout = false;
+    window._rushEmbeddedCheckoutActive = false;
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('opacity-75', 'cursor-wait'); }
+    if (submitText) submitText.textContent = originalSubmitHTML;
+    if (submitSpinner) submitSpinner.classList.add('hidden');
+  });
+})();
+</script>
+{% endif %}
+
 <!-- Admin & Feedback Links -->
 <div class="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
   <a class="text-zinc-400 hover:text-indigo-400 transition" href="/admin/login">Admin</a>
   <div class="flex items-center gap-4">
+    <a href="/terms" class="hover:text-indigo-300 transition">Terms</a>
+    <a href="/privacy" class="hover:text-indigo-300 transition">Privacy</a>
     <a href="/feedback?type=bug" class="hover:text-red-400 transition" title="Report Bug">🐛 Bug</a>
     <a href="/feedback?type=suggestion" class="hover:text-yellow-400 transition" title="Suggestion">💡 Idea</a>
     <a href="/changelog" class="hover:text-indigo-400 transition">v{{ version }}</a>
@@ -1045,6 +1137,9 @@
 
   // Form submission with loading state
   document.getElementById('request-form')?.addEventListener('submit', function(e) {
+    // Skip confetti/loading when embedded checkout is handling the submission
+    if (window._rushEmbeddedCheckoutActive) return;
+
     const selectedDelivery = document.querySelector('input[name="fulfillment_method"]:checked')?.value || 'pickup';
     if (selectedDelivery === 'shipping' && !HAS_USER_SESSION) {
       e.preventDefault();

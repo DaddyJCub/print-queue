@@ -107,6 +107,7 @@ class AuditAction(str, Enum):
     PAYMENT_INITIATED = "payment_initiated"
     PAYMENT_COMPLETED = "payment_completed"
     PAYMENT_FAILED = "payment_failed"
+    PAYMENT_REFUNDED = "payment_refunded"
     QUOTE_SET = "quote_set"
     QUOTE_PAID = "quote_paid"
 

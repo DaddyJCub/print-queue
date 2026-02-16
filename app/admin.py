@@ -575,6 +575,10 @@ def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[s
         "shippo_api_key_configured": bool(get_setting("shippo_api_key", "").strip() or os.getenv("SHIPPO_API_KEY", "").strip()),
         "shippo_webhook_pass_configured": bool(get_setting("shippo_webhook_pass", "").strip() or os.getenv("SHIPPO_WEBHOOK_PASS", "").strip()),
         "shippo_webhook_token_configured": bool(get_setting("shippo_webhook_token", "").strip() or os.getenv("SHIPPO_WEBHOOK_TOKEN", "").strip()),
+        # Stripe / Payment settings
+        "stripe_secret_key_configured": bool(get_setting("stripe_secret_key", "").strip() or os.getenv("STRIPE_SECRET_KEY", "").strip()),
+        "stripe_publishable_key": get_setting("stripe_publishable_key", "").strip() or os.getenv("STRIPE_PUBLISHABLE_KEY", "").strip(),
+        "stripe_webhook_secret_configured": bool(get_setting("stripe_webhook_secret", "").strip() or os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()),
         "saved": bool(saved == "1"),
     }
     return templates.TemplateResponse("admin_settings.html", {"request": request, "s": model, "version": APP_VERSION})
@@ -636,6 +640,12 @@ def admin_settings_post(
     clear_shippo_webhook_pass: Optional[str] = Form(None),
     shippo_webhook_token: Optional[str] = Form(None),
     clear_shippo_webhook_token: Optional[str] = Form(None),
+    # Stripe / Payment config
+    stripe_secret_key: Optional[str] = Form(None),
+    clear_stripe_secret_key: Optional[str] = Form(None),
+    stripe_publishable_key: Optional[str] = Form(None),
+    stripe_webhook_secret: Optional[str] = Form(None),
+    clear_stripe_webhook_secret: Optional[str] = Form(None),
     _=Depends(require_admin),
 ):
     # checkboxes: present => "on", missing => None
@@ -698,8 +708,35 @@ def admin_settings_post(
         set_setting("shippo_webhook_token", "")
     elif shippo_webhook_token and shippo_webhook_token.strip():
         set_setting("shippo_webhook_token", shippo_webhook_token.strip())
+    # Stripe / Payment config
+    if clear_stripe_secret_key:
+        set_setting("stripe_secret_key", "")
+    elif stripe_secret_key and stripe_secret_key.strip():
+        set_setting("stripe_secret_key", stripe_secret_key.strip())
+    if stripe_publishable_key is not None:
+        set_setting("stripe_publishable_key", (stripe_publishable_key or "").strip())
+    if clear_stripe_webhook_secret:
+        set_setting("stripe_webhook_secret", "")
+    elif stripe_webhook_secret and stripe_webhook_secret.strip():
+        set_setting("stripe_webhook_secret", stripe_webhook_secret.strip())
 
-    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+    # Validate Stripe keys if a new secret key was saved
+    stripe_warning = False
+    new_sk = stripe_secret_key and stripe_secret_key.strip() and not clear_stripe_secret_key
+    if new_sk:
+        try:
+            import stripe as _stripe_mod
+            _stripe_mod.api_key = stripe_secret_key.strip()
+            _stripe_mod.Account.retrieve()
+            from app.payments import _reset_stripe_cache
+            _reset_stripe_cache()
+        except Exception:
+            stripe_warning = True
+
+    redirect_url = "/admin/settings?saved=1"
+    if stripe_warning:
+        redirect_url += "&stripe_warning=1"
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 @router.get("/admin/analytics", response_class=HTMLResponse)

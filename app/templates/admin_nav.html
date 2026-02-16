@@ -37,6 +37,9 @@
           <a href="/admin/analytics" class="admin-pill {% if active_page == 'analytics' %}active{% endif %}">
             📊 <span>Stats</span>
           </a>
+          <a href="/admin/payments" class="admin-pill {% if active_page == 'payments' %}active{% endif %}">
+            💳 <span>Payments</span>
+          </a>
           <a href="/admin/accounts" class="admin-pill {% if active_page == 'accounts' or active_page == 'users' %}active{% endif %}">
             👥 <span>Users</span>
           </a>
@@ -154,6 +157,7 @@
       {% endif %}
       <a href="/admin/store" class="mobile-nav-link {% if active_page == 'store' %}active{% endif %}">🏪 Store</a>
       <a href="/admin/analytics" class="mobile-nav-link {% if active_page == 'analytics' %}active{% endif %}">📊 Analytics</a>
+      <a href="/admin/payments" class="mobile-nav-link {% if active_page == 'payments' %}active{% endif %}">💳 Payments</a>
       <a href="/admin/accounts" class="mobile-nav-link {% if active_page == 'accounts' %}active{% endif %}">👥 Users</a>
       
       <div class="border-t border-zinc-800 my-2 pt-2">

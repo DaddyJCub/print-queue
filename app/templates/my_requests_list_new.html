@@ -857,9 +857,16 @@
             <h3 class="font-semibold">{{ req.print_name or 'Untitled' }}</h3>
             <p class="text-xs text-zinc-500">#{{ req.id[:8] }} • {{ req.created_at[:10] }}</p>
           </div>
+          <div class="flex items-center gap-2">
           <span class="px-2 py-1 rounded-lg text-xs font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">
             {{ req.status.replace('_', ' ') }}
           </span>
+          {% if req.payment_badge == 'paid' %}
+            <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-600/30">{{ req.payment_badge_text }}</span>
+          {% elif req.payment_badge == 'quote_pending' %}
+            <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-amber-600/20 text-amber-300 border border-amber-600/30">{{ req.payment_badge_text }}</span>
+          {% endif %}
+          </div>
         </div>
         <div class="flex gap-2 mt-2 text-xs text-zinc-500">
           <span>{{ req.printer or 'ANY' }}</span>
@@ -874,16 +881,23 @@
       </a>
       {% endfor %}
       {% for req in active_requests[3:] %}
-      <a href="/my/{{ req.id }}?token={{ req.access_token }}" 
+      <a href="/my/{{ req.id }}?token={{ req.access_token }}"
          class="request-item hidden block bg-zinc-900/60 border {% if req.status == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-xl p-4 card-interactive">
         <div class="flex items-center justify-between">
           <div>
             <h3 class="font-semibold">{{ req.print_name or 'Untitled' }}</h3>
             <p class="text-xs text-zinc-500">#{{ req.id[:8] }}</p>
           </div>
+          <div class="flex items-center gap-2">
           <span class="px-2 py-1 rounded-lg text-xs font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">
             {{ req.status.replace('_', ' ') }}
           </span>
+          {% if req.payment_badge == 'paid' %}
+            <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-600/30">{{ req.payment_badge_text }}</span>
+          {% elif req.payment_badge == 'quote_pending' %}
+            <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-amber-600/20 text-amber-300 border border-amber-600/30">{{ req.payment_badge_text }}</span>
+          {% endif %}
+          </div>
         </div>
       </a>
       {% endfor %}
@@ -914,30 +928,40 @@
     <div class="px-4 pb-4">
       <div class="space-y-2" id="closed-list">
         {% for req in closed_requests[:4] %}
-        <a href="/my/{{ req.id }}?token={{ req.access_token }}" 
+        <a href="/my/{{ req.id }}?token={{ req.access_token }}"
            class="request-item block bg-zinc-950/60 border border-zinc-800 rounded-lg p-3 hover:bg-zinc-900/60 transition">
           <div class="flex items-center justify-between">
             <div>
               <h3 class="font-medium text-sm">{{ req.print_name or 'Untitled' }}</h3>
               <p class="text-xs text-zinc-500">#{{ req.id[:8] }}</p>
             </div>
+            <div class="flex items-center gap-2">
             <span class="px-2 py-1 rounded-lg text-xs font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">
               {{ req.status.replace('_', ' ') }}
             </span>
+            {% if req.payment_badge == 'paid' %}
+              <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-600/30">{{ req.payment_badge_text }}</span>
+            {% endif %}
+            </div>
           </div>
         </a>
         {% endfor %}
         {% for req in closed_requests[4:] %}
-        <a href="/my/{{ req.id }}?token={{ req.access_token }}" 
+        <a href="/my/{{ req.id }}?token={{ req.access_token }}"
            class="request-item hidden block bg-zinc-950/60 border border-zinc-800 rounded-lg p-3 hover:bg-zinc-900/60 transition">
           <div class="flex items-center justify-between">
             <div>
               <h3 class="font-medium text-sm">{{ req.print_name or 'Untitled' }}</h3>
               <p class="text-xs text-zinc-500">#{{ req.id[:8] }}</p>
             </div>
+            <div class="flex items-center gap-2">
             <span class="px-2 py-1 rounded-lg text-xs font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">
               {{ req.status.replace('_', ' ') }}
             </span>
+            {% if req.payment_badge == 'paid' %}
+              <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-600/30">{{ req.payment_badge_text }}</span>
+            {% endif %}
+            </div>
           </div>
         </a>
         {% endfor %}
@@ -984,6 +1008,8 @@
 <div class="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
   <span>{{ email }}</span>
   <div class="flex items-center gap-4">
+    <a href="/terms" class="hover:text-indigo-300 transition">Terms</a>
+    <a href="/privacy" class="hover:text-indigo-300 transition">Privacy</a>
     <a href="/feedback?type=bug" class="hover:text-red-400 transition">🐛</a>
     <a href="/feedback?type=suggestion" class="hover:text-yellow-400 transition">💡</a>
     <a href="/changelog" class="hover:text-indigo-400 transition">v{{ version }}</a>

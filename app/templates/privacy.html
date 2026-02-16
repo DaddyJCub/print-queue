@@ -1,0 +1,100 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}Privacy Policy | {{ app_title }}{% endblock %}
+{% block header_title %}Privacy{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+  <div class="mb-6">
+    <div class="bg-gradient-to-br from-zinc-900/80 to-zinc-950/60 border border-zinc-800 rounded-2xl p-5">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h1 class="text-2xl sm:text-3xl font-bold text-white">Privacy Policy</h1>
+          <p class="text-sm text-zinc-400 mt-1">How {{ app_title }} collects and uses information</p>
+          <p class="text-xs text-zinc-500 mt-2">Effective {{ effective_date }} • Contact: <a class="underline hover:text-indigo-300" href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
+        </div>
+        <div class="hidden sm:flex items-center gap-2 text-xs">
+          <a href="/terms" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition">Terms</a>
+          <a href="/acceptable-use" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition">Acceptable Use</a>
+          <a href="/refunds-and-shipping" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition">Refunds &amp; Shipping</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="space-y-4">
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">1) What we collect</h2>
+      <ul class="text-sm text-zinc-400 space-y-2">
+        <li>• Account info (email, name) if you create an account.</li>
+        <li>• Request info you submit (print name, printer/material selections, notes).</li>
+        <li>• Files you upload and/or links you provide for prints.</li>
+        <li>• Shipping info (recipient and address) if you choose shipping.</li>
+        <li>• Basic technical data (IP address, user-agent) for security and abuse prevention.</li>
+      </ul>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">2) Cookies & local storage</h2>
+      <p class="text-sm text-zinc-400">We use cookies and similar storage to keep the Service working and secure (for example, login sessions and CSRF protection). Some pages may also store a token in your browser storage to help you access “My Prints” without re-entering your email.</p>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">3) How we use information</h2>
+      <ul class="text-sm text-zinc-400 space-y-2">
+        <li>• To process and manage print requests.</li>
+        <li>• To communicate updates you request (email notifications, etc.).</li>
+        <li>• To provide shipping and delivery coordination.</li>
+        <li>• To prevent abuse, fraud, and to keep the Service reliable.</li>
+      </ul>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">4) Third parties</h2>
+      <p class="text-sm text-zinc-400">We use third-party services to operate the Service. Depending on which features you use, this may include:</p>
+      <ul class="text-sm text-zinc-400 space-y-2 mt-2">
+        <li>• Payment processing (e.g., Stripe) for checkout and payment confirmation.</li>
+        <li>• Shipping services (e.g., Shippo) to create labels, track shipments, and handle delivery events.</li>
+        <li>• Bot / abuse protection (e.g., Cloudflare Turnstile) on certain forms.</li>
+      </ul>
+      <div class="mt-3 text-xs text-zinc-500 space-y-1">
+        <div>• Stripe Privacy: <a class="underline hover:text-indigo-300" href="https://stripe.com/privacy" target="_blank" rel="noopener noreferrer">https://stripe.com/privacy</a></div>
+        <div>• Cloudflare Turnstile Privacy Addendum: <a class="underline hover:text-indigo-300" href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noopener noreferrer">https://www.cloudflare.com/turnstile-privacy-policy/</a></div>
+      </div>
+      <p class="text-xs text-zinc-500 mt-3">Note: When you pay through Stripe, card/payment details are handled by Stripe and are not stored on our servers.</p>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">5) Public queue visibility</h2>
+      <p class="text-sm text-zinc-400">The public queue may display limited request information (such as status and a first-name indicator) to help users track progress. Do not submit sensitive information in request notes.</p>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">6) Retention & deletion</h2>
+      <p class="text-sm text-zinc-400">We retain information as needed to run the Service and keep proper records. If account deletion is available, you can request deletion from your account settings. Some records may be retained where required for legal, security, or operational reasons.</p>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">7) Your choices</h2>
+      <ul class="text-sm text-zinc-400 space-y-2">
+        <li>• You can opt out of certain emails using unsubscribe links where provided.</li>
+        <li>• You can avoid including sensitive personal data in request notes.</li>
+      </ul>
+    </section>
+
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-2">8) Contact</h2>
+      <p class="text-sm text-zinc-400">Questions or requests about privacy can be sent to <a class="underline hover:text-indigo-300" href="mailto:{{ contact_email }}">{{ contact_email }}</a>.</p>
+    </section>
+
+    <div class="mt-6 pt-4 border-t border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-500">
+      <div class="flex items-center gap-3">
+        <a href="/terms" class="hover:text-indigo-300 transition underline">Terms</a>
+        <a href="/acceptable-use" class="hover:text-indigo-300 transition underline">Acceptable Use</a>
+        <a href="/refunds-and-shipping" class="hover:text-indigo-300 transition underline">Refunds &amp; Shipping</a>
+      </div>
+      <a href="/" class="hover:text-indigo-400 transition">Back to Submit</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

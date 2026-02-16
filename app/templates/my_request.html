@@ -478,9 +478,19 @@
       </div>
     </div>
 
+    <!-- Payment Cancelled Banner -->
+    {% if request.query_params.get('payment_cancelled') == '1' %}
+    <div class="rounded-2xl border border-amber-500/40 bg-amber-900/20 p-4 mb-6 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="text-sm text-amber-200">Payment was cancelled. You can pay when you're ready using the button below.</span>
+      </div>
+      <button onclick="this.parentElement.remove()" class="text-amber-400 hover:text-amber-200 ml-3 text-lg leading-none">&times;</button>
+    </div>
+    {% endif %}
+
     <!-- Quote / Payment Banner -->
     {% if quote_amount_cents and not quote_paid_at %}
-    <div class="rounded-2xl border border-amber-500/40 bg-amber-900/20 p-4 mb-6">
+    <div id="quote-banner" class="rounded-2xl border border-amber-500/40 bg-amber-900/20 p-4 mb-6">
       <div class="flex items-center justify-between gap-3">
         <div>
           <h3 class="font-semibold text-amber-100">💳 Payment Required</h3>
@@ -488,13 +498,37 @@
             A quote of <span class="font-bold">${{ '%.2f' | format(quote_amount_cents / 100.0) }}</span> has been set for this request.
           </p>
         </div>
-        {% if quote_payment_url %}
+        {% if payments_enabled %}
+        <button type="button" id="pay-quote-btn"
+                class="shrink-0 rounded-xl bg-amber-600 hover:bg-amber-500 transition px-4 py-2 text-sm font-semibold text-white">
+          Pay Now
+        </button>
+        {% elif quote_payment_url %}
         <a href="{{ quote_payment_url }}" class="shrink-0 rounded-xl bg-amber-600 hover:bg-amber-500 transition px-4 py-2 text-sm font-semibold text-white">
           Pay Now
         </a>
         {% endif %}
       </div>
     </div>
+
+    <!-- Embedded Quote Checkout -->
+    {% if payments_enabled %}
+    <div id="quote-checkout-container" class="hidden mb-6">
+      <div class="rounded-2xl border border-indigo-500/40 bg-gradient-to-br from-indigo-900/30 to-purple-900/20 p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-semibold text-indigo-200 flex items-center gap-2">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+            Complete Payment — ${{ '%.2f' | format(quote_amount_cents / 100.0) }}
+          </h3>
+          <button type="button" id="cancel-quote-checkout-btn"
+                  class="text-sm text-zinc-400 hover:text-white transition flex items-center gap-1">
+            &larr; Cancel
+          </button>
+        </div>
+        <div id="stripe-checkout-mount"></div>
+      </div>
+    </div>
+    {% endif %}
     {% elif quote_amount_cents and quote_paid_at %}
     <div class="rounded-2xl border border-emerald-500/40 bg-emerald-900/20 p-4 mb-6">
       <div class="flex items-center gap-3">
@@ -1757,4 +1791,44 @@
     else convertEtas();
   })();
   </script>
+  {% if payments_enabled and quote_amount_cents and not quote_paid_at %}
+  {% include '_components/stripe_checkout.html' %}
+  <script>
+  (function() {
+    var payBtn = document.getElementById('pay-quote-btn');
+    var quoteBanner = document.getElementById('quote-banner');
+    var checkoutContainer = document.getElementById('quote-checkout-container');
+    var cancelBtn = document.getElementById('cancel-quote-checkout-btn');
+    if (!payBtn || !checkoutContainer) return;
+
+    payBtn.addEventListener('click', function() {
+      payBtn.disabled = true;
+      payBtn.textContent = 'Loading...';
+      var fd = new FormData();
+      fd.append('token', '{{ token }}');
+      StripeCheckout.startCheckout(
+        '/api/payments/quote-checkout/{{ req.id }}',
+        fd,
+        {
+          formContainer: quoteBanner,
+          checkoutContainer: checkoutContainer,
+          onLoading: function() {},
+          onError: function(msg) {
+            payBtn.disabled = false;
+            payBtn.textContent = 'Pay Now';
+            if (window.showToast) showToast(msg, 'error', 5000);
+            else alert(msg);
+          },
+        }
+      );
+    });
+
+    cancelBtn?.addEventListener('click', function() {
+      StripeCheckout.cancel(quoteBanner, checkoutContainer);
+      payBtn.disabled = false;
+      payBtn.textContent = 'Pay Now';
+    });
+  })();
+  </script>
+  {% endif %}
 </body>
