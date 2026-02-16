@@ -707,7 +707,7 @@
                 </div>
                 {% if payment["status"] == "completed" and payment.get("stripe_payment_intent_id") and payments_enabled %}
                 <form method="POST" action="/admin/request/{{ req['id'] }}/refund"
-                      onsubmit="return confirm('Refund ${{ '%.2f' | format(payment['amount_cents'] / 100.0) }} to {{ payment['payer_name'] }}? This cannot be undone.')">
+                      onsubmit="return confirm('Refund ${{ '%.2f' | format(payment['amount_cents'] / 100.0) }} to ' + {{ (payment['payer_name'] or 'customer') | tojson }} + '? This cannot be undone.')">
                   <button type="submit" class="w-full mt-2 rounded-lg bg-red-900/40 border border-red-700/50 text-red-300 hover:bg-red-900/60 transition px-3 py-2 text-xs font-semibold">
                     Refund ${{ '%.2f' | format(payment["amount_cents"] / 100.0) }}
                   </button>

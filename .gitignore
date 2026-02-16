@@ -2,6 +2,7 @@
 local_data/
 local_uploads/
 venv/
+.venv/
 .env
 .env.local
 

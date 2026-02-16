@@ -147,7 +147,7 @@
               <td class="px-4 py-3">
                 {% if p.status == 'completed' and p.stripe_payment_intent_id %}
                 <form method="POST" action="/admin/payments/{{ p.id }}/refund" class="inline"
-                      onsubmit="return confirm('Refund ${{ '%.2f' | format(p.amount_cents / 100.0) }} to {{ p.payer_name or p.payer_email or 'customer' }}?')">
+                      onsubmit="return confirm('Refund ${{ '%.2f' | format(p.amount_cents / 100.0) }} to ' + {{ (p.payer_name or p.payer_email or 'customer') | tojson }} + '?')">
                   <button type="submit" class="px-2 py-1 rounded text-xs bg-red-900/40 text-red-400 border border-red-800/40 hover:bg-red-800/60 transition">Refund</button>
                 </form>
                 {% elif p.status in ('refunded', 'partially_refunded') %}

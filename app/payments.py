@@ -556,6 +556,16 @@ def _handle_checkout_completed(session: dict) -> dict:
         conn.close()
         return {"ok": True, "duplicate": True}
 
+    # Atomically claim this payment for fulfillment to prevent double-processing
+    result = conn.execute(
+        "UPDATE payments SET status = 'fulfilling', updated_at = ? WHERE id = ? AND status = 'pending'",
+        (now_iso(), payment_id),
+    )
+    conn.commit()
+    if result.rowcount != 1:
+        conn.close()
+        return {"ok": True, "duplicate": True}
+
     now = now_iso()
 
     try:
@@ -1255,7 +1265,9 @@ async def api_rush_checkout(
     printer_suggestions = get_printer_suggestions()
     queue_size = printer_suggestions.get("total_queue", 0)
     rush_pricing = calculate_rush_price(queue_size, requester_name)
-    rush_price_cents = int(rush_pricing["final_price"] * 100)
+    rush_price_cents = round(rush_pricing["final_price"] * 100)
+    if rush_price_cents <= 0:
+        return JSONResponse({"error": "Invalid rush price"}, status_code=400)
 
     # Save uploaded files (without request_id — linked later by webhook)
     uploaded_file_ids = []
@@ -1351,7 +1363,7 @@ async def api_quote_checkout(
         return JSONResponse({"error": "Request not found"}, status_code=404)
     if req["access_token"] != token:
         return JSONResponse({"error": "Invalid token"}, status_code=403)
-    if not req["quote_amount_cents"]:
+    if not req["quote_amount_cents"] or req["quote_amount_cents"] <= 0:
         return JSONResponse({"error": "No quote set"}, status_code=400)
     if req["quote_paid_at"]:
         return JSONResponse({"error": "Quote already paid"}, status_code=400)
