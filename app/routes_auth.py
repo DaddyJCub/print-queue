@@ -191,8 +191,8 @@ async def user_magic_link(
     
     # Always show success (don't reveal if email exists)
     if token:
-        from app.main import send_email, build_unsubscribe_footer_html
-        magic_url = f"https://print.jcubhub.com/auth/magic/{token}"
+        from app.main import send_email, build_unsubscribe_footer_html, BASE_URL
+        magic_url = f"{BASE_URL}/auth/magic/{token}"
         unsub_footer = build_unsubscribe_footer_html(email)
         
         html_body = f"""
@@ -1199,8 +1199,8 @@ async def admin_reset_user_password(
         # Send magic link email
         token = create_magic_link(user.email)
         if token:
-            from app.main import send_email, build_unsubscribe_footer_html
-            magic_url = f"https://print.jcubhub.com/auth/magic/{token}"
+            from app.main import send_email, build_unsubscribe_footer_html, BASE_URL
+            magic_url = f"{BASE_URL}/auth/magic/{token}"
             unsub_footer = build_unsubscribe_footer_html(user.email)
             
             html_body = f"""

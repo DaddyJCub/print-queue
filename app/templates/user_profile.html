@@ -1327,7 +1327,7 @@ async function runPrintellectQrScan() {
       const raw = codes[0].rawValue || '';
       scanResult.textContent = `Scanned: ${raw}`;
       try {
-        const url = new URL(raw.replace('printellect://pair', 'https://print.jcubhub.com/pair'));
+        const url = new URL(raw.replace('printellect://pair', '{{ base_url }}/pair'));
         const deviceId = url.searchParams.get('device_id') || url.searchParams.get('d');
         const claim = url.searchParams.get('claim') || url.searchParams.get('c');
         const name = url.searchParams.get('name') || url.searchParams.get('n');
