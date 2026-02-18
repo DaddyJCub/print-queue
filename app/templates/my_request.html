@@ -530,6 +530,19 @@
     </div>
     {% endif %}
     {% elif quote_amount_cents and quote_paid_at %}
+    {% if payment and payment["status"] in ("refunded", "partially_refunded") %}
+    <div class="rounded-2xl border border-red-500/40 bg-red-900/20 p-4 mb-6">
+      <div class="flex items-center gap-3">
+        <span class="text-xl">↩️</span>
+        <div>
+          <h3 class="font-semibold text-red-100">Payment {{ 'Partially ' if payment["status"] == 'partially_refunded' else '' }}Refunded</h3>
+          <p class="text-sm text-red-200/80 mt-1">
+            ${{ '%.2f' | format(quote_amount_cents / 100.0) }} refunded
+          </p>
+        </div>
+      </div>
+    </div>
+    {% else %}
     <div class="rounded-2xl border border-emerald-500/40 bg-emerald-900/20 p-4 mb-6">
       <div class="flex items-center gap-3">
         <span class="text-xl">✅</span>
@@ -541,7 +554,21 @@
         </div>
       </div>
     </div>
+    {% endif %}
     {% elif payment and payment["payment_type"] != "quote" %}
+    {% if payment["status"] in ("refunded", "partially_refunded") %}
+    <div class="rounded-2xl border border-red-500/40 bg-red-900/20 p-4 mb-6">
+      <div class="flex items-center gap-3">
+        <span class="text-xl">↩️</span>
+        <div>
+          <h3 class="font-semibold text-red-100">Payment {{ 'Partially ' if payment["status"] == 'partially_refunded' else '' }}Refunded</h3>
+          <p class="text-sm text-red-200/80 mt-1">
+            ${{ '%.2f' | format(payment["amount_cents"] / 100.0) }} refunded
+          </p>
+        </div>
+      </div>
+    </div>
+    {% else %}
     <div class="rounded-2xl border border-emerald-500/40 bg-emerald-900/20 p-4 mb-6">
       <div class="flex items-center gap-3">
         <span class="text-xl">✅</span>
@@ -553,6 +580,7 @@
         </div>
       </div>
     </div>
+    {% endif %}
     {% endif %}
 
     {% if shipping %}

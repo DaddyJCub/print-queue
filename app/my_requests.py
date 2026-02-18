@@ -850,10 +850,19 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
         if req_dict.get("quote_amount_cents") and not req_dict.get("quote_paid_at"):
             req_dict["payment_badge"] = "quote_pending"
             req_dict["payment_badge_text"] = f"${req_dict['quote_amount_cents'] / 100:.2f} due"
-        elif req_dict.get("quote_paid_at"):
-            req_dict["payment_badge"] = "paid"
-            req_dict["payment_badge_text"] = "Paid"
         elif req_dict.get("payment_id"):
+            # Look up actual payment status to detect refunds
+            p_status = conn.execute(
+                "SELECT status FROM payments WHERE id = ?",
+                (req_dict["payment_id"],)
+            ).fetchone()
+            if p_status and p_status["status"] in ("refunded", "partially_refunded"):
+                req_dict["payment_badge"] = "refunded"
+                req_dict["payment_badge_text"] = "Refunded" if p_status["status"] == "refunded" else "Partially Refunded"
+            else:
+                req_dict["payment_badge"] = "paid"
+                req_dict["payment_badge_text"] = "Paid"
+        elif req_dict.get("quote_paid_at"):
             req_dict["payment_badge"] = "paid"
             req_dict["payment_badge_text"] = "Paid"
 
@@ -871,6 +880,7 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
         "needs_password_prompt": needs_password_prompt,
         "is_admin_user": is_admin_user,
         "user_accounts_enabled": is_feature_enabled("user_accounts"),
+        "trips_enabled": is_feature_enabled("trips", user_id=user.id if user else None, email=email),
     })
 
 

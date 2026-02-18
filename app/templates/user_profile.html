@@ -635,6 +635,7 @@
         </div>
 
         <!-- Trip Reminders -->
+        {% if trips_enabled %}
         <div class="bg-zinc-800/60 rounded-xl overflow-hidden border border-zinc-700/50">
           <div class="p-4">
             <div class="flex items-center gap-3 mb-3">
@@ -658,6 +659,7 @@
             </div>
           </div>
         </div>
+        {% endif %}
 
         <!-- Submission Confirmation -->
         <div class="bg-zinc-800/60 rounded-xl overflow-hidden border border-zinc-700/50">

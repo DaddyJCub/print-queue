@@ -462,6 +462,7 @@
         </div>
 
         <!-- Trip Reminders -->
+        {% if trips_enabled %}
         <div class="bg-zinc-800/60 rounded-xl overflow-hidden border border-zinc-700/50">
           <div class="p-4">
             <div class="flex items-center gap-3 mb-3">
@@ -485,6 +486,7 @@
             </div>
           </div>
         </div>
+        {% endif %}
 
         <!-- Submission Confirmations -->
         <div class="bg-zinc-800/60 rounded-xl overflow-hidden border border-zinc-700/50">
@@ -863,6 +865,8 @@
           </span>
           {% if req.payment_badge == 'paid' %}
             <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-600/30">{{ req.payment_badge_text }}</span>
+          {% elif req.payment_badge == 'refunded' %}
+            <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-red-600/20 text-red-300 border border-red-600/30">{{ req.payment_badge_text }}</span>
           {% elif req.payment_badge == 'quote_pending' %}
             <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-amber-600/20 text-amber-300 border border-amber-600/30">{{ req.payment_badge_text }}</span>
           {% endif %}
@@ -894,6 +898,8 @@
           </span>
           {% if req.payment_badge == 'paid' %}
             <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-600/30">{{ req.payment_badge_text }}</span>
+          {% elif req.payment_badge == 'refunded' %}
+            <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-red-600/20 text-red-300 border border-red-600/30">{{ req.payment_badge_text }}</span>
           {% elif req.payment_badge == 'quote_pending' %}
             <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-amber-600/20 text-amber-300 border border-amber-600/30">{{ req.payment_badge_text }}</span>
           {% endif %}
@@ -941,6 +947,8 @@
             </span>
             {% if req.payment_badge == 'paid' %}
               <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-600/30">{{ req.payment_badge_text }}</span>
+            {% elif req.payment_badge == 'refunded' %}
+              <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-red-600/20 text-red-300 border border-red-600/30">{{ req.payment_badge_text }}</span>
             {% endif %}
             </div>
           </div>
@@ -960,6 +968,8 @@
             </span>
             {% if req.payment_badge == 'paid' %}
               <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-600/30">{{ req.payment_badge_text }}</span>
+            {% elif req.payment_badge == 'refunded' %}
+              <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-red-600/20 text-red-300 border border-red-600/30">{{ req.payment_badge_text }}</span>
             {% endif %}
             </div>
           </div>

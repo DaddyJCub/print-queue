@@ -213,6 +213,7 @@ def row_get(row, key, default=None):
         return default
 
 APP_TITLE = "Printellect"
+ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
 
 DB_PATH = os.getenv("DB_PATH", "/data/app.db")
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/uploads")
@@ -318,6 +319,7 @@ templates.env.filters["localtime"] = format_datetime_local
 templates.env.globals["csrf_input"] = csrf_input
 templates.env.globals["get_csrf_token"] = get_csrf_token
 templates.env.globals["base_url"] = BASE_URL
+templates.env.globals["environment"] = ENVIRONMENT
 
 # NOTE: app/static must exist in your repo (can be empty with a .gitkeep)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
