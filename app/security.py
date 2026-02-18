@@ -41,6 +41,8 @@ CSRF_EXEMPT_PATHS = [
     "/api/push/",       # Push notification API uses its own auth
     "/api/builds/",     # Build status API
     "/api/printer/",    # Printer API
+    "/api/user/login",  # Login endpoint (no session to protect yet)
+    "/api/user/register",  # Registration endpoint
     "/health",          # Health check
     "/api/webhooks/",   # Webhooks use signatures
     "/webhooks/",       # Provider webhooks (e.g., Shippo) use provider auth

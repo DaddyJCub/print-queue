@@ -36,6 +36,9 @@ from app.auth import (
     get_current_admin, require_admin, require_permission,
     check_legacy_admin_password, get_or_create_legacy_admin,
     
+    # Unified account auth
+    authenticate_account, create_session, get_account_by_email,
+    
     # Feature flags
     get_feature_flag, get_all_feature_flags, update_feature_flag, is_feature_enabled,
     
@@ -46,7 +49,7 @@ from app.auth import (
     init_auth_tables, init_feature_flags,
 )
 
-from app.models import AdminRole, AuditAction, UserStatus
+from app.models import AdminRole, AccountRole, AuditAction, UserStatus
 from app.main import UPLOAD_DIR
 
 # ─────────────────────────── SETUP ───────────────────────────
@@ -145,38 +148,68 @@ async def user_login_submit(
     """Handle user login."""
     user = authenticate_user(email, password)
     
-    if not user:
+    if user:
+        if user.status == UserStatus.SUSPENDED:
+            return RedirectResponse(
+                url=f"/auth/login?error=Your account has been suspended&next={quote(next or '')}",
+                status_code=303
+            )
+        
+        # Create session (legacy user system)
+        token = create_user_session(
+            user.id,
+            device_info=request.headers.get("User-Agent"),
+            ip_address=get_client_ip(request)
+        )
+        
+        redirect_url = next if next else "/auth/profile"
+        resp = RedirectResponse(url=redirect_url, status_code=303)
+        resp.set_cookie(
+            "user_session",
+            token,
+            httponly=True,
+            samesite="lax",
+            secure=os.getenv("BASE_URL", "").startswith("https"),
+            path="/",
+            max_age=30 * 24 * 60 * 60  # 30 days
+        )
+        return resp
+    
+    # Fall back to unified accounts table
+    account = authenticate_account(email, password)
+    
+    if not account:
         return RedirectResponse(
             url=f"/auth/login?error=Invalid email or password&next={quote(next or '')}",
             status_code=303
         )
     
-    if user.status == UserStatus.SUSPENDED:
+    if account.status == UserStatus.SUSPENDED:
         return RedirectResponse(
             url=f"/auth/login?error=Your account has been suspended&next={quote(next or '')}",
             status_code=303
         )
     
-    # Create session
-    token = create_user_session(
-        user.id,
+    # Create unified session
+    session = create_session(
+        account_id=account.id,
         device_info=request.headers.get("User-Agent"),
-        ip_address=get_client_ip(request)
+        ip_address=get_client_ip(request),
+        user_agent=request.headers.get("User-Agent"),
+        remember_me=True
     )
     
-    # Redirect to profile or next URL
     redirect_url = next if next else "/auth/profile"
     resp = RedirectResponse(url=redirect_url, status_code=303)
     resp.set_cookie(
-        "user_session",
-        token,
+        "session",
+        session.token,
         httponly=True,
         samesite="lax",
         secure=os.getenv("BASE_URL", "").startswith("https"),
         path="/",
         max_age=30 * 24 * 60 * 60  # 30 days
     )
-    
     return resp
 
 
@@ -496,27 +529,48 @@ async def admin_login_new_submit(
         ip_address=get_client_ip(request)
     )
     
-    if not result:
-        return RedirectResponse(
-            url=f"/admin/login/new?error=Invalid credentials&next={quote(next or '')}",
-            status_code=303
+    if result:
+        admin, token = result
+        redirect_url = next if next and next.startswith("/admin") else "/admin"
+        resp = RedirectResponse(url=redirect_url, status_code=303)
+        resp.set_cookie(
+            "admin_session",
+            token,
+            httponly=True,
+            samesite="lax",
+            secure=os.getenv("BASE_URL", "").startswith("https"),
+            path="/",
+            max_age=7 * 24 * 60 * 60  # 7 days
         )
+        return resp
     
-    admin, token = result
+    # Fall back to unified accounts table (owner/admin roles)
+    account = authenticate_account(username, password)
+    if account and account.role in (AccountRole.OWNER, AccountRole.ADMIN):
+        session = create_session(
+            account_id=account.id,
+            device_info=request.headers.get("User-Agent"),
+            ip_address=get_client_ip(request),
+            user_agent=request.headers.get("User-Agent"),
+        )
+        redirect_url = next if next and next.startswith("/admin") else "/admin"
+        resp = RedirectResponse(url=redirect_url, status_code=303)
+        # Set both session cookies so unified auth and admin auth both work
+        resp.set_cookie(
+            "session",
+            session.token,
+            httponly=True,
+            samesite="lax",
+            secure=os.getenv("BASE_URL", "").startswith("https"),
+            path="/",
+            max_age=7 * 24 * 60 * 60  # 7 days
+        )
+        return resp
     
-    redirect_url = next if next and next.startswith("/admin") else "/admin"
-    resp = RedirectResponse(url=redirect_url, status_code=303)
-    resp.set_cookie(
-        "admin_session",
-        token,
-        httponly=True,
-        samesite="lax",
-        secure=os.getenv("BASE_URL", "").startswith("https"),
-        path="/",
-        max_age=7 * 24 * 60 * 60  # 7 days
+    return RedirectResponse(
+        url=f"/admin/login/new?error=Invalid credentials&next={quote(next or '')}",
+        status_code=303
     )
-    
-    return resp
 
 
 @router.get("/admin/logout/new")
@@ -1479,39 +1533,81 @@ async def api_user_login(request: Request):
     
     user = authenticate_user(email, password)
     
-    if not user:
+    if user:
+        if user.status == UserStatus.SUSPENDED:
+            return JSONResponse(
+                status_code=403,
+                content={"success": False, "error": "Your account has been suspended"}
+            )
+        
+        # Create session (legacy user system)
+        session_token = create_user_session(
+            user.id,
+            device_info=request.headers.get("User-Agent") or "unknown",
+            ip_address=get_client_ip(request)
+        )
+        
+        response = JSONResponse({
+            "success": True,
+            "session_token": session_token,
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "name": user.name
+            }
+        })
+        
+        # Also set the cookie for web clients
+        response.set_cookie(
+            "user_session",
+            session_token,
+            httponly=True,
+            samesite="lax",
+            secure=os.getenv("BASE_URL", "").startswith("https"),
+            path="/",
+            max_age=30 * 24 * 60 * 60
+        )
+        
+        return response
+    
+    # Fall back to unified accounts table
+    account = authenticate_account(email, password)
+    
+    if not account:
         return JSONResponse(
             status_code=401,
             content={"success": False, "error": "Invalid email or password"}
         )
     
-    if user.status == UserStatus.SUSPENDED:
+    if account.status == UserStatus.SUSPENDED:
         return JSONResponse(
             status_code=403,
             content={"success": False, "error": "Your account has been suspended"}
         )
     
-    # Create session
-    session_token = create_user_session(
-        user.id,
+    # Create unified session
+    session = create_session(
+        account_id=account.id,
         device_info=request.headers.get("User-Agent") or "unknown",
-        ip_address=get_client_ip(request)
+        ip_address=get_client_ip(request),
+        user_agent=request.headers.get("User-Agent"),
+        remember_me=True
     )
     
     response = JSONResponse({
         "success": True,
-        "session_token": session_token,
+        "session_token": session.token,
         "user": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name
+            "id": account.id,
+            "email": account.email,
+            "name": account.name
         }
     })
     
-    # Also set the cookie for web clients
+    # Set unified session cookie for web clients
     response.set_cookie(
-        "user_session",
-        session_token,
+        "session",
+        session.token,
         httponly=True,
         samesite="lax",
         secure=os.getenv("BASE_URL", "").startswith("https"),
