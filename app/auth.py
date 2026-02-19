@@ -14,6 +14,7 @@ import uuid
 import secrets
 import hashlib
 import sqlite3
+import time
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, Dict, Any, List
 from functools import wraps
@@ -46,6 +47,32 @@ def db():
     conn = sqlite3.connect(get_db_path(), timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+# ─────────────────────────── FEATURE FLAG CACHE ─────────────────────────────
+# Feature flags are read on EVERY request; caching them avoids constant DB hits.
+_FF_CACHE: Dict[str, tuple] = {}   # key → (FeatureFlag | None, expires_at)
+_FF_TTL = 15  # seconds — short enough that an admin toggle takes effect quickly
+
+def _ff_cache_set(key: str, value, ttl: int = _FF_TTL):
+    _FF_CACHE[key] = (value, time.monotonic() + ttl)
+
+def _ff_cache_get(key: str):
+    entry = _FF_CACHE.get(key)
+    if entry is None:
+        return None, False
+    value, expires = entry
+    if time.monotonic() > expires:
+        del _FF_CACHE[key]
+        return None, False
+    return value, True
+
+def invalidate_feature_flag_cache(key: str = None):
+    """Invalidate cache entry after toggle. Called by update_feature_flag()."""
+    if key:
+        _FF_CACHE.pop(key, None)
+    else:
+        _FF_CACHE.clear()
 
 
 def init_auth_tables():
@@ -416,19 +443,29 @@ def get_user_by_session(token: str) -> Optional[User]:
         JOIN user_sessions s ON u.id = s.user_id
         WHERE s.token = ? AND s.expires_at > ?
     """, (token, now)).fetchone()
-    
+
     if row:
-        # Update last active
-        conn.execute("""
-            UPDATE user_sessions SET last_active = ? WHERE token = ?
-        """, (now, token))
-        conn.commit()
-    
+        # Throttle last_active writes — only update if the stored timestamp is
+        # more than 5 minutes old to avoid a DB write on every single page load.
+        last_active = row["last_active"] if "last_active" in row.keys() else None
+        should_update = True
+        if last_active:
+            try:
+                la_dt = datetime.fromisoformat(last_active.rstrip("Z"))
+                should_update = (datetime.utcnow() - la_dt).total_seconds() > 300
+            except Exception:
+                pass
+        if should_update:
+            conn.execute(
+                "UPDATE user_sessions SET last_active = ? WHERE token = ?", (now, token)
+            )
+            conn.commit()
+
     conn.close()
-    
+
     if not row:
         return None
-    
+
     return _row_to_user(row)
 
 
@@ -1026,16 +1063,16 @@ def get_audit_logs(
 # ─────────────────────────── FEATURE FLAGS ───────────────────────────
 
 def get_feature_flag(key: str) -> Optional[FeatureFlag]:
-    """Get a feature flag by key."""
+    """Get a feature flag by key (cached for _FF_TTL seconds)."""
+    cached, hit = _ff_cache_get(key)
+    if hit:
+        return cached
     conn = db()
     row = conn.execute("SELECT * FROM feature_flags WHERE key = ?", (key,)).fetchone()
     conn.close()
-    
-    if not row:
-        # Return default if exists
-        return DEFAULT_FEATURE_FLAGS.get(key)
-    
-    return _row_to_feature_flag(row)
+    flag = _row_to_feature_flag(row) if row else DEFAULT_FEATURE_FLAGS.get(key)
+    _ff_cache_set(key, flag)
+    return flag
 
 
 def _row_to_feature_flag(row: sqlite3.Row) -> FeatureFlag:
@@ -1144,7 +1181,10 @@ def update_feature_flag(key: str, enabled: bool = None, rollout_percentage: int 
     
     conn.commit()
     conn.close()
-    
+
+    # Invalidate cache so the next read reflects the change immediately
+    invalidate_feature_flag_cache(key)
+
     # Audit log
     log_audit(
         action=AuditAction.FEATURE_FLAG_TOGGLED,
@@ -1154,7 +1194,7 @@ def update_feature_flag(key: str, enabled: bool = None, rollout_percentage: int 
         target_id=key,
         details={"enabled": enabled, "rollout_percentage": rollout_percentage}
     )
-    
+
     return True
 
 

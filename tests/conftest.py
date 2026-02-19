@@ -307,6 +307,18 @@ def store_item(client):
     """Create a test store item and return its ID."""
     return create_store_item()
 
+@pytest.fixture(autouse=True)
+def clear_app_caches():
+    """Clear in-memory caches before/after each test so direct DB writes are visible."""
+    from app.main import invalidate_settings_cache
+    from app.auth import invalidate_feature_flag_cache as auth_ff_clear
+    invalidate_settings_cache()
+    auth_ff_clear()
+    yield
+    invalidate_settings_cache()
+    auth_ff_clear()
+
+
 # ─────────────────────────── ASSERTION HELPERS ───────────────────────────
 
 def assert_html_contains(response, *texts: str):

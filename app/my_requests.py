@@ -261,6 +261,7 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
         "payments_enabled": payments_enabled,
         "quote_amount_cents": req_dict.get("quote_amount_cents"),
         "quote_paid_at": req_dict.get("quote_paid_at"),
+        "pickup_location": get_setting("pickup_location", ""),
     })
 
 

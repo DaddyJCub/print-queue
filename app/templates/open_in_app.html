@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#6366f1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/tailwind.css" />
   <script>
     const targetUrl = "{{ target_url }}";
     const isReport = {{ 'true' if report_mode else 'false' }};
@@ -61,7 +61,7 @@
             </div>
             <div class="flex items-start gap-3 text-sm">
               <span class="bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">2</span>
-              <span>Tap <strong>My Requests</strong> — you're logged in as {{ email }}</span>
+              <span>Tap <strong>My Prints</strong> — you're logged in as {{ email }}</span>
             </div>
           </div>
           
@@ -76,7 +76,7 @@
             </div>
             <div class="flex items-start gap-3 text-sm">
               <span class="bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0">3</span>
-              <span>Go to <strong>My Requests</strong> — you're logged in as {{ email }}</span>
+              <span>Go to <strong>My Prints</strong> — you're logged in as {{ email }}</span>
             </div>
           </div>
         </div>

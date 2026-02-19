@@ -1,3 +1,4 @@
+import asyncio
 import os, uuid, hashlib, secrets, urllib.parse
 from typing import Optional, Dict, Any, List
 
@@ -214,7 +215,7 @@ async def submit(
                     sha = hashlib.sha256(data).hexdigest()
                     with open(out_path, "wb") as f:
                         f.write(data)
-                    file_metadata = parse_3d_file_metadata(out_path, file.filename)
+                    file_metadata = await asyncio.get_event_loop().run_in_executor(None, parse_3d_file_metadata, out_path, file.filename)
                     file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
                     fid = str(uuid.uuid4())
                     conn_files.execute(
@@ -403,8 +404,8 @@ async def submit(
                 conn.close()
                 return render_form(request, "Error saving your file. Please try again.", form_state)
 
-            # Parse 3D file metadata (dimensions, volume, etc.)
-            file_metadata = parse_3d_file_metadata(out_path, file.filename)
+            # Parse 3D file metadata (dimensions, volume, etc.) — off-thread to avoid blocking event loop
+            file_metadata = await asyncio.get_event_loop().run_in_executor(None, parse_3d_file_metadata, out_path, file.filename)
             file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
 
             try:

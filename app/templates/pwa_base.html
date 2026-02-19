@@ -3,267 +3,90 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>{% block title %}Printellect{% endblock %}</title>
+  <title>{% if environment == 'qa' %}[QA] {% endif %}{% block title %}Printellect{% endblock %}</title>
   
   <!-- PWA Support -->
   <link rel="manifest" href="/static/manifest.json" />
   <meta name="theme-color" content="#18181b" />
+  {% if environment == 'qa' %}
+  <meta name="theme-color" content="#ea580c" />
+  {% endif %}
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Printellect" />
+  <meta name="apple-mobile-web-app-title" content="Printellect{% if environment == 'qa' %} QA{% endif %}" />
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
-  
-  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Production Tailwind CSS (tree-shaken, minified) — replaces Play CDN -->
+  <link rel="preload" href="/static/css/tailwind.css" as="style" />
+  <link rel="stylesheet" href="/static/css/tailwind.css" />
+  <!-- Resource hints for third-party origins -->
+  <link rel="preconnect" href="https://js.stripe.com" />
+  <link rel="dns-prefetch" href="https://js.stripe.com" />
+  <link rel="dns-prefetch" href="https://api.stripe.com" />
   {% block head_extra %}{% endblock %}
-  
+  {% block head_styles %}{% endblock %}
+
   <style>
-    /* PWA Safe Areas */
+    /* ── Custom component styles (not expressible as Tailwind utilities) ── */
     :root {
       --safe-area-top: env(safe-area-inset-top, 0px);
       --safe-area-bottom: env(safe-area-inset-bottom, 0px);
       --nav-height: 64px;
     }
-    
-    /* Smooth page transitions */
-    .page-content {
-      animation: fadeIn 0.2s ease-out;
+    body { overscroll-behavior-y: contain; }
+
+    /* Screen-reader only */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0,0,0,0); white-space: nowrap; border: 0;
     }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
+    /* Focus rings */
+    :focus-visible { outline: 2px solid #818cf8; outline-offset: 2px; }
+    :focus:not(:focus-visible) { outline: none; }
+    button:focus-visible, a:focus-visible, [role="button"]:focus-visible {
+      outline: 2px solid #818cf8; outline-offset: 2px;
+      box-shadow: 0 0 0 4px rgba(129,140,248,0.3);
     }
-    
-    /* Staggered animation for lists */
-    .stagger-item {
-      opacity: 0;
-      animation: staggerIn 0.3s ease-out forwards;
+    /* Bottom nav */
+    .bottom-nav { padding-bottom: calc(var(--safe-area-bottom) + 8px); }
+    .has-bottom-nav { padding-bottom: calc(var(--nav-height) + var(--safe-area-bottom) + 16px); }
+    .nav-item.active { color: #818cf8; }
+    .nav-item.active .nav-icon {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white; transform: scale(1.05);
     }
-    .stagger-item:nth-child(1) { animation-delay: 0.05s; }
-    .stagger-item:nth-child(2) { animation-delay: 0.1s; }
-    .stagger-item:nth-child(3) { animation-delay: 0.15s; }
-    .stagger-item:nth-child(4) { animation-delay: 0.2s; }
-    .stagger-item:nth-child(5) { animation-delay: 0.25s; }
-    .stagger-item:nth-child(n+6) { animation-delay: 0.3s; }
-    @keyframes staggerIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
+    /* Tap / interactions */
+    .tap-highlight { -webkit-tap-highlight-color: transparent; }
+    .tap-highlight:active { transform: scale(0.97); }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    /* Skip link */
+    .skip-link {
+      position: absolute; top: -40px; left: 0;
+      background: #6366f1; color: white;
+      padding: 8px 16px; z-index: 10000;
+      text-decoration: none; font-weight: 500;
+      border-radius: 0 0 8px 0; transition: top 0.2s ease;
     }
-    
-    /* Skeleton loading animation */
-    .skeleton {
-      background: linear-gradient(90deg, #27272a 25%, #3f3f46 50%, #27272a 75%);
-      background-size: 200% 100%;
-      animation: shimmer 1.5s infinite;
-      border-radius: 0.5rem;
-    }
-    @keyframes shimmer {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
-    }
-    
-    /* Reduced motion: respect user preferences */
+    .skip-link:focus { top: 0; }
+    /* Reduced motion */
     @media (prefers-reduced-motion: reduce) {
-      *,
-      *::before,
-      *::after {
+      *, *::before, *::after {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
         scroll-behavior: auto !important;
       }
-      .page-content, .stagger-item {
-        animation: none;
-        opacity: 1;
-      }
-      .skeleton {
-        animation: none;
-        background: #3f3f46;
-      }
+      .page-content, .stagger-item { animation: none; opacity: 1; }
+      .skeleton { animation: none; background: #3f3f46; }
     }
-    
-    /* Bottom nav styling */
-    .bottom-nav {
-      padding-bottom: calc(var(--safe-area-bottom) + 8px);
-    }
-    
-    /* Main content padding when bottom nav visible */
-    .has-bottom-nav {
-      padding-bottom: calc(var(--nav-height) + var(--safe-area-bottom) + 16px);
-    }
-    
-    /* Active nav indicator */
-    .nav-item.active {
-      color: #818cf8;
-    }
-    .nav-item.active .nav-icon {
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      color: white;
-      transform: scale(1.05);
-    }
-    
-    /* Tap highlight */
-    .tap-highlight {
-      -webkit-tap-highlight-color: transparent;
-    }
-    .tap-highlight:active {
-      transform: scale(0.97);
-    }
-    
-    /* Pull to refresh indicator area */
-    body {
-      overscroll-behavior-y: contain;
-    }
-    
-    /* Card press effect - enhanced */
-    .card-interactive {
-      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), 
-                  box-shadow 0.2s ease,
-                  border-color 0.2s ease;
-    }
-    .card-interactive:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.3);
-    }
-    .card-interactive:active {
-      transform: scale(0.98) translateY(0);
-      box-shadow: 0 2px 10px -3px rgba(0, 0, 0, 0.2);
-    }
-    
-    /* Smooth link transitions */
-    .link-smooth {
-      transition: color 0.15s ease, opacity 0.15s ease;
-    }
-    
-    /* Button hover glow effect */
-    .btn-glow {
-      position: relative;
-      overflow: hidden;
-    }
-    .btn-glow::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -100%;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-      transition: left 0.5s ease;
-    }
-    .btn-glow:hover::before {
-      left: 100%;
-    }
-    
-    /* Ripple effect for buttons */
-    .btn-ripple {
-      position: relative;
-      overflow: hidden;
-    }
-    .btn-ripple::after {
-      content: '';
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      top: 0;
-      left: 0;
-      background: radial-gradient(circle, rgba(255,255,255,0.3) 10%, transparent 10%);
-      transform: scale(10);
-      opacity: 0;
-      transition: transform 0.5s, opacity 0.5s;
-    }
-    .btn-ripple:active::after {
-      transform: scale(0);
-      opacity: 1;
-      transition: 0s;
-    }
-    
-    /* Skip link - visible on focus */
-    .skip-link {
-      position: absolute;
-      top: -40px;
-      left: 0;
-      background: #6366f1;
-      color: white;
-      padding: 8px 16px;
-      z-index: 10000;
-      text-decoration: none;
-      font-weight: 500;
-      border-radius: 0 0 8px 0;
-      transition: top 0.2s ease;
-    }
-    .skip-link:focus {
-      top: 0;
-    }
-    
-    /* Screen reader only - visually hidden but accessible */
-    .sr-only {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
-    
-    /* Enhanced focus indicators for accessibility */
-    :focus-visible {
-      outline: 2px solid #818cf8;
-      outline-offset: 2px;
-    }
-    
-    /* Remove default focus outline when using mouse */
-    :focus:not(:focus-visible) {
-      outline: none;
-    }
-    
-    /* High contrast focus for buttons and links */
-    button:focus-visible,
-    a:focus-visible,
-    [role="button"]:focus-visible {
-      outline: 2px solid #818cf8;
-      outline-offset: 2px;
-      box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.3);
-    }
-    
-    /* Focus indicators for form inputs */
-    input:focus-visible,
-    textarea:focus-visible,
-    select:focus-visible {
-      outline: none;
-      ring: 2px;
-      ring-color: #818cf8;
-      border-color: #818cf8;
-    }
-    
-    /* Hide scrollbar but keep functionality */
-    .hide-scrollbar::-webkit-scrollbar {
-      display: none;
-    }
-    .hide-scrollbar {
-      -ms-overflow-style: none;
-      scrollbar-width: none;
-    }
-    
-    /* Update banner animations */
-    @keyframes slideUp {
-      from { transform: translateY(100%); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-    @keyframes slideDown {
-      from { transform: translateY(0); opacity: 1; }
-      to { transform: translateY(100%); opacity: 0; }
-    }
-    .animate-slide-up {
-      animation: slideUp 0.3s ease-out forwards;
-    }
-    .animate-slide-down {
-      animation: slideDown 0.3s ease-out forwards;
-    }
+    /* QA environment visual indicators */
+    .qa-env header[role="banner"] { border-bottom-color: #ea580c; border-bottom-width: 2px; }
+    .qa-env .bottom-nav { border-top-color: #ea580c; border-top-width: 2px; }
   </style>
-  
+
   <script>
     // Register service worker with logging and update notifications
     if ('serviceWorker' in navigator) {
@@ -385,11 +208,15 @@
     }
   </script>
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+<body class="bg-zinc-950 text-zinc-100 min-h-screen{% if environment == 'qa' %} qa-env{% endif %}">
   {% if environment == 'qa' %}
   <!-- QA Environment Banner -->
-  <div class="bg-orange-600 text-white text-center text-xs font-bold py-1 tracking-wider z-[9999] relative">
-    ⚠️ QA / TEST ENVIRONMENT — Not Production
+  <div class="bg-orange-600 text-white text-center text-xs font-bold py-2 tracking-wider z-[9999] relative">
+    <div class="flex items-center justify-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+      QA / TEST ENVIRONMENT — Not Production
+      <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+    </div>
   </div>
   {% endif %}
   <!-- Offline Banner - auto shows/hides based on connectivity -->
@@ -495,6 +322,17 @@
               </div>
             </div>
             
+            <!-- Credits Balance (shown when credits enabled, populated via JS) -->
+            <div id="global-credits-bar" class="hidden border-b border-zinc-800">
+              <a id="global-credits-link" href="/credits" class="flex items-center justify-between px-4 py-2.5 hover:bg-emerald-950/30 transition">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm">🎁</span>
+                  <span class="text-sm text-zinc-300">Credits</span>
+                </div>
+                <span id="global-credits-balance" class="text-sm font-bold text-emerald-400">0</span>
+              </a>
+            </div>
+
             <!-- Menu Items -->
             <div class="p-2">
               <a id="global-profile-link" href="/user/profile" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
@@ -693,7 +531,26 @@
               const myPrintsLink = document.getElementById('global-my-prints-link');
               if (profileLink) profileLink.href = '/user/profile?token=' + token;
               if (myPrintsLink) myPrintsLink.href = '/my-requests/view?token=' + token;
+              // Update credits link with token too
+              const creditsLink = document.getElementById('global-credits-link');
+              if (creditsLink) creditsLink.href = '/user/profile?token=' + token + '#credits';
             }
+
+            // Show credits balance if the feature is enabled
+            try {
+              const featResp = await fetch('/api/features', { credentials: 'include' });
+              if (featResp.ok) {
+                const feats = await featResp.json();
+                if (feats.store_rewards) {
+                  const creditsBar = document.getElementById('global-credits-bar');
+                  const creditsBal = document.getElementById('global-credits-balance');
+                  if (creditsBar && creditsBal) {
+                    creditsBal.textContent = data.user.credits || 0;
+                    creditsBar.classList.remove('hidden');
+                  }
+                }
+              }
+            } catch (_) {}
           }
         }
       } catch (e) {

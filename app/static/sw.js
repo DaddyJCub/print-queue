@@ -1,6 +1,6 @@
 // Service Worker for Printellect PWA
-const SW_VERSION = '2.7.0';
-const CACHE_NAME = 'print-queue-v9';
+const SW_VERSION = '2.9.0';
+const CACHE_NAME = 'print-queue-v11';
 const OFFLINE_URL = '/static/offline.html';
 let ACTIVE_TRIP_USER = null;
 
@@ -14,6 +14,7 @@ function swLog(level, ...args) {
 const PRECACHE_ASSETS = [
   '/static/manifest.json',
   '/static/offline.html',
+  '/static/css/tailwind.css',
 ];
 
 // Error handlers for diagnostics

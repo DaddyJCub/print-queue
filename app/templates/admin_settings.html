@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Settings | Printellect</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/tailwind.css" />
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-7xl mx-auto p-6">
@@ -36,6 +36,16 @@
                value="{{ s.admin_notify_emails }}"
                class="w-full mt-3 rounded-xl bg-zinc-950 border border-zinc-800 p-3"
                placeholder="you@beeptool.shop, other@beeptool.shop" />
+      </section>
+
+      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <h2 class="text-xl font-semibold">📍 Pickup Location</h2>
+        <p class="text-sm text-zinc-400 mt-1">Shown to users when their print is complete and ready to pick up. Leave blank to hide this message.</p>
+
+        <input name="pickup_location"
+               value="{{ s.pickup_location }}"
+               class="w-full mt-3 rounded-xl bg-zinc-950 border border-zinc-800 p-3"
+               placeholder="e.g. Room 204, Building A — available Mon–Fri 9am–5pm" />
       </section>
 
       <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">

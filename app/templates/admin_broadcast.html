@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Broadcast Notifications | Printellect</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/tailwind.css" />
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-7xl mx-auto p-6">
     <!-- Navigation -->
-    {% set active_page = 'settings' %}
+    {% set active_page = 'broadcast' %}
     {% include 'admin_nav.html' %}
     
     <!-- Settings Tabs -->
@@ -234,7 +234,7 @@
         </div>
         
         <button type="submit" 
-                class="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-6 py-3 font-semibold"
+                class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-6 py-3 font-semibold"
                 onclick="return confirm('Send app update notification to all {{ subscriber_count }} subscribers?')">
           🚀 Send Update Alert
         </button>

@@ -14,11 +14,21 @@
   
   <!-- Settings Header -->
   <div class="flex items-center justify-between mb-4">
+    {% set _tab_titles = {
+      'general': '⚙️ Settings',
+      'admins': '🛡️ Admins',
+      'features': '✨ Features',
+      'broadcast': '📢 Broadcast',
+      'feedback': '📬 Feedback',
+      'file-sync': '📁 File Sync',
+      'audit': '📜 Audit Log',
+      'debug': '🔧 Debug'
+    } %}
     <div>
-      <h1 class="text-2xl font-bold flex items-center gap-2">
-        ⚙️ Settings
-      </h1>
-      <p class="text-zinc-500 text-sm">System configuration and preferences</p>
+      <h1 class="text-2xl font-bold">{{ _tab_titles.get(active_settings_tab, '⚙️ Settings') }}</h1>
+      <p class="text-zinc-500 text-sm">
+        {% if active_settings_tab not in ['general', 'admins', 'features'] %}Navigate related pages with the tabs below{% else %}System configuration and preferences{% endif %}
+      </p>
     </div>
   </div>
   

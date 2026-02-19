@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin Dashboard | Printellect</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/tailwind.css" />
   <style>
     .design-dim { opacity: 0.35; pointer-events: none; }
   </style>
@@ -113,7 +113,7 @@
             <button type="button" onclick="hidePrintStartModal()" class="flex-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
               Cancel
             </button>
-            <button type="submit" id="print-modal-submit" class="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+            <button type="submit" id="print-modal-submit" class="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
               🖨 Start Print
             </button>
           </div>
@@ -162,7 +162,7 @@
           subtitleEl.textContent = 'Select the printer and material for this print job';
           commentInput.value = 'Started print';
           submitBtn.textContent = '🖨 Start Print';
-          submitBtn.className = 'flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold';
+          submitBtn.className = 'flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold';
         } else if (targetStatus === 'APPROVED') {
           titleEl.textContent = '✓ Approve Request';
           subtitleEl.textContent = 'Optionally update printer/material before approving';
@@ -997,7 +997,7 @@
             <button type="button" onclick="uploadToMoonraker()" class="flex-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
               Upload
             </button>
-            <button type="button" id="upload-start-btn" class="hidden flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+            <button type="button" id="upload-start-btn" class="hidden flex-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
               ▶ Start Print
             </button>
             <button type="button" onclick="closeUploadModal()" class="rounded-lg bg-zinc-700 hover:bg-zinc-600 transition px-4 py-2 text-sm">
@@ -1156,7 +1156,7 @@
             </div>
             <div class="flex items-center gap-2 shrink-0">
               <button onclick="quickStatusChange('{{ r['id'] }}', 'DONE', 'Print completed', this)" 
-                      class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium transition shadow-lg shadow-emerald-900/30">
+                      class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-medium transition shadow-lg shadow-emerald-900/30">
                 ✓ Done
               </button>
             </div>
@@ -1219,7 +1219,7 @@
               </div>
               <div class="flex items-center gap-2 shrink-0">
                 <button type="button" onclick="event.stopPropagation(); showPrintStartModal('{{ r['id'] }}', '{{ r['printer'] }}', '{{ r['material'] }}', '{{ r['colors'] }}', 'PRINTING')"
-                        class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium transition shadow-lg shadow-emerald-900/30">🖨 Start</button>
+                        class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-medium transition shadow-lg shadow-emerald-900/30">🖨 Start</button>
                 <span class="text-xs px-1.5 py-0.5 rounded {% if r['priority'] == 1 %}bg-red-900/50 text-red-300{% elif r['priority'] == 2 %}bg-orange-900/50 text-orange-300{% else %}bg-zinc-800 text-zinc-400{% endif %}">P{{ r["priority"] or 3 }}</span>
                 <svg class="w-4 h-4 text-zinc-500 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>

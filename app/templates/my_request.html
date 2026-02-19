@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#6366f1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/tailwind.css" />
   <script>
         // --- Service Worker Diagnostics Helpers ---
         
@@ -471,6 +471,23 @@
       {% endif %}
     </div>
 
+    {% if req.status == 'DONE' and req.fulfillment_method != 'shipping' %}
+    <div class="rounded-2xl border border-emerald-500/40 bg-emerald-900/20 p-5 mb-6">
+      <div class="flex items-start gap-4">
+        <span class="text-3xl mt-0.5">🎉</span>
+        <div class="flex-1 min-w-0">
+          <h3 class="font-semibold text-emerald-100 text-lg">Your print is ready for pickup!</h3>
+          {% if pickup_location %}
+          <p class="text-sm text-emerald-200/80 mt-1">📍 {{ pickup_location }}</p>
+          {% else %}
+          <p class="text-sm text-emerald-200/80 mt-1">Contact us to arrange pickup.</p>
+          {% endif %}
+          <p class="text-xs text-zinc-400 mt-2">Please bring this page or note your request name: <strong class="text-zinc-200">{{ req.print_name }}</strong></p>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 mb-6">
       <div class="text-xs uppercase tracking-wide text-zinc-500 mb-1">Fulfillment</div>
       <div class="font-medium text-zinc-200">
@@ -778,7 +795,7 @@
               
               {% if ns.preview_file %}
                 <a href="/my/{{ req.id }}/file/{{ ns.preview_file.id }}/preview?token={{ token }}" 
-                   class="inline-flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-sm font-semibold text-white transition shadow-lg shadow-emerald-900/40 flex-shrink-0">
+                   class="inline-flex items-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold text-white transition shadow-lg shadow-indigo-900/40 flex-shrink-0">
                   <span class="text-lg">🔮</span> View 3D Model
                 </a>
               {% endif %}
@@ -1317,7 +1334,7 @@
             <div id="multi-file-list" class="hidden space-y-2 text-left"></div>
           </div>
           <input id="multi-file-input" type="file" name="files" multiple accept=".stl,.obj,.3mf,.gcode,.step,.stp,.fpp,.zip" class="hidden" onchange="handleMultiSelect(this)" />
-          <button type="submit" id="multi-upload-btn" class="hidden rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+          <button type="submit" id="multi-upload-btn" class="hidden rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
             Upload <span id="file-count">0</span> File(s)
           </button>
         </form>

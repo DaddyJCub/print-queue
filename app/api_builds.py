@@ -1185,8 +1185,8 @@ async def admin_add_file(
         with open(out_path, "wb") as f:
             f.write(data)
 
-        # Parse 3D file metadata (dimensions, volume, etc.)
-        file_metadata = parse_3d_file_metadata(out_path, file.filename)
+        # Parse 3D file metadata (dimensions, volume, etc.) — off-thread to avoid blocking event loop
+        file_metadata = await asyncio.get_event_loop().run_in_executor(None, parse_3d_file_metadata, out_path, file.filename)
         file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
 
         conn.execute(

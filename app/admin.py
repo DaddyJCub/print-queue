@@ -245,6 +245,24 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
     done = _fetch_requests_by_status("DONE")
     
     # Enrich printing requests with smart ETA
+    # Pre-fetch all active builds for PRINTING/IN_PROGRESS requests in a
+    # single query — eliminates the N+1 per-request db() calls.
+    printing_ids = [r["id"] for r in printing_raw]
+    active_builds_map: dict = {}  # request_id → active build row
+    if printing_ids:
+        placeholders = ",".join("?" * len(printing_ids))
+        conn_builds = db()
+        ab_rows = conn_builds.execute(
+            f"""SELECT b.request_id, b.printer, b.started_at,
+                       b.print_time_minutes, b.slicer_estimate_minutes
+                FROM builds b
+                WHERE b.request_id IN ({placeholders}) AND b.status = 'PRINTING'""",
+            printing_ids
+        ).fetchall()
+        conn_builds.close()
+        for ab in ab_rows:
+            active_builds_map[ab["request_id"]] = ab
+
     printing = []
     for r in printing_raw:
         # Get current progress from printer for smart ETA calculation
@@ -253,18 +271,11 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
         total_layers = None
         active_printer = r["printer"]  # Default to request printer
         printing_started_at = r["printing_started_at"] if "printing_started_at" in r.keys() else None
-        
-        # Handle IN_PROGRESS (multi-build) - get active build's printer
+
+        # Handle IN_PROGRESS (multi-build) — use pre-fetched build data
         active_est_minutes = None
         if r["status"] == "IN_PROGRESS":
-            conn_build = db()
-            active_build = conn_build.execute(
-                """SELECT b.printer, b.started_at, b.print_time_minutes, b.slicer_estimate_minutes FROM builds b 
-                   WHERE b.request_id = ? AND b.status = 'PRINTING' 
-                   LIMIT 1""", 
-                (r["id"],)
-            ).fetchone()
-            conn_build.close()
+            active_build = active_builds_map.get(r["id"])
             if active_build and active_build["printer"]:
                 active_printer = active_build["printer"]
                 if active_build["started_at"]:
@@ -527,6 +538,7 @@ def admin_shipping_dashboard(
 def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[str] = None):
     model = {
         "admin_notify_emails": get_setting("admin_notify_emails", ""),
+        "pickup_location": get_setting("pickup_location", ""),
         "admin_email_on_submit": get_bool_setting("admin_email_on_submit", True),
         "admin_email_on_status": get_bool_setting("admin_email_on_status", True),
         "requester_email_on_submit": get_bool_setting("requester_email_on_submit", False),
@@ -596,6 +608,7 @@ def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[s
 def admin_settings_post(
     request: Request,
     admin_notify_emails: str = Form(""),
+    pickup_location: str = Form(""),
     admin_email_on_submit: Optional[str] = Form(None),
     admin_email_on_status: Optional[str] = Form(None),
     requester_email_on_submit: Optional[str] = Form(None),
@@ -663,6 +676,7 @@ def admin_settings_post(
 ):
     # checkboxes: present => "on", missing => None
     set_setting("admin_notify_emails", (admin_notify_emails or "").strip())
+    set_setting("pickup_location", (pickup_location or "").strip())
     set_setting("admin_email_on_submit", "1" if admin_email_on_submit else "0")
     set_setting("admin_email_on_status", "1" if admin_email_on_status else "0")
     set_setting("requester_email_on_submit", "1" if requester_email_on_submit else "0")
@@ -1753,13 +1767,13 @@ def admin_credits_page(request: Request, _=Depends(require_admin), success: Opti
     conn = db()
     # All accounts (for grant dropdown)
     users = conn.execute(
-        "SELECT id, email, display_name, credits FROM accounts ORDER BY display_name"
+        "SELECT id, email, name as display_name, credits FROM accounts ORDER BY name"
     ).fetchall()
     users = [dict(u) for u in users]
 
     # Users with credits > 0
     users_with_credits = conn.execute(
-        "SELECT id, email, display_name, credits FROM accounts WHERE credits > 0 ORDER BY credits DESC"
+        "SELECT id, email, name as display_name, credits FROM accounts WHERE credits > 0 ORDER BY credits DESC"
     ).fetchall()
     users_with_credits = [dict(u) for u in users_with_credits]
 

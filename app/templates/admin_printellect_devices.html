@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin Printellect Devices</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/tailwind.css" />
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-7xl mx-auto p-6">
     {% set active_page = 'printellect-devices' %}
     {% include 'admin_nav.html' %}
 
-    <div class="mb-5 rounded-2xl border border-cyan-900/60 bg-gradient-to-r from-cyan-950/30 to-zinc-900/80 p-4">
+    <div class="mb-5 rounded-2xl border border-indigo-900/60 bg-gradient-to-r from-indigo-950/30 to-zinc-900/80 p-4">
       <h1 class="text-2xl font-bold">Printellect Device Registry</h1>
       <p class="text-sm text-zinc-300 mt-1">Auto-generate device IDs/claim codes, print QR labels, and track activation.</p>
     </div>
@@ -39,7 +39,7 @@
           <button id="copyPayloadBtn" class="rounded-md border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-3 py-1.5 text-xs">Copy Pairing URL</button>
           <button id="downloadDeviceJsonBtn" class="rounded-md border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-3 py-1.5 text-xs">Download device.json</button>
           <button id="downloadQrBtn" class="rounded-md border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-3 py-1.5 text-xs">Download QR SVG</button>
-          <button id="printLabelBtn" class="rounded-md bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-semibold">Print Label</button>
+          <button id="printLabelBtn" class="rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-xs font-semibold">Print Label</button>
         </div>
       </div>
       <div class="grid md:grid-cols-[220px,1fr] gap-4">

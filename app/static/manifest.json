@@ -56,7 +56,7 @@
       "icons": [{"src": "/static/icons/icon-192.png", "sizes": "192x192"}]
     },
     {
-      "name": "My Requests",
+      "name": "My Prints",
       "short_name": "My Prints",
       "description": "View your print requests",
       "url": "/my-requests",

@@ -199,7 +199,7 @@ def get_all_transactions(limit: int = 100) -> list:
     """Get recent transactions across all users (admin view)."""
     conn = _db()
     rows = conn.execute(
-        """SELECT ct.*, a.display_name, a.email
+        """SELECT ct.*, a.name as display_name, a.email
            FROM credit_transactions ct
            LEFT JOIN accounts a ON ct.account_id = a.id
            ORDER BY ct.created_at DESC
@@ -218,7 +218,7 @@ def get_all_auto_grants() -> list:
     """List all auto-grant rules with account info."""
     conn = _db()
     rows = conn.execute(
-        """SELECT cag.*, a.display_name, a.email
+        """SELECT cag.*, a.name as display_name, a.email
            FROM credit_auto_grants cag
            LEFT JOIN accounts a ON cag.account_id = a.id
            ORDER BY cag.created_at DESC""",

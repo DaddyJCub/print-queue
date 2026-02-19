@@ -6,6 +6,7 @@ Webhook handling for payment confirmation. Graceful degradation when Stripe is
 not configured.
 """
 
+import asyncio
 import os
 import json
 import uuid
@@ -1289,7 +1290,7 @@ async def api_rush_checkout(
             sha = hashlib.sha256(data).hexdigest()
             with open(out_path, "wb") as f:
                 f.write(data)
-            file_metadata = parse_3d_file_metadata(out_path, file.filename)
+            file_metadata = await asyncio.get_event_loop().run_in_executor(None, parse_3d_file_metadata, out_path, file.filename)
             file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
             fid = str(uuid.uuid4())
             conn.execute(

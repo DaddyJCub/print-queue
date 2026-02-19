@@ -1,5 +1,7 @@
 import os, uuid, sqlite3, hashlib, smtplib, ssl, urllib.parse, json, base64, secrets
 import logging
+import time
+import functools
 from logging.handlers import RotatingFileHandler
 from email.message import EmailMessage
 from datetime import datetime
@@ -768,6 +770,48 @@ def db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+# ─────────────────────────── IN-MEMORY CACHES ───────────────────────────────
+# Settings and feature flags are read-heavy and change rarely.
+# These caches reduce the dominant cause of per-request DB round-trips.
+
+_SETTINGS_CACHE: Dict[str, tuple] = {}   # key → (value, expires_at)
+_SETTINGS_TTL = 30  # seconds
+
+_FEATURE_FLAG_CACHE: Dict[str, tuple] = {}  # key → (value, expires_at)
+_FEATURE_FLAG_TTL = 15  # seconds (shorter — flags can be toggled by admin)
+
+# ETA history average cache: (result_dict, expires_at)
+_ETA_HISTORY_CACHE: Dict[str, tuple] = {}
+_ETA_HISTORY_TTL = 300  # 5 minutes
+
+def _cache_set(cache: Dict, key: str, value, ttl: int):
+    cache[key] = (value, time.monotonic() + ttl)
+
+def _cache_get(cache: Dict, key: str):
+    entry = cache.get(key)
+    if entry is None:
+        return None, False
+    value, expires = entry
+    if time.monotonic() > expires:
+        del cache[key]
+        return None, False
+    return value, True
+
+def invalidate_settings_cache(key: str = None):
+    """Call after any set_setting() write to keep cache consistent."""
+    if key:
+        _SETTINGS_CACHE.pop(key, None)
+    else:
+        _SETTINGS_CACHE.clear()
+
+def invalidate_feature_flag_cache(key: str = None):
+    """Call after any update_feature_flag() write to keep cache consistent."""
+    if key:
+        _FEATURE_FLAG_CACHE.pop(key, None)
+    else:
+        _FEATURE_FLAG_CACHE.clear()
 
 
 def init_db():
@@ -2960,12 +3004,15 @@ def seed_default_settings():
 
 
 def get_setting(key: str, default: Optional[str] = None) -> str:
+    cached, hit = _cache_get(_SETTINGS_CACHE, key)
+    if hit:
+        return cached
     conn = db()
     row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     conn.close()
-    if row:
-        return row["value"]
-    return default if default is not None else DEFAULT_SETTINGS.get(key, "")
+    value = row["value"] if row else (default if default is not None else DEFAULT_SETTINGS.get(key, ""))
+    _cache_set(_SETTINGS_CACHE, key, value, _SETTINGS_TTL)
+    return value
 
 
 def set_setting(key: str, value: str):
@@ -2977,6 +3024,7 @@ def set_setting(key: str, value: str):
     )
     conn.commit()
     conn.close()
+    invalidate_settings_cache(key)
 
 
 def get_bool_setting(key: str, default: bool = False) -> bool:
@@ -6977,7 +7025,8 @@ def build_unsubscribe_footer_html(recipient_email: str) -> str:
 
 def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Optional[str] = None, image_base64: Optional[str] = None):
     """
-    Best-effort email. Never raises to the web request.
+    Best-effort email dispatched in a daemon thread so it never blocks the
+    event loop or request handler.  Never raises to the web request.
     image_base64: Optional base64-encoded JPEG to attach as inline image with CID "completion_snapshot"
     """
     to_addrs = [a.strip() for a in (to_addrs or []) if a and a.strip()]
@@ -6986,53 +7035,46 @@ def send_email(to_addrs: List[str], subject: str, text_body: str, html_body: Opt
     if not (SMTP_HOST and SMTP_FROM):
         return  # email disabled / not configured
 
-    msg = EmailMessage()
-    msg["From"] = SMTP_FROM
-    msg["To"] = ", ".join(to_addrs)
-    msg["Subject"] = subject
-    msg.set_content(text_body)
+    # Dispatch actual SMTP work to a daemon thread so callers (including async
+    # route handlers) are never blocked by network I/O or TLS handshake.
+    def _do_send():
+        msg = EmailMessage()
+        msg["From"] = SMTP_FROM
+        msg["To"] = ", ".join(to_addrs)
+        msg["Subject"] = subject
+        msg.set_content(text_body)
 
-    if html_body:
-        msg.add_alternative(html_body, subtype="html")
-        
-        # Attach inline image if provided
-        if image_base64:
-            try:
-                import base64
-                image_data = base64.b64decode(image_base64)
-                # Get the HTML part and attach the image to it
-                for part in msg.walk():
-                    if part.get_content_type() == "text/html":
-                        # Add the image as a related part
-                        msg.get_payload()[1].add_related(
-                            image_data,
-                            maintype="image",
-                            subtype="jpeg",
-                            cid="completion_snapshot"
-                        )
-                        break
-            except Exception as e:
-                print(f"[EMAIL] Failed to attach image: {e}")
+        if html_body:
+            msg.add_alternative(html_body, subtype="html")
+            if image_base64:
+                try:
+                    image_data = base64.b64decode(image_base64)
+                    msg.get_payload()[1].add_related(
+                        image_data, maintype="image", subtype="jpeg", cid="completion_snapshot"
+                    )
+                except Exception as e:
+                    print(f"[EMAIL] Failed to attach image: {e}")
 
-    # Best-effort logging regardless of send outcome
-    def _log_bulk(status: str, error: Optional[str] = None):
-        for addr in to_addrs:
-            log_notification_event(email=addr, channel="email", subject=subject, body=text_body[:500], status=status, error=error)
+        def _log_bulk(status: str, error: Optional[str] = None):
+            for addr in to_addrs:
+                log_notification_event(email=addr, channel="email", subject=subject, body=text_body[:500], status=status, error=error)
 
-    context = ssl.create_default_context()
-    try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
-            server.ehlo()
-            server.starttls(context=context)
-            server.ehlo()
-            if SMTP_USER:
-                server.login(SMTP_USER, SMTP_PASS)
-            server.send_message(msg)
-        _log_bulk("sent")
-    except Exception as e:
-        print(f"[EMAIL] Failed to send '{subject}' to {to_addrs}: {e}")
-        _log_bulk("failed", str(e))
-        return
+        context = ssl.create_default_context()
+        try:
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+                server.ehlo()
+                server.starttls(context=context)
+                server.ehlo()
+                if SMTP_USER:
+                    server.login(SMTP_USER, SMTP_PASS)
+                server.send_message(msg)
+            _log_bulk("sent")
+        except Exception as e:
+            print(f"[EMAIL] Failed to send '{subject}' to {to_addrs}: {e}")
+            _log_bulk("failed", str(e))
+
+    t = threading.Thread(target=_do_send, daemon=True)
+    t.start()
 
 
 # ─────────────────────────── PUSH NOTIFICATIONS ───────────────────────────

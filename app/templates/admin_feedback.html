@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Feedback | Admin | Printellect</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/tailwind.css" />
   <style>
     .feedback-card { transition: all 0.2s ease; }
     .feedback-card:hover { transform: translateX(2px); }
@@ -16,7 +16,7 @@
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-7xl mx-auto p-6">
     <!-- Navigation -->
-    {% set active_page = 'settings' %}
+    {% set active_page = 'feedback' %}
     {% include 'admin_nav.html' %}
     
     <!-- Settings Tabs -->

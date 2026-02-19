@@ -4,11 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>File Sync | Admin | Printellect</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/tailwind.css" />
 </head>
 <body class="bg-zinc-950 text-zinc-100">
   <div class="max-w-7xl mx-auto p-6">
-    {% set active_page = 'settings' %}
+    {% set active_page = 'file-sync' %}
     {% include 'admin_nav.html' %}
 
     <!-- Settings Tabs -->
@@ -226,7 +226,7 @@
 <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
   <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
     <h2 class="text-lg font-semibold">Pending Matches</h2>
-    <button onclick="processMatches()" class="text-xs px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-medium transition">
+    <button onclick="processMatches()" class="text-xs px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium transition">
       Process All
     </button>
   </div>

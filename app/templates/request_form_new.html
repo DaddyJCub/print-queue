@@ -789,6 +789,17 @@
       💾
     </button>
   </div>
+
+  <!-- Upload Progress (hidden until upload starts) -->
+  <div id="upload-progress-wrap" class="hidden mt-3 space-y-1.5">
+    <div class="flex items-center justify-between text-xs text-zinc-400">
+      <span id="upload-progress-label">Uploading… 0%</span>
+      <span id="upload-progress-bytes" class="tabular-nums"></span>
+    </div>
+    <div class="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
+      <div id="upload-progress-bar" class="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-100" style="width:0%"></div>
+    </div>
+  </div>
 </form>
 
 <!-- Embedded Rush Checkout Container -->
@@ -1283,9 +1294,9 @@
     setTimeout(() => container.remove(), 4000);
   }
 
-  // Form submission with loading state
+  // Form submission with loading state + upload progress (XHR for non-rush routes)
   document.getElementById('request-form')?.addEventListener('submit', function(e) {
-    // Skip confetti/loading when embedded checkout is handling the submission
+    // Skip: embedded checkout handles its own submission
     if (window._rushEmbeddedCheckoutActive) return;
 
     const selectedDelivery = document.querySelector('input[name="fulfillment_method"]:checked')?.value || 'pickup';
@@ -1304,22 +1315,87 @@
       return;
     }
 
+    // Don't intercept rush-checkbox submissions (handled by the Stripe/credits blocks above)
+    const rushCheckbox = document.getElementById('rush-checkbox');
+    if (rushCheckbox && rushCheckbox.checked) return;
+
+    // Validate before preventing default
+    if (!this.checkValidity()) return;
+
+    e.preventDefault();
+
     const btn = document.getElementById('submit-btn');
     const text = document.getElementById('submit-text');
     const spinner = document.getElementById('submit-spinner');
-    
-    // Validate form before showing loading
-    if (!this.checkValidity()) return;
-    
-    // 🎉 Launch confetti!
+    const progressWrap = document.getElementById('upload-progress-wrap');
+    const progressBar = document.getElementById('upload-progress-bar');
+    const progressLabel = document.getElementById('upload-progress-label');
+    const progressBytes = document.getElementById('upload-progress-bytes');
+
     launchConfetti();
     localStorage.removeItem(REQUEST_DRAFT_KEY);
-    
-    // Show loading state
+
     btn.disabled = true;
     btn.classList.add('opacity-75', 'cursor-wait');
-    text.textContent = 'Submitting...';
+    text.textContent = 'Uploading…';
     spinner.classList.remove('hidden');
+
+    const fileInput = document.getElementById('file-input');
+    const hasFiles = fileInput && fileInput.files && fileInput.files.length > 0;
+
+    // Only show progress bar if there are files to upload
+    if (hasFiles) {
+      progressWrap.classList.remove('hidden');
+    }
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', this.action || '/submit', true);
+
+    xhr.upload.addEventListener('progress', function(ev) {
+      if (!ev.lengthComputable) return;
+      const pct = Math.round((ev.loaded / ev.total) * 100);
+      progressBar.style.width = pct + '%';
+      progressLabel.textContent = (pct < 100 ? 'Uploading… ' : 'Processing… ') + pct + '%';
+      progressBytes.textContent = formatFileSize(ev.loaded) + ' / ' + formatFileSize(ev.total);
+      if (pct === 100) {
+        text.textContent = 'Processing…';
+        progressLabel.textContent = 'Processing… 100%';
+      }
+    });
+
+    xhr.addEventListener('load', function() {
+      // Follow redirect — responseURL is the final URL after any server-side redirect
+      if (xhr.responseURL && xhr.responseURL !== window.location.href) {
+        window.location.href = xhr.responseURL;
+      } else if (xhr.status >= 400) {
+        // Server returned an error page — extract message and show
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xhr.responseText, 'text/html');
+        const errEl = doc.querySelector('[data-error-msg]') || doc.querySelector('.error-msg');
+        const errMsg = errEl ? errEl.textContent.trim() : 'Submission failed. Please try again.';
+        showToastLocal(errMsg, true);
+        btn.disabled = false;
+        btn.classList.remove('opacity-75', 'cursor-wait');
+        text.textContent = '🖨️ Submit Request';
+        spinner.classList.add('hidden');
+        progressWrap.classList.add('hidden');
+        progressBar.style.width = '0%';
+      } else {
+        window.location.href = xhr.responseURL || '/';
+      }
+    });
+
+    xhr.addEventListener('error', function() {
+      showToastLocal('Network error — please check your connection and try again.', true);
+      btn.disabled = false;
+      btn.classList.remove('opacity-75', 'cursor-wait');
+      text.textContent = '🖨️ Submit Request';
+      spinner.classList.add('hidden');
+      progressWrap.classList.add('hidden');
+      progressBar.style.width = '0%';
+    });
+
+    xhr.send(new FormData(this));
   });
 
   // Init

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Request {{ req["id"][:8] }} | Printellect</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/tailwind.css" />
   <style>
     .status-badge-new { @apply bg-slate-500/20 text-slate-300 border-slate-500/50; }
     .status-badge-needs-info { @apply bg-orange-500/20 text-orange-300 border-orange-500/50; }
@@ -94,7 +94,7 @@
     <div class="flex flex-wrap items-center gap-2 mb-4 p-3 bg-zinc-900/40 rounded-xl border border-zinc-800">
       {% if req["status"] in ["NEW", "APPROVED", "NEEDS_INFO"] %}
         <button type="button" onclick="showPrintStartModal()"
-                class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition">
+                class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition">
           🖨 Start Print
         </button>
       {% endif %}
@@ -325,7 +325,7 @@
               <input name="quote_amount" required placeholder="Amount (USD)" value="{% if shipping and shipping.quote_amount_cents %}{{ '%.2f'|format((shipping.quote_amount_cents / 100.0)) }}{% endif %}" class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm" />
               <input name="selected_rate_id" placeholder="Selected rate ID (optional)" value="{{ shipping.selected_rate_id if shipping else '' }}" class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
               <textarea name="quote_notes" rows="2" placeholder="Quote notes..." class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs">{{ shipping.quote_notes if shipping else '' }}</textarea>
-              <button type="submit" class="w-full rounded-lg bg-emerald-600 hover:bg-emerald-500 transition py-2 text-sm font-medium">Save Quote</button>
+              <button type="submit" class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition py-2 text-sm font-medium">Save Quote</button>
             </form>
 
             <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/buy-label" class="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
@@ -560,7 +560,7 @@
               
               {% if ns.current_file %}
                 <a href="/admin/request/{{ req['id'] }}/file/{{ ns.current_file.id }}/preview" 
-                   class="inline-flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition shadow-lg shadow-emerald-900/30"
+                   class="inline-flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition shadow-lg shadow-emerald-900/30"
                    title="View 3D model">
                   👁️ View 3D Model
                 </a>
@@ -649,7 +649,7 @@
                   <input type="number" name="turnaround_minutes" min="0" max="1440" value="{{ req['turnaround_minutes'] or 30 }}"
                          class="w-16 rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm text-center" />
                 </div>
-                <button class="rounded-lg bg-emerald-600 hover:bg-emerald-500 transition px-3 py-2 text-xs font-semibold">Save Time</button>
+                <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-2 text-xs font-semibold">Save Time</button>
               </div>
               {% if accuracy_info and accuracy_info.sample_count >= 2 %}
                 <p class="text-xs text-zinc-500 mt-2">📊 {{ accuracy_info.message }}</p>
@@ -728,7 +728,7 @@
                            value="{{ '%.2f' | format(quote_amount_cents / 100.0) if quote_amount_cents else '' }}"
                            class="w-full pl-7 rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm" />
                   </div>
-                  <button type="submit" class="rounded-lg bg-emerald-600 hover:bg-emerald-500 transition px-3 py-2 text-xs font-semibold whitespace-nowrap">
+                  <button type="submit" class="rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-2 text-xs font-semibold whitespace-nowrap">
                     Send Quote
                   </button>
                 </div>
@@ -887,7 +887,7 @@
                     <div class="flex items-center gap-1 flex-shrink-0">
                       {% if b.status == 'READY' or b.status == 'PENDING' %}
                         <button type="button" onclick="showStartBuildModal('{{ b.id }}', {{ b.build_number }})"
-                                class="text-xs px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition">
+                                class="text-xs px-2.5 py-1 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition">
                           ▶ Start
                         </button>
                       {% elif b.status == 'PRINTING' %}
@@ -1026,7 +1026,7 @@
                        class="w-full mt-1 rounded-lg bg-zinc-950 border border-zinc-700 p-2 text-sm" />
               </div>
               <div class="flex gap-2">
-                <button type="submit" id="start-build-btn" class="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed transition px-4 py-2 text-sm font-semibold">
+                <button type="submit" id="start-build-btn" class="flex-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-700 disabled:cursor-not-allowed transition px-4 py-2 text-sm font-semibold">
                   Start Build
                 </button>
                 <button type="button" onclick="closeStartBuildModal()" class="rounded-lg bg-zinc-700 hover:bg-zinc-600 transition px-4 py-2 text-sm">
@@ -1147,7 +1147,7 @@
                   Save design updates
                 </button>
                 <button type="submit" name="mark_complete" value="1"
-                        class="rounded-lg bg-emerald-600 hover:bg-emerald-500 transition px-3 py-2 text-sm font-semibold text-white {% if not req['requires_design'] %}opacity-50 cursor-not-allowed{% endif %}"
+                        class="rounded-lg bg-indigo-600 hover:bg-indigo-500 transition px-3 py-2 text-sm font-semibold text-white {% if not req['requires_design'] %}opacity-50 cursor-not-allowed{% endif %}"
                         {% if not req["requires_design"] %}disabled{% endif %}>
                   ✓ Mark design complete
                 </button>
@@ -1356,7 +1356,7 @@
                       {% if b.status == 'READY' %}
                         <form action="/admin/build/{{ b.id }}/start" method="POST" class="inline">
                           <input type="hidden" name="printer" value="{{ req.printer or printers[1][0] }}" />
-                          <button type="submit" class="text-xs px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white">
+                          <button type="submit" class="text-xs px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white">
                             ▶ Start
                           </button>
                         </form>
@@ -1368,7 +1368,7 @@
                       {% elif b.status == 'PRINTING' %}
                         <form action="/admin/build/{{ b.id }}/complete" method="POST" class="inline">
                           <input type="hidden" name="capture_snapshot" value="1" />
-                          <button type="submit" class="text-xs px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white"
+                          <button type="submit" class="text-xs px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white"
                                   onclick="return confirm('Mark this build as complete?')">
                             ✓ Complete
                           </button>
@@ -1409,7 +1409,7 @@
                       {% endif %}
                     {% endfor %}
                   </select>
-                  <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium">
+                  <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium">
                     ▶ Start Next
                   </button>
                 </form>
@@ -1760,7 +1760,7 @@
             <button type="button" onclick="hideSendToPrinterModal()" class="flex-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
               Cancel
             </button>
-            <button type="submit" class="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+            <button type="submit" class="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
               📤 Send to AD5X
             </button>
           </div>
@@ -1826,7 +1826,7 @@
             <button type="button" onclick="hidePrintStartModal()" class="flex-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 transition px-4 py-2 text-sm">
               Cancel
             </button>
-            <button type="submit" class="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+            <button type="submit" class="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
               🖨 Start Print
             </button>
           </div>
@@ -1928,7 +1928,7 @@
             <button type="button" onclick="hideAddToStoreModal()" class="flex-1 rounded-xl bg-zinc-700 hover:bg-zinc-600 transition px-4 py-2 text-sm font-semibold">
               Cancel
             </button>
-            <button type="submit" class="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-sm font-semibold">
+            <button type="submit" class="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
               Add to Store
             </button>
           </div>
