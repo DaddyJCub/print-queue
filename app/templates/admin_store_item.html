@@ -115,6 +115,14 @@
             </div>
 
             <div>
+              <label class="text-sm text-zinc-400">Credit Price <span class="text-zinc-600">— leave empty if not redeemable with credits</span></label>
+              <input type="number" name="credit_price" min="1"
+                     value="{{ item.credit_price or '' }}"
+                     placeholder="e.g. 2"
+                     class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm focus:border-indigo-500 focus:outline-none" />
+            </div>
+
+            <div>
               <label class="text-sm text-zinc-400">Model Link (optional)</label>
               <input type="url" name="link_url" value="{{ item.link_url or '' }}" placeholder="https://..."
                      class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm focus:border-indigo-500 focus:outline-none" />

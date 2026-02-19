@@ -31,6 +31,14 @@ router = APIRouter(tags=["printellect"])
 logger = logging.getLogger("printellect.devices")
 templates = Jinja2Templates(directory="app/templates")
 
+# Credits nav global (callable, evaluated at render time)
+def _credits_nav_enabled():
+    try:
+        return is_feature_enabled("store_rewards")
+    except Exception:
+        return False
+templates.env.globals["credits_nav_enabled"] = _credits_nav_enabled
+
 ONLINE_WINDOW_SECONDS = int(os.getenv("DEVICE_ONLINE_WINDOW_SECONDS", "60"))
 DEVICE_MIN_POLL_SECONDS = float(os.getenv("DEVICE_MIN_POLL_SECONDS", "1.0"))
 PROVISION_POLL_INTERVAL_MS = int(os.getenv("DEVICE_PROVISION_POLL_MS", "1000"))

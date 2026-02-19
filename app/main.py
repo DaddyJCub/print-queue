@@ -321,6 +321,14 @@ templates.env.globals["get_csrf_token"] = get_csrf_token
 templates.env.globals["base_url"] = BASE_URL
 templates.env.globals["environment"] = ENVIRONMENT
 
+# Dynamic callable so template checks feature flag at render time
+def _credits_nav_enabled():
+    try:
+        return is_feature_enabled("store_rewards")
+    except Exception:
+        return False
+templates.env.globals["credits_nav_enabled"] = _credits_nav_enabled
+
 # NOTE: app/static must exist in your repo (can be empty with a .gitkeep)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
@@ -1386,6 +1394,39 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_type ON payments(payment_type);")
 
+    # ── Credit system tables ──
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS credit_transactions (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        balance_after INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        description TEXT,
+        reference_id TEXT,
+        created_at TEXT NOT NULL,
+        created_by_account_id TEXT,
+        FOREIGN KEY(account_id) REFERENCES accounts(id)
+    );
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_credit_tx_account ON credit_transactions(account_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_credit_tx_created ON credit_transactions(created_at);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_credit_tx_type ON credit_transactions(type);")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS credit_auto_grants (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL UNIQUE,
+        amount INTEGER NOT NULL,
+        is_active INTEGER DEFAULT 1,
+        last_granted_at TEXT,
+        created_at TEXT NOT NULL,
+        created_by_account_id TEXT,
+        FOREIGN KEY(account_id) REFERENCES accounts(id)
+    );
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_credit_auto_grants_account ON credit_auto_grants(account_id);")
+
     conn.commit()
     conn.close()
 
@@ -1902,6 +1943,8 @@ def ensure_migrations():
     store_cols = {row[1] for row in cur.fetchall()}
     if store_cols and "price_cents" not in store_cols:
         cur.execute("ALTER TABLE store_items ADD COLUMN price_cents INTEGER")
+    if store_cols and "credit_price" not in store_cols:
+        cur.execute("ALTER TABLE store_items ADD COLUMN credit_price INTEGER")
 
     # Re-read request columns for payment fields
     cur.execute("PRAGMA table_info(requests)")
@@ -2764,14 +2807,22 @@ def _startup():
         seed_demo_data(db)
     
     start_printer_polling()  # Start background printer status polling
-    
+
     # Start trip reminder scheduler
     from app.trips import start_trip_reminder_scheduler
     start_trip_reminder_scheduler()
 
+    # Start credit auto-grant scheduler
+    from app.credits import start_credit_grant_scheduler
+    start_credit_grant_scheduler()
+
 # Mount auth routes
 from app.routes_auth import router as auth_router
 app.include_router(auth_router)
+
+# Mount credits routes
+from app.credits import router as credits_router
+app.include_router(credits_router)
 
 
 async def require_admin(request: Request):
@@ -2880,6 +2931,13 @@ DEFAULT_SETTINGS: Dict[str, str] = {
     "shippo_webhook_user": "",
     "shippo_webhook_pass": "",
     "shippo_webhook_token": "",
+
+    # Credits / Rewards
+    "credits_enabled": "0",
+    "credits_per_custom_request": "1",
+    "credits_per_rush": "1",
+    "credits_auto_grant_day": "1",
+    "credits_auto_grant_default_amount": "5",
 }
 
 
@@ -7615,6 +7673,10 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any], us
         "fun_stats": fun_stats,
         "recent_prints": recent_prints,
         "payments_enabled": is_payments_enabled(),
+        "credits_enabled": _is_credits_on(),
+        "credits_per_rush": _credits_rush_cost(),
+        "credits_per_request": _credits_request_cost(),
+        "user_credits": _user_credit_balance(user),
     }, status_code=400 if error else 200)
 
 
@@ -7628,6 +7690,40 @@ from app.api_builds import router as api_builds_router
 from app.trips import router as trips_router
 from app.printellect import router as printellect_router
 from app.payments import router as payments_router, is_payments_enabled
+
+
+# Credit helpers for the request form template (avoid circular import)
+def _is_credits_on():
+    try:
+        from app.credits import is_credits_enabled
+        return is_credits_enabled()
+    except Exception:
+        return False
+
+def _credits_rush_cost():
+    try:
+        from app.credits import get_rush_credit_cost
+        return get_rush_credit_cost()
+    except Exception:
+        return 1
+
+def _credits_request_cost():
+    try:
+        from app.credits import get_request_credit_cost
+        return get_request_credit_cost()
+    except Exception:
+        return 1
+
+def _user_credit_balance(user):
+    if not user:
+        return 0
+    try:
+        from app.credits import get_balance, is_credits_enabled
+        if not is_credits_enabled():
+            return 0
+        return get_balance(user.id)
+    except Exception:
+        return 0
 
 app.include_router(public_router)
 app.include_router(my_requests_router)

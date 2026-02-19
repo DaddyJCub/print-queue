@@ -1357,13 +1357,22 @@ async def store_item_view(request: Request, item_id: str):
 
     from app.payments import is_payments_enabled
     from app.auth import get_current_user
+    from app.credits import is_credits_enabled, get_credit_price_for_item, get_balance
     user = await get_current_user(request)
+
+    credits_on = is_credits_enabled()
+    credit_price = get_credit_price_for_item(dict(item)) if credits_on else None
+    user_credits = get_balance(user.id) if user and credits_on else 0
+
     return templates.TemplateResponse("store_item.html", {
         "request": request,
         "item": item,
         "files": files,
         "payments_enabled": is_payments_enabled(),
         "user": user,
+        "credits_enabled": credits_on,
+        "credit_price": credit_price,
+        "user_credits": user_credits,
         "version": APP_VERSION,
     })
 
@@ -1494,6 +1503,28 @@ async def submit_store_request(
         "rid": rid,
         "print_name": item["name"],
         "access_token": access_token,
+        "version": APP_VERSION,
+    })
+
+
+# ─────────────────────────── CREDITS HELP PAGE ───────────────────────────
+
+@router.get("/credits", response_class=HTMLResponse)
+async def credits_help_page(request: Request):
+    """Credits explainer / help page."""
+    from app.auth import get_current_user
+    user = await get_current_user(request)
+    user_credits = 0
+    if user:
+        try:
+            from app.credits import get_balance
+            user_credits = get_balance(user.id)
+        except Exception:
+            pass
+    return templates.TemplateResponse("credits_help.html", {
+        "request": request,
+        "user": user,
+        "user_credits": user_credits,
         "version": APP_VERSION,
     })
 

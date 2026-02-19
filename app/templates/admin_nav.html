@@ -47,6 +47,12 @@
           <a href="/admin/payments" class="admin-pill {% if active_page == 'payments' %}active{% endif %}">
             💳 <span>Payments</span>
           </a>
+          {% if credits_nav_enabled is callable %}{% set _credits_on = credits_nav_enabled() %}{% else %}{% set _credits_on = credits_nav_enabled %}{% endif %}
+          {% if _credits_on %}
+          <a href="/admin/credits" class="admin-pill {% if active_page == 'credits' %}active{% endif %}">
+            🎁 <span>Credits</span>
+          </a>
+          {% endif %}
           <a href="/admin/accounts" class="admin-pill {% if active_page == 'accounts' or active_page == 'users' %}active{% endif %}">
             👥 <span>Users</span>
           </a>
@@ -165,6 +171,10 @@
       <a href="/admin/store" class="mobile-nav-link {% if active_page == 'store' %}active{% endif %}">🏪 Store</a>
       <a href="/admin/analytics" class="mobile-nav-link {% if active_page == 'analytics' %}active{% endif %}">📊 Analytics</a>
       <a href="/admin/payments" class="mobile-nav-link {% if active_page == 'payments' %}active{% endif %}">💳 Payments</a>
+      {% if credits_nav_enabled is callable %}{% set _credits_mobile = credits_nav_enabled() %}{% else %}{% set _credits_mobile = credits_nav_enabled %}{% endif %}
+      {% if _credits_mobile %}
+      <a href="/admin/credits" class="mobile-nav-link {% if active_page == 'credits' %}active{% endif %}">🎁 Credits</a>
+      {% endif %}
       <a href="/admin/accounts" class="mobile-nav-link {% if active_page == 'accounts' %}active{% endif %}">👥 Users</a>
       
       <div class="border-t border-zinc-800 my-2 pt-2">

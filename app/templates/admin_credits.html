@@ -1,0 +1,234 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Credits & Rewards | Printellect</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-7xl mx-auto p-6">
+    {% set active_page = 'credits' %}
+    {% include 'admin_nav.html' %}
+
+    {% if success_msg %}
+    <div class="mb-4 bg-emerald-900/30 border border-emerald-700 rounded-xl p-3 flex items-center justify-between">
+      <span class="text-sm text-emerald-300">{{ success_msg }}</span>
+      <button onclick="this.parentElement.remove()" class="text-emerald-500 hover:text-emerald-300 ml-3">&times;</button>
+    </div>
+    {% endif %}
+
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+      <div>
+        <h1 class="text-2xl font-bold">Credits & Rewards</h1>
+        <p class="text-sm text-zinc-400 mt-1">Grant credits, manage auto-grants, and view transaction history.</p>
+      </div>
+      <div class="text-sm text-zinc-400">
+        Total in circulation: <strong class="text-white">{{ total_credits }}</strong> credits
+      </div>
+    </div>
+
+    <!-- Quick Grant Section -->
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+      <h2 class="text-lg font-semibold mb-4">Grant Credits</h2>
+      <form method="POST" action="/admin/credits/grant" class="space-y-4">
+        {{ csrf_input() }}
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label class="text-sm text-zinc-300 mb-1 block">Recipient</label>
+            <select name="account_id" class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm">
+              <option value="__all__">All users (grant to everyone)</option>
+              {% for u in users %}
+              <option value="{{ u.id }}">{{ u.display_name or u.email }} ({{ u.credits }} credits)</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="text-sm text-zinc-300 mb-1 block">Amount</label>
+            <input type="number" name="amount" min="1" value="5" required
+                   class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm" />
+          </div>
+          <div>
+            <label class="text-sm text-zinc-300 mb-1 block">Description <span class="text-zinc-600">(optional)</span></label>
+            <input type="text" name="description" placeholder="e.g. Welcome bonus"
+                   class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm" />
+          </div>
+        </div>
+        <button type="submit" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2.5 text-sm font-semibold">
+          Grant Credits
+        </button>
+      </form>
+    </section>
+
+    <!-- Auto-Grants Section -->
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-lg font-semibold">Monthly Auto-Grants</h2>
+          <p class="text-xs text-zinc-500 mt-0.5">Credits granted automatically on day {{ auto_grant_day }} of each month.</p>
+        </div>
+        <form method="POST" action="/admin/credits/run-auto-grants" class="inline">
+          {{ csrf_input() }}
+          <button type="submit" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition px-3 py-1.5 text-xs font-medium">
+            Run Now
+          </button>
+        </form>
+      </div>
+
+      <!-- Add auto-grant -->
+      <form method="POST" action="/admin/credits/auto-grant" class="flex flex-wrap items-end gap-3 mb-4 pb-4 border-b border-zinc-800">
+        {{ csrf_input() }}
+        <div>
+          <label class="text-xs text-zinc-400 mb-1 block">User</label>
+          <select name="account_id" required class="rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 text-sm">
+            <option value="">Select user...</option>
+            {% for u in users %}
+            <option value="{{ u.id }}">{{ u.display_name or u.email }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-zinc-400 mb-1 block">Monthly amount</label>
+          <input type="number" name="amount" min="1" value="{{ default_auto_amount }}" required
+                 class="w-24 rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 text-sm" />
+        </div>
+        <button type="submit" class="rounded-lg bg-emerald-600 hover:bg-emerald-500 transition px-3 py-2.5 text-sm font-medium">
+          Add Rule
+        </button>
+      </form>
+
+      {% if auto_grants %}
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-zinc-500 text-xs uppercase tracking-wider">
+              <th class="pb-2">User</th>
+              <th class="pb-2">Monthly Amount</th>
+              <th class="pb-2">Last Granted</th>
+              <th class="pb-2">Status</th>
+              <th class="pb-2"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-800">
+            {% for rule in auto_grants %}
+            <tr>
+              <td class="py-2.5">
+                <span class="font-medium">{{ rule.display_name or 'Unknown' }}</span>
+                <span class="text-zinc-500 text-xs ml-1">{{ rule.email or '' }}</span>
+              </td>
+              <td class="py-2.5"><span class="text-emerald-400 font-medium">+{{ rule.amount }}</span> credits</td>
+              <td class="py-2.5 text-zinc-400 text-xs">{{ rule.last_granted_at[:10] if rule.last_granted_at else 'Never' }}</td>
+              <td class="py-2.5">
+                {% if rule.is_active %}
+                <span class="text-xs bg-emerald-600/20 text-emerald-300 px-2 py-0.5 rounded">Active</span>
+                {% else %}
+                <span class="text-xs bg-zinc-700 text-zinc-400 px-2 py-0.5 rounded">Paused</span>
+                {% endif %}
+              </td>
+              <td class="py-2.5 text-right">
+                <form method="POST" action="/admin/credits/auto-grant/{{ rule.id }}/delete" class="inline">
+                  {{ csrf_input() }}
+                  <button type="submit" class="text-xs text-red-400 hover:text-red-300 transition"
+                          onclick="return confirm('Remove this auto-grant rule?')">Remove</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-sm text-zinc-500">No auto-grant rules configured yet.</p>
+      {% endif %}
+    </section>
+
+    <!-- User Balances -->
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+      <h2 class="text-lg font-semibold mb-4">User Balances</h2>
+      {% if users_with_credits %}
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-zinc-500 text-xs uppercase tracking-wider">
+              <th class="pb-2">User</th>
+              <th class="pb-2">Email</th>
+              <th class="pb-2">Balance</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-800">
+            {% for u in users_with_credits %}
+            <tr>
+              <td class="py-2">
+                <a href="/admin/accounts/{{ u.id }}" class="text-indigo-400 hover:underline font-medium">{{ u.display_name or 'Unknown' }}</a>
+              </td>
+              <td class="py-2 text-zinc-400">{{ u.email }}</td>
+              <td class="py-2">
+                <span class="font-bold {% if u.credits > 0 %}text-emerald-400{% else %}text-zinc-500{% endif %}">{{ u.credits }}</span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-sm text-zinc-500">No users have credits yet.</p>
+      {% endif %}
+    </section>
+
+    <!-- Recent Transactions -->
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <h2 class="text-lg font-semibold mb-4">Recent Transactions</h2>
+      {% if transactions %}
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-zinc-500 text-xs uppercase tracking-wider">
+              <th class="pb-2">Date</th>
+              <th class="pb-2">User</th>
+              <th class="pb-2">Type</th>
+              <th class="pb-2">Amount</th>
+              <th class="pb-2">Balance</th>
+              <th class="pb-2">Description</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-800">
+            {% for tx in transactions %}
+            <tr>
+              <td class="py-2 text-zinc-400 text-xs whitespace-nowrap">{{ tx.created_at[:16].replace('T', ' ') }}</td>
+              <td class="py-2 font-medium">{{ tx.display_name or 'Unknown' }}</td>
+              <td class="py-2">
+                {% set type_labels = {
+                  'admin_grant': 'Admin Grant',
+                  'auto_grant': 'Auto Grant',
+                  'store_redemption': 'Store Purchase',
+                  'rush_redemption': 'Rush Fee',
+                  'request_redemption': 'Request',
+                  'refund': 'Refund'
+                } %}
+                <span class="text-xs px-2 py-0.5 rounded
+                  {% if tx.amount > 0 %}bg-emerald-600/20 text-emerald-300{% else %}bg-orange-600/20 text-orange-300{% endif %}">
+                  {{ type_labels.get(tx.type, tx.type) }}
+                </span>
+              </td>
+              <td class="py-2 font-mono font-bold {% if tx.amount > 0 %}text-emerald-400{% else %}text-orange-400{% endif %}">
+                {{ '+' if tx.amount > 0 else '' }}{{ tx.amount }}
+              </td>
+              <td class="py-2 text-zinc-400">{{ tx.balance_after }}</td>
+              <td class="py-2 text-zinc-400 text-xs max-w-xs truncate">{{ tx.description or '' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-sm text-zinc-500">No transactions yet.</p>
+      {% endif %}
+    </section>
+
+    <!-- Footer -->
+    <div class="mt-8 pt-4 border-t border-zinc-800 text-center text-xs text-zinc-500">
+      <a href="/changelog" class="hover:text-indigo-400 transition">Printellect v{{ version }}</a>
+    </div>
+  </div>
+</body>
+</html>

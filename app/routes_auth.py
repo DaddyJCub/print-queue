@@ -97,6 +97,14 @@ def format_datetime_local(value, fmt="%b %d, %Y at %I:%M %p"):
 # Register the localtime filter
 templates.env.filters["localtime"] = format_datetime_local
 
+# Credits nav global (callable, evaluated at render time)
+def _credits_nav_enabled():
+    try:
+        return is_feature_enabled("store_rewards")
+    except Exception:
+        return False
+templates.env.globals["credits_nav_enabled"] = _credits_nav_enabled
+
 # Database helper
 def get_db_path():
     return os.getenv("DB_PATH", "/data/app.db")
@@ -1881,7 +1889,18 @@ async def user_profile_page(
         is_feature_enabled("printellect_device_control", user_id=user.id, email=user.email)
         or _printellect_demo_open_access()
     )
-    
+
+    # Credits
+    credits_enabled = False
+    credit_transactions = []
+    try:
+        from app.credits import is_credits_enabled, get_transactions
+        credits_enabled = is_credits_enabled()
+        if credits_enabled and user.id:
+            credit_transactions = get_transactions(user.id, limit=10)
+    except Exception:
+        pass
+
     return templates.TemplateResponse("user_profile.html", {
         "request": request,
         "user": user,
@@ -1893,6 +1912,8 @@ async def user_profile_page(
         "from_page": from_page,
         "trips_enabled": trips_enabled,
         "printellect_enabled": printellect_enabled,
+        "credits_enabled": credits_enabled,
+        "credit_transactions": credit_transactions,
     })
 
 

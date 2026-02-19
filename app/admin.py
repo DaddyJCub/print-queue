@@ -579,9 +579,17 @@ def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[s
         "stripe_secret_key_configured": bool(get_setting("stripe_secret_key", "").strip() or os.getenv("STRIPE_SECRET_KEY", "").strip()),
         "stripe_publishable_key": get_setting("stripe_publishable_key", "").strip() or os.getenv("STRIPE_PUBLISHABLE_KEY", "").strip(),
         "stripe_webhook_secret_configured": bool(get_setting("stripe_webhook_secret", "").strip() or os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()),
+        # Credits settings
+        "credits_enabled": get_setting("credits_enabled", "0"),
+        "credits_per_custom_request": get_setting("credits_per_custom_request", "1"),
+        "credits_per_rush": get_setting("credits_per_rush", "1"),
+        "credits_auto_grant_day": get_setting("credits_auto_grant_day", "1"),
         "saved": bool(saved == "1"),
     }
-    return templates.TemplateResponse("admin_settings.html", {"request": request, "s": model, "version": APP_VERSION})
+    return templates.TemplateResponse("admin_settings.html", {
+        "request": request, "s": model, "version": APP_VERSION,
+        "credits_feature_on": is_feature_enabled("store_rewards"),
+    })
 
 
 @router.post("/admin/settings")
@@ -646,6 +654,11 @@ def admin_settings_post(
     stripe_publishable_key: Optional[str] = Form(None),
     stripe_webhook_secret: Optional[str] = Form(None),
     clear_stripe_webhook_secret: Optional[str] = Form(None),
+    # Credits settings
+    credits_enabled: Optional[str] = Form(None),
+    credits_per_custom_request: str = Form("1"),
+    credits_per_rush: str = Form("1"),
+    credits_auto_grant_day: str = Form("1"),
     _=Depends(require_admin),
 ):
     # checkboxes: present => "on", missing => None
@@ -719,6 +732,17 @@ def admin_settings_post(
         set_setting("stripe_webhook_secret", "")
     elif stripe_webhook_secret and stripe_webhook_secret.strip():
         set_setting("stripe_webhook_secret", stripe_webhook_secret.strip())
+
+    # Credits settings
+    set_setting("credits_enabled", "1" if credits_enabled else "0")
+    set_setting("credits_per_custom_request", (credits_per_custom_request or "1").strip())
+    set_setting("credits_per_rush", (credits_per_rush or "1").strip())
+    day_val = (credits_auto_grant_day or "1").strip()
+    try:
+        day_val = str(max(1, min(28, int(day_val))))
+    except ValueError:
+        day_val = "1"
+    set_setting("credits_auto_grant_day", day_val)
 
     # Validate Stripe keys if a new secret key was saved
     stripe_warning = False
@@ -1210,6 +1234,7 @@ def admin_store_add(
     link_url: str = Form(""),
     notes: str = Form(""),
     price: Optional[str] = Form(None),
+    credit_price: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
     _=Depends(require_admin)
 ):
@@ -1227,6 +1252,16 @@ def admin_store_add(
         except (ValueError, TypeError):
             price_cents = None
 
+    # Parse credit price
+    credit_price_val = None
+    if credit_price and credit_price.strip():
+        try:
+            credit_price_val = int(credit_price.strip())
+            if credit_price_val <= 0:
+                credit_price_val = None
+        except (ValueError, TypeError):
+            credit_price_val = None
+
     # Handle image upload
     image_data = None
     if image and image.filename:
@@ -1240,13 +1275,13 @@ def admin_store_add(
         INSERT INTO store_items (
             id, name, description, category, material, colors,
             estimated_time_minutes, image_data, link_url, notes,
-            is_active, price_cents, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+            is_active, price_cents, credit_price, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
     """, (
         item_id, name.strip(), description.strip() or None, category.strip() or None,
         material, colors.strip() or None, estimated_time_minutes or None,
         image_data, link_url.strip() or None, notes.strip() or None,
-        price_cents, created, created
+        price_cents, credit_price_val, created, created
     ))
     conn.commit()
     conn.close()
@@ -1290,6 +1325,7 @@ def admin_store_item_update(
     link_url: str = Form(""),
     notes: str = Form(""),
     price: Optional[str] = Form(None),
+    credit_price: Optional[str] = Form(None),
     is_active: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
     _=Depends(require_admin)
@@ -1311,6 +1347,16 @@ def admin_store_item_update(
         except (ValueError, TypeError):
             price_cents = None
 
+    # Parse credit price
+    credit_price_val = None
+    if credit_price and credit_price.strip():
+        try:
+            credit_price_val = int(credit_price.strip())
+            if credit_price_val <= 0:
+                credit_price_val = None
+        except (ValueError, TypeError):
+            credit_price_val = None
+
     # Handle image upload
     image_data = item["image_data"]  # Keep existing if no new upload
     if image and image.filename:
@@ -1323,13 +1369,13 @@ def admin_store_item_update(
         UPDATE store_items SET
             name = ?, description = ?, category = ?, material = ?, colors = ?,
             estimated_time_minutes = ?, image_data = ?, link_url = ?, notes = ?,
-            is_active = ?, price_cents = ?, updated_at = ?
+            is_active = ?, price_cents = ?, credit_price = ?, updated_at = ?
         WHERE id = ?
     """, (
         name.strip(), description.strip() or None, category.strip() or None,
         material, colors.strip() or None, estimated_time_minutes or None,
         image_data, link_url.strip() or None, notes.strip() or None,
-        1 if is_active else 0, price_cents, now_iso(), item_id
+        1 if is_active else 0, price_cents, credit_price_val, now_iso(), item_id
     ))
     conn.commit()
     conn.close()
@@ -1693,3 +1739,147 @@ async def moonraker_cancel_print(
     )
     
     return {"success": True, "action": "cancel", "printer": printer_code, "previous_state": state}
+
+
+# ─────────────────────────── CREDITS MANAGEMENT ───────────────────────────
+
+@router.get("/admin/credits", response_class=HTMLResponse)
+def admin_credits_page(request: Request, _=Depends(require_admin), success: Optional[str] = None):
+    """Admin credit management dashboard."""
+    from app.credits import (
+        get_all_auto_grants, get_all_transactions, is_credits_enabled,
+    )
+
+    conn = db()
+    # All accounts (for grant dropdown)
+    users = conn.execute(
+        "SELECT id, email, display_name, credits FROM accounts ORDER BY display_name"
+    ).fetchall()
+    users = [dict(u) for u in users]
+
+    # Users with credits > 0
+    users_with_credits = conn.execute(
+        "SELECT id, email, display_name, credits FROM accounts WHERE credits > 0 ORDER BY credits DESC"
+    ).fetchall()
+    users_with_credits = [dict(u) for u in users_with_credits]
+
+    # Total credits in circulation
+    total_row = conn.execute("SELECT COALESCE(SUM(credits), 0) as total FROM accounts").fetchone()
+    total_credits = total_row["total"] if total_row else 0
+    conn.close()
+
+    auto_grants = get_all_auto_grants()
+    transactions = get_all_transactions(limit=50)
+
+    success_msg = None
+    if success == "granted":
+        success_msg = "Credits granted successfully."
+    elif success == "auto_added":
+        success_msg = "Auto-grant rule added."
+    elif success == "auto_removed":
+        success_msg = "Auto-grant rule removed."
+    elif success == "auto_ran":
+        success_msg = "Auto-grants processed."
+
+    return templates.TemplateResponse("admin_credits.html", {
+        "request": request,
+        "users": users,
+        "users_with_credits": users_with_credits,
+        "total_credits": total_credits,
+        "auto_grants": auto_grants,
+        "transactions": transactions,
+        "auto_grant_day": get_setting("credits_auto_grant_day", "1"),
+        "default_auto_amount": get_setting("credits_auto_grant_default_amount", "5"),
+        "success_msg": success_msg,
+        "version": APP_VERSION,
+    })
+
+
+@router.post("/admin/credits/grant")
+async def admin_credits_grant(
+    request: Request,
+    account_id: str = Form(...),
+    amount: int = Form(...),
+    description: str = Form(""),
+    _=Depends(require_admin),
+):
+    """Grant credits to one or all users."""
+    from app.credits import grant_credits
+    from app.auth import get_current_account
+
+    admin = await get_current_account(request)
+    admin_id = admin.id if admin else None
+
+    if amount < 1:
+        raise HTTPException(status_code=400, detail="Amount must be at least 1")
+
+    if account_id == "__all__":
+        conn = db()
+        all_accounts = conn.execute("SELECT id FROM accounts").fetchall()
+        conn.close()
+        count = 0
+        for acc in all_accounts:
+            try:
+                grant_credits(
+                    account_id=acc["id"],
+                    amount=amount,
+                    tx_type="admin_grant",
+                    description=description or f"Bulk grant ({amount} credits)",
+                    granted_by=admin_id,
+                )
+                count += 1
+            except Exception:
+                pass
+    else:
+        grant_credits(
+            account_id=account_id,
+            amount=amount,
+            tx_type="admin_grant",
+            description=description or f"Admin grant ({amount} credits)",
+            granted_by=admin_id,
+        )
+
+    return RedirectResponse(url="/admin/credits?success=granted", status_code=303)
+
+
+@router.post("/admin/credits/auto-grant")
+async def admin_credits_auto_grant(
+    request: Request,
+    account_id: str = Form(...),
+    amount: int = Form(...),
+    _=Depends(require_admin),
+):
+    """Set up a recurring monthly auto-grant for a user."""
+    from app.credits import set_auto_grant
+    from app.auth import get_current_account
+
+    if amount < 1:
+        raise HTTPException(status_code=400, detail="Amount must be at least 1")
+
+    admin = await get_current_account(request)
+    set_auto_grant(account_id, amount, admin.id if admin else None)
+
+    return RedirectResponse(url="/admin/credits?success=auto_added", status_code=303)
+
+
+@router.post("/admin/credits/auto-grant/{rule_id}/delete")
+def admin_credits_auto_grant_delete(
+    request: Request,
+    rule_id: str,
+    _=Depends(require_admin),
+):
+    """Remove an auto-grant rule."""
+    from app.credits import remove_auto_grant
+    remove_auto_grant(rule_id)
+    return RedirectResponse(url="/admin/credits?success=auto_removed", status_code=303)
+
+
+@router.post("/admin/credits/run-auto-grants")
+def admin_credits_run_auto_grants(
+    request: Request,
+    _=Depends(require_admin),
+):
+    """Manually trigger auto-grants (for testing)."""
+    from app.credits import process_auto_grants
+    process_auto_grants()
+    return RedirectResponse(url="/admin/credits?success=auto_ran", status_code=303)

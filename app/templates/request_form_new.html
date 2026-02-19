@@ -669,6 +669,12 @@
   </div>
   </div>
 
+  <!-- Credits intro notice (first-time) -->
+  {% if credits_enabled %}
+  {% set credits_context = 'request' %}
+  {% include '_components/credits_intro.html' %}
+  {% endif %}
+
   <!-- Priority Rush -->
   {% if rush_settings and rush_settings.enabled %}
   <div class="bg-gradient-to-r from-amber-900/40 to-orange-900/30 border border-amber-600/50 rounded-2xl p-5 shadow-lg shadow-amber-900/20">
@@ -692,17 +698,50 @@
     <!-- Payment Section -->
     <div id="rush-payment-section" class="mt-4 pt-4 border-t border-amber-800/50 hidden">
       <div class="bg-zinc-950/60 rounded-xl p-4">
-        {% if payments_enabled is defined and payments_enabled %}
-        <div class="flex items-center gap-3 mb-2">
-          <span class="text-lg">🔒</span>
-          <div>
-            <p class="text-sm font-medium text-amber-200">Secure payment via Stripe</p>
-            <p class="text-xs text-zinc-400">Checkout will appear on this page after submitting</p>
-          </div>
+        {% if credits_enabled and credits_per_rush and credits_per_rush > 0 %}
+        <!-- Credits option for rush -->
+        <div class="mb-3 pb-3 border-b border-zinc-800">
+          <label class="flex items-center gap-3 cursor-pointer">
+            <input type="radio" name="rush_pay_method" value="credits" id="rush-pay-credits"
+                   {% if not user or user_credits < credits_per_rush %}disabled{% endif %}
+                   class="w-4 h-4 text-emerald-500 focus:ring-emerald-500" />
+            <div class="flex-1">
+              <span class="text-sm font-medium {% if user and user_credits >= credits_per_rush %}text-emerald-300{% else %}text-zinc-500{% endif %}">
+                🎁 Use {{ credits_per_rush }} credit{{ 's' if credits_per_rush != 1 else '' }}
+              </span>
+              {% if user %}
+              <span class="text-xs text-zinc-500 ml-1">({{ user_credits }} available)</span>
+              {% endif %}
+              {% if not user %}
+              <span class="text-xs text-zinc-500 ml-1">(<a href="/auth/register?next=/&flow=payment" class="text-indigo-400 hover:underline">sign in</a>)</span>
+              {% elif user_credits < credits_per_rush %}
+              <span class="text-xs text-amber-400/70 ml-1">(need {{ credits_per_rush - user_credits }} more)</span>
+              {% endif %}
+            </div>
+          </label>
+          {% if payments_enabled is defined and payments_enabled %}
+          <label class="flex items-center gap-3 cursor-pointer mt-2">
+            <input type="radio" name="rush_pay_method" value="stripe" id="rush-pay-stripe" checked
+                   class="w-4 h-4 text-amber-500 focus:ring-amber-500" />
+            <span class="text-sm font-medium text-amber-200">💳 Pay ${{ rush_settings.fee }} with card</span>
+          </label>
+          {% endif %}
         </div>
-        <p class="text-sm text-zinc-400">
-          Rush fee: <span id="rush-price-amount" class="font-bold text-amber-300">${{ rush_settings.fee }}</span>
-        </p>
+        {% endif %}
+
+        {% if payments_enabled is defined and payments_enabled %}
+        <div id="rush-stripe-info" {% if credits_enabled and credits_per_rush and credits_per_rush > 0 %}{% endif %}>
+          <div class="flex items-center gap-3 mb-2">
+            <span class="text-lg">🔒</span>
+            <div>
+              <p class="text-sm font-medium text-amber-200">Secure payment via Stripe</p>
+              <p class="text-xs text-zinc-400">Checkout will appear on this page after submitting</p>
+            </div>
+          </div>
+          <p class="text-sm text-zinc-400">
+            Rush fee: <span id="rush-price-amount" class="font-bold text-amber-300">${{ rush_settings.fee }}</span>
+          </p>
+        </div>
         {% else %}
         <p class="text-sm text-zinc-300 mb-3">
           Send <span id="rush-price-amount" class="font-bold text-amber-300">${{ rush_settings.fee }}</span> via Venmo:
@@ -791,6 +830,45 @@
     // Only intercept when rush is checked AND payments are enabled
     if (!rushCheckbox.checked) return; // Let normal submission proceed
 
+    // Check if user selected credits for rush
+    const creditRadio = document.getElementById('rush-pay-credits');
+    if (creditRadio && creditRadio.checked) {
+      e.preventDefault();
+      if (!form.checkValidity()) { form.reportValidity(); return; }
+
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('opacity-75', 'cursor-wait'); }
+      if (submitText) submitText.textContent = 'Processing...';
+      if (submitSpinner) submitSpinner.classList.remove('hidden');
+
+      const fd = new FormData(form);
+      fetch('/api/credits/rush-checkout', { method: 'POST', body: fd, credentials: 'include' })
+        .then(r => r.json().then(data => ({status: r.status, data})))
+        .then(({status, data}) => {
+          if (status === 401 && data.error === 'auth_required') {
+            window.location.href = '/auth/register?next=/&flow=payment';
+            return;
+          }
+          if (data.error === 'insufficient_credits') {
+            alert('Not enough credits. You need ' + data.needed + ' but have ' + data.balance + '.');
+          } else if (data.error) {
+            alert(data.error);
+          } else if (data.success && data.redirect) {
+            window.location.href = data.redirect;
+            return;
+          }
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('opacity-75', 'cursor-wait'); }
+          if (submitText) submitText.textContent = originalSubmitHTML;
+          if (submitSpinner) submitSpinner.classList.add('hidden');
+        })
+        .catch(err => {
+          alert(err.message || 'Something went wrong');
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('opacity-75', 'cursor-wait'); }
+          if (submitText) submitText.textContent = originalSubmitHTML;
+          if (submitSpinner) submitSpinner.classList.add('hidden');
+        });
+      return;
+    }
+
     e.preventDefault();
     if (!form.checkValidity()) { form.reportValidity(); return; }
 
@@ -831,6 +909,76 @@
     if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('opacity-75', 'cursor-wait'); }
     if (submitText) submitText.textContent = originalSubmitHTML;
     if (submitSpinner) submitSpinner.classList.add('hidden');
+  });
+})();
+</script>
+{% endif %}
+
+{% if credits_enabled and credits_per_request and credits_per_request > 0 %}
+<!-- Credits option for custom requests -->
+<div class="mt-4 bg-gradient-to-r from-emerald-900/30 to-teal-900/20 border border-emerald-600/30 rounded-2xl p-4">
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <p class="text-sm font-medium text-emerald-200">🎁 Have credits?</p>
+      <p class="text-xs text-zinc-400 mt-0.5">
+        Submit this request using {{ credits_per_request }} credit{{ 's' if credits_per_request != 1 else '' }} instead of payment.
+        {% if user %}
+        You have <strong class="{% if user_credits >= credits_per_request %}text-emerald-300{% else %}text-amber-300{% endif %}">{{ user_credits }}</strong> credits.
+        {% endif %}
+      </p>
+    </div>
+    <button type="button" id="credit-request-btn"
+            class="rounded-xl transition px-4 py-2.5 text-sm font-bold flex items-center gap-2
+            {% if user and user_credits >= credits_per_request %}
+              bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500
+            {% else %}
+              bg-zinc-800 text-zinc-500 cursor-not-allowed
+            {% endif %}"
+            {% if not user or user_credits < credits_per_request %}disabled{% endif %}>
+      🎁 Use {{ credits_per_request }} Credit{{ 's' if credits_per_request != 1 else '' }}
+    </button>
+  </div>
+  {% if not user %}
+  <p class="text-xs text-zinc-500 mt-2">
+    <a href="/auth/register?next=/&flow=payment" class="text-indigo-400 hover:underline">Sign in</a> to use credits.
+  </p>
+  {% endif %}
+</div>
+<script>
+(function() {
+  const btn = document.getElementById('credit-request-btn');
+  if (!btn || btn.disabled) return;
+  const form = document.getElementById('request-form');
+  if (!form) return;
+  const originalBtnHTML = btn.innerHTML;
+
+  btn.addEventListener('click', async function() {
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Processing...';
+
+    try {
+      const fd = new FormData(form);
+      const resp = await fetch('/api/credits/request-checkout', { method: 'POST', body: fd, credentials: 'include' });
+      const data = await resp.json();
+
+      if (resp.status === 401 && data.error === 'auth_required') {
+        window.location.href = '/auth/register?next=/&flow=payment';
+        return;
+      }
+      if (data.error === 'insufficient_credits') {
+        alert('Not enough credits. You need ' + data.needed + ' but have ' + data.balance + '.');
+      } else if (data.error) {
+        alert(data.error);
+      } else if (data.success && data.redirect) {
+        window.location.href = data.redirect;
+        return;
+      }
+    } catch (err) {
+      alert(err.message || 'Something went wrong');
+    }
+    btn.disabled = false;
+    btn.innerHTML = originalBtnHTML;
   });
 })();
 </script>

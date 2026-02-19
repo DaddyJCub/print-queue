@@ -1270,6 +1270,36 @@ CREATE TABLE IF NOT EXISTS trip_events (
 );
 """
 
+# ─────────────────────────── CREDIT SYSTEM TABLES ───────────────────────────
+
+CREDIT_TRANSACTIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS credit_transactions (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    balance_after INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    description TEXT,
+    reference_id TEXT,
+    created_at TEXT NOT NULL,
+    created_by_account_id TEXT,
+    FOREIGN KEY(account_id) REFERENCES accounts(id)
+);
+"""
+
+CREDIT_AUTO_GRANTS_TABLE = """
+CREATE TABLE IF NOT EXISTS credit_auto_grants (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL UNIQUE,
+    amount INTEGER NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    last_granted_at TEXT,
+    created_at TEXT NOT NULL,
+    created_by_account_id TEXT,
+    FOREIGN KEY(account_id) REFERENCES accounts(id)
+);
+"""
+
 # Index definitions for performance
 INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);",
@@ -1298,6 +1328,11 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_request_assignments_request ON request_assignments(request_id);",
     "CREATE INDEX IF NOT EXISTS idx_request_assignments_account ON request_assignments(account_id);",
     "CREATE INDEX IF NOT EXISTS idx_account_notes_account ON account_notes(account_id);",
+    # Credit system indexes
+    "CREATE INDEX IF NOT EXISTS idx_credit_tx_account ON credit_transactions(account_id);",
+    "CREATE INDEX IF NOT EXISTS idx_credit_tx_created ON credit_transactions(created_at);",
+    "CREATE INDEX IF NOT EXISTS idx_credit_tx_type ON credit_transactions(type);",
+    "CREATE INDEX IF NOT EXISTS idx_credit_auto_grants_account ON credit_auto_grants(account_id);",
 ]
 
 ALL_NEW_TABLES = [
@@ -1317,4 +1352,7 @@ ALL_NEW_TABLES = [
     TRIPS_TABLE,
     TRIP_MEMBERS_TABLE,
     TRIP_EVENTS_TABLE,
+    # Credit system tables
+    CREDIT_TRANSACTIONS_TABLE,
+    CREDIT_AUTO_GRANTS_TABLE,
 ]

@@ -536,6 +536,56 @@
         </div>
       </section>
 
+      <!-- Credits & Rewards -->
+      {% if credits_feature_on %}
+      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mt-6">
+        <h2 class="text-xl font-semibold flex items-center gap-2">
+          Credits &amp; Rewards
+          {% if s.credits_enabled == '1' %}
+            <span class="text-xs bg-emerald-600/30 text-emerald-300 px-2 py-0.5 rounded">Active</span>
+          {% else %}
+            <span class="text-xs bg-zinc-700 text-zinc-400 px-2 py-0.5 rounded">Off</span>
+          {% endif %}
+        </h2>
+        <p class="text-xs text-zinc-500 mt-1 mb-4">
+          Let users pay with credits instead of (or alongside) real money.
+          Manage balances and grants on the <a href="/admin/credits" class="text-indigo-400 hover:underline">Credits page</a>.
+        </p>
+
+        <div class="space-y-4">
+          <label class="flex items-center gap-3">
+            <input type="checkbox" name="credits_enabled" class="scale-125"
+                   {% if s.credits_enabled == '1' %}checked{% endif %} />
+            <span>Enable credits system</span>
+          </label>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <label class="block">
+              <span class="text-sm text-zinc-300">Credits per custom request</span>
+              <input type="number" name="credits_per_custom_request" min="0"
+                     value="{{ s.credits_per_custom_request or '1' }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm" />
+              <p class="text-xs text-zinc-500 mt-1">Set to 0 to make custom requests free</p>
+            </label>
+            <label class="block">
+              <span class="text-sm text-zinc-300">Credits per rush fee</span>
+              <input type="number" name="credits_per_rush" min="0"
+                     value="{{ s.credits_per_rush or '1' }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm" />
+              <p class="text-xs text-zinc-500 mt-1">Set to 0 to make rush free with credits</p>
+            </label>
+            <label class="block">
+              <span class="text-sm text-zinc-300">Auto-grant day of month</span>
+              <input type="number" name="credits_auto_grant_day" min="1" max="28"
+                     value="{{ s.credits_auto_grant_day or '1' }}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm" />
+              <p class="text-xs text-zinc-500 mt-1">1-28, recurring monthly grants fire on this day</p>
+            </label>
+          </div>
+        </div>
+      </section>
+      {% endif %}
+
         <div class="mt-6 flex gap-3">
           <button class="rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 font-semibold">
             Save settings
