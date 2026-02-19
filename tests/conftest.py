@@ -69,14 +69,16 @@ def clear_all_test_data():
     init_test_db()
     conn = get_test_db()
     tables = [
-        "requests", "builds", "build_snapshots", "build_status_events",
-        "status_events", "files", "store_items", "store_item_files",
-        "push_subscriptions", "email_lookup_tokens", "request_messages",
-        "users", "admins", "feedback", "request_templates",
-        "request_assignments", "notification_prefs",
-        "request_shipping", "request_shipping_rate_snapshots", "request_shipping_events",
+        "credit_transactions", "credit_auto_grants",
+        "request_shipping_events", "request_shipping_rate_snapshots", "request_shipping",
+        "request_assignments", "request_messages", "request_templates",
+        "status_events", "build_status_events", "build_snapshots", "builds",
+        "store_item_files", "store_items", "files",
+        "requests", "feedback", "notification_prefs",
+        "push_subscriptions", "email_lookup_tokens",
         "device_update_status", "releases", "device_state", "commands",
         "pairing_sessions", "device_tokens", "devices",
+        "sessions", "users", "admins", "accounts",
     ]
     for table in tables:
         try:

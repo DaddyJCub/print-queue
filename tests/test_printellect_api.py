@@ -6,7 +6,9 @@ from pathlib import Path
 import json
 import zipfile
 
+import pytest
 from tests.conftest import get_test_db
+from app.auth import invalidate_feature_flag_cache
 
 
 def _now_iso() -> str:
@@ -54,6 +56,10 @@ def _create_account_session(email: str = "owner@example.com", enable_printellect
         )
     conn.commit()
     conn.close()
+
+    # Invalidate the app's in-memory feature flag cache so direct DB writes
+    # are visible immediately to subsequent API calls within the same test.
+    invalidate_feature_flag_cache("printellect_device_control")
 
     return account_id, session_token
 
@@ -539,6 +545,10 @@ def test_printellect_pages_render(client):
         assert resp.status_code == 200
 
 
+@pytest.mark.skipif(
+    not __import__("importlib").util.find_spec("qrcode"),
+    reason="qrcode package not installed",
+)
 def test_admin_qr_svg_endpoint(client):
     resp = client.get(
         "/api/printellect/admin/qr.svg",
