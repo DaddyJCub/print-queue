@@ -25,7 +25,7 @@
       </div>
 
       <!-- Desktop: Ops Nav Pills -->
-      <div class="hidden lg:flex items-center gap-0.5 bg-zinc-800/50 rounded-xl p-1 mx-4 overflow-x-auto scrollbar-none">
+      <div class="hidden lg:flex items-center gap-0.5 bg-zinc-800/50 rounded-xl p-1 mx-4">
         <a href="/admin"              class="admin-pill {% if active_page == 'queue' %}active{% endif %}">📋 Queue</a>
         <a href="/admin/shipping"     class="admin-pill {% if active_page == 'shipping' %}active{% endif %}">📦 Shipping</a>
         <a href="/admin/store"        class="admin-pill {% if active_page == 'store' %}active{% endif %}">🏪 Store</a>
@@ -33,10 +33,6 @@
         <a href="/admin/payments"     class="admin-pill {% if active_page == 'payments' %}active{% endif %}">💳 Payments</a>
         {% if _credits_on %}<a href="/admin/credits" class="admin-pill {% if active_page == 'credits' %}active{% endif %}">🎁 Credits</a>{% endif %}
         <a href="/admin/accounts"     class="admin-pill {% if active_page in ['accounts','users'] %}active{% endif %}">👥 Users</a>
-        <span class="w-px h-5 bg-zinc-700 mx-1 shrink-0"></span>
-        <a href="/admin/feedback"     class="admin-pill {% if active_page == 'feedback' %}active{% endif %}">📬 Feedback</a>
-        <a href="/admin/broadcast"    class="admin-pill {% if active_page == 'broadcast' %}active{% endif %}">📢 Broadcast</a>
-        <a href="/admin/audit"        class="admin-pill {% if active_page == 'audit' %}active{% endif %}">📜 Audit</a>
         {% if can_design_nav %}<a href="/admin?design=1" class="admin-pill {% if active_page == 'design' %}active{% endif %}">🎨 Design</a>{% endif %}
       </div>
 
@@ -98,6 +94,11 @@
       <span class="w-px h-4 bg-zinc-800 mx-1 shrink-0"></span>
       <a href="/admin/file-sync" class="sys-pill {% if active_page == 'file-sync' %}active{% endif %}">📁 File Sync</a>
       <a href="/admin/debug"     class="sys-pill {% if active_page == 'debug' %}active{% endif %}">🔧 Debug</a>
+      <span class="w-px h-4 bg-zinc-800 mx-1 shrink-0"></span>
+      <span class="text-[10px] uppercase tracking-widest text-zinc-600 mr-1 shrink-0">Comms</span>
+      <a href="/admin/feedback"  class="sys-pill {% if active_page == 'feedback' %}active{% endif %}">📬 Feedback</a>
+      <a href="/admin/broadcast" class="sys-pill {% if active_page == 'broadcast' %}active{% endif %}">📢 Broadcast</a>
+      <a href="/admin/audit"     class="sys-pill {% if active_page == 'audit' %}active{% endif %}">📜 Audit</a>
     </div>
   </div>
 
