@@ -647,11 +647,32 @@ async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.
                     pass
                 
                 machine_status = status.get("MachineStatus", "UNKNOWN")
+                
+                # Treat BUILD_COMPLETE as READY when no active prints are assigned to this printer
+                # Klipper keeps state="complete" indefinitely until manually cleared;
+                # after our poller auto-completes the job, the dashboard should show READY
+                display_status = machine_status
+                if machine_status in ("BUILD_COMPLETE", "BUILD_COMPLETE_FROM_SD"):
+                    try:
+                        _conn_chk = db()
+                        active_prints = _conn_chk.execute(
+                            "SELECT COUNT(*) as cnt FROM requests WHERE printer = ? AND status = 'PRINTING' "
+                            "UNION ALL "
+                            "SELECT COUNT(*) as cnt FROM builds WHERE printer = ? AND status = 'PRINTING'",
+                            (printer_code, printer_code)
+                        ).fetchall()
+                        _conn_chk.close()
+                        total_active = sum(r["cnt"] for r in active_prints)
+                        if total_active == 0:
+                            display_status = "READY"
+                    except Exception:
+                        pass
+                
                 result = {
-                    "status": machine_status.replace("_FROM_SD", ""),
+                    "status": display_status.replace("_FROM_SD", ""),
                     "temp": temp_data.get("Temperature", "").split("/")[0] if temp_data else None,
                     "target_temp": temp_data.get("TargetTemperature") if temp_data else None,
-                    "progress": progress,
+                    "progress": progress if display_status != "READY" else None,
                     "healthy": machine_status in ["READY", "PRINTING", "BUILDING", "BUILDING_FROM_SD", "BUILD_COMPLETE", "BUILD_COMPLETE_FROM_SD", "PAUSED"],
                     "is_printing": machine_status in ["BUILDING", "BUILDING_FROM_SD"],
                     "current_file": extended.get("current_file") if extended else None,
@@ -6196,6 +6217,14 @@ async def poll_printer_status_worker():
                     conn.commit()
                     conn.close()
 
+                    # Reset Klipper print state so dashboard shows READY instead of BUILD_COMPLETE
+                    if isinstance(printer_api, MoonrakerAPI):
+                        try:
+                            await printer_api.run_gcode("SDCARD_RESET_FILE")
+                            print(f"[POLL] Sent SDCARD_RESET_FILE to {effective_printer} to clear BUILD_COMPLETE state")
+                        except Exception as e:
+                            print(f"[POLL] Failed to reset printer state on {effective_printer}: {e}")
+
                     # Send notification emails
                     admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))
                     admin_email_on_status = get_bool_setting("admin_email_on_status", True)
@@ -6602,6 +6631,14 @@ async def poll_builds_status_worker():
                     except Exception as e:
                         print(f"[BUILD-POLL] Failed to send build notification: {e}")
                     
+                    # Reset Klipper print state so dashboard shows READY instead of BUILD_COMPLETE
+                    if isinstance(printer_api, MoonrakerAPI):
+                        try:
+                            await printer_api.run_gcode("SDCARD_RESET_FILE")
+                            print(f"[BUILD-POLL] Sent SDCARD_RESET_FILE to {build['printer']} to clear BUILD_COMPLETE state")
+                        except Exception as e:
+                            print(f"[BUILD-POLL] Failed to reset printer state on {build['printer']}: {e}")
+
                     add_poll_debug_log({
                         "type": "build_complete",
                         "build_id": build_id[:8],

@@ -31,6 +31,7 @@ from app.main import (
 from app.auth import optional_user, create_request_assignment
 from app.models import AssignmentRole
 from app.auth import get_current_user, get_current_admin
+from app.oidc import is_oidc_enabled, get_oidc_config
 
 router = APIRouter()
 
@@ -630,12 +631,15 @@ def my_requests_lookup(request: Request, sent: Optional[str] = None, error: Opti
     # Check if user accounts feature is enabled
     user_accounts_enabled = is_feature_enabled("user_accounts")
     
+    oidc_available = is_oidc_enabled() and is_feature_enabled("oidc_login")
     return templates.TemplateResponse("my_requests_lookup_new.html", {
         "request": request,
         "sent": sent,
         "error": error,
         "version": APP_VERSION,
         "user_accounts_enabled": user_accounts_enabled,
+        "oidc_enabled": oidc_available,
+        "oidc_display_name": get_oidc_config()["display_name"] if oidc_available else "",
     })
 
 
@@ -771,11 +775,14 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
     # No valid auth
     if not email:
         conn.close()
+        _oidc_avail = is_oidc_enabled() and is_feature_enabled("oidc_login")
         return templates.TemplateResponse("my_requests_lookup_new.html", {
             "request": request,
             "error": "expired",
             "version": APP_VERSION,
             "user_accounts_enabled": is_feature_enabled("user_accounts"),
+            "oidc_enabled": _oidc_avail,
+            "oidc_display_name": get_oidc_config()["display_name"] if _oidc_avail else "",
         })
     
     # Fetch all requests for this email, including multi-build info

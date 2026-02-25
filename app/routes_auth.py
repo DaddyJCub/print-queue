@@ -1060,20 +1060,29 @@ async def reject_match(
 
 @router.get("/api/user/me")
 async def api_current_user(request: Request):
-    """Get current logged-in user."""
-    user = await get_current_user(request)
-    if not user:
-        return JSONResponse({"user": None})
-    
-    # Get or create the My Requests token for this user
-    # This must match what's stored in email_lookup_tokens table
+    """Get current logged-in user (supports both legacy user_session and unified session cookies)."""
+    from app.auth import get_current_account
     from app.main import get_or_create_my_requests_token
-    token = get_or_create_my_requests_token(user.email)
     
-    user_dict = user.to_dict()
-    user_dict['token'] = token
+    # Try legacy user session first
+    user = await get_current_user(request)
+    if user:
+        token = get_or_create_my_requests_token(user.email)
+        user_dict = user.to_dict()
+        user_dict['token'] = token
+        return JSONResponse({"user": user_dict})
     
-    return JSONResponse({"user": user_dict})
+    # Try unified account session (used by OIDC and new account system)
+    account = await get_current_account(request)
+    if account:
+        token = get_or_create_my_requests_token(account.email)
+        account_dict = account.to_dict()
+        account_dict['token'] = token
+        # Map 'name' to 'display_name' for nav JS compatibility
+        account_dict['display_name'] = account.display_name
+        return JSONResponse({"user": account_dict})
+    
+    return JSONResponse({"user": None})
 
 
 @router.get("/api/features")
