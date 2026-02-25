@@ -144,7 +144,7 @@ async def user_login_page(request: Request, next: str = None, error: str = None,
     # Check if user accounts feature is enabled
     if not is_feature_enabled("user_accounts"):
         # Fall back to the existing email lookup system
-        return RedirectResponse(url="/my-prints", status_code=303)
+        return RedirectResponse(url="/my-requests", status_code=303)
     
     # Already logged in?
     user = await get_current_user(request)
