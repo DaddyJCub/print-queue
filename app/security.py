@@ -46,6 +46,7 @@ CSRF_EXEMPT_PATHS = [
     "/health",          # Health check
     "/api/webhooks/",   # Webhooks use signatures
     "/webhooks/",       # Provider webhooks (e.g., Shippo) use provider auth
+    "/auth/oidc/callback",  # OIDC callback uses state parameter for CSRF
 ]
 
 

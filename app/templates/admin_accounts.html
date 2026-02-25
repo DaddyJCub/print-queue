@@ -109,7 +109,12 @@
                   </div>
                   <div>
                     <div class="font-medium">{{ account.name or 'No name' }}</div>
-                    <div class="text-sm text-zinc-400">{{ account.email }}</div>
+                    <div class="text-sm text-zinc-400">
+                      {{ account.email }}
+                      {% if account.oidc_subject %}
+                      <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-900/40 text-blue-300 border border-blue-800/50" title="OIDC linked">SSO</span>
+                      {% endif %}
+                    </div>
                   </div>
                 </div>
               </td>

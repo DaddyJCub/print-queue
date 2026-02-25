@@ -362,6 +362,11 @@ class Account:
     migrated_from_user_id: Optional[str] = None
     migrated_from_admin_id: Optional[str] = None
     
+    # OIDC / SSO fields
+    oidc_subject: Optional[str] = None      # Authentik 'sub' claim (unique per provider)
+    oidc_issuer: Optional[str] = None       # OIDC issuer URL
+    oidc_linked_at: Optional[str] = None    # When OIDC was linked to this account
+    
     def has_permission(self, permission: str) -> bool:
         """Check if this account has a specific permission."""
         if self.status != UserStatus.ACTIVE:
@@ -394,10 +399,14 @@ class Account:
             "last_login": self.last_login,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "oidc_linked": self.oidc_subject is not None,
         }
         if include_sensitive:
             data["magic_link_token"] = self.magic_link_token
             data["reset_token"] = self.reset_token
+            data["oidc_subject"] = self.oidc_subject
+            data["oidc_issuer"] = self.oidc_issuer
+            data["oidc_linked_at"] = self.oidc_linked_at
         return data
     
     @property
@@ -942,6 +951,11 @@ DEFAULT_FEATURE_FLAGS = {
         rollout_percentage=0,  # Don't auto-enable for anyone
         allowed_emails=[],  # Add specific emails in admin panel
     ),
+    "oidc_login": FeatureFlag(
+        key="oidc_login",
+        enabled=False,
+        description="OpenID Connect (OIDC) SSO login via Authentik",
+    ),
 }
 
 
@@ -1149,7 +1163,12 @@ CREATE TABLE IF NOT EXISTS accounts (
     
     -- Migration tracking
     migrated_from_user_id TEXT,
-    migrated_from_admin_id TEXT
+    migrated_from_admin_id TEXT,
+    
+    -- OIDC / SSO
+    oidc_subject TEXT,
+    oidc_issuer TEXT,
+    oidc_linked_at TEXT
 );
 """
 
@@ -1328,6 +1347,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_request_assignments_request ON request_assignments(request_id);",
     "CREATE INDEX IF NOT EXISTS idx_request_assignments_account ON request_assignments(account_id);",
     "CREATE INDEX IF NOT EXISTS idx_account_notes_account ON account_notes(account_id);",
+    # OIDC indexes
+    "CREATE INDEX IF NOT EXISTS idx_accounts_oidc_subject ON accounts(oidc_subject);",
     # Credit system indexes
     "CREATE INDEX IF NOT EXISTS idx_credit_tx_account ON credit_transactions(account_id);",
     "CREATE INDEX IF NOT EXISTS idx_credit_tx_created ON credit_transactions(created_at);",

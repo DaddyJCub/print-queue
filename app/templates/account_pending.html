@@ -1,0 +1,70 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}Account Pending | Printellect{% endblock %}
+
+{% block nav_account %}text-white bg-zinc-800{% endblock %}
+{% block bnav_account %}active{% endblock %}
+
+{% block header_title %}Account Pending{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto">
+  <div class="text-center mb-8">
+    <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl flex items-center justify-center">
+      <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+    </div>
+    <h1 class="text-2xl font-bold mb-2">Account Pending Approval</h1>
+    <p class="text-zinc-400 text-sm">Your account has been created successfully</p>
+  </div>
+
+  <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+    <div class="bg-amber-900/20 border border-amber-800/50 rounded-xl p-4 mb-6">
+      <div class="flex items-start gap-3">
+        <svg class="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <div>
+          <p class="text-amber-200 text-sm font-medium">Awaiting Admin Review</p>
+          <p class="text-amber-300/70 text-sm mt-1">
+            An administrator needs to approve your account before you can access the full application.
+            You'll receive an email once your account has been activated.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="space-y-3 text-sm text-zinc-400">
+      <div class="flex items-center gap-3">
+        <div class="w-6 h-6 rounded-full bg-emerald-900/50 border border-emerald-700/50 flex items-center justify-center">
+          <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+        <span>SSO authentication successful</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="w-6 h-6 rounded-full bg-emerald-900/50 border border-emerald-700/50 flex items-center justify-center">
+          <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+        <span>Account created</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="w-6 h-6 rounded-full bg-amber-900/50 border border-amber-700/50 flex items-center justify-center animate-pulse">
+          <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+        </div>
+        <span>Waiting for admin approval</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-6 text-center">
+    <a href="/auth/login" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">
+      ← Back to Login
+    </a>
+  </div>
+</div>
+{% endblock %}

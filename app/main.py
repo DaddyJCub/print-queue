@@ -26,7 +26,8 @@ from app.demo_data import (
 from app.auth import (
     init_auth_tables, init_feature_flags, is_feature_enabled,
     get_current_user, get_current_admin, optional_user,
-    get_or_create_legacy_admin, log_audit
+    get_or_create_legacy_admin, log_audit,
+    ensure_oidc_columns,
 )
 from app.models import AuditAction
 
@@ -241,6 +242,15 @@ SMTP_FROM = os.getenv("SMTP_FROM", "")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_CLAIMS_EMAIL = os.getenv("VAPID_CLAIMS_EMAIL", "mailto:admin@example.com")
+
+# OIDC / Authentik SSO
+OIDC_ENABLED = os.getenv("OIDC_ENABLED", "false").strip().lower() in ("1", "true", "yes")
+OIDC_DISCOVERY_URL = os.getenv("OIDC_DISCOVERY_URL", "")
+OIDC_CLIENT_ID = os.getenv("OIDC_CLIENT_ID", "")
+OIDC_CLIENT_SECRET = os.getenv("OIDC_CLIENT_SECRET", "")
+OIDC_REDIRECT_URI = os.getenv("OIDC_REDIRECT_URI", "")
+OIDC_SCOPES = os.getenv("OIDC_SCOPES", "openid email profile")
+OIDC_DISPLAY_NAME = os.getenv("OIDC_DISPLAY_NAME", "Authentik")
 
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -2841,6 +2851,7 @@ def _startup():
     # Initialize new auth system (multi-admin, user accounts, feature flags)
     init_auth_tables()
     init_feature_flags()
+    ensure_oidc_columns()
     
     # Create default admin from ADMIN_PASSWORD if no admins exist yet
     get_or_create_legacy_admin()

@@ -50,6 +50,7 @@ import sys
 sys.path.insert(0, str(TEST_ROOT.parent))
 
 from app.main import app, ensure_migrations, init_db  # noqa: E402
+from app.auth import ensure_oidc_columns  # noqa: E402
 
 # ─────────────────────────── DATABASE HELPERS ───────────────────────────
 
@@ -57,6 +58,7 @@ def init_test_db():
     """Initialize the test database schema."""
     init_db()
     ensure_migrations()
+    ensure_oidc_columns()
 
 def get_test_db():
     """Get a database connection for test operations."""

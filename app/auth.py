@@ -1452,6 +1452,9 @@ def _row_to_account(row: sqlite3.Row) -> Account:
         last_login=row["last_login"],
         migrated_from_user_id=row["migrated_from_user_id"],
         migrated_from_admin_id=row["migrated_from_admin_id"],
+        oidc_subject=row["oidc_subject"] if "oidc_subject" in row.keys() else None,
+        oidc_issuer=row["oidc_issuer"] if "oidc_issuer" in row.keys() else None,
+        oidc_linked_at=row["oidc_linked_at"] if "oidc_linked_at" in row.keys() else None,
     )
 
 
@@ -1496,6 +1499,169 @@ def _user_row_to_account(row: sqlite3.Row) -> Account:
         migrated_from_user_id=None,
         migrated_from_admin_id=None,
     )
+
+
+# ─────────────────────────── OIDC ACCOUNT HELPERS ───────────────────────────
+
+def get_account_by_oidc_subject(subject: str, issuer: Optional[str] = None) -> Optional[Account]:
+    """Look up an account by OIDC subject (sub claim).
+    
+    Args:
+        subject: The OIDC 'sub' claim value
+        issuer: Optional issuer to match (for multi-provider scenarios)
+    
+    Returns:
+        Account if found, None otherwise
+    """
+    conn = db()
+    try:
+        if issuer:
+            row = conn.execute(
+                "SELECT * FROM accounts WHERE oidc_subject = ? AND oidc_issuer = ?",
+                (subject, issuer)
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM accounts WHERE oidc_subject = ?",
+                (subject,)
+            ).fetchone()
+        if row:
+            return _row_to_account(row)
+    except Exception as e:
+        logger.warning(f"OIDC subject lookup failed: {e}")
+    finally:
+        conn.close()
+    return None
+
+
+def link_oidc_to_account(account_id: str, subject: str, issuer: str) -> bool:
+    """Link an OIDC identity to an existing account.
+    
+    Args:
+        account_id: Local account ID
+        subject: OIDC 'sub' claim
+        issuer: OIDC issuer URL
+    
+    Returns:
+        True if linked successfully
+    """
+    conn = db()
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    try:
+        conn.execute("""
+            UPDATE accounts 
+            SET oidc_subject = ?, oidc_issuer = ?, oidc_linked_at = ?, updated_at = ?
+            WHERE id = ?
+        """, (subject, issuer, now, now, account_id))
+        conn.commit()
+        logger.info(f"OIDC identity linked to account {account_id} (sub={subject})")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to link OIDC to account {account_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def unlink_oidc_from_account(account_id: str) -> bool:
+    """Remove OIDC identity from an account.
+    
+    Args:
+        account_id: Local account ID
+    
+    Returns:
+        True if unlinked successfully
+    """
+    conn = db()
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    try:
+        conn.execute("""
+            UPDATE accounts 
+            SET oidc_subject = NULL, oidc_issuer = NULL, oidc_linked_at = NULL, updated_at = ?
+            WHERE id = ?
+        """, (now, account_id))
+        conn.commit()
+        logger.info(f"OIDC identity unlinked from account {account_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to unlink OIDC from account {account_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def create_oidc_account(
+    email: str,
+    name: str,
+    oidc_subject: str,
+    oidc_issuer: str,
+    role: AccountRole = AccountRole.USER,
+    status: UserStatus = UserStatus.UNVERIFIED,
+) -> Account:
+    """Create a new account from OIDC login (no password).
+    
+    Args:
+        email: User email from OIDC claims
+        name: User display name from OIDC claims
+        oidc_subject: OIDC 'sub' claim
+        oidc_issuer: OIDC issuer URL
+        role: Account role (default: user)
+        status: Account status (default: unverified — requires admin approval)
+    
+    Returns:
+        Newly created Account
+    """
+    conn = db()
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    account_id = str(uuid.uuid4())
+    
+    conn.execute("""
+        INSERT INTO accounts (
+            id, email, name, role, status, email_verified, email_verified_at,
+            oidc_subject, oidc_issuer, oidc_linked_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        account_id, email.lower().strip(), name.strip(),
+        role.value, status.value,
+        1, now,  # email verified (Authentik already verified it)
+        oidc_subject, oidc_issuer, now,
+        now, now
+    ))
+    conn.commit()
+    conn.close()
+    
+    logger.info(f"OIDC account created: {email} (sub={oidc_subject}, status={status.value})")
+    return get_account_by_id(account_id)
+
+
+def ensure_oidc_columns():
+    """Add OIDC columns to accounts table if they don't exist (migration)."""
+    conn = db()
+    try:
+        # Check if columns exist
+        cursor = conn.execute("PRAGMA table_info(accounts)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        
+        new_columns = {
+            "oidc_subject": "TEXT",
+            "oidc_issuer": "TEXT",
+            "oidc_linked_at": "TEXT",
+        }
+        
+        for col_name, col_type in new_columns.items():
+            if col_name not in existing_columns:
+                conn.execute(f"ALTER TABLE accounts ADD COLUMN {col_name} {col_type}")
+                logger.info(f"Added column {col_name} to accounts table")
+        
+        # Ensure the index exists
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_accounts_oidc_subject ON accounts(oidc_subject)"
+        )
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"OIDC column migration check: {e}")
+    finally:
+        conn.close()
 
 
 def update_account(account_id: str, **kwargs) -> bool:

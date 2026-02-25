@@ -11,8 +11,10 @@ These routes handle:
 - Audit log viewing
 """
 
+import logging
 import os
 import uuid
+import secrets
 import sqlite3
 from datetime import datetime
 from typing import Optional, List
@@ -39,6 +41,10 @@ from app.auth import (
     # Unified account auth
     authenticate_account, create_session, get_account_by_email,
     
+    # OIDC account helpers
+    get_account_by_oidc_subject, link_oidc_to_account, unlink_oidc_from_account,
+    create_oidc_account, ensure_oidc_columns,
+    
     # Feature flags
     get_feature_flag, get_all_feature_flags, update_feature_flag, is_feature_enabled,
     
@@ -51,9 +57,16 @@ from app.auth import (
 
 from app.models import AdminRole, AccountRole, AuditAction, UserStatus
 from app.main import UPLOAD_DIR
+from app.oidc import (
+    is_oidc_enabled, get_oidc_config,
+    get_authorization_url, exchange_code, verify_id_token,
+    get_userinfo, get_end_session_url,
+    generate_state, generate_nonce,
+)
 
 # ─────────────────────────── SETUP ───────────────────────────
 
+logger = logging.getLogger("printellect.routes_auth")
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
@@ -143,6 +156,8 @@ async def user_login_page(request: Request, next: str = None, error: str = None,
         "next": next,
         "error": error,
         "success": success,
+        "oidc_enabled": _oidc_available(),
+        "oidc_display_name": get_oidc_config()["display_name"] if is_oidc_enabled() else "",
     })
 
 
@@ -520,6 +535,8 @@ async def admin_login_new_page(request: Request, next: str = None, error: str = 
         "request": request,
         "next": next,
         "error": error,
+        "oidc_enabled": _oidc_available(),
+        "oidc_display_name": get_oidc_config()["display_name"] if is_oidc_enabled() else "",
     })
 
 
@@ -2278,3 +2295,264 @@ async def delete_user_account(
     )
     
     return JSONResponse({"success": True})
+
+
+# ─────────────────────────── OIDC / AUTHENTIK SSO ROUTES ───────────────────────────
+
+
+def _oidc_available() -> bool:
+    """Check if OIDC is both configured and enabled (env + feature flag)."""
+    return is_oidc_enabled() and is_feature_enabled("oidc_login")
+
+
+@router.get("/auth/oidc/login")
+async def oidc_login(request: Request, next: str = None):
+    """
+    Initiate OIDC login flow.
+    
+    Generates state + nonce, stores them in short-lived signed cookies,
+    and redirects the user to the Authentik authorization endpoint.
+    """
+    if not _oidc_available():
+        raise HTTPException(status_code=404, detail="OIDC login is not enabled")
+    
+    state = generate_state()
+    nonce = generate_nonce()
+    
+    # Encode next_url into the state cookie so we can redirect after callback
+    state_value = f"{state}|{next or ''}"
+    
+    auth_url = await get_authorization_url(state, nonce, next_url=next)
+    
+    resp = RedirectResponse(url=auth_url, status_code=302)
+    
+    is_secure = os.getenv("BASE_URL", "").startswith("https")
+    
+    # Store state and nonce in short-lived httpOnly cookies (5 minutes)
+    resp.set_cookie(
+        "oidc_state", state_value,
+        httponly=True, samesite="lax", secure=is_secure,
+        path="/", max_age=300  # 5 minutes
+    )
+    resp.set_cookie(
+        "oidc_nonce", nonce,
+        httponly=True, samesite="lax", secure=is_secure,
+        path="/", max_age=300
+    )
+    
+    return resp
+
+
+@router.get("/auth/oidc/callback")
+async def oidc_callback(request: Request, code: str = None, state: str = None, error: str = None):
+    """
+    OIDC callback endpoint. Receives the authorization code from Authentik,
+    exchanges it for tokens, validates the ID token, and either:
+    - Logs in an existing account (matched by OIDC subject or email)
+    - Creates a new account with 'unverified' status (pending admin approval)
+    """
+    if not _oidc_available():
+        raise HTTPException(status_code=404, detail="OIDC login is not enabled")
+    
+    # Handle provider-side errors
+    if error:
+        error_desc = request.query_params.get("error_description", error)
+        logger.warning(f"OIDC provider returned error: {error} - {error_desc}")
+        return RedirectResponse(
+            url=f"/auth/login?error=SSO login failed: {quote(error_desc)}",
+            status_code=303
+        )
+    
+    if not code or not state:
+        return RedirectResponse(
+            url="/auth/login?error=Invalid SSO callback (missing code or state)",
+            status_code=303
+        )
+    
+    # ── Validate state ──
+    state_cookie = request.cookies.get("oidc_state", "")
+    nonce_cookie = request.cookies.get("oidc_nonce", "")
+    
+    if not state_cookie or not nonce_cookie:
+        logger.warning("OIDC callback: missing state/nonce cookies (expired or blocked)")
+        return RedirectResponse(
+            url="/auth/login?error=SSO session expired. Please try again.",
+            status_code=303
+        )
+    
+    # Parse state_cookie: "state|next_url"
+    state_parts = state_cookie.split("|", 1)
+    expected_state = state_parts[0]
+    next_url = state_parts[1] if len(state_parts) > 1 else ""
+    
+    if not secrets.compare_digest(state, expected_state):
+        logger.warning("OIDC callback: state mismatch")
+        return RedirectResponse(
+            url="/auth/login?error=SSO state mismatch. Please try again.",
+            status_code=303
+        )
+    
+    try:
+        # ── Exchange code for tokens ──
+        token_response = await exchange_code(code)
+        id_token_raw = token_response.get("id_token")
+        access_token = token_response.get("access_token")
+        
+        if not id_token_raw:
+            raise ValueError("No id_token in token response")
+        
+        # ── Verify ID token ──
+        claims = await verify_id_token(id_token_raw, nonce_cookie)
+        
+        sub = claims.get("sub")
+        email = claims.get("email", "").lower().strip()
+        name = claims.get("name") or claims.get("preferred_username") or email.split("@")[0]
+        issuer = claims.get("iss", "")
+        
+        if not sub or not email:
+            raise ValueError("ID token missing required claims (sub, email)")
+        
+        logger.info(f"OIDC login: sub={sub}, email={email}, name={name}")
+        
+        # ── Find or create account ──
+        account = None
+        action = None  # "login", "linked", "created"
+        
+        # 1. Try to find by OIDC subject (already linked)
+        account = get_account_by_oidc_subject(sub, issuer)
+        if account:
+            action = "login"
+        
+        # 2. Try to find by email (auto-link)
+        if not account:
+            account = get_account_by_email(email)
+            if account:
+                link_oidc_to_account(account.id, sub, issuer)
+                action = "linked"
+                logger.info(f"OIDC auto-linked to existing account {account.id} by email {email}")
+        
+        # 3. Create new account (pending approval)
+        if not account:
+            account = create_oidc_account(
+                email=email,
+                name=name,
+                oidc_subject=sub,
+                oidc_issuer=issuer,
+                role=AccountRole.USER,
+                status=UserStatus.UNVERIFIED,
+            )
+            action = "created"
+            logger.info(f"OIDC new account created: {account.id} (pending approval)")
+        
+        # ── Check account status ──
+        if account.status == UserStatus.SUSPENDED:
+            log_audit(
+                action=AuditAction.USER_UPDATED,
+                actor_type="system",
+                actor_id="oidc",
+                target_type="account",
+                target_id=account.id,
+                details={"event": "oidc_login_blocked", "reason": "suspended"}
+            )
+            return RedirectResponse(
+                url="/auth/login?error=Your account has been suspended.",
+                status_code=303
+            )
+        
+        if account.status == UserStatus.UNVERIFIED and action != "created":
+            # Existing unverified account — still show pending page
+            pass
+        
+        # ── Create session ──
+        session = create_session(
+            account_id=account.id,
+            device_info=request.headers.get("User-Agent"),
+            ip_address=get_client_ip(request),
+            user_agent=request.headers.get("User-Agent"),
+        )
+        
+        # ── Audit log ──
+        log_audit(
+            action=AuditAction.USER_UPDATED,
+            actor_type="user",
+            actor_id=account.id,
+            target_type="account",
+            target_id=account.id,
+            details={
+                "event": f"oidc_{action}",
+                "oidc_subject": sub,
+                "oidc_issuer": issuer,
+                "email": email,
+            }
+        )
+        
+        # ── Set session cookie and redirect ──
+        is_secure = os.getenv("BASE_URL", "").startswith("https")
+        
+        # Determine redirect destination
+        if action == "created" or account.status == UserStatus.UNVERIFIED:
+            redirect_url = "/auth/pending"
+        elif next_url and next_url.startswith("/"):
+            redirect_url = next_url
+        elif account.is_admin_level():
+            redirect_url = "/admin"
+        else:
+            redirect_url = "/auth/profile"
+        
+        resp = RedirectResponse(url=redirect_url, status_code=303)
+        resp.set_cookie(
+            "session", session.token,
+            httponly=True, samesite="lax", secure=is_secure,
+            path="/", max_age=30 * 24 * 60 * 60  # 30 days
+        )
+        # Clear OIDC flow cookies
+        resp.delete_cookie("oidc_state", path="/")
+        resp.delete_cookie("oidc_nonce", path="/")
+        
+        return resp
+        
+    except Exception as e:
+        logger.error(f"OIDC callback error: {e}", exc_info=True)
+        return RedirectResponse(
+            url=f"/auth/login?error=SSO login failed: {quote(str(e))}",
+            status_code=303
+        )
+
+
+@router.get("/auth/oidc/logout")
+async def oidc_logout(request: Request):
+    """
+    Logout from both the local session and optionally from Authentik (end-session).
+    """
+    from app.auth import delete_session_by_token, get_current_account
+    
+    # Clear local session
+    token = request.cookies.get("session")
+    if token:
+        delete_session_by_token(token)
+    
+    is_secure = os.getenv("BASE_URL", "").startswith("https")
+    
+    # Try to redirect to Authentik end-session endpoint
+    base_url = os.getenv("BASE_URL", "http://localhost:3000")
+    end_session_url = await get_end_session_url(
+        post_logout_redirect=f"{base_url}/auth/login"
+    )
+    
+    redirect_url = end_session_url or "/auth/login"
+    
+    resp = RedirectResponse(url=redirect_url, status_code=303)
+    resp.delete_cookie("session", path="/")
+    resp.delete_cookie("user_session", path="/")
+    resp.delete_cookie("admin_session", path="/")
+    resp.delete_cookie("admin_pw", path="/")
+    
+    return resp
+
+
+@router.get("/auth/pending", response_class=HTMLResponse)
+async def account_pending_page(request: Request):
+    """Page shown after OIDC login when account is pending admin approval."""
+    return templates.TemplateResponse("account_pending.html", {
+        "request": request,
+    })

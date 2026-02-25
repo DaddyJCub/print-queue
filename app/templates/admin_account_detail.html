@@ -279,6 +279,25 @@
                 <dd>{% if account.password_hash %}<span class="text-emerald-400">Yes</span>{% else %}<span class="text-amber-400">No (magic link only)</span>{% endif %}</dd>
               </div>
               <div class="flex justify-between py-2 border-b border-zinc-800">
+                <dt class="text-zinc-400">OIDC / SSO</dt>
+                <dd>
+                  {% if account.oidc_subject %}
+                  <div class="text-right">
+                    <span class="text-emerald-400">Linked</span>
+                    <p class="text-xs text-zinc-500 mt-0.5 font-mono truncate max-w-48" title="{{ account.oidc_subject }}">{{ account.oidc_subject[:24] }}…</p>
+                    <p class="text-xs text-zinc-600">since {{ account.oidc_linked_at[:10] if account.oidc_linked_at else 'unknown' }}</p>
+                    <form action="/admin/accounts/{{ account.id }}/unlink-oidc" method="POST" class="mt-1 inline">
+                      {{ csrf_input(request) | safe }}
+                      <button type="submit" onclick="return confirm('Unlink OIDC identity? The user will need to re-link on next SSO login.')"
+                              class="text-xs text-red-400 hover:text-red-300 underline">Unlink</button>
+                    </form>
+                  </div>
+                  {% else %}
+                  <span class="text-zinc-500">Not linked</span>
+                  {% endif %}
+                </dd>
+              </div>
+              <div class="flex justify-between py-2 border-b border-zinc-800">
                 <dt class="text-zinc-400">Role</dt>
                 <dd>{{ account.role|title }}</dd>
               </div>

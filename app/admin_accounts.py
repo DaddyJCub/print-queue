@@ -42,6 +42,8 @@ from app.auth import (
     get_account_assignments,
     # Password hashing
     hash_password,
+    # OIDC
+    unlink_oidc_from_account,
     # Models
 )
 from app.models import AccountRole, UserStatus, ACCOUNT_ROLE_PERMISSIONS, get_account_permissions
@@ -709,5 +711,24 @@ def admin_account_delete_note(
     
     return RedirectResponse(
         url=f"/admin/accounts/{account_id}?tab=notes&success=Note+deleted",
+        status_code=303
+    )
+
+
+@router.post("/admin/accounts/{account_id}/unlink-oidc")
+def admin_account_unlink_oidc(
+    request: Request,
+    account_id: str,
+    _=Depends(require_admin)
+):
+    """Unlink OIDC/SSO identity from an account."""
+    account = get_account_by_id(account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    unlink_oidc_from_account(account_id)
+    
+    return RedirectResponse(
+        url=f"/admin/accounts/{account_id}?tab=details&success=OIDC+identity+unlinked",
         status_code=303
     )
