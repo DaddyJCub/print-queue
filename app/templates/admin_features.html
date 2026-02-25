@@ -50,9 +50,10 @@
         {% set user_flag_details = {
           'user_accounts': {'icon': '👤', 'title': 'User Accounts', 'desc': 'Master toggle for user account system. When enabled, users can create accounts to save preferences and view their print history in one place.', 'requires': []},
           'user_registration': {'icon': '📝', 'title': 'User Registration', 'desc': 'Allow new users to sign up. Disable for invite-only mode where admins create accounts manually.', 'requires': ['user_accounts']},
-          'user_password_auth': {'icon': '🔑', 'title': 'Password Auth', 'desc': 'Allow password login in addition to magic links. Users can set a password for faster login.', 'requires': ['user_accounts']}
+          'user_password_auth': {'icon': '🔑', 'title': 'Password Auth', 'desc': 'Allow password login in addition to magic links. Users can set a password for faster login.', 'requires': ['user_accounts']},
+          'oidc_login': {'icon': '🔐', 'title': 'SSO / OIDC Login', 'desc': 'Enable Single Sign-On via Authentik (OpenID Connect). Requires OIDC environment variables to be configured.', 'requires': ['user_accounts']}
         } %}
-        {% for key in ['user_accounts', 'user_registration', 'user_password_auth'] %}
+        {% for key in ['user_accounts', 'user_registration', 'user_password_auth', 'oidc_login'] %}
         {% set flag = flags.get(key) %}
         {% set details = user_flag_details.get(key, {}) %}
         {% if flag %}
