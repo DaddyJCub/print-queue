@@ -349,14 +349,14 @@
                   <p class="text-xs text-zinc-500">Track your requests</p>
                 </div>
               </a>
-              <a href="/my-requests?show=notifications" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+              <a id="global-notifications-link" href="/user/profile#notifications" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
                 <span class="text-lg">🔔</span>
                 <div>
                   <p class="text-sm font-medium">Notification Settings</p>
                   <p class="text-xs text-zinc-500">Email & push preferences</p>
                 </div>
               </a>
-              <a href="/my-requests?show=sync" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+              <a id="global-sync-link" href="/my-requests?show=sync" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
                 <span class="text-lg">📱</span>
                 <div>
                   <p class="text-sm font-medium">Sync to App</p>
@@ -545,6 +545,11 @@
               const myPrintsLink = document.getElementById('global-my-prints-link');
               if (profileLink) profileLink.href = '/user/profile?token=' + token;
               if (myPrintsLink) myPrintsLink.href = '/my-requests/view?token=' + token;
+              // Update notification settings and sync links with correct path
+              const notifsLink = document.getElementById('global-notifications-link');
+              const syncLink = document.getElementById('global-sync-link');
+              if (notifsLink) notifsLink.href = '/user/profile?token=' + token + '#notifications';
+              if (syncLink) syncLink.href = '/my-requests/view?token=' + token + '&show=sync';
               // Update credits link with token too
               const creditsLink = document.getElementById('global-credits-link');
               if (creditsLink) creditsLink.href = '/user/profile?token=' + token + '#credits';

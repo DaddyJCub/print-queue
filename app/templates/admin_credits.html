@@ -32,7 +32,7 @@
     <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
       <h2 class="text-lg font-semibold mb-4">Grant Credits</h2>
       <form method="POST" action="/admin/credits/grant" class="space-y-4">
-        {{ csrf_input() }}
+        {{ csrf_input(request) | safe }}
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label class="text-sm text-zinc-300 mb-1 block">Recipient</label>
@@ -68,7 +68,7 @@
           <p class="text-xs text-zinc-500 mt-0.5">Credits granted automatically on day {{ auto_grant_day }} of each month.</p>
         </div>
         <form method="POST" action="/admin/credits/run-auto-grants" class="inline">
-          {{ csrf_input() }}
+          {{ csrf_input(request) | safe }}
           <button type="submit" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition px-3 py-1.5 text-xs font-medium">
             Run Now
           </button>
@@ -77,7 +77,7 @@
 
       <!-- Add auto-grant -->
       <form method="POST" action="/admin/credits/auto-grant" class="flex flex-wrap items-end gap-3 mb-4 pb-4 border-b border-zinc-800">
-        {{ csrf_input() }}
+        {{ csrf_input(request) | safe }}
         <div>
           <label class="text-xs text-zinc-400 mb-1 block">User</label>
           <select name="account_id" required class="rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 text-sm">
@@ -127,7 +127,7 @@
               </td>
               <td class="py-2.5 text-right">
                 <form method="POST" action="/admin/credits/auto-grant/{{ rule.id }}/delete" class="inline">
-                  {{ csrf_input() }}
+                  {{ csrf_input(request) | safe }}
                   <button type="submit" class="text-xs text-red-400 hover:text-red-300 transition"
                           onclick="return confirm('Remove this auto-grant rule?')">Remove</button>
                 </form>
