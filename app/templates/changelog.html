@@ -19,6 +19,15 @@
   </script>
 </head>
 <body class="bg-zinc-950 text-zinc-100">
+  {% if environment == 'qa' %}
+  <div class="bg-orange-600 text-white text-center text-xs font-bold py-2 tracking-wider z-[9999] relative">
+    <div class="flex items-center justify-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+      QA / TEST ENVIRONMENT — Not Production
+      <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+    </div>
+  </div>
+  {% endif %}
   <div class="max-w-4xl mx-auto p-6">
     <!-- Header -->
     <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
@@ -658,9 +667,9 @@
       </div>
 
       <!-- v0.10.6 -->
-      <div id="v0.10.6" class="bg-gradient-to-br from-zinc-900/80 via-teal-900/30 to-indigo-950/30 border border-teal-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-teal-500 mb-4">
+      <div id="v0.10.6" class="bg-gradient-to-br from-zinc-900/80 via-indigo-900/30 to-indigo-950/30 border border-indigo-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
-          <a href="#v0.10.6" class="px-3 py-1 bg-teal-600 text-white text-sm font-bold rounded-lg hover:bg-teal-500 transition">v0.10.6</a>
+          <a href="#v0.10.6" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.10.6</a>
           <span class="text-zinc-400 text-sm">January 05, 2026</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>

@@ -102,7 +102,7 @@
                   <div class="w-10 h-10 rounded-xl bg-gradient-to-br 
                     {% if account.role == 'owner' %}from-purple-500 to-pink-600
                     {% elif account.role == 'admin' %}from-indigo-500 to-blue-600
-                    {% elif account.role == 'staff' %}from-cyan-500 to-teal-600
+                    {% elif account.role == 'staff' %}from-cyan-500 to-cyan-600
                     {% else %}from-emerald-500 to-green-600{% endif %}
                     flex items-center justify-center text-white font-bold">
                     {{ account.name[0]|upper if account.name else '?' }}
@@ -180,7 +180,7 @@
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                   </button>
                   {% endif %}
-                  <button onclick="forceLogout('{{ account.id }}', '{{ account.name }}')" class="p-2 text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 rounded-lg" title="Force Logout All Sessions">
+                  <button onclick="forceLogout('{{ account.id }}', '{{ account.name }}')" class="p-2 text-zinc-400 hover:text-indigo-400 hover:bg-zinc-800 rounded-lg" title="Force Logout All Sessions">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
                   </button>
                 </div>

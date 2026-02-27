@@ -324,12 +324,12 @@
             
             <!-- Credits Balance (shown when credits enabled, populated via JS) -->
             <div id="global-credits-bar" class="hidden border-b border-zinc-800">
-              <a id="global-credits-link" href="/credits" class="flex items-center justify-between px-4 py-2.5 hover:bg-emerald-950/30 transition">
+              <a id="global-credits-link" href="/credits" class="flex items-center justify-between px-4 py-2.5 hover:bg-indigo-950/30 transition">
                 <div class="flex items-center gap-2">
                   <span class="text-sm">🎁</span>
                   <span class="text-sm text-zinc-300">Credits</span>
                 </div>
-                <span id="global-credits-balance" class="text-sm font-bold text-emerald-400">0</span>
+                <span id="global-credits-balance" class="text-sm font-bold text-indigo-400">0</span>
               </a>
             </div>
 
@@ -347,6 +347,20 @@
                 <div>
                   <p class="text-sm font-medium">My Prints</p>
                   <p class="text-xs text-zinc-500">Track your requests</p>
+                </div>
+              </a>
+              <a href="/my-requests?show=notifications" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+                <span class="text-lg">🔔</span>
+                <div>
+                  <p class="text-sm font-medium">Notification Settings</p>
+                  <p class="text-xs text-zinc-500">Email & push preferences</p>
+                </div>
+              </a>
+              <a href="/my-requests?show=sync" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+                <span class="text-lg">📱</span>
+                <div>
+                  <p class="text-sm font-medium">Sync to App</p>
+                  <p class="text-xs text-zinc-500">Transfer session to PWA</p>
                 </div>
               </a>
               <a href="/feedback?type=suggestion" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">

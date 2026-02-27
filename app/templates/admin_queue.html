@@ -1035,7 +1035,7 @@
                     <span class="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-lg shadow-red-500/50"></span>
                   {% endif %}
                   {% if r["requires_design"] %}
-                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-teal-800/50 text-teal-300 border border-teal-700/50">
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-800/50 text-indigo-300 border border-indigo-700/50">
                       {% if r["design_completed_at"] %}✓ Design{% else %}Design{% endif %}
                     </span>
                   {% endif %}
@@ -1190,7 +1190,7 @@
                     <span class="text-xs px-1.5 py-0.5 rounded bg-blue-800/50 text-blue-300 border border-blue-700/50">{{ r.total_builds }} builds</span>
                   {% endif %}
                   {% if r["requires_design"] %}
-                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-teal-800/50 text-teal-300 border border-teal-700/50">
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-800/50 text-indigo-300 border border-indigo-700/50">
                       {% if r["design_completed_at"] %}✓ Design{% else %}Design{% endif %}
                     </span>
                   {% endif %}
@@ -1400,7 +1400,7 @@
                     </div>
                     <div class="text-xs text-zinc-500 mt-1 font-mono">{{ r["id"][:8] }}</div>
                     {% if r.requires_design %}
-                      <div class="text-[11px] text-teal-200 mt-1">
+                      <div class="text-[11px] text-indigo-200 mt-1">
                         Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} • {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
                       </div>
                     {% endif %}
@@ -1425,7 +1425,7 @@
                     </div>
                     <div class="text-xs text-zinc-500 mt-1 font-mono">{{ r["id"][:8] }}</div>
                     {% if r.requires_design %}
-                      <div class="text-[11px] text-teal-200 mt-1">
+                      <div class="text-[11px] text-indigo-200 mt-1">
                         Design {% if r.design_completed_at %}Ready{% else %}Needed{% endif %}{% if r.designer_admin_id and designer_lookup.get(r.designer_admin_id) %} • {{ designer_lookup.get(r.designer_admin_id) }}{% endif %}
                       </div>
                     {% endif %}

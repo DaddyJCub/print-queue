@@ -2,8 +2,12 @@
 {# Usage: {% include 'admin_nav.html' %} with active_page variable set #}
 
 {% if environment == 'qa' %}
-<div class="bg-orange-600 text-white text-center text-xs font-bold py-1.5 tracking-wider -mx-6 -mt-6 mb-0">
-  ⚠️ QA / TEST ENVIRONMENT — Not Production
+<div class="bg-orange-600 text-white text-center text-xs font-bold py-2 tracking-wider -mx-6 -mt-6 mb-0">
+  <div class="flex items-center justify-center gap-2">
+    <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+    QA / TEST ENVIRONMENT — Not Production
+    <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+  </div>
 </div>
 {% endif %}
 
@@ -49,21 +53,55 @@
             <img id="admin-account-avatar-img" src="" alt="" class="hidden w-full h-full object-cover">
             <span id="admin-account-avatar-initial">?</span>
           </button>
-          <div id="admin-account-dropdown" class="hidden absolute top-full right-0 mt-2 w-60 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden z-50">
-            <div class="p-3 border-b border-zinc-800 bg-zinc-950/50">
-              <p id="admin-account-email" class="text-sm font-medium truncate">Loading...</p>
-              <p class="text-xs text-zinc-500">Administrator</p>
+          <div id="admin-account-dropdown" class="hidden absolute top-full right-0 mt-2 w-72 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl overflow-hidden z-50">
+            <div class="p-4 border-b border-zinc-800 bg-zinc-950/50">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold overflow-hidden">
+                  <img id="admin-account-avatar-lg-img" src="" alt="" class="hidden w-full h-full object-cover">
+                  <span id="admin-account-avatar-lg-initial">?</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p id="admin-account-email" class="text-sm font-medium truncate">Loading...</p>
+                  <p class="text-xs text-zinc-500">Administrator</p>
+                </div>
+              </div>
             </div>
-            <div class="p-1.5">
-              <a id="admin-profile-link" href="/user/profile" class="dropdown-item">👤 My Profile</a>
-              <a id="admin-my-prints-link" href="/my-requests" class="dropdown-item">🖨️ My Prints</a>
+            <div class="p-2">
+              <a id="admin-profile-link" href="/user/profile" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+                <span class="text-lg">👤</span>
+                <div>
+                  <p class="text-sm font-medium">My Account</p>
+                  <p class="text-xs text-zinc-500">Profile & preferences</p>
+                </div>
+              </a>
+              <a id="admin-my-prints-link" href="/my-requests" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+                <span class="text-lg">🖨️</span>
+                <div>
+                  <p class="text-sm font-medium">My Prints</p>
+                  <p class="text-xs text-zinc-500">Track your requests</p>
+                </div>
+              </a>
+              <a href="/my-requests?show=notifications" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+                <span class="text-lg">🔔</span>
+                <div>
+                  <p class="text-sm font-medium">Notification Settings</p>
+                  <p class="text-xs text-zinc-500">Email & push preferences</p>
+                </div>
+              </a>
+              <a href="/feedback?type=suggestion" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+                <span class="text-lg">💡</span>
+                <div>
+                  <p class="text-sm font-medium">Send Feedback</p>
+                  <p class="text-xs text-zinc-500">Suggestions & bug reports</p>
+                </div>
+              </a>
             </div>
-            <div class="border-t border-zinc-800 p-1.5">
-              <a href="/admin/logout" class="dropdown-item text-red-400 hover:bg-red-900/20">
-                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="border-t border-zinc-800 p-2">
+              <a href="/admin/logout" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-900/30 text-red-400 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
                 </svg>
-                Sign Out
+                <span class="text-sm font-medium">Sign Out</span>
               </a>
             </div>
           </div>
@@ -82,23 +120,12 @@
   <!-- Tier 2: System / Tools sub-bar (desktop only) -->
   <div class="hidden lg:block border-t border-zinc-800/60 bg-zinc-950/40">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 flex items-center gap-1 h-9 overflow-x-auto scrollbar-none">
-      <span class="text-[10px] uppercase tracking-widest text-zinc-600 mr-1 shrink-0">System</span>
       <a href="/admin/settings"         class="sys-pill {% if active_page == 'settings' %}active{% endif %}">⚙️ Settings</a>
-      <a href="/admin/features"          class="sys-pill {% if active_page == 'features' %}active{% endif %}">✨ Features</a>
-      <a href="/admin/admins"            class="sys-pill {% if active_page == 'admins' %}active{% endif %}">🛡️ Admins</a>
       <a href="/admin/printer-settings"  class="sys-pill {% if active_page == 'printers' %}active{% endif %}">🖨️ Printers</a>
       <span class="w-px h-4 bg-zinc-800 mx-1 shrink-0"></span>
       <span class="text-[10px] uppercase tracking-widest text-zinc-600 mr-1 shrink-0">Hardware</span>
       <a href="/admin/printellect/devices"  class="sys-pill {% if active_page == 'printellect-devices' %}active{% endif %}">📟 Devices</a>
       <a href="/admin/printellect/releases" class="sys-pill {% if active_page == 'printellect-releases' %}active{% endif %}">📦 Releases</a>
-      <span class="w-px h-4 bg-zinc-800 mx-1 shrink-0"></span>
-      <a href="/admin/file-sync" class="sys-pill {% if active_page == 'file-sync' %}active{% endif %}">📁 File Sync</a>
-      <a href="/admin/debug"     class="sys-pill {% if active_page == 'debug' %}active{% endif %}">🔧 Debug</a>
-      <span class="w-px h-4 bg-zinc-800 mx-1 shrink-0"></span>
-      <span class="text-[10px] uppercase tracking-widest text-zinc-600 mr-1 shrink-0">Comms</span>
-      <a href="/admin/feedback"  class="sys-pill {% if active_page == 'feedback' %}active{% endif %}">📬 Feedback</a>
-      <a href="/admin/broadcast" class="sys-pill {% if active_page == 'broadcast' %}active{% endif %}">📢 Broadcast</a>
-      <a href="/admin/audit"     class="sys-pill {% if active_page == 'audit' %}active{% endif %}">📜 Audit</a>
     </div>
   </div>
 

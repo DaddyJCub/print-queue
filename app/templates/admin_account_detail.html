@@ -34,7 +34,7 @@
           <div class="w-16 h-16 rounded-2xl bg-gradient-to-br 
             {% if account.role == 'owner' %}from-purple-500 to-pink-600
             {% elif account.role == 'admin' %}from-indigo-500 to-blue-600
-            {% elif account.role == 'staff' %}from-cyan-500 to-teal-600
+            {% elif account.role == 'staff' %}from-cyan-500 to-cyan-600
             {% else %}from-emerald-500 to-green-600{% endif %}
             flex items-center justify-center text-white text-2xl font-bold shadow-lg">
             {{ account.name[0]|upper if account.name else '?' }}

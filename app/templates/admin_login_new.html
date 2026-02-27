@@ -7,6 +7,15 @@
   <link rel="stylesheet" href="/static/css/tailwind.css" />
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen flex items-center justify-center">
+  {% if environment == 'qa' %}
+  <div class="fixed top-0 left-0 right-0 bg-orange-600 text-white text-center text-xs font-bold py-2 tracking-wider z-[9999]">
+    <div class="flex items-center justify-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+      QA / TEST ENVIRONMENT — Not Production
+      <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+    </div>
+  </div>
+  {% endif %}
   <div class="w-full max-w-md p-6">
     <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-8">
       <div class="text-center mb-6">

@@ -7,108 +7,6 @@
 
 {% block header_title %}My Prints{% endblock %}
 
-{% block header_right %}
-<!-- Desktop nav links + Account menu -->
-<nav class="hidden sm:flex items-center gap-1">
-  <a href="/" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">Submit</a>
-  <a href="/queue" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">Queue</a>
-  <a href="/store" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">Store</a>
-  <a href="/my-requests" class="px-3 py-2 rounded-lg text-sm font-medium text-white bg-zinc-800 transition flex items-center gap-1.5">
-    <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
-    My Prints
-  </a>
-  <!-- Admin link - shown via JS if user is admin -->
-  <a href="/admin" id="desktop-admin-link" class="hidden px-3 py-2 rounded-lg text-sm font-medium text-amber-400 hover:text-amber-300 hover:bg-amber-900/20 transition flex items-center gap-1.5">
-    <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-    Admin
-  </a>
-  <div class="w-px h-5 bg-zinc-700 mx-1"></div>
-</nav>
-
-<div class="relative">
-  <button id="account-menu-btn" onclick="toggleAccountMenu()" class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 rounded-lg transition tap-highlight">
-    <div class="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">
-      {{ email[0]|upper }}
-    </div>
-    <svg class="w-4 h-4 text-zinc-400 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-    </svg>
-  </button>
-  
-  <!-- Account Dropdown Menu - positioned to right edge of viewport on desktop -->
-  <div id="account-menu" class="hidden absolute top-full mt-2 w-72 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl z-50 overflow-hidden right-0 sm:right-0">
-    <!-- Account Header -->
-    <div class="p-4 border-b border-zinc-800 bg-zinc-950/50">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold">
-          {{ email[0]|upper }}
-        </div>
-        <div class="flex-1 min-w-0">
-          <p class="text-sm font-medium text-white truncate">{{ email }}</p>
-          <p class="text-xs text-zinc-500">Printellect Account</p>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Menu Items -->
-    <div class="p-2">
-      <a href="/user/profile?token={{ token }}" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
-        <span class="text-lg">👤</span>
-        <div>
-          <p class="text-sm font-medium">My Account</p>
-          <p class="text-xs text-zinc-500">Profile & preferences</p>
-        </div>
-      </a>
-      <button onclick="showNotificationSettings()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition text-left">
-        <span class="text-lg">🔔</span>
-        <div>
-          <p class="text-sm font-medium">Notification Settings</p>
-          <p class="text-xs text-zinc-500">Email & push preferences</p>
-        </div>
-      </button>
-      <button onclick="showSyncCode()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition text-left">
-        <span class="text-lg">📱</span>
-        <div>
-          <p class="text-sm font-medium">Sync to App</p>
-          <p class="text-xs text-zinc-500">Transfer session to PWA</p>
-        </div>
-      </button>
-      <a href="/feedback?type=suggestion" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
-        <span class="text-lg">💡</span>
-        <div>
-          <p class="text-sm font-medium">Send Feedback</p>
-          <p class="text-xs text-zinc-500">Suggestions & bug reports</p>
-        </div>
-      </a>
-    </div>
-    
-    <!-- Admin Section (shown via JS if user is admin) -->
-    <div id="account-admin-section" class="hidden p-2 border-t border-zinc-800">
-      <a href="/admin" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-amber-900/30 text-amber-400 transition">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-        </svg>
-        <div>
-          <p class="text-sm font-medium">Admin Dashboard</p>
-          <p class="text-xs text-amber-500/70">Manage print queue</p>
-        </div>
-      </a>
-    </div>
-    
-    <!-- Logout -->
-    <div class="p-2 border-t border-zinc-800">
-      <a href="/my-requests?logout=1" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-900/30 text-red-400 transition">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-        </svg>
-        <span class="text-sm font-medium">Sign Out</span>
-      </a>
-    </div>
-  </div>
-</div>
-{% endblock %}
-
 {% block head_extra %}
 <style>
   /* Tap feedback for mobile */
@@ -492,7 +390,7 @@
         <div class="bg-zinc-800/60 rounded-xl overflow-hidden border border-zinc-700/50">
           <div class="p-4">
             <div class="flex items-center gap-3 mb-3">
-              <div class="w-9 h-9 rounded-lg bg-teal-600/20 flex items-center justify-center flex-shrink-0">
+              <div class="w-9 h-9 rounded-lg bg-indigo-600/20 flex items-center justify-center flex-shrink-0">
                 <span class="text-lg">✅</span>
               </div>
               <div>
@@ -1061,23 +959,12 @@ function toggleShowMore(listId, btn) {
 }
 
 // ========== Account Menu ==========
-function toggleAccountMenu() {
-  const menu = document.getElementById('account-menu');
-  menu.classList.toggle('hidden');
-}
-
-// Close account menu when clicking outside
-document.addEventListener('click', (e) => {
-  const menu = document.getElementById('account-menu');
-  const btn = e.target.closest('button[onclick*="toggleAccountMenu"]');
-  if (!btn && !menu.contains(e.target)) {
-    menu.classList.add('hidden');
-  }
-});
+// Dropdown now handled by pwa_base.html global account menu
 
 // ========== Notification Settings Modal ==========
 function showNotificationSettings() {
-  document.getElementById('account-menu').classList.add('hidden');
+  const menu = document.getElementById('global-account-dropdown');
+  if (menu) menu.classList.add('hidden');
   document.getElementById('notification-modal').classList.remove('hidden');
   initNotificationUI();
   loadUserPrefs();
@@ -1102,7 +989,8 @@ let syncTimerInterval = null;
 let syncExpiry = null;
 
 function showSyncCode() {
-  document.getElementById('account-menu').classList.add('hidden');
+  const menu = document.getElementById('global-account-dropdown');
+  if (menu) menu.classList.add('hidden');
   document.getElementById('sync-modal').classList.remove('hidden');
   refreshSyncCode();
 }
@@ -1672,5 +1560,23 @@ async function checkAdminStatus() {
   }
 }
 checkAdminStatus();
+
+// ========== Auto-open modals from query params ==========
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const show = params.get('show');
+  if (show === 'notifications') {
+    showNotificationSettings();
+    // Clean URL
+    const url = new URL(window.location);
+    url.searchParams.delete('show');
+    history.replaceState(null, '', url.pathname + url.search);
+  } else if (show === 'sync') {
+    showSyncCode();
+    const url = new URL(window.location);
+    url.searchParams.delete('show');
+    history.replaceState(null, '', url.pathname + url.search);
+  }
+})();
 </script>
 {% endblock %}

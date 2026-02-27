@@ -20,6 +20,15 @@
   </style>
 </head>
 <body class="bg-zinc-900 text-white">
+  {% if environment == 'qa' %}
+  <div class="bg-orange-600 text-white text-center text-xs font-bold py-2 tracking-wider z-[9999] relative">
+    <div class="flex items-center justify-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+      QA / TEST ENVIRONMENT — Not Production
+      <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+    </div>
+  </div>
+  {% endif %}
   <!-- Header -->
   <div class="overlay top-0 left-0 right-0 bg-zinc-900/90 backdrop-blur border-b border-zinc-800 p-4">
     <div class="flex items-center justify-between max-w-7xl mx-auto">

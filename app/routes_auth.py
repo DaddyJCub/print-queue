@@ -508,12 +508,31 @@ async def auth_profile_update_redirect(
 
 @router.get("/auth/logout")
 async def user_logout(request: Request):
-    """Log out user."""
+    """Log out user (handles both legacy and OIDC sessions)."""
+    from app.auth import delete_session_by_token
+    
+    # Clear legacy user session
     token = request.cookies.get("user_session")
     if token:
         delete_user_session(token)
     
-    resp = RedirectResponse(url="/", status_code=303)
+    # Clear unified/OIDC session
+    session_token = request.cookies.get("session")
+    if session_token:
+        delete_session_by_token(session_token)
+    
+    # If user had an OIDC session, redirect through Authentik end-session
+    redirect_url = "/"
+    if session_token and is_oidc_enabled():
+        base_url = os.getenv("BASE_URL", "http://localhost:3000")
+        end_session = await get_end_session_url(
+            post_logout_redirect=f"{base_url}/"
+        )
+        if end_session:
+            redirect_url = end_session
+    
+    resp = RedirectResponse(url=redirect_url, status_code=303)
+    resp.delete_cookie("session", path="/")
     resp.delete_cookie("user_session", path="/")
     return resp
 
@@ -608,6 +627,7 @@ async def admin_logout_new(request: Request):
     resp = RedirectResponse(url="/", status_code=303)
     resp.delete_cookie("admin_session", path="/")
     resp.delete_cookie("admin_pw", path="/")  # Also clear legacy cookie
+    resp.delete_cookie("session", path="/")   # Also clear unified/OIDC session
     return resp
 
 

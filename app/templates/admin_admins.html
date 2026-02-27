@@ -35,7 +35,7 @@
         <div class="p-2 bg-purple-600/20 border border-purple-500/30 rounded-lg"><div class="font-semibold text-purple-300">Super Admin</div><div class="text-zinc-400">Full access, manage admins</div></div>
         <div class="p-2 bg-indigo-600/20 border border-indigo-500/30 rounded-lg"><div class="font-semibold text-indigo-300">Admin</div><div class="text-zinc-400">Queue, store, analytics</div></div>
         <div class="p-2 bg-blue-600/20 border border-blue-500/30 rounded-lg"><div class="font-semibold text-blue-300">Operator</div><div class="text-zinc-400">Queue management only</div></div>
-        <div class="p-2 bg-teal-600/20 border border-teal-500/30 rounded-lg"><div class="font-semibold text-teal-300">Designer</div><div class="text-zinc-400">Design workflow & assignments</div></div>
+        <div class="p-2 bg-violet-600/20 border border-violet-500/30 rounded-lg"><div class="font-semibold text-violet-300">Designer</div><div class="text-zinc-400">Design workflow & assignments</div></div>
         <div class="p-2 bg-zinc-700/50 border border-zinc-600/30 rounded-lg"><div class="font-semibold text-zinc-300">Viewer</div><div class="text-zinc-400">Read-only access</div></div>
       </div>
     </div>
@@ -70,7 +70,7 @@
               {% if admin.role == 'super_admin' %}<span class="px-2 py-1 bg-purple-600/20 text-purple-300 text-xs rounded-lg border border-purple-500/30">Super Admin</span>
               {% elif admin.role == 'admin' %}<span class="px-2 py-1 bg-indigo-600/20 text-indigo-300 text-xs rounded-lg border border-indigo-500/30">Admin</span>
               {% elif admin.role == 'operator' %}<span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/30">Operator</span>
-              {% elif admin.role == 'designer' %}<span class="px-2 py-1 bg-teal-600/20 text-teal-300 text-xs rounded-lg border border-teal-500/30">Designer</span>
+              {% elif admin.role == 'designer' %}<span class="px-2 py-1 bg-violet-600/20 text-violet-300 text-xs rounded-lg border border-violet-500/30">Designer</span>
               {% else %}<span class="px-2 py-1 bg-zinc-700/50 text-zinc-300 text-xs rounded-lg border border-zinc-600/30">Viewer</span>{% endif %}
             </td>
             <td class="px-4 py-4">

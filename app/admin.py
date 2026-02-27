@@ -183,6 +183,7 @@ def admin_logout():
     """Clear admin session cookie and redirect to home."""
     resp = RedirectResponse(url="/", status_code=303)
     resp.delete_cookie("admin_pw", path="/")  # Must match path used when setting
+    resp.delete_cookie("session", path="/")   # Also clear unified/OIDC session
     return resp
 
 

@@ -230,46 +230,46 @@
 
 <!-- User Account Card (when logged in) -->
 {% if user %}
-<div class="mb-6 bg-gradient-to-br from-emerald-600/20 to-teal-600/10 border border-emerald-500/30 rounded-2xl p-5 shadow-lg shadow-emerald-900/20">
+<div class="mb-6 bg-gradient-to-br from-indigo-600/20 to-indigo-600/10 border border-indigo-500/30 rounded-2xl p-5 shadow-lg shadow-indigo-900/20">
   <div class="flex items-start gap-4">
-    <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center flex-shrink-0 text-white text-2xl font-bold shadow-lg shadow-emerald-500/30">
+    <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center flex-shrink-0 text-white text-2xl font-bold shadow-lg shadow-indigo-500/30">
       {{ user.display_name[0]|upper if user.display_name else '?' }}
     </div>
     <div class="flex-1 min-w-0">
-      <h3 class="font-bold text-lg text-emerald-100">Welcome back, {{ user.display_name }}!</h3>
-      <p class="text-sm text-emerald-300/70 mt-0.5">Your details are auto-filled below</p>
+      <h3 class="font-bold text-lg text-indigo-100">Welcome back, {{ user.display_name }}!</h3>
+      <p class="text-sm text-indigo-300/70 mt-0.5">Your details are auto-filled below</p>
       
       <!-- Show which fields are pre-filled -->
       <div class="mt-3 flex flex-wrap gap-2">
-        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600/30 border border-indigo-500/30 rounded-lg text-xs text-indigo-200">
+          <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
           {{ user.display_name }}
         </span>
-        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600/30 border border-indigo-500/30 rounded-lg text-xs text-indigo-200">
+          <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
           {{ user.email }}
         </span>
         {% if user.preferred_printer %}
-        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600/30 border border-indigo-500/30 rounded-lg text-xs text-indigo-200">
+          <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
           🖨️ {{ user.preferred_printer }}
         </span>
         {% endif %}
         {% if user.preferred_material %}
-        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600/30 border border-indigo-500/30 rounded-lg text-xs text-indigo-200">
+          <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
           🧵 {{ user.preferred_material }}
         </span>
         {% endif %}
         {% if user.preferred_colors %}
-        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600/30 border border-indigo-500/30 rounded-lg text-xs text-indigo-200">
+          <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
           🎨 {{ user.preferred_colors }}
         </span>
         {% endif %}
       </div>
     </div>
-    <a href="/user/profile?from=submit" class="px-4 py-2 bg-emerald-600/50 hover:bg-emerald-600 border border-emerald-500/50 rounded-xl text-sm font-medium transition tap-highlight whitespace-nowrap shadow-lg shadow-emerald-900/20">
+    <a href="/user/profile?from=submit" class="px-4 py-2 bg-emerald-600/50 hover:bg-emerald-600 border border-emerald-500/50 rounded-xl text-sm font-medium transition tap-highlight whitespace-nowrap shadow-lg shadow-indigo-900/20">
       Edit Profile
     </a>
   </div>
@@ -555,7 +555,7 @@
       <div class="mt-2 text-xs inline-flex items-center gap-2 px-2 py-1 rounded-lg bg-emerald-900/30 border border-emerald-800/50 text-emerald-300">
         💡 {{ printer_suggestions.reason }}
         <button type="button" onclick="document.getElementById('printer-select').value='{{ printer_suggestions.suggested }}'" 
-                class="text-emerald-200 hover:text-white underline">Use it</button>
+                class="text-indigo-200 hover:text-white underline">Use it</button>
       </div>
       {% endif %}
     </div>
@@ -927,10 +927,10 @@
 
 {% if credits_enabled and credits_per_request and credits_per_request > 0 %}
 <!-- Credits option for custom requests -->
-<div class="mt-4 bg-gradient-to-r from-emerald-900/30 to-teal-900/20 border border-emerald-600/30 rounded-2xl p-4">
+<div class="mt-4 bg-gradient-to-r from-indigo-900/30 to-indigo-900/20 border border-indigo-600/30 rounded-2xl p-4">
   <div class="flex items-center justify-between flex-wrap gap-3">
     <div>
-      <p class="text-sm font-medium text-emerald-200">🎁 Have credits?</p>
+      <p class="text-sm font-medium text-indigo-200">🎁 Have credits?</p>
       <p class="text-xs text-zinc-400 mt-0.5">
         Submit this request using {{ credits_per_request }} credit{{ 's' if credits_per_request != 1 else '' }} instead of payment.
         {% if user %}
@@ -941,7 +941,7 @@
     <button type="button" id="credit-request-btn"
             class="rounded-xl transition px-4 py-2.5 text-sm font-bold flex items-center gap-2
             {% if user and user_credits >= credits_per_request %}
-              bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500
+              bg-gradient-to-r bg-indigo-600 hover:bg-indigo-500
             {% else %}
               bg-zinc-800 text-zinc-500 cursor-not-allowed
             {% endif %}"

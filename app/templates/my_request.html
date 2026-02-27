@@ -469,19 +469,19 @@
     {% endif %}
     
     {% if req.requires_design %}
-      <div class="rounded-xl border border-teal-800 bg-teal-900/30 p-3 mb-4">
+      <div class="rounded-xl border border-indigo-800 bg-indigo-900/30 p-3 mb-4">
         <div class="flex items-center justify-between">
-          <div class="font-semibold text-sm text-teal-100">
+          <div class="font-semibold text-sm text-indigo-100">
             {% if req.design_completed_at %}Design completed{% else %}Design in progress{% endif %}
           </div>
           {% if designer_name %}
-            <div class="text-xs text-teal-100">Designer: {{ designer_name }}</div>
+            <div class="text-xs text-indigo-100">Designer: {{ designer_name }}</div>
           {% endif %}
         </div>
         {% if req.design_completed_at %}
-          <p class="text-xs text-teal-200 mt-1">Finished {{ req.design_completed_at|localtime }}. Let us know if anything needs adjustment.</p>
+          <p class="text-xs text-indigo-200 mt-1">Finished {{ req.design_completed_at|localtime }}. Let us know if anything needs adjustment.</p>
         {% else %}
-          <p class="text-xs text-teal-200 mt-1">We’re preparing your model. We’ll notify you once design is done.</p>
+          <p class="text-xs text-indigo-200 mt-1">We’re preparing your model. We’ll notify you once design is done.</p>
         {% endif %}
       </div>
     {% endif %}
