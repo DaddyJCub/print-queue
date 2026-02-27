@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from app.auth import get_current_account, is_feature_enabled, require_account, require_admin
+from app.auth import get_current_account, get_current_admin, is_feature_enabled, require_account, require_admin
 from app.printellect_service import (
     claim_hash,
     generate_device_token,
@@ -628,14 +628,24 @@ async def add_device_wizard_page(request: Request, account=Depends(_require_prin
     return templates.TemplateResponse("device_add_wizard.html", {"request": request, "account": account})
 
 
+@router.get("/printellect/help", response_class=HTMLResponse)
+async def help_page(request: Request, account=Depends(_require_printellect_account)):
+    admin = await get_current_admin(request)
+    return templates.TemplateResponse(
+        "help_printellect.html",
+        {"request": request, "account": account, "is_admin": bool(admin)},
+    )
+
+
 @router.get("/printellect/devices/{device_id}", response_class=HTMLResponse)
 async def owner_device_detail_page(device_id: str, request: Request, account=Depends(_require_printellect_account)):
     conn = db()
     _get_device_for_owner(conn, device_id, account.id)
     conn.close()
+    admin = await get_current_admin(request)
     return templates.TemplateResponse(
         "device_detail.html",
-        {"request": request, "account": account, "device_id": device_id},
+        {"request": request, "account": account, "device_id": device_id, "is_admin": bool(admin)},
     )
 
 
@@ -870,6 +880,24 @@ async def device_detail(device_id: str, account=Depends(_require_printellect_acc
             },
         }
     )
+
+
+@router.put("/api/printellect/devices/{device_id}/name")
+async def rename_device(device_id: str, request: Request, account=Depends(_require_printellect_account)):
+    """Rename a device. Body: {"name": "My Device"}"""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    name = (body.get("name") or "").strip()[:64]
+    if not name:
+        raise HTTPException(status_code=422, detail="Name cannot be empty")
+    conn = db()
+    _get_device_for_owner(conn, device_id, account.id)  # ownership check
+    conn.execute("UPDATE printellect_devices SET name = ? WHERE device_id = ?", (name, device_id))
+    conn.commit()
+    conn.close()
+    return JSONResponse({"ok": True, "name": name})
 
 
 async def _enqueue_user_action(

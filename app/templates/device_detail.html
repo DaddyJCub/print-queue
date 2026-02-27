@@ -1,216 +1,468 @@
 {% extends "pwa_base.html" %}
 
-{% block title %}Device Detail | Printellect{% endblock %}
+{% block title %}Device Control | Printellect{% endblock %}
 {% block nav_myrequests %}text-white bg-zinc-800{% endblock %}
 {% block bnav_myrequests %}active{% endblock %}
 {% block header_title %}Device Control{% endblock %}
 
+{% block subnav %}
+<div class="sticky top-14 z-30 bg-zinc-950/95 backdrop-blur-lg border-b border-zinc-800/60">
+  <div class="max-w-6xl mx-auto px-4">
+    <div class="flex items-center gap-1 h-11 overflow-x-auto hide-scrollbar">
+      <a href="/my-requests" class="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        My Prints
+      </a>
+      <div class="w-px h-4 bg-zinc-700 mx-0.5 flex-shrink-0"></div>
+      <a href="/printellect/devices" class="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-zinc-800 text-white transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/></svg>
+        Devices
+      </a>
+      <div class="flex-1"></div>
+      <a href="/printellect/help" class="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-sm text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors" title="Help & guides">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Help
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
 {% block content %}
 <div class="max-w-6xl mx-auto space-y-4">
-  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
-    <div class="flex items-start justify-between gap-3">
-      <div>
-        <h1 class="text-xl font-bold">Printellect Device</h1>
-        <p id="deviceMeta" class="text-sm text-zinc-400 mt-1 font-mono">{{ device_id }}</p>
+
+  <!-- Device Header Card -->
+  <section class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-2 flex-wrap">
+          <h1 id="deviceName" class="text-xl font-bold">Loading…</h1>
+          <!-- Rename toggle -->
+          <button id="renameToggleBtn" onclick="toggleRename()" class="p-1 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition" aria-label="Rename device" title="Rename device">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+          </button>
+          <span id="onlineBadge" class="hidden flex-shrink-0 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium border">
+            <span id="onlineDot" class="w-1.5 h-1.5 rounded-full"></span>
+            <span id="onlineLabel">—</span>
+          </span>
+        </div>
+        <p class="text-xs text-zinc-500 font-mono mt-1" id="deviceIdLabel">{{ device_id }}</p>
+        <p id="deviceVersions" class="text-xs text-zinc-500 mt-1 hidden"></p>
       </div>
-      <div class="flex gap-2">
-        <a href="/printellect/devices" class="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium">Back</a>
-        <a href="/user/profile#printellect" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium">Quick Add</a>
+      <div class="flex gap-2 flex-shrink-0">
+        <a href="/printellect/devices" class="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+          Devices
+        </a>
+        <a href="/printellect/add-device" class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-medium transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+          Add
+        </a>
+      </div>
+    </div>
+
+    <!-- Inline rename form (hidden by default) -->
+    <div id="renameForm" class="hidden mt-3 pt-3 border-t border-zinc-800">
+      <div class="flex gap-2 max-w-sm">
+        <input id="renameInput" type="text" placeholder="New device name" maxlength="64"
+               class="flex-1 px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 focus:border-indigo-500 text-sm outline-none transition-colors" />
+        <button onclick="submitRename()" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold transition-colors">Save</button>
+        <button onclick="toggleRename()" class="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm transition-colors">Cancel</button>
       </div>
     </div>
   </section>
 
-  <section id="actionStatus" class="hidden border rounded-2xl p-3 text-sm"></section>
+  <!-- Action status banner -->
+  <div id="actionStatus" class="hidden border rounded-2xl p-3 text-sm" role="alert"></div>
 
-  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 space-y-4">
-    <h2 class="font-semibold">Playback</h2>
-    <div class="grid md:grid-cols-4 gap-2">
-      <select id="perkSelect" class="md:col-span-2 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm">
-        <option value="juggernog">Juggernog</option>
-        <option value="quick_revive">Quick Revive</option>
-        <option value="double_tap">Double Tap</option>
-        <option value="speed_cola">Speed Cola</option>
-        <option value="deadshot">Deadshot</option>
-        <option value="staminup">Stamin-Up</option>
-        <option value="mulekick">Mule Kick</option>
+  <!-- Offline warning -->
+  <div id="offlineWarning" class="hidden bg-amber-900/20 border border-amber-700/40 rounded-2xl p-3 text-sm text-amber-200 flex items-center gap-2">
+    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+    Device is offline — controls are disabled until it reconnects.
+  </div>
+
+  <!-- ── Playback ─────────────────────────────────────────────────────────── -->
+  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="font-semibold">Playback</h2>
+      <button class="help-tip-btn text-zinc-600 hover:text-zinc-300 transition-colors p-1 rounded" data-tip="playback-tip" aria-label="Help for Playback" title="What is this?">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      </button>
+    </div>
+    <div id="playback-tip" class="hidden text-xs text-zinc-400 bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3 py-2">
+      Choose a perk theme and tap <strong>Play</strong> to trigger the light and audio show on your device. <strong>Stop</strong> ends playback immediately.
+    </div>
+    <div class="grid sm:grid-cols-4 gap-2">
+      <select id="perkSelect" class="device-action-control sm:col-span-2 px-3 py-2.5 bg-zinc-900 border border-zinc-700 rounded-xl text-sm focus:border-indigo-500 outline-none transition-colors">
+        <option value="juggernog">🍺 Juggernog</option>
+        <option value="quick_revive">💊 Quick Revive</option>
+        <option value="double_tap">🎯 Double Tap</option>
+        <option value="speed_cola">⚡ Speed Cola</option>
+        <option value="deadshot">🎯 Deadshot Daiquiri</option>
+        <option value="staminup">👟 Stamin-Up</option>
+        <option value="mulekick">🦵 Mule Kick</option>
       </select>
-      <button id="playBtn" class="device-action-control px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold">Play Perk</button>
-      <button id="stopBtn" class="device-action-control px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-semibold">Stop Audio</button>
+      <button id="playBtn" class="device-action-control flex items-center justify-center gap-1.5 px-3 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-xl text-sm font-semibold transition-colors">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        Play Perk
+      </button>
+      <button id="stopBtn" class="device-action-control flex items-center justify-center gap-1.5 px-3 py-2.5 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 rounded-xl text-sm font-semibold transition-colors">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+        Stop
+      </button>
     </div>
   </section>
 
+  <!-- ── Volume + Brightness + Idle ──────────────────────────────────────── -->
   <div class="grid lg:grid-cols-3 gap-4">
+
+    <!-- Volume -->
     <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
-      <h2 class="font-semibold mb-3">Volume</h2>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold">Volume</h2>
+        <button class="help-tip-btn text-zinc-600 hover:text-zinc-300 transition-colors p-1 rounded" data-tip="volume-tip" aria-label="Help for Volume">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </button>
+      </div>
+      <div id="volume-tip" class="hidden text-xs text-zinc-400 bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3 py-2 mb-3">
+        Controls speaker output during perk playback. Range is 0–30. Tap <strong>Apply</strong> to send.
+      </div>
       <div class="space-y-3">
-        <input id="volumeRange" type="range" min="0" max="30" value="20" class="w-full accent-indigo-500">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-zinc-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M12 6v12m-3.536-9.536a5 5 0 000 7.072"/></svg>
+          <input id="volumeRange" type="range" min="0" max="30" value="20" class="device-action-control flex-1 accent-indigo-500 h-2 rounded-full">
+        </div>
         <div class="flex items-center justify-between text-sm">
-          <span>Level: <span id="volumeValue" class="font-semibold">20</span>/30</span>
-          <button id="volumeBtn" class="device-action-control px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg">Apply</button>
+          <span class="text-zinc-400">Level: <span id="volumeValue" class="font-bold text-white">20</span> <span class="text-zinc-600">/ 30</span></span>
+          <button id="volumeBtn" class="device-action-control px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-xs font-medium transition-colors">Apply</button>
         </div>
       </div>
     </section>
 
+    <!-- Brightness -->
     <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
-      <h2 class="font-semibold mb-3">Brightness</h2>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold">Brightness</h2>
+        <button class="help-tip-btn text-zinc-600 hover:text-zinc-300 transition-colors p-1 rounded" data-tip="brightness-tip" aria-label="Help for Brightness">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </button>
+      </div>
+      <div id="brightness-tip" class="hidden text-xs text-zinc-400 bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3 py-2 mb-3">
+        Controls LED strip intensity during idle and playback. Range is 0–100%. Tap <strong>Apply</strong> to send.
+      </div>
       <div class="space-y-3">
-        <input id="brightnessRange" type="range" min="0" max="100" value="80" class="w-full accent-indigo-500">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-zinc-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          <input id="brightnessRange" type="range" min="0" max="100" value="80" class="device-action-control flex-1 accent-indigo-500 h-2 rounded-full">
+        </div>
         <div class="flex items-center justify-between text-sm">
-          <span>Level: <span id="brightnessValue" class="font-semibold">80</span>/100</span>
-          <button id="brightnessBtn" class="device-action-control px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg">Apply</button>
+          <span class="text-zinc-400">Level: <span id="brightnessValue" class="font-bold text-white">80</span> <span class="text-zinc-600">%</span></span>
+          <button id="brightnessBtn" class="device-action-control px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-xs font-medium transition-colors">Apply</button>
         </div>
       </div>
     </section>
 
+    <!-- Idle + System -->
     <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
-      <h2 class="font-semibold mb-3">Idle + System</h2>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold">Idle + System</h2>
+        <button class="help-tip-btn text-zinc-600 hover:text-zinc-300 transition-colors p-1 rounded" data-tip="idle-tip" aria-label="Help for Idle mode">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </button>
+      </div>
+      <div id="idle-tip" class="hidden text-xs text-zinc-400 bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3 py-2 mb-3">
+        Sets the LED animation shown when no perk is playing. <strong>default</strong> uses the device preset; <strong>off</strong> turns LEDs off; <strong>ambient</strong> = soft glow; <strong>pulse</strong> = breathing effect. <strong>Reboot</strong> soft-restarts the device (settings preserved).
+      </div>
       <div class="space-y-2">
-        <select id="idleMode" class="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm">
-          <option value="default">default</option>
-          <option value="off">off</option>
-          <option value="ambient">ambient</option>
-          <option value="pulse">pulse</option>
+        <select id="idleMode" class="device-action-control w-full px-3 py-2.5 bg-zinc-900 border border-zinc-700 rounded-xl text-sm focus:border-indigo-500 outline-none transition-colors">
+          <option value="default">Default</option>
+          <option value="off">Off</option>
+          <option value="ambient">Ambient</option>
+          <option value="pulse">Pulse</option>
         </select>
-        <button id="idleBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm">Set Idle Mode</button>
-        <button id="rebootBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm">Reboot</button>
+        <button id="idleBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">Set Idle Mode</button>
+        <button id="rebootBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium text-zinc-300 transition-colors">
+          Reboot Device
+        </button>
       </div>
     </section>
   </div>
 
-  <div class="grid lg:grid-cols-2 gap-4">
-    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
-      <h2 class="font-semibold mb-3">Diagnostics</h2>
-      <div class="grid sm:grid-cols-2 gap-2 mb-3">
-        <input id="lightsPattern" value="pulse" placeholder="lights pattern" class="px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm">
-        <input id="lightsDuration" type="number" min="100" step="100" value="2000" placeholder="duration ms" class="px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm">
+  <!-- ── Device Status ──────────────────────────────────────────────────── -->
+  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-semibold">Device Status</h2>
+      <span class="text-xs text-zinc-600">Auto-refreshes every 3s</span>
+    </div>
+    <div id="statusGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div class="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-3">
+        <p class="text-xs text-zinc-500 mb-1">State</p>
+        <p id="stat-state" class="font-semibold text-sm capitalize">—</p>
       </div>
-      <button id="testLightsBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm mb-3">Run Light Test</button>
-      <div class="grid sm:grid-cols-[1fr_auto] gap-2">
-        <input id="testTrack" value="juggernog" placeholder="track id" class="px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm">
-        <button id="testAudioBtn" class="device-action-control px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm">Test Audio</button>
+      <div class="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-3">
+        <p class="text-xs text-zinc-500 mb-1">Now Playing</p>
+        <p id="stat-playing" class="font-semibold text-sm">—</p>
       </div>
-    </section>
-
-    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
-      <h2 class="font-semibold mb-3">OTA</h2>
-      <div class="grid sm:grid-cols-[1fr_auto] gap-2">
-        <input id="updateVersion" value="latest" placeholder="latest or version" class="px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm font-mono">
-        <button id="updateBtn" class="device-action-control px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold">Apply Update</button>
+      <div class="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-3">
+        <p class="text-xs text-zinc-500 mb-1">Volume</p>
+        <p id="stat-volume" class="font-semibold text-sm">—</p>
       </div>
-      <p class="text-xs text-zinc-500 mt-2">Use <span class="font-mono">latest</span> or a release version like <span class="font-mono">0.16.0</span>.</p>
-    </section>
-  </div>
+      <div class="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-3">
+        <p class="text-xs text-zinc-500 mb-1">Last Seen</p>
+        <p id="stat-lastseen" class="font-semibold text-sm">—</p>
+      </div>
+    </div>
 
-  <div class="grid lg:grid-cols-2 gap-4">
-    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
-      <h2 class="font-semibold mb-2">Live State</h2>
-      <pre id="state" class="text-xs whitespace-pre-wrap overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900 p-3"></pre>
-    </section>
+    <!-- Last command summary -->
+    <div id="lastCommandRow" class="hidden mt-3 pt-3 border-t border-zinc-800 text-xs text-zinc-400 flex items-center gap-2">
+      <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      <span>Last command: <span id="lastCommandText" class="font-mono text-zinc-300"></span></span>
+      <span class="ml-auto text-zinc-600" id="lastCommandTime"></span>
+    </div>
 
-    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
-      <h2 class="font-semibold mb-2">Recent Commands</h2>
-      <pre id="commands" class="text-xs whitespace-pre-wrap overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900 p-3"></pre>
-    </section>
-  </div>
+    <!-- Developer info (expandable) -->
+    <details class="mt-3 pt-3 border-t border-zinc-800">
+      <summary class="text-xs text-zinc-600 hover:text-zinc-400 cursor-pointer select-none flex items-center gap-1 transition-colors">
+        <svg class="w-3 h-3 transition-transform details-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        Developer info (raw state + recent commands)
+      </summary>
+      <div class="grid lg:grid-cols-2 gap-3 mt-3">
+        <div>
+          <p class="text-xs text-zinc-500 mb-1">Raw State</p>
+          <pre id="state" class="text-xs whitespace-pre-wrap overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/80 p-3 max-h-48 overflow-y-auto"></pre>
+        </div>
+        <div>
+          <p class="text-xs text-zinc-500 mb-1">Recent Commands</p>
+          <pre id="commands" class="text-xs whitespace-pre-wrap overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/80 p-3 max-h-48 overflow-y-auto"></pre>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <!-- ── Diagnostics ────────────────────────────────────────────────────── -->
+  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-semibold">Diagnostics</h2>
+      <button class="help-tip-btn text-zinc-600 hover:text-zinc-300 transition-colors p-1 rounded" data-tip="diag-tip" aria-label="Help for Diagnostics">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      </button>
+    </div>
+    <div id="diag-tip" class="hidden text-xs text-zinc-400 bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3 py-2 mb-3">
+      Use these to test your device hardware. <strong>Light Test</strong> runs a temporary LED pattern; <strong>Test Audio</strong> plays a short sample track by ID.
+    </div>
+    <div class="grid sm:grid-cols-2 gap-4">
+      <div class="space-y-2">
+        <p class="text-xs font-medium text-zinc-400">Light Test</p>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-xs text-zinc-500 mb-1 block">Pattern</label>
+            <input id="lightsPattern" value="pulse" placeholder="e.g. pulse" class="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-sm focus:border-indigo-500 outline-none transition-colors">
+          </div>
+          <div>
+            <label class="text-xs text-zinc-500 mb-1 block">Duration (ms)</label>
+            <input id="lightsDuration" type="number" min="100" step="100" value="2000" class="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-sm focus:border-indigo-500 outline-none transition-colors">
+          </div>
+        </div>
+        <button id="testLightsBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">Run Light Test</button>
+      </div>
+      <div class="space-y-2">
+        <p class="text-xs font-medium text-zinc-400">Audio Test</p>
+        <div>
+          <label class="text-xs text-zinc-500 mb-1 block">Track ID</label>
+          <input id="testTrack" value="juggernog" placeholder="track id" class="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-sm font-mono focus:border-indigo-500 outline-none transition-colors">
+        </div>
+        <button id="testAudioBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">Test Audio</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── OTA (admins only) ──────────────────────────────────────────────── -->
+  {% if is_admin %}
+  <section class="bg-zinc-900/60 border border-amber-700/30 rounded-2xl p-4">
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-2">
+        <h2 class="font-semibold">Firmware Update (OTA)</h2>
+        <span class="text-xs px-2 py-0.5 rounded-full bg-amber-900/30 text-amber-400 border border-amber-700/40 font-medium">Admin</span>
+      </div>
+      <button class="help-tip-btn text-zinc-600 hover:text-zinc-300 transition-colors p-1 rounded" data-tip="ota-tip" aria-label="Help for OTA">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      </button>
+    </div>
+    <div id="ota-tip" class="hidden text-xs text-zinc-400 bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3 py-2 mb-3">
+      Sends an OTA update command to the device. Enter <code class="font-mono">latest</code> to use the current promoted release, or a specific version like <code class="font-mono">0.16.0</code>. The device will reboot after applying.
+    </div>
+    <div class="flex gap-2">
+      <input id="updateVersion" value="latest" placeholder="latest or 0.x.y" class="device-action-control flex-1 px-3 py-2.5 bg-zinc-900 border border-zinc-700 rounded-xl text-sm font-mono focus:border-amber-500 outline-none transition-colors">
+      <button id="updateBtn" class="device-action-control flex-shrink-0 px-4 py-2.5 bg-amber-700 hover:bg-amber-600 active:bg-amber-800 rounded-xl text-sm font-semibold text-white transition-colors">Apply Update</button>
+    </div>
+    <p class="text-xs text-zinc-600 mt-2">Current firmware: <span id="currentFW" class="font-mono text-zinc-500">—</span></p>
+  </section>
+  {% endif %}
+
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+// ── Inline help tips ──────────────────────────────────────────────────────────
+document.querySelectorAll('.help-tip-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tipId = btn.dataset.tip;
+    const tip = document.getElementById(tipId);
+    if (!tip) return;
+    const hidden = tip.classList.toggle('hidden');
+    btn.setAttribute('aria-expanded', String(!hidden));
+  });
+});
+
+// ── Device ID + state ──────────────────────────────────────────────────────────
 const deviceId = {{ device_id|tojson }};
 let lastDevice = null;
 let loadingDevice = false;
 const POLL_INTERVAL_MS = 3000;
-const dirtyUntil = {
-  volume: 0,
-  brightness: 0,
-  idle_mode: 0,
-};
+const dirtyUntil = { volume: 0, brightness: 0, idle_mode: 0 };
 
-function markDirty(field, durationMs = 8000) {
-  dirtyUntil[field] = Date.now() + durationMs;
-}
+function markDirty(field, ms = 8000) { dirtyUntil[field] = Date.now() + ms; }
+function clearDirty(field) { dirtyUntil[field] = 0; }
+function canSyncField(field) { return Date.now() >= (dirtyUntil[field] || 0); }
 
-function clearDirty(field) {
-  dirtyUntil[field] = 0;
-}
-
-function canSyncField(field) {
-  return Date.now() >= (dirtyUntil[field] || 0);
-}
-
+// ── Status helpers ────────────────────────────────────────────────────────────
 function showActionStatus(ok, message) {
   const box = document.getElementById('actionStatus');
-  box.classList.remove('hidden', 'bg-emerald-900/20', 'border-emerald-500/40', 'text-emerald-200', 'bg-red-900/20', 'border-red-500/40', 'text-red-200');
+  box.className = 'border rounded-2xl p-3 text-sm flex items-center gap-2';
   if (ok) {
     box.classList.add('bg-emerald-900/20', 'border-emerald-500/40', 'text-emerald-200');
+    box.innerHTML = `<svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg><span>${message}</span>`;
   } else {
     box.classList.add('bg-red-900/20', 'border-red-500/40', 'text-red-200');
+    box.innerHTML = `<svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>${message}</span>`;
   }
-  box.textContent = message;
 }
 
 function setControlsEnabled(isOnline) {
-  const controls = document.querySelectorAll('.device-action-control');
-  controls.forEach((control) => {
-    control.disabled = !isOnline;
-    control.classList.toggle('opacity-50', !isOnline);
-    control.classList.toggle('cursor-not-allowed', !isOnline);
+  document.querySelectorAll('.device-action-control').forEach(el => {
+    el.disabled = !isOnline;
+    el.classList.toggle('opacity-40', !isOnline);
+    el.classList.toggle('cursor-not-allowed', !isOnline);
+    el.classList.toggle('pointer-events-none', !isOnline);
   });
+  const warning = document.getElementById('offlineWarning');
+  if (warning) warning.classList.toggle('hidden', isOnline);
 }
 
-async function postAction(action, payload) {
-  try {
-    const resp = await fetch(`/api/printellect/devices/${deviceId}/actions/${action}`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(payload || {}),
-    });
-    const raw = await resp.text();
-    let data = {};
-    try { data = JSON.parse(raw); } catch (_) {}
-    if (!resp.ok) {
-      showActionStatus(false, data.detail || data.error || 'Action failed');
-      return;
-    }
-    showActionStatus(true, `Queued ${action}${data.cmd_id ? ` (cmd ${data.cmd_id})` : ''}`);
-    await loadDevice();
-  } catch (error) {
-    showActionStatus(false, 'Network error while sending action');
+function relativeTime(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr + (isoStr.endsWith('Z') ? '' : 'Z'));
+  if (isNaN(d)) return '—';
+  const diffS = Math.round((Date.now() - d) / 1000);
+  if (diffS < 10) return 'Just now';
+  if (diffS < 60) return `${diffS}s ago`;
+  const diffM = Math.round(diffS / 60);
+  if (diffM < 60) return `${diffM}m ago`;
+  return `${Math.round(diffM / 60)}h ago`;
+}
+
+function perkLabel(perk) {
+  const map = {
+    juggernog: '🍺 Juggernog', quick_revive: '💊 Quick Revive',
+    double_tap: '🎯 Double Tap', speed_cola: '⚡ Speed Cola',
+    deadshot: '🎯 Deadshot', staminup: '👟 Stamin-Up', mulekick: '🦵 Mule Kick',
+  };
+  return map[perk] || perk || '—';
+}
+
+function updateStatusCards(d) {
+  const state = d.state || {};
+
+  // Connection badge
+  const badge = document.getElementById('onlineBadge');
+  const dot = document.getElementById('onlineDot');
+  const label = document.getElementById('onlineLabel');
+  badge.classList.remove('hidden');
+  if (d.online) {
+    badge.className = 'flex-shrink-0 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium border bg-emerald-700/25 text-emerald-300 border-emerald-700/40';
+    dot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse';
+    label.textContent = 'Online';
+  } else {
+    badge.className = 'flex-shrink-0 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium border bg-zinc-700/50 text-zinc-400 border-zinc-700';
+    dot.className = 'w-1.5 h-1.5 rounded-full bg-zinc-500';
+    label.textContent = 'Offline';
+  }
+
+  // Stat cards
+  const playbackState = state.status || state.state || '—';
+  document.getElementById('stat-state').textContent = playbackState;
+  document.getElementById('stat-playing').textContent = state.playing ? perkLabel(state.playing) : '—';
+  document.getElementById('stat-volume').textContent = state.volume != null ? `${state.volume} / 30` : '—';
+  document.getElementById('stat-lastseen').textContent = relativeTime(d.last_seen_at);
+
+  // FW version for OTA section
+  const fwEl = document.getElementById('currentFW');
+  if (fwEl) fwEl.textContent = d.fw_version || '—';
+
+  // Versions line
+  const versions = document.getElementById('deviceVersions');
+  if (d.fw_version || d.app_version) {
+    versions.textContent = [d.fw_version && `FW ${d.fw_version}`, d.app_version && `APP ${d.app_version}`].filter(Boolean).join('  ·  ');
+    versions.classList.remove('hidden');
+  }
+
+  // Last command
+  const cmds = d.recent_commands || [];
+  const lastCmdRow = document.getElementById('lastCommandRow');
+  if (cmds.length) {
+    const last = cmds[0];
+    document.getElementById('lastCommandText').textContent = last.action || last.type || JSON.stringify(last);
+    document.getElementById('lastCommandTime').textContent = relativeTime(last.created_at || last.ts);
+    lastCmdRow.classList.remove('hidden');
   }
 }
 
+// ── Data sync ─────────────────────────────────────────────────────────────────
 function syncControlValues(state) {
   if (typeof state.volume === 'number') {
-    const volumeRange = document.getElementById('volumeRange');
-    if (canSyncField('volume') || Number(volumeRange.value) === state.volume) {
-      volumeRange.value = state.volume;
+    const r = document.getElementById('volumeRange');
+    if (canSyncField('volume') || Number(r.value) === state.volume) {
+      r.value = state.volume;
       document.getElementById('volumeValue').textContent = String(state.volume);
       clearDirty('volume');
     }
   }
   if (typeof state.brightness === 'number') {
-    const brightnessRange = document.getElementById('brightnessRange');
-    if (canSyncField('brightness') || Number(brightnessRange.value) === state.brightness) {
-      brightnessRange.value = state.brightness;
+    const r = document.getElementById('brightnessRange');
+    if (canSyncField('brightness') || Number(r.value) === state.brightness) {
+      r.value = state.brightness;
       document.getElementById('brightnessValue').textContent = String(state.brightness);
       clearDirty('brightness');
     }
   }
   if (typeof state.idle_mode === 'string') {
-    const idle = document.getElementById('idleMode');
-    const exists = Array.from(idle.options).some((opt) => opt.value === state.idle_mode);
+    const sel = document.getElementById('idleMode');
+    const exists = Array.from(sel.options).some(o => o.value === state.idle_mode);
     if (!exists) {
       const opt = document.createElement('option');
-      opt.value = state.idle_mode;
-      opt.textContent = state.idle_mode;
-      idle.appendChild(opt);
+      opt.value = state.idle_mode; opt.textContent = state.idle_mode;
+      sel.appendChild(opt);
     }
-    if (canSyncField('idle_mode') || idle.value === state.idle_mode) {
-      idle.value = state.idle_mode;
+    if (canSyncField('idle_mode') || sel.value === state.idle_mode) {
+      sel.value = state.idle_mode;
       clearDirty('idle_mode');
     }
   }
+}
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+async function postAction(action, payload) {
+  const resp = await fetch(`/api/printellect/devices/${deviceId}/actions/${action}`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload || {}),
+  });
+  const raw = await resp.text();
+  let data = {};
+  try { data = JSON.parse(raw); } catch (_) {}
+  if (!resp.ok) { showActionStatus(false, data.detail || data.error || 'Action failed'); return; }
+  showActionStatus(true, `Queued ${action}${data.cmd_id ? ` (cmd ${data.cmd_id})` : ''}`);
+  await loadDevice();
 }
 
 async function loadDevice() {
@@ -218,46 +470,79 @@ async function loadDevice() {
   loadingDevice = true;
   try {
     const resp = await fetch(`/api/printellect/devices/${deviceId}`);
-    if (!resp.ok) {
-      showActionStatus(false, 'Failed to load device');
-      return;
-    }
+    if (!resp.ok) { showActionStatus(false, 'Failed to load device'); return; }
     const data = await resp.json();
     const d = data.device || {};
     lastDevice = d;
-    const status = d.online ? 'online' : 'offline';
-    document.getElementById('deviceMeta').textContent = `${d.name || d.device_id} (${d.device_id}) • ${status} • fw ${d.fw_version || '-'} • app ${d.app_version || '-'}`;
-    document.getElementById('state').textContent = JSON.stringify(d.state || {}, null, 2);
-    document.getElementById('commands').textContent = JSON.stringify(d.recent_commands || [], null, 2);
+
+    // Update device name in header
+    const nameEl = document.getElementById('deviceName');
+    if (nameEl && d.name) nameEl.textContent = d.name;
+
+    // Update status cards
+    updateStatusCards(d);
+
+    // Dev info
+    const stateEl = document.getElementById('state');
+    if (stateEl) stateEl.textContent = JSON.stringify(d.state || {}, null, 2);
+    const cmdsEl = document.getElementById('commands');
+    if (cmdsEl) cmdsEl.textContent = JSON.stringify(d.recent_commands || [], null, 2);
+
     syncControlValues(d.state || {});
     setControlsEnabled(Boolean(d.online));
-  } catch (error) {
-    showActionStatus(false, 'Network error while loading device');
+  } catch (e) {
+    showActionStatus(false, 'Network error loading device');
   } finally {
     loadingDevice = false;
   }
 }
 
-document.getElementById('volumeRange').addEventListener('input', (event) => {
-  document.getElementById('volumeValue').textContent = event.target.value;
+// ── Rename ────────────────────────────────────────────────────────────────────
+function toggleRename() {
+  const form = document.getElementById('renameForm');
+  form.classList.toggle('hidden');
+  if (!form.classList.contains('hidden')) {
+    const inp = document.getElementById('renameInput');
+    inp.value = document.getElementById('deviceName').textContent.trim();
+    inp.focus(); inp.select();
+  }
+}
+
+async function submitRename() {
+  const inp = document.getElementById('renameInput');
+  const name = inp.value.trim();
+  if (!name) return;
+  const resp = await fetch(`/api/printellect/devices/${deviceId}/name`, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ name }),
+  });
+  if (resp.ok) {
+    document.getElementById('deviceName').textContent = name;
+    toggleRename();
+    showActionStatus(true, 'Device renamed');
+  } else {
+    const d = await resp.json().catch(() => ({}));
+    showActionStatus(false, d.detail || 'Rename failed');
+  }
+}
+
+// ── Event listeners ───────────────────────────────────────────────────────────
+document.getElementById('volumeRange').addEventListener('input', e => {
+  document.getElementById('volumeValue').textContent = e.target.value;
   markDirty('volume', 5000);
 });
-
-document.getElementById('brightnessRange').addEventListener('input', (event) => {
-  document.getElementById('brightnessValue').textContent = event.target.value;
+document.getElementById('brightnessRange').addEventListener('input', e => {
+  document.getElementById('brightnessValue').textContent = e.target.value;
   markDirty('brightness', 5000);
 });
+document.getElementById('idleMode').addEventListener('change', () => markDirty('idle_mode', 10000));
 
-document.getElementById('idleMode').addEventListener('change', () => {
-  markDirty('idle_mode', 10000);
-});
-
-document.getElementById('playBtn').addEventListener('click', () => {
-  const perk = document.getElementById('perkSelect').value;
-  postAction('play', {perk});
-});
+document.getElementById('playBtn').addEventListener('click', () => postAction('play', {perk: document.getElementById('perkSelect').value}));
 document.getElementById('stopBtn').addEventListener('click', () => postAction('stop', {}));
-document.getElementById('rebootBtn').addEventListener('click', () => postAction('reboot', {}));
+document.getElementById('rebootBtn').addEventListener('click', () => {
+  if (!confirm('Reboot this device? It will go offline briefly.')) return;
+  postAction('reboot', {});
+});
 document.getElementById('volumeBtn').addEventListener('click', () => {
   markDirty('volume', 10000);
   postAction('volume', {level: parseInt(document.getElementById('volumeRange').value, 10)});
@@ -270,30 +555,22 @@ document.getElementById('idleBtn').addEventListener('click', () => {
   markDirty('idle_mode', 10000);
   postAction('idle', {mode: document.getElementById('idleMode').value});
 });
-document.getElementById('testLightsBtn').addEventListener('click', () => {
-  const pattern = document.getElementById('lightsPattern').value.trim();
-  const duration_ms = parseInt(document.getElementById('lightsDuration').value, 10);
-  postAction('test-lights', {pattern, duration_ms});
-});
-document.getElementById('testAudioBtn').addEventListener('click', () => {
-  const track_id = document.getElementById('testTrack').value.trim();
-  postAction('test-audio', {track_id});
-});
-document.getElementById('updateBtn').addEventListener('click', () => {
+document.getElementById('testLightsBtn').addEventListener('click', () =>
+  postAction('test-lights', {pattern: document.getElementById('lightsPattern').value.trim(), duration_ms: parseInt(document.getElementById('lightsDuration').value, 10)}));
+document.getElementById('testAudioBtn').addEventListener('click', () =>
+  postAction('test-audio', {track_id: document.getElementById('testTrack').value.trim()}));
+
+{% if is_admin %}
+document.getElementById('updateBtn')?.addEventListener('click', () => {
   const version = document.getElementById('updateVersion').value.trim() || 'latest';
+  if (!confirm(`Apply firmware update "${version}"? The device will reboot.`)) return;
   postAction('update', {version});
 });
+{% endif %}
 
+// ── Init + polling ────────────────────────────────────────────────────────────
 loadDevice();
-setInterval(() => {
-  if (document.visibilityState === 'visible') {
-    loadDevice();
-  }
-}, POLL_INTERVAL_MS);
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
-    loadDevice();
-  }
-});
+setInterval(() => { if (document.visibilityState === 'visible') loadDevice(); }, POLL_INTERVAL_MS);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') loadDevice(); });
 </script>
 {% endblock %}

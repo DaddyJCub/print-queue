@@ -73,7 +73,7 @@
         <div class="text-xs text-zinc-500">Prints Done</div>
       </div>
       <div class="bg-zinc-800/50 rounded-xl p-3">
-        <div class="text-2xl font-bold text-amber-400">{{ user.credits or 0 }}</div>
+        <div class="text-2xl font-bold text-amber-400">{{ user_credits if user_credits is defined else (user.credits or 0) }}</div>
         <div class="text-xs text-zinc-500">Credits</div>
       </div>
     </div>
@@ -140,7 +140,7 @@
             <span class="text-xl">🎁</span>
           </div>
           <div>
-            <p class="text-2xl font-bold text-emerald-400">{{ user.credits or 0 }}</p>
+            <p class="text-2xl font-bold text-emerald-400">{{ user_credits if user_credits is defined else (user.credits or 0) }}</p>
             <p class="text-xs text-zinc-500">Available Credits</p>
           </div>
         </div>

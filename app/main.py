@@ -7808,10 +7808,12 @@ def _user_credit_balance(user):
     if not user:
         return 0
     try:
-        from app.credits import get_balance, is_credits_enabled
+        from app.credits import get_balance, is_credits_enabled, resolve_account_id
         if not is_credits_enabled():
             return 0
-        return get_balance(user.id)
+        # Resolve users.id → accounts.id via email (dual-table bridge)
+        account_id = resolve_account_id(getattr(user, "email", None)) or user.id
+        return get_balance(account_id)
     except Exception:
         return 0
 

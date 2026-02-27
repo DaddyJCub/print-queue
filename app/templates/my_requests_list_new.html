@@ -7,6 +7,24 @@
 
 {% block header_title %}My Prints{% endblock %}
 
+{% block subnav %}
+<div class="sticky top-14 z-30 bg-zinc-950/95 backdrop-blur-lg border-b border-zinc-800/60">
+  <div class="max-w-6xl mx-auto px-4">
+    <div class="flex items-center gap-1 h-11 overflow-x-auto hide-scrollbar">
+      <a href="/my-requests" class="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-zinc-800 text-white transition-colors" aria-current="page">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        My Prints
+      </a>
+      <div class="w-px h-4 bg-zinc-700 mx-0.5 flex-shrink-0"></div>
+      <a href="/printellect/devices" id="devices-subnav-link" class="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/></svg>
+        Devices
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
 {% block head_extra %}
 <style>
   /* Tap feedback for mobile */

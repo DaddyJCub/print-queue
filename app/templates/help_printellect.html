@@ -1,0 +1,371 @@
+{% extends "pwa_base.html" %}
+
+{% block title %}Printellect Help | Printellect{% endblock %}
+{% block nav_myrequests %}text-white bg-zinc-800{% endblock %}
+{% block bnav_myrequests %}active{% endblock %}
+{% block header_title %}Help{% endblock %}
+
+{% block subnav %}
+<div class="sticky top-14 z-30 bg-zinc-950/95 backdrop-blur-lg border-b border-zinc-800/60">
+  <div class="max-w-6xl mx-auto px-4">
+    <div class="flex items-center gap-1 h-11 overflow-x-auto hide-scrollbar">
+      <a href="/my-requests" class="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        My Prints
+      </a>
+      <div class="w-px h-4 bg-zinc-700 mx-0.5 flex-shrink-0"></div>
+      <a href="/printellect/devices" class="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-zinc-800 text-white transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/></svg>
+        Devices
+      </a>
+      <div class="flex-1"></div>
+      <span class="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-sm text-indigo-400 font-medium">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Help
+      </span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-4">
+
+  <!-- Hero -->
+  <section class="rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-600/15 via-zinc-900 to-zinc-900 p-5 flex items-start justify-between gap-4">
+    <div>
+      <p class="text-xs uppercase tracking-[0.2em] text-indigo-400 mb-1">Printellect</p>
+      <h1 class="text-2xl font-bold">Help & Guides</h1>
+      <p class="text-sm text-zinc-300 mt-2">Everything you need to set up and control your Printellect base.</p>
+    </div>
+    <div class="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-2xl flex-shrink-0">
+      📟
+    </div>
+  </section>
+
+  <!-- Quick links -->
+  <div class="flex flex-wrap gap-2">
+    <a href="#setup" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition-colors">🔌 First Time Setup</a>
+    <a href="#controls" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition-colors">🎮 Device Controls</a>
+    <a href="#reset" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition-colors">🔄 Reset & Recovery</a>
+    {% if is_admin %}
+    <a href="#admin" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-900/30 border border-amber-700/40 hover:bg-amber-900/50 rounded-lg text-sm text-amber-300 transition-colors">⚙️ Admin Guide</a>
+    {% endif %}
+  </div>
+
+  <!-- ── Section: First Time Setup ─────────────────────────────────────── -->
+  <section id="setup" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+    <button onclick="toggleSection('setup-body', this)" class="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-800/40 transition-colors" aria-expanded="true" aria-controls="setup-body">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-lg">🔌</div>
+        <div>
+          <h2 class="font-semibold">First Time Setup</h2>
+          <p class="text-xs text-zinc-500 mt-0.5">For end users — how to connect and claim your device</p>
+        </div>
+      </div>
+      <svg id="setup-arrow" class="w-5 h-5 text-zinc-500 transition-transform rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    </button>
+
+    <div id="setup-body" class="px-4 pb-4 space-y-4 border-t border-zinc-800">
+      <ol class="space-y-3 mt-4">
+        <li class="flex gap-3">
+          <span class="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-bold flex items-center justify-center mt-0.5">1</span>
+          <div class="text-sm">
+            <p class="font-medium text-white">Power on</p>
+            <p class="text-zinc-400 mt-0.5">Switch on your Printellect base and wait for the LED to begin flashing. This signals it is in setup mode.</p>
+          </div>
+        </li>
+        <li class="flex gap-3">
+          <span class="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-bold flex items-center justify-center mt-0.5">2</span>
+          <div class="text-sm">
+            <p class="font-medium text-white">Join <span class="font-mono text-indigo-300">PRINTELLECT-SETUP-xxxx</span></p>
+            <p class="text-zinc-400 mt-0.5">From your phone or computer's Wi-Fi settings, join the setup network. The last 4 characters of the network name match the last 4 of your <strong>device ID</strong> (printed on the label).</p>
+          </div>
+        </li>
+        <li class="flex gap-3">
+          <span class="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-bold flex items-center justify-center mt-0.5">3</span>
+          <div class="text-sm">
+            <p class="font-medium text-white">Open the local setup page</p>
+            <p class="text-zinc-400 mt-0.5">In your browser, navigate to <a href="http://192.168.4.1/" class="text-indigo-300 underline">http://192.168.4.1/</a>. You'll see a setup form — enter:</p>
+            <ul class="mt-2 space-y-1 text-zinc-400 ml-4 list-disc">
+              <li>Your <strong>claim code</strong> (printed on the label / QR code)</li>
+              <li>Your home Wi-Fi <strong>network name (SSID)</strong></li>
+              <li>Your home Wi-Fi <strong>password</strong></li>
+            </ul>
+            <p class="text-zinc-400 mt-2">Tap <strong>Save and Reboot</strong>. The device will restart and connect to your home network.</p>
+          </div>
+        </li>
+        <li class="flex gap-3">
+          <span class="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-bold flex items-center justify-center mt-0.5">4</span>
+          <div class="text-sm">
+            <p class="font-medium text-white">Claim in Printellect</p>
+            <p class="text-zinc-400 mt-0.5">Come back to your home Wi-Fi. Go to <a href="/printellect/add-device" class="text-indigo-300 underline">Add Device</a> and either scan the QR code on the label or manually enter your device ID and claim code. Give your device a friendly name (optional) and tap <strong>Claim Device</strong>.</p>
+          </div>
+        </li>
+        <li class="flex gap-3">
+          <span class="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-bold flex items-center justify-center mt-0.5">5</span>
+          <div class="text-sm">
+            <p class="font-medium text-white">Confirm online</p>
+            <p class="text-zinc-400 mt-0.5">Your device will provision its auth token automatically over the cloud. Within a minute it should appear as <strong>Online</strong> in <a href="/printellect/devices" class="text-indigo-300 underline">My Devices</a>. Tap it to open the control panel.</p>
+          </div>
+        </li>
+      </ol>
+
+      <!-- Tip box -->
+      <div class="bg-amber-900/15 border border-amber-700/30 rounded-xl p-3 text-sm">
+        <p class="font-medium text-amber-300">💡 Having trouble?</p>
+        <ul class="text-amber-200/70 mt-1.5 space-y-1 text-xs">
+          <li>• Make sure you're on the <code class="font-mono">PRINTELLECT-SETUP-xxxx</code> network when opening the setup page.</li>
+          <li>• The claim code is case-sensitive. Double-check for zeros vs. letter O, etc.</li>
+          <li>• After saving Wi-Fi settings, wait ~30 seconds before claiming.</li>
+          <li>• If the device doesn't go online, try a 10-second reset (see Reset section below).</li>
+        </ul>
+      </div>
+
+      <div class="flex gap-2 flex-wrap">
+        <a href="/printellect/add-device" class="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold transition-colors">
+          + Add Device
+        </a>
+        <a href="/printellect/devices" class="inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">
+          My Devices
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Section: Device Controls Reference ─────────────────────────────── -->
+  <section id="controls" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+    <button onclick="toggleSection('controls-body', this)" class="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-800/40 transition-colors" aria-expanded="false" aria-controls="controls-body">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-emerald-600/15 border border-emerald-600/30 flex items-center justify-center text-lg">🎮</div>
+        <div>
+          <h2 class="font-semibold">Device Controls Reference</h2>
+          <p class="text-xs text-zinc-500 mt-0.5">What every control on the device panel does</p>
+        </div>
+      </div>
+      <svg class="w-5 h-5 text-zinc-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    </button>
+
+    <div id="controls-body" class="hidden px-4 pb-4 border-t border-zinc-800">
+      <div class="space-y-1 mt-4">
+
+        <div class="rounded-xl border border-zinc-800 bg-zinc-900/40">
+          <div class="flex items-start gap-4 p-4">
+            <div class="w-8 h-8 rounded-lg bg-indigo-600/20 flex items-center justify-center flex-shrink-0 text-lg">▶️</div>
+            <div class="text-sm">
+              <p class="font-medium">Playback — Play Perk / Stop</p>
+              <p class="text-zinc-400 mt-1">Select a perk theme from the dropdown and tap <strong>Play Perk</strong> to trigger the full light and audio experience on the device. Tap <strong>Stop</strong> to end immediately. The device queues the command — there may be a moment's delay.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-zinc-800 bg-zinc-900/40">
+          <div class="flex items-start gap-4 p-4">
+            <div class="w-8 h-8 rounded-lg bg-indigo-600/20 flex items-center justify-center flex-shrink-0 text-lg">🔊</div>
+            <div class="text-sm">
+              <p class="font-medium">Volume (0–30)</p>
+              <p class="text-zinc-400 mt-1">Drag the slider to set the speaker output level used during perk playback. Tap <strong>Apply</strong> to send. The slider automatically syncs back to the device's current setting every 3 seconds (unless you've just adjusted it).</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-zinc-800 bg-zinc-900/40">
+          <div class="flex items-start gap-4 p-4">
+            <div class="w-8 h-8 rounded-lg bg-indigo-600/20 flex items-center justify-center flex-shrink-0 text-lg">💡</div>
+            <div class="text-sm">
+              <p class="font-medium">Brightness (0–100%)</p>
+              <p class="text-zinc-400 mt-1">Controls the LED strip intensity during both idle animations and active playback. Tap <strong>Apply</strong> to send. Reducing brightness extends LED life in always-on displays.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-zinc-800 bg-zinc-900/40">
+          <div class="flex items-start gap-4 p-4">
+            <div class="w-8 h-8 rounded-lg bg-indigo-600/20 flex items-center justify-center flex-shrink-0 text-lg">🌙</div>
+            <div class="text-sm">
+              <p class="font-medium">Idle Mode</p>
+              <p class="text-zinc-400 mt-1">Sets the LED animation shown when no perk is playing:</p>
+              <ul class="mt-2 space-y-1 ml-3 text-zinc-400">
+                <li><code class="font-mono text-zinc-300">default</code> — device-preset idle behavior</li>
+                <li><code class="font-mono text-zinc-300">off</code> — LEDs turn off when idle</li>
+                <li><code class="font-mono text-zinc-300">ambient</code> — soft, constant glow</li>
+                <li><code class="font-mono text-zinc-300">pulse</code> — slow breathing effect</li>
+              </ul>
+              <p class="mt-2 text-zinc-400">Tap <strong>Set Idle Mode</strong> after choosing. The <strong>Reboot</strong> button performs a soft restart — useful if the device becomes unresponsive; settings are not lost.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-zinc-800 bg-zinc-900/40">
+          <div class="flex items-start gap-4 p-4">
+            <div class="w-8 h-8 rounded-lg bg-indigo-600/20 flex items-center justify-center flex-shrink-0 text-lg">🔬</div>
+            <div class="text-sm">
+              <p class="font-medium">Diagnostics</p>
+              <p class="text-zinc-400 mt-1"><strong>Light Test</strong> runs a temporary LED pattern for a set duration — useful for verifying LEDs work without a full perk play. <strong>Test Audio</strong> plays a short sample of the chosen track so you can verify the speaker output. Neither test affects your saved settings.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-zinc-800 bg-zinc-900/40">
+          <div class="flex items-start gap-4 p-4">
+            <div class="w-8 h-8 rounded-lg bg-indigo-600/20 flex items-center justify-center flex-shrink-0 text-lg">📊</div>
+            <div class="text-sm">
+              <p class="font-medium">Device Status</p>
+              <p class="text-zinc-400 mt-1">Shows the device's current playback state, what is playing (if anything), volume level, and when the device was last seen. Updates every 3 seconds while the page is open. Controls are automatically disabled when the device is offline.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Section: Reset & Recovery ─────────────────────────────────────── -->
+  <section id="reset" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+    <button onclick="toggleSection('reset-body', this)" class="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-800/40 transition-colors" aria-expanded="false" aria-controls="reset-body">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-zinc-700/50 border border-zinc-600/40 flex items-center justify-center text-lg">🔄</div>
+        <div>
+          <h2 class="font-semibold">Reset & Recovery</h2>
+          <p class="text-xs text-zinc-500 mt-0.5">Button sequences for restarting or factory resetting your device</p>
+        </div>
+      </div>
+      <svg class="w-5 h-5 text-zinc-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    </button>
+
+    <div id="reset-body" class="hidden px-4 pb-4 border-t border-zinc-800">
+      <div class="space-y-2 mt-4">
+        <div class="flex items-start gap-4 bg-zinc-800/50 rounded-xl p-3">
+          <code class="font-mono text-indigo-300 text-sm font-bold flex-shrink-0 mt-0.5 w-8 text-center">3×</code>
+          <div class="text-sm">
+            <p class="font-medium">Triple press (within 3 seconds)</p>
+            <p class="text-zinc-400 mt-0.5">Soft reboot — restarts the firmware without clearing any settings, Wi-Fi credentials, or pairing token. Use this if the device becomes sluggish or stops responding.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 bg-zinc-800/50 rounded-xl p-3">
+          <code class="font-mono text-indigo-300 text-sm font-bold flex-shrink-0 mt-0.5 w-8 text-center">10s</code>
+          <div class="text-sm">
+            <p class="font-medium">Hold 10 seconds — Wi-Fi reset</p>
+            <p class="text-zinc-400 mt-0.5">Clears saved Wi-Fi credentials so you can re-enter them via the setup network (<code class="font-mono text-zinc-300">PRINTELLECT-SETUP-xxxx</code>). Your claim code and pairing token are preserved — you won't need to re-claim after reconnecting to Wi-Fi.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 bg-red-900/20 border border-red-700/30 rounded-xl p-3">
+          <code class="font-mono text-red-400 text-sm font-bold flex-shrink-0 mt-0.5 w-8 text-center">20s</code>
+          <div class="text-sm">
+            <p class="font-medium text-red-300">Hold 20 seconds — Full factory reset / unpair</p>
+            <p class="text-zinc-400 mt-0.5">Clears <em>all</em> settings: Wi-Fi, pairing, and auth token. The device returns to AP setup mode. You will need to go through the full setup process again and re-claim a new claim code from your admin.</p>
+          </div>
+        </div>
+      </div>
+      <p class="text-xs text-zinc-600 mt-3">After any reset, the device returns to AP setup mode and broadcasts the <code class="font-mono">PRINTELLECT-SETUP-xxxx</code> network.</p>
+    </div>
+  </section>
+
+  {% if is_admin %}
+  <!-- ── Section: Admin Guide ─────────────────────────────────────────── -->
+  <section id="admin" class="bg-zinc-900/60 border border-amber-700/25 rounded-2xl overflow-hidden">
+    <button onclick="toggleSection('admin-body', this)" class="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-800/40 transition-colors" aria-expanded="false" aria-controls="admin-body">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-amber-900/30 border border-amber-700/40 flex items-center justify-center text-lg">⚙️</div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 class="font-semibold">Admin Guide</h2>
+            <span class="text-xs px-1.5 py-0.5 rounded-full bg-amber-900/30 text-amber-400 border border-amber-700/40">Admin</span>
+          </div>
+          <p class="text-xs text-zinc-500 mt-0.5">Provisioning devices, OTA firmware, and managing releases</p>
+        </div>
+      </div>
+      <svg class="w-5 h-5 text-zinc-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    </button>
+
+    <div id="admin-body" class="hidden px-4 pb-4 border-t border-zinc-800 space-y-4">
+      <div class="space-y-4 mt-4">
+
+        <div>
+          <h3 class="text-sm font-semibold text-amber-300 mb-2">Provisioning a new device</h3>
+          <ol class="space-y-2 text-sm text-zinc-400">
+            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">1.</span> Go to <a href="/admin/printellect/devices" class="text-indigo-300 underline">Admin → Hardware → Devices</a>.</li>
+            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">2.</span> Click <strong class="text-zinc-200">Create Device</strong>. The system auto-generates a <code class="font-mono text-zinc-300">device_id</code> and <code class="font-mono text-zinc-300">claim_code</code> — or enter your own.</li>
+            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">3.</span> Download <code class="font-mono text-zinc-300">device.json</code> and the QR SVG from the label panel. Flash <code class="font-mono text-zinc-300">device.json</code> to the Pico's filesystem before deployment.</li>
+            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">4.</span> Print the QR label sticker (<strong>2×2 inches</strong>) and attach it to the device housing. The QR encodes the pairing URL with the pre-filled device ID and claim code.</li>
+            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">5.</span> Hand the device to the end user. They follow the <a href="#setup" class="text-indigo-300 underline">First Time Setup</a> flow above.</li>
+          </ol>
+        </div>
+
+        <div class="border-t border-zinc-800 pt-4">
+          <h3 class="text-sm font-semibold text-amber-300 mb-2">OTA Firmware Updates</h3>
+          <ol class="space-y-2 text-sm text-zinc-400">
+            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">1.</span> Go to <a href="/admin/printellect/releases" class="text-indigo-300 underline">Admin → Hardware → Releases</a>.</li>
+            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">2.</span> Upload a new firmware release — either a <strong class="text-zinc-200">zip bundle</strong> (preferred) containing all files, or a manifest + bundle pair. Set the version number and release channel (<code class="font-mono text-zinc-300">stable</code> / <code class="font-mono text-zinc-300">beta</code>).</li>
+            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">3.</span> Click <strong class="text-zinc-200">Promote</strong> on the release you want to make current. This sets it as the <code class="font-mono text-zinc-300">latest</code> target for OTA commands.</li>
+            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">4.</span> To push an update to a specific device, open the device's control page and find the <strong class="text-zinc-200">Firmware Update</strong> section. Enter <code class="font-mono text-zinc-300">latest</code> or a specific version and click <strong class="text-zinc-200">Apply Update</strong>.</li>
+            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">5.</span> The device downloads and applies the update on its next polling cycle, then reboots. Monitor online status in <a href="/admin/printellect/devices" class="text-indigo-300 underline">Admin → Devices</a>.</li>
+          </ol>
+          <div class="mt-3 bg-amber-900/15 border border-amber-700/30 rounded-xl p-3 text-xs text-amber-200/80">
+            ⚠️ If an OTA update fails, the device boots from its last-known-good image. Check the firmware zip contains valid <code class="font-mono">main.py</code> and <code class="font-mono">manifest.json</code> entries before promoting.
+          </div>
+        </div>
+
+        <div class="border-t border-zinc-800 pt-4">
+          <h3 class="text-sm font-semibold text-amber-300 mb-2">Unclaiming a device</h3>
+          <p class="text-sm text-zinc-400">In <a href="/admin/printellect/devices" class="text-indigo-300 underline">Admin → Devices</a>, click <strong class="text-zinc-200">Unclaim</strong> next to the device. This removes the user binding and auth token — the device must be factory reset (20-second hold) and re-provisioned before loaning to another user.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- Footer / support -->
+  <div class="bg-zinc-900/40 border border-zinc-800/50 rounded-2xl p-4 flex items-center justify-between gap-4 flex-wrap text-sm">
+    <div class="text-zinc-400">
+      Still need help? Reach out to support.
+    </div>
+    <div class="flex gap-2 flex-wrap">
+      <a href="/feedback?type=bug" class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition-colors">Report a problem</a>
+      <a href="/feedback?type=suggestion" class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition-colors">Send feedback</a>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleSection(bodyId, btn) {
+  const body = document.getElementById(bodyId);
+  const arrow = btn.querySelector('svg');
+  const isHidden = body.classList.toggle('hidden');
+  btn.setAttribute('aria-expanded', String(!isHidden));
+  arrow.classList.toggle('rotate-90', !isHidden);
+}
+
+// Open section from anchor hash
+function openSectionFromHash() {
+  const hash = window.location.hash.replace('#', '');
+  if (!hash) return;
+  const section = document.getElementById(hash);
+  if (section) {
+    const btn = section.querySelector('button[aria-controls]');
+    const bodyId = btn?.getAttribute('aria-controls');
+    if (bodyId) {
+      const body = document.getElementById(bodyId);
+      if (body?.classList.contains('hidden')) {
+        toggleSection(bodyId, btn);
+      }
+    }
+    setTimeout(() => section.scrollIntoView({behavior: 'smooth', block: 'start'}), 100);
+  }
+}
+
+// Open Setup section by default
+document.addEventListener('DOMContentLoaded', () => {
+  if (!window.location.hash || window.location.hash === '#setup') {
+    const setupBtn = document.querySelector('[aria-controls="setup-body"]');
+    if (setupBtn) setupBtn.setAttribute('aria-expanded', 'true');
+  }
+  openSectionFromHash();
+});
+window.addEventListener('hashchange', openSectionFromHash);
+</script>
+{% endblock %}

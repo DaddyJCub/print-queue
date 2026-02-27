@@ -1090,6 +1090,15 @@ async def api_current_user(request: Request):
         token = get_or_create_my_requests_token(user.email)
         user_dict = user.to_dict()
         user_dict['token'] = token
+        # Resolve credits from accounts table (users table credits is stale)
+        try:
+            from app.credits import is_credits_enabled, get_balance, resolve_account_id
+            if is_credits_enabled():
+                acct_id = resolve_account_id(user.email)
+                if acct_id:
+                    user_dict['credits'] = get_balance(acct_id)
+        except Exception:
+            pass
         return JSONResponse({"user": user_dict})
     
     # Try unified account session (used by OIDC and new account system)
@@ -1939,11 +1948,15 @@ async def user_profile_page(
     # Credits
     credits_enabled = False
     credit_transactions = []
+    user_credits = 0
     try:
-        from app.credits import is_credits_enabled, get_transactions
+        from app.credits import is_credits_enabled, get_transactions, get_balance, resolve_account_id
         credits_enabled = is_credits_enabled()
         if credits_enabled and user.id:
-            credit_transactions = get_transactions(user.id, limit=10)
+            # Resolve to accounts table ID (users.id ≠ accounts.id)
+            acct_id = resolve_account_id(user.email) or user.id
+            credit_transactions = get_transactions(acct_id, limit=10)
+            user_credits = get_balance(acct_id)
     except Exception:
         pass
 
@@ -1960,6 +1973,7 @@ async def user_profile_page(
         "printellect_enabled": printellect_enabled,
         "credits_enabled": credits_enabled,
         "credit_transactions": credit_transactions,
+        "user_credits": user_credits,
     })
 
 

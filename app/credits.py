@@ -56,6 +56,28 @@ def is_credits_enabled() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Resolve user → account ID (dual-table bridge)
+# ---------------------------------------------------------------------------
+
+def resolve_account_id(email: str) -> str | None:
+    """Map a user email to the corresponding accounts.id.
+
+    The legacy ``users`` table and the unified ``accounts`` table have
+    different IDs for the same person.  All credit operations live on the
+    ``accounts`` table, so callers that only have a ``User`` object must
+    resolve the matching account ID via email first.
+    """
+    if not email:
+        return None
+    conn = _db()
+    row = conn.execute(
+        "SELECT id FROM accounts WHERE LOWER(email) = LOWER(?)", (email,)
+    ).fetchone()
+    conn.close()
+    return row["id"] if row else None
+
+
+# ---------------------------------------------------------------------------
 # Balance
 # ---------------------------------------------------------------------------
 
@@ -407,16 +429,19 @@ async def api_credit_store_checkout(request: Request, item_id: str,
     if not credit_price:
         return JSONResponse({"error": "This item cannot be purchased with credits"}, status_code=400)
 
+    # Resolve users.id → accounts.id (dual-table bridge)
+    acct_id = resolve_account_id(user.email) or user.id
+
     # Atomic spend
     tx = spend_credits(
-        account_id=user.id,
+        account_id=acct_id,
         amount=credit_price,
         tx_type="store_redemption",
         description=f"Store item: {item['name']}",
         reference_id=item_id,
     )
     if tx is None:
-        return JSONResponse({"error": "insufficient_credits", "needed": credit_price, "balance": get_balance(user.id)}, status_code=400)
+        return JSONResponse({"error": "insufficient_credits", "needed": credit_price, "balance": get_balance(acct_id)}, status_code=400)
 
     # Create the print request (same as free store item flow)
     import secrets as _secrets
@@ -489,14 +514,17 @@ async def api_credit_rush_checkout(
 
     rush_cost = get_rush_credit_cost()
 
+    # Resolve users.id → accounts.id (dual-table bridge)
+    acct_id = resolve_account_id(user.email) or user.id
+
     tx = spend_credits(
-        account_id=user.id,
+        account_id=acct_id,
         amount=rush_cost,
         tx_type="rush_redemption",
         description=f"Rush fee: {print_name or 'Custom request'}",
     )
     if tx is None:
-        return JSONResponse({"error": "insufficient_credits", "needed": rush_cost, "balance": get_balance(user.id)}, status_code=400)
+        return JSONResponse({"error": "insufficient_credits", "needed": rush_cost, "balance": get_balance(acct_id)}, status_code=400)
 
     # Create the rush request
     import secrets as _secrets
@@ -567,14 +595,17 @@ async def api_credit_request_checkout(
 
     request_cost = get_request_credit_cost()
 
+    # Resolve users.id → accounts.id (dual-table bridge)
+    acct_id = resolve_account_id(user.email) or user.id
+
     tx = spend_credits(
-        account_id=user.id,
+        account_id=acct_id,
         amount=request_cost,
         tx_type="request_redemption",
         description=f"Custom request: {print_name or 'Print request'}",
     )
     if tx is None:
-        return JSONResponse({"error": "insufficient_credits", "needed": request_cost, "balance": get_balance(user.id)}, status_code=400)
+        return JSONResponse({"error": "insufficient_credits", "needed": request_cost, "balance": get_balance(acct_id)}, status_code=400)
 
     import secrets as _secrets
     rid = str(uuid.uuid4())
