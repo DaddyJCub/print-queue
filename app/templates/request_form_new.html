@@ -847,36 +847,43 @@
       e.preventDefault();
       if (!form.checkValidity()) { form.reportValidity(); return; }
 
-      if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('opacity-75', 'cursor-wait'); }
-      if (submitText) submitText.textContent = 'Processing...';
-      if (submitSpinner) submitSpinner.classList.remove('hidden');
+      // Show confirmation modal before spending credits
+      const rushCost = {{ credits_per_rush if credits_per_rush is defined else 1 }};
+      openConfirmModal('credit-rush', {}, function() {
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('opacity-75', 'cursor-wait'); }
+        if (submitText) submitText.textContent = 'Processing...';
+        if (submitSpinner) submitSpinner.classList.remove('hidden');
 
-      const fd = new FormData(form);
-      fetch('/api/credits/rush-checkout', { method: 'POST', body: fd, credentials: 'include' })
-        .then(r => r.json().then(data => ({status: r.status, data})))
-        .then(({status, data}) => {
-          if (status === 401 && data.error === 'auth_required') {
-            window.location.href = '/auth/register?next=/&flow=payment';
-            return;
-          }
-          if (data.error === 'insufficient_credits') {
-            alert('Not enough credits. You need ' + data.needed + ' but have ' + data.balance + '.');
-          } else if (data.error) {
-            alert(data.error);
-          } else if (data.success && data.redirect) {
-            window.location.href = data.redirect;
-            return;
-          }
-          if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('opacity-75', 'cursor-wait'); }
-          if (submitText) submitText.textContent = originalSubmitHTML;
-          if (submitSpinner) submitSpinner.classList.add('hidden');
-        })
-        .catch(err => {
-          alert(err.message || 'Something went wrong');
-          if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('opacity-75', 'cursor-wait'); }
-          if (submitText) submitText.textContent = originalSubmitHTML;
-          if (submitSpinner) submitSpinner.classList.add('hidden');
-        });
+        const fd = new FormData(form);
+        fetch('/api/credits/rush-checkout', { method: 'POST', body: fd, credentials: 'include' })
+          .then(r => r.json().then(data => ({status: r.status, data})))
+          .then(({status, data}) => {
+            if (status === 401 && data.error === 'auth_required') {
+              window.location.href = '/auth/register?next=/&flow=payment';
+              return;
+            }
+            if (data.error === 'insufficient_credits') {
+              if (window.showToast) showToast('Not enough credits. You need ' + data.needed + ' but have ' + data.balance + '.', 'error', 5000);
+              else alert('Not enough credits. You need ' + data.needed + ' but have ' + data.balance + '.');
+            } else if (data.error) {
+              if (window.showToast) showToast(data.error, 'error', 5000);
+              else alert(data.error);
+            } else if (data.success && data.redirect) {
+              window.location.href = data.redirect;
+              return;
+            }
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('opacity-75', 'cursor-wait'); }
+            if (submitText) submitText.textContent = originalSubmitHTML;
+            if (submitSpinner) submitSpinner.classList.add('hidden');
+          })
+          .catch(err => {
+            if (window.showToast) showToast(err.message || 'Something went wrong', 'error', 5000);
+            else alert(err.message || 'Something went wrong');
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('opacity-75', 'cursor-wait'); }
+            if (submitText) submitText.textContent = originalSubmitHTML;
+            if (submitSpinner) submitSpinner.classList.add('hidden');
+          });
+      });
       return;
     }
 
@@ -962,9 +969,9 @@
   const form = document.getElementById('request-form');
   if (!form) return;
   const originalBtnHTML = btn.innerHTML;
+  const reqCost = {{ credits_per_request if credits_per_request is defined else 1 }};
 
-  btn.addEventListener('click', async function() {
-    if (!form.checkValidity()) { form.reportValidity(); return; }
+  async function doCreditRequest() {
     btn.disabled = true;
     btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Processing...';
 
@@ -978,18 +985,26 @@
         return;
       }
       if (data.error === 'insufficient_credits') {
-        alert('Not enough credits. You need ' + data.needed + ' but have ' + data.balance + '.');
+        if (window.showToast) showToast('Not enough credits. You need ' + data.needed + ' but have ' + data.balance + '.', 'error', 5000);
+        else alert('Not enough credits. You need ' + data.needed + ' but have ' + data.balance + '.');
       } else if (data.error) {
-        alert(data.error);
+        if (window.showToast) showToast(data.error, 'error', 5000);
+        else alert(data.error);
       } else if (data.success && data.redirect) {
         window.location.href = data.redirect;
         return;
       }
     } catch (err) {
-      alert(err.message || 'Something went wrong');
+      if (window.showToast) showToast(err.message || 'Something went wrong', 'error', 5000);
+      else alert(err.message || 'Something went wrong');
     }
     btn.disabled = false;
     btn.innerHTML = originalBtnHTML;
+  }
+
+  btn.addEventListener('click', function() {
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+    openConfirmModal('credit-request', {}, doCreditRequest);
   });
 })();
 </script>
@@ -1420,4 +1435,12 @@
     }
   });
 </script>
+
+{% from '_components/confirm_modal.html' import confirm_modal %}
+{% if credits_enabled and credits_per_rush is defined and credits_per_rush %}
+{{ confirm_modal('credit-rush', 'Use Credits?', 'Spend ' ~ credits_per_rush ~ ' credit' ~ ('s' if credits_per_rush != 1 else '') ~ ' on a rush request? This cannot be undone.', 'Use ' ~ credits_per_rush ~ ' Credit' ~ ('s' if credits_per_rush != 1 else ''), 'default') }}
+{% endif %}
+{% if credits_enabled and credits_per_request is defined and credits_per_request %}
+{{ confirm_modal('credit-request', 'Use Credits?', 'Spend ' ~ credits_per_request ~ ' credit' ~ ('s' if credits_per_request != 1 else '') ~ ' on this request? This cannot be undone.', 'Use ' ~ credits_per_request ~ ' Credit' ~ ('s' if credits_per_request != 1 else ''), 'default') }}
+{% endif %}
 {% endblock %}

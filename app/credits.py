@@ -500,31 +500,41 @@ async def api_credit_store_checkout(request: Request, item_id: str,
     created = _now()
     access_token = _secrets.token_urlsafe(32)
 
-    conn = _db()
-    conn.execute("""
-        INSERT INTO requests (
-            id, created_at, updated_at, requester_name, requester_email,
-            printer, material, colors, link_url, notes, print_name,
-            status, access_token, priority, print_time_minutes, store_item_id, account_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        rid, created, created,
-        requester_name.strip(), requester_email.strip().lower(),
-        "ANY",
-        item.get("material", ""),
-        colors.strip() or item.get("colors", ""),
-        item.get("link_url", ""),
-        notes.strip() or None,
-        item["name"],
-        "NEW",
-        access_token,
-        0,
-        item.get("estimated_time_minutes"),
-        item_id,
-        user.id,
-    ))
-    conn.commit()
-    conn.close()
+    try:
+        conn = _db()
+        conn.execute("""
+            INSERT INTO requests (
+                id, created_at, updated_at, requester_name, requester_email,
+                printer, material, colors, link_url, notes, print_name,
+                status, access_token, priority, print_time_minutes, store_item_id, account_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            rid, created, created,
+            requester_name.strip(), requester_email.strip().lower(),
+            "ANY",
+            item.get("material", "") or "",
+            colors.strip() or item.get("colors", "") or "",
+            item.get("link_url", "") or "",
+            notes.strip() or None,
+            item["name"],
+            "NEW",
+            access_token,
+            0,
+            item.get("estimated_time_minutes"),
+            item_id,
+            user.id,
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[CREDITS] Store checkout request creation failed: {e}")
+        # Refund the spent credits
+        try:
+            refund_credits(acct_id, credit_price, original_reference_id=item_id)
+            logger.info(f"[CREDITS] Auto-refunded {credit_price} credits to {acct_id}")
+        except Exception as re:
+            logger.error(f"[CREDITS] Auto-refund also failed: {re}")
+        return JSONResponse({"error": f"Failed to create request: {e}"}, status_code=500)
 
     logger.info(f"[CREDITS] Store purchase: {item['name']} by {user.id} for {credit_price} credits (request={rid})")
 
@@ -598,8 +608,8 @@ async def api_credit_rush_checkout(
         rid, created, created,
         requester_name.strip(), requester_email.strip().lower(),
         printer, material,
-        colors.strip(),
-        link_url.strip(),
+        colors.strip() or "",
+        link_url.strip() or "",
         notes.strip() or None,
         print_name.strip(),
         "NEW",
@@ -682,8 +692,8 @@ async def api_credit_request_checkout(
         rid, created, created,
         requester_name.strip(), requester_email.strip().lower(),
         printer, material,
-        colors.strip(),
-        link_url.strip(),
+        colors.strip() or "",
+        link_url.strip() or "",
         notes.strip() or None,
         print_name.strip(),
         "NEW",

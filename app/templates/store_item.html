@@ -252,6 +252,8 @@
 
   {% if credit_price %}
   <!-- Credits purchase handler -->
+  {% from '_components/confirm_modal.html' import confirm_modal %}
+  {{ confirm_modal('credit-purchase', 'Use Credits?', 'Spend ' ~ credit_price ~ ' credit' ~ ('s' if credit_price != 1 else '') ~ ' to get this item? This cannot be undone.', 'Use ' ~ credit_price ~ ' Credit' ~ ('s' if credit_price != 1 else ''), 'default') }}
   <script>
   (function() {
     const btn = document.getElementById('credit-purchase-btn');
@@ -259,8 +261,7 @@
     const form = document.getElementById('store-form');
     const originalBtnHTML = btn.innerHTML;
 
-    btn.addEventListener('click', async function() {
-      if (!form.checkValidity()) { form.reportValidity(); return; }
+    async function doCreditPurchase() {
       btn.disabled = true;
       btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Processing...';
 
@@ -281,13 +282,15 @@
         if (data.error === 'insufficient_credits') {
           btn.disabled = false;
           btn.innerHTML = originalBtnHTML;
-          alert('Not enough credits. You need ' + data.needed + ' but have ' + data.balance + '.');
+          if (window.showToast) showToast('Not enough credits. You need ' + data.needed + ' but have ' + data.balance + '.', 'error', 5000);
+          else alert('Not enough credits. You need ' + data.needed + ' but have ' + data.balance + '.');
           return;
         }
         if (!resp.ok || data.error) {
           btn.disabled = false;
           btn.innerHTML = originalBtnHTML;
-          alert(data.error || 'Something went wrong');
+          if (window.showToast) showToast(data.error || 'Something went wrong', 'error', 5000);
+          else alert(data.error || 'Something went wrong');
           return;
         }
         if (data.success && data.redirect) {
@@ -296,8 +299,14 @@
       } catch (err) {
         btn.disabled = false;
         btn.innerHTML = originalBtnHTML;
-        alert(err.message || 'Something went wrong');
+        if (window.showToast) showToast(err.message || 'Something went wrong', 'error', 5000);
+        else alert(err.message || 'Something went wrong');
       }
+    }
+
+    btn.addEventListener('click', function() {
+      if (!form.checkValidity()) { form.reportValidity(); return; }
+      openConfirmModal('credit-purchase', {}, doCreditPurchase);
     });
   })();
   </script>
