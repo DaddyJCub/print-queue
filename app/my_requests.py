@@ -889,6 +889,7 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
         "is_admin_user": is_admin_user,
         "user_accounts_enabled": is_feature_enabled("user_accounts"),
         "trips_enabled": is_feature_enabled("trips", user_id=user.id if user else None, email=email),
+        "printellect_enabled": is_feature_enabled("printellect_device_control", user_id=user.id if user else None, email=email),
     })
 
 

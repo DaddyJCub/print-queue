@@ -15,11 +15,13 @@
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
         My Prints
       </a>
+      {% if printellect_enabled %}
       <div class="w-px h-4 bg-zinc-700 mx-0.5 flex-shrink-0"></div>
       <a href="/printellect/devices" id="devices-subnav-link" class="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/></svg>
         Devices
       </a>
+      {% endif %}
     </div>
   </div>
 </div>
@@ -33,9 +35,7 @@
 {% endblock %}
 
 {% block content %}
-  <div class="bg-zinc-900 border border-zinc-700 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[80vh] sm:max-h-[90vh] overflow-y-auto" 
-       onclick="event.stopPropagation()" 
-       style="padding-bottom: env(safe-area-inset-bottom, 0px);">
+  <div class="hidden" aria-hidden="true">
     <!-- Modal Header -->
     <div class="sticky top-0 bg-zinc-900 border-b border-zinc-800 px-4 py-3 flex items-center justify-between z-10">
       <h2 class="text-lg font-bold flex items-center gap-2">
@@ -435,7 +435,9 @@
           <span class="text-xs text-zinc-400">Saving...</span>
         </div>
       </div>
-      
+    </div>
+  </div><!-- end hidden notification settings -->
+
 <!-- Sync Code Modal -->
 <div id="sync-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onclick="closeSyncModal()">
   <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-sm w-full text-center" onclick="event.stopPropagation()">
