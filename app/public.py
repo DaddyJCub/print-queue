@@ -1358,12 +1358,17 @@ async def store_item_view(request: Request, item_id: str):
 
     from app.payments import is_payments_enabled
     from app.auth import get_current_user
-    from app.credits import is_credits_enabled, get_credit_price_for_item, get_balance
+    from app.credits import is_credits_enabled, get_credit_price_for_item, get_balance, resolve_account_id
     user = await get_current_user(request)
 
     credits_on = is_credits_enabled()
     credit_price = get_credit_price_for_item(dict(item)) if credits_on else None
-    user_credits = get_balance(user.id) if user and credits_on else 0
+    # Resolve users.id → accounts.id via email (dual-table bridge)
+    if user and credits_on:
+        acct_id = resolve_account_id(user.email) or user.id
+        user_credits = get_balance(acct_id)
+    else:
+        user_credits = 0
 
     return templates.TemplateResponse("store_item.html", {
         "request": request,
@@ -1518,8 +1523,9 @@ async def credits_help_page(request: Request):
     user_credits = 0
     if user:
         try:
-            from app.credits import get_balance
-            user_credits = get_balance(user.id)
+            from app.credits import get_balance, resolve_account_id
+            acct_id = resolve_account_id(user.email) or user.id
+            user_credits = get_balance(acct_id)
         except Exception:
             pass
     return templates.TemplateResponse("credits_help.html", {

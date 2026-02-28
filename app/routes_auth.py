@@ -1090,13 +1090,12 @@ async def api_current_user(request: Request):
         token = get_or_create_my_requests_token(user.email)
         user_dict = user.to_dict()
         user_dict['token'] = token
-        # Resolve credits from accounts table (users table credits is stale)
+        # Always resolve credits from accounts table (users.credits is stale)
         try:
-            from app.credits import is_credits_enabled, get_balance, resolve_account_id
-            if is_credits_enabled():
-                acct_id = resolve_account_id(user.email)
-                if acct_id:
-                    user_dict['credits'] = get_balance(acct_id)
+            from app.credits import get_balance, resolve_account_id
+            acct_id = resolve_account_id(user.email)
+            if acct_id:
+                user_dict['credits'] = get_balance(acct_id)
         except Exception:
             pass
         return JSONResponse({"user": user_dict})
@@ -1951,12 +1950,17 @@ async def user_profile_page(
     user_credits = 0
     try:
         from app.credits import is_credits_enabled, get_transactions, get_balance, resolve_account_id
+        from app.auth import is_feature_enabled as _ife
         credits_enabled = is_credits_enabled()
-        if credits_enabled and user.id:
+        # Also treat as enabled if just the feature flag is on (matches dropdown logic)
+        credits_feature_on = _ife("store_rewards", user_id=user.id, email=user.email)
+        if (credits_enabled or credits_feature_on) and user.id:
             # Resolve to accounts table ID (users.id ≠ accounts.id)
             acct_id = resolve_account_id(user.email) or user.id
             credit_transactions = get_transactions(acct_id, limit=10)
             user_credits = get_balance(acct_id)
+            if credits_feature_on:
+                credits_enabled = True
     except Exception:
         pass
 

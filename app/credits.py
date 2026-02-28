@@ -48,11 +48,9 @@ def _get_bool_setting(key, default=False):
 # ---------------------------------------------------------------------------
 
 def is_credits_enabled() -> bool:
-    """Credits require BOTH the store_rewards feature flag AND credits_enabled setting."""
+    """Credits are enabled when the store_rewards feature flag is on."""
     from app.auth import is_feature_enabled
-    if not is_feature_enabled("store_rewards"):
-        return False
-    return _get_bool_setting("credits_enabled", False)
+    return is_feature_enabled("store_rewards")
 
 
 # ---------------------------------------------------------------------------
