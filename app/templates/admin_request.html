@@ -39,8 +39,10 @@
     <!-- Back Button & Page Header -->
     <div class="flex items-center justify-between gap-4 mb-4">
       <div class="flex items-center gap-3">
-        <a href="/admin" class="text-zinc-400 hover:text-white">← Queue</a>
-        <span class="text-zinc-600">/</span>
+        <a href="/admin" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800/60 hover:bg-zinc-800 border border-zinc-700/50 rounded-lg text-sm text-zinc-400 hover:text-white transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+          Queue
+        </a>
         <h1 class="text-xl font-bold truncate">{{ req["print_name"] or ("Request " + req["id"][:8]) }}</h1>
       </div>
       <span class="shrink-0 px-3 py-1 rounded-lg border text-sm font-medium status-badge-{{ req['status'].lower().replace('_', '-') }}">

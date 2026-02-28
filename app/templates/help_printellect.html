@@ -278,40 +278,80 @@
       <svg class="w-5 h-5 text-zinc-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
     </button>
 
-    <div id="admin-body" class="hidden px-4 pb-4 border-t border-zinc-800 space-y-4">
-      <div class="space-y-4 mt-4">
+    <div id="admin-body" class="hidden px-4 pb-6 border-t border-zinc-800 space-y-3">
 
-        <div>
-          <h3 class="text-sm font-semibold text-amber-300 mb-2">Provisioning a new device</h3>
-          <ol class="space-y-2 text-sm text-zinc-400">
-            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">1.</span> Go to <a href="/admin/printellect/devices" class="text-indigo-300 underline">Admin → Hardware → Devices</a>.</li>
-            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">2.</span> Click <strong class="text-zinc-200">Create Device</strong>. The system auto-generates a <code class="font-mono text-zinc-300">device_id</code> and <code class="font-mono text-zinc-300">claim_code</code> — or enter your own.</li>
-            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">3.</span> Download <code class="font-mono text-zinc-300">device.json</code> and the QR SVG from the label panel. Flash <code class="font-mono text-zinc-300">device.json</code> to the Pico's filesystem before deployment.</li>
-            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">4.</span> Print the QR label sticker (<strong>2×2 inches</strong>) and attach it to the device housing. The QR encodes the pairing URL with the pre-filled device ID and claim code.</li>
-            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">5.</span> Hand the device to the end user. They follow the <a href="#setup" class="text-indigo-300 underline">First Time Setup</a> flow above.</li>
-          </ol>
+      <!-- Provisioning -->
+      <div class="bg-zinc-800/50 rounded-xl border border-zinc-700/60 overflow-hidden mt-4">
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-zinc-700/60 bg-amber-900/10">
+          <span class="text-base">📋</span>
+          <h3 class="text-sm font-semibold text-amber-300">Provisioning a new device</h3>
         </div>
-
-        <div class="border-t border-zinc-800 pt-4">
-          <h3 class="text-sm font-semibold text-amber-300 mb-2">OTA Firmware Updates</h3>
-          <ol class="space-y-2 text-sm text-zinc-400">
-            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">1.</span> Go to <a href="/admin/printellect/releases" class="text-indigo-300 underline">Admin → Hardware → Releases</a>.</li>
-            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">2.</span> Upload a new firmware release — either a <strong class="text-zinc-200">zip bundle</strong> (preferred) containing all files, or a manifest + bundle pair. Set the version number and release channel (<code class="font-mono text-zinc-300">stable</code> / <code class="font-mono text-zinc-300">beta</code>).</li>
-            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">3.</span> Click <strong class="text-zinc-200">Promote</strong> on the release you want to make current. This sets it as the <code class="font-mono text-zinc-300">latest</code> target for OTA commands.</li>
-            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">4.</span> To push an update to a specific device, open the device's control page and find the <strong class="text-zinc-200">Firmware Update</strong> section. Enter <code class="font-mono text-zinc-300">latest</code> or a specific version and click <strong class="text-zinc-200">Apply Update</strong>.</li>
-            <li class="flex gap-2"><span class="text-zinc-600 flex-shrink-0">5.</span> The device downloads and applies the update on its next polling cycle, then reboots. Monitor online status in <a href="/admin/printellect/devices" class="text-indigo-300 underline">Admin → Devices</a>.</li>
-          </ol>
-          <div class="mt-3 bg-amber-900/15 border border-amber-700/30 rounded-xl p-3 text-xs text-amber-200/80">
-            ⚠️ If an OTA update fails, the device boots from its last-known-good image. Check the firmware zip contains valid <code class="font-mono">main.py</code> and <code class="font-mono">manifest.json</code> entries before promoting.
-          </div>
-        </div>
-
-        <div class="border-t border-zinc-800 pt-4">
-          <h3 class="text-sm font-semibold text-amber-300 mb-2">Unclaiming a device</h3>
-          <p class="text-sm text-zinc-400">In <a href="/admin/printellect/devices" class="text-indigo-300 underline">Admin → Devices</a>, click <strong class="text-zinc-200">Unclaim</strong> next to the device. This removes the user binding and auth token — the device must be factory reset (20-second hold) and re-provisioned before loaning to another user.</p>
-        </div>
-
+        <ol class="space-y-3 p-4">
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-amber-900/30 border border-amber-700/40 text-amber-300 text-xs font-bold flex items-center justify-center mt-0.5">1</span>
+            <p class="text-sm text-zinc-400 mt-0.5">Go to <a href="/admin/printellect/devices" class="text-indigo-300 underline">Admin → Hardware → Devices</a>.</p>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-amber-900/30 border border-amber-700/40 text-amber-300 text-xs font-bold flex items-center justify-center mt-0.5">2</span>
+            <p class="text-sm text-zinc-400 mt-0.5">Click <strong class="text-zinc-200">Create Device</strong>. The system auto-generates a <code class="font-mono text-zinc-300">device_id</code> and <code class="font-mono text-zinc-300">claim_code</code> — or enter your own.</p>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-amber-900/30 border border-amber-700/40 text-amber-300 text-xs font-bold flex items-center justify-center mt-0.5">3</span>
+            <p class="text-sm text-zinc-400 mt-0.5">Download <code class="font-mono text-zinc-300">device.json</code> and the QR SVG from the label panel. Flash <code class="font-mono text-zinc-300">device.json</code> to the Pico's filesystem before deployment.</p>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-amber-900/30 border border-amber-700/40 text-amber-300 text-xs font-bold flex items-center justify-center mt-0.5">4</span>
+            <p class="text-sm text-zinc-400 mt-0.5">Print the QR label sticker (<strong class="text-zinc-200">2×2 inches</strong>) and attach it to the device housing. The QR encodes the pairing URL with the pre-filled device ID and claim code.</p>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-amber-900/30 border border-amber-700/40 text-amber-300 text-xs font-bold flex items-center justify-center mt-0.5">5</span>
+            <p class="text-sm text-zinc-400 mt-0.5">Hand the device to the end user. They follow the <a href="#setup" class="text-indigo-300 underline">First Time Setup</a> flow above.</p>
+          </li>
+        </ol>
       </div>
+
+      <!-- OTA Firmware Updates -->
+      <div class="bg-zinc-800/50 rounded-xl border border-zinc-700/60 overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-zinc-700/60 bg-amber-900/10">
+          <span class="text-base">🔄</span>
+          <h3 class="text-sm font-semibold text-amber-300">OTA Firmware Updates</h3>
+        </div>
+        <ol class="space-y-3 p-4">
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-amber-900/30 border border-amber-700/40 text-amber-300 text-xs font-bold flex items-center justify-center mt-0.5">1</span>
+            <p class="text-sm text-zinc-400 mt-0.5">Go to <a href="/admin/printellect/releases" class="text-indigo-300 underline">Admin → Hardware → Releases</a>.</p>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-amber-900/30 border border-amber-700/40 text-amber-300 text-xs font-bold flex items-center justify-center mt-0.5">2</span>
+            <p class="text-sm text-zinc-400 mt-0.5">Upload a new firmware release — either a <strong class="text-zinc-200">zip bundle</strong> (preferred) containing all files, or a manifest + bundle pair. Set the version number and release channel (<code class="font-mono text-zinc-300">stable</code> / <code class="font-mono text-zinc-300">beta</code>).</p>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-amber-900/30 border border-amber-700/40 text-amber-300 text-xs font-bold flex items-center justify-center mt-0.5">3</span>
+            <p class="text-sm text-zinc-400 mt-0.5">Click <strong class="text-zinc-200">Promote</strong> on the release you want to make current. This sets it as the <code class="font-mono text-zinc-300">latest</code> target for OTA commands.</p>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-amber-900/30 border border-amber-700/40 text-amber-300 text-xs font-bold flex items-center justify-center mt-0.5">4</span>
+            <p class="text-sm text-zinc-400 mt-0.5">To push an update to a specific device, open the device's control page and find the <strong class="text-zinc-200">Firmware Update</strong> section. Enter <code class="font-mono text-zinc-300">latest</code> or a specific version and click <strong class="text-zinc-200">Apply Update</strong>.</p>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-amber-900/30 border border-amber-700/40 text-amber-300 text-xs font-bold flex items-center justify-center mt-0.5">5</span>
+            <p class="text-sm text-zinc-400 mt-0.5">The device downloads and applies the update on its next polling cycle, then reboots. Monitor online status in <a href="/admin/printellect/devices" class="text-indigo-300 underline">Admin → Devices</a>.</p>
+          </li>
+        </ol>
+        <div class="mx-4 mb-4 bg-amber-900/15 border border-amber-700/30 rounded-xl p-3 text-xs text-amber-200/80">
+          ⚠️ If an OTA update fails, the device boots from its last-known-good image. Check the firmware zip contains valid <code class="font-mono">main.py</code> and <code class="font-mono">manifest.json</code> entries before promoting.
+        </div>
+      </div>
+
+      <!-- Unclaiming -->
+      <div class="bg-zinc-800/50 rounded-xl border border-zinc-700/60 overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-zinc-700/60 bg-amber-900/10">
+          <span class="text-base">🔗</span>
+          <h3 class="text-sm font-semibold text-amber-300">Unclaiming a device</h3>
+        </div>
+        <p class="text-sm text-zinc-400 p-4">In <a href="/admin/printellect/devices" class="text-indigo-300 underline">Admin → Devices</a>, click <strong class="text-zinc-200">Unclaim</strong> next to the device. This removes the user binding and auth token — the device must be factory reset (20-second hold) and re-provisioned before loaning to another user.</p>
+      </div>
+
     </div>
   </section>
   {% endif %}
