@@ -33,6 +33,51 @@ def _now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+_tables_ensured = False
+
+def _ensure_tables():
+    """Create credit tables if they don't exist yet (self-healing)."""
+    global _tables_ensured
+    if _tables_ensured:
+        return
+    try:
+        conn = _db()
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS credit_transactions (
+            id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            balance_after INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            description TEXT,
+            reference_id TEXT,
+            created_at TEXT NOT NULL,
+            created_by_account_id TEXT,
+            FOREIGN KEY(account_id) REFERENCES accounts(id)
+        );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_credit_tx_account ON credit_transactions(account_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_credit_tx_created ON credit_transactions(created_at);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_credit_tx_type ON credit_transactions(type);")
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS credit_auto_grants (
+            id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL UNIQUE,
+            amount INTEGER NOT NULL,
+            is_active INTEGER DEFAULT 1,
+            last_granted_at TEXT,
+            created_at TEXT NOT NULL,
+            created_by_account_id TEXT,
+            FOREIGN KEY(account_id) REFERENCES accounts(id)
+        );
+        """)
+        conn.commit()
+        conn.close()
+        _tables_ensured = True
+    except Exception as e:
+        logger.warning(f"[CREDITS] Failed to ensure tables: {e}")
+
+
 def _get_setting(key, default=None):
     from app.main import get_setting
     return get_setting(key, default)
@@ -106,6 +151,7 @@ def grant_credits(
     if amount <= 0:
         raise ValueError("Grant amount must be positive")
 
+    _ensure_tables()
     conn = _db()
     try:
         conn.execute("BEGIN IMMEDIATE")
@@ -152,6 +198,7 @@ def spend_credits(
     if amount <= 0:
         raise ValueError("Spend amount must be positive")
 
+    _ensure_tables()
     conn = _db()
     try:
         conn.execute("BEGIN IMMEDIATE")
@@ -203,6 +250,7 @@ def refund_credits(account_id: str, amount: int, original_reference_id: str = No
 
 def get_transactions(account_id: str, limit: int = 50, offset: int = 0) -> list:
     """Get recent credit transactions for a user."""
+    _ensure_tables()
     conn = _db()
     rows = conn.execute(
         """SELECT * FROM credit_transactions
@@ -217,6 +265,7 @@ def get_transactions(account_id: str, limit: int = 50, offset: int = 0) -> list:
 
 def get_all_transactions(limit: int = 100) -> list:
     """Get recent transactions across all users (admin view)."""
+    _ensure_tables()
     conn = _db()
     rows = conn.execute(
         """SELECT ct.*, a.name as display_name, a.email
@@ -431,13 +480,17 @@ async def api_credit_store_checkout(request: Request, item_id: str,
     acct_id = resolve_account_id(user.email) or user.id
 
     # Atomic spend
-    tx = spend_credits(
-        account_id=acct_id,
-        amount=credit_price,
-        tx_type="store_redemption",
-        description=f"Store item: {item['name']}",
-        reference_id=item_id,
-    )
+    try:
+        tx = spend_credits(
+            account_id=acct_id,
+            amount=credit_price,
+            tx_type="store_redemption",
+            description=f"Store item: {item['name']}",
+            reference_id=item_id,
+        )
+    except Exception as e:
+        logger.error(f"[CREDITS] Store checkout failed: {e}")
+        return JSONResponse({"error": f"Credit transaction failed: {e}"}, status_code=500)
     if tx is None:
         return JSONResponse({"error": "insufficient_credits", "needed": credit_price, "balance": get_balance(acct_id)}, status_code=400)
 
@@ -515,12 +568,16 @@ async def api_credit_rush_checkout(
     # Resolve users.id → accounts.id (dual-table bridge)
     acct_id = resolve_account_id(user.email) or user.id
 
-    tx = spend_credits(
-        account_id=acct_id,
-        amount=rush_cost,
-        tx_type="rush_redemption",
-        description=f"Rush fee: {print_name or 'Custom request'}",
-    )
+    try:
+        tx = spend_credits(
+            account_id=acct_id,
+            amount=rush_cost,
+            tx_type="rush_redemption",
+            description=f"Rush fee: {print_name or 'Custom request'}",
+        )
+    except Exception as e:
+        logger.error(f"[CREDITS] Rush checkout failed: {e}")
+        return JSONResponse({"error": f"Credit transaction failed: {e}"}, status_code=500)
     if tx is None:
         return JSONResponse({"error": "insufficient_credits", "needed": rush_cost, "balance": get_balance(acct_id)}, status_code=400)
 
@@ -596,12 +653,16 @@ async def api_credit_request_checkout(
     # Resolve users.id → accounts.id (dual-table bridge)
     acct_id = resolve_account_id(user.email) or user.id
 
-    tx = spend_credits(
-        account_id=acct_id,
-        amount=request_cost,
-        tx_type="request_redemption",
-        description=f"Custom request: {print_name or 'Print request'}",
-    )
+    try:
+        tx = spend_credits(
+            account_id=acct_id,
+            amount=request_cost,
+            tx_type="request_redemption",
+            description=f"Custom request: {print_name or 'Print request'}",
+        )
+    except Exception as e:
+        logger.error(f"[CREDITS] Request checkout failed: {e}")
+        return JSONResponse({"error": f"Credit transaction failed: {e}"}, status_code=500)
     if tx is None:
         return JSONResponse({"error": "insufficient_credits", "needed": request_cost, "balance": get_balance(acct_id)}, status_code=400)
 

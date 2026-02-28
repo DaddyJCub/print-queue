@@ -1964,6 +1964,21 @@ async def user_profile_page(
     except Exception:
         pass
 
+    # Quick stats for profile header card
+    total_requests = 0
+    total_prints = 0
+    try:
+        from app.main import get_db
+        with get_db() as conn:
+            total_requests = conn.execute(
+                "SELECT COUNT(*) FROM requests WHERE email = ?", (user.email,)
+            ).fetchone()[0]
+            total_prints = conn.execute(
+                "SELECT COUNT(*) FROM requests WHERE email = ? AND status = 'DONE'", (user.email,)
+            ).fetchone()[0]
+    except Exception:
+        pass
+
     return templates.TemplateResponse("user_profile.html", {
         "request": request,
         "user": user,
@@ -1978,6 +1993,8 @@ async def user_profile_page(
         "credits_enabled": credits_enabled,
         "credit_transactions": credit_transactions,
         "user_credits": user_credits,
+        "total_requests": total_requests,
+        "total_prints": total_prints,
     })
 
 

@@ -33,8 +33,6 @@
 {% endblock %}
 
 {% block content %}
-<!-- Notification Settings Modal -->
-<div id="notification-modal" class="hidden fixed inset-0 bg-black/80 flex items-end sm:items-center justify-center z-50 pb-20 sm:pb-0" onclick="hideNotificationSettings()">
   <div class="bg-zinc-900 border border-zinc-700 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[80vh] sm:max-h-[90vh] overflow-y-auto" 
        onclick="event.stopPropagation()" 
        style="padding-bottom: env(safe-area-inset-bottom, 0px);">
@@ -438,14 +436,6 @@
         </div>
       </div>
       
-      <!-- Footer tip -->
-      <p class="text-xs text-zinc-500 text-center pt-2">
-        Changes are saved automatically
-      </p>
-    </div>
-  </div>
-</div>
-
 <!-- Sync Code Modal -->
 <div id="sync-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onclick="closeSyncModal()">
   <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-sm w-full text-center" onclick="event.stopPropagation()">
@@ -529,17 +519,22 @@
 {% endif %}
 
 <!-- Page Title -->
-<div class="flex items-center justify-between mb-6">
+<div class="flex items-center justify-between mb-5">
   <div>
-    <h1 class="text-3xl font-bold">My Prints</h1>
-    <p class="text-zinc-400 text-sm mt-1">Track your print requests</p>
+    <h1 class="text-2xl font-bold">My Prints</h1>
+    <p class="text-zinc-400 text-xs mt-0.5">Track your print requests</p>
   </div>
-  <a href="/" class="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-medium transition tap-highlight">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-    </svg>
-    <span class="hidden sm:inline">New Request</span>
-  </a>
+  <div class="flex items-center gap-2">
+    <a href="/auth/profile#notifications" class="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition tap-highlight" title="Notification settings" aria-label="Notification settings">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+    </a>
+    <a href="/" class="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-xl text-sm font-medium transition tap-highlight">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+      </svg>
+      <span class="hidden sm:inline">New Request</span>
+    </a>
+  </div>
 </div>
 
 {% if needs_password_prompt %}
@@ -608,71 +603,60 @@
   <!-- Done prints -->
   {% set done_requests = requests_list | selectattr('status', 'equalto', 'DONE') | list %}
   {% if done_requests %}
-  <div class="mb-6">
-    <h2 class="text-xl font-semibold text-green-400 mb-3 flex items-center gap-2">
-      <span>✅</span> Completed Prints
-      <span class="text-xs px-2 py-0.5 rounded-full bg-green-600/20 text-green-300">{{ done_requests|length }}</span>
-    </h2>
-    <div class="space-y-3" id="done-list">
-      {% for req in done_requests[:3] %}
-      <div class="request-item stagger-item bg-zinc-900/60 border border-green-500/50 rounded-xl overflow-hidden card-interactive">
-        {% if req.completion_snapshot %}
-        <div class="relative cursor-pointer" onclick="showSnapshot('{{ req.completion_snapshot }}')">
-          <img src="data:image/jpeg;base64,{{ req.completion_snapshot }}" 
-               alt="Completed print" 
-               class="w-full h-32 object-cover" loading="lazy" />
-          <span class="absolute bottom-2 right-2 bg-black/60 px-2 py-1 rounded text-xs">📷 Tap to enlarge</span>
-        </div>
-        {% endif %}
-        <a href="/my/{{ req.id }}?token={{ req.access_token }}" class="block p-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <h3 class="font-semibold">{{ req.print_name or 'Untitled' }}</h3>
-              <p class="text-xs text-zinc-500">#{{ req.id[:8] }}</p>
-            </div>
-            <span class="px-2 py-1 rounded-lg text-xs font-medium bg-green-600/25 border border-green-500/50 text-green-300">DONE</span>
-          </div>
-          <div class="flex gap-2 mt-2 text-xs text-zinc-400">
-            <span class="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700">
-              {% if req.fulfillment_method == 'shipping' %}Shipping{% else %}Pickup{% endif %}
-            </span>
-            {% if req.fulfillment_method == 'shipping' and req.tracking_number %}
-            <span>Tracking: {{ req.tracking_number }}</span>
-            {% endif %}
-          </div>
-          <p class="text-sm text-green-300 mt-2">
-            {% if req.fulfillment_method == 'shipping' %}
-              🎉 Print complete. Shipping updates are available on details.
-            {% else %}
-              🎉 Your print is ready for pickup!
-            {% endif %}
-          </p>
-        </a>
+  <div class="mb-5">
+    <div class="flex items-center gap-2 mb-3">
+      <div class="w-6 h-6 rounded-lg bg-emerald-600/20 flex items-center justify-center">
+        <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
       </div>
+      <h2 class="font-semibold text-sm text-white">Completed</h2>
+      <span class="px-2 py-0.5 text-xs rounded-full bg-zinc-800 text-zinc-400 font-medium">{{ done_requests|length }}</span>
+    </div>
+    <div class="space-y-2" id="done-list">
+      {% for req in done_requests[:3] %}
+      <a href="/my/{{ req.id }}?token={{ req.access_token }}" class="request-item stagger-item flex items-center gap-3 bg-zinc-900/60 border border-emerald-500/20 rounded-2xl p-4 tap-highlight hover:bg-zinc-900 transition card-interactive">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-start justify-between gap-2 mb-1">
+            <h3 class="font-semibold truncate">{{ req.print_name or 'Untitled' }}</h3>
+            <span class="flex-shrink-0 px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 border border-emerald-500/40 text-emerald-300">Done</span>
+          </div>
+          <p class="text-xs text-zinc-500 mb-2">#{{ req.id[:8] }} · {{ req.created_at[:10] }}</p>
+          <div class="flex flex-wrap gap-1.5">
+            <span class="px-2 py-0.5 text-xs rounded-lg bg-zinc-800 text-zinc-400">{% if req.fulfillment_method == 'shipping' %}📦 Shipping{% else %}🏠 Pickup{% endif %}</span>
+            {% if req.fulfillment_method == 'shipping' and req.tracking_number %}
+            <span class="px-2 py-0.5 text-xs rounded-lg bg-indigo-900/40 text-indigo-300 border border-indigo-700/30">{{ req.carrier or '' }} {{ req.tracking_number }}</span>
+            {% endif %}
+          </div>
+          {% if req.fulfillment_method != 'shipping' %}<p class="text-xs text-emerald-400 mt-2 flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>Ready for pickup</p>{% endif %}
+        </div>
+        {% if req.completion_snapshot %}
+        <div class="flex-shrink-0" onclick="event.preventDefault(); showSnapshot('{{ req.completion_snapshot }}')">  
+          <img src="data:image/jpeg;base64,{{ req.completion_snapshot }}" alt="Completed print" class="w-16 h-16 rounded-xl object-cover border border-emerald-500/20" loading="lazy" />
+        </div>
+        {% else %}
+        <svg class="w-4 h-4 text-zinc-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        {% endif %}
+      </a>
       {% endfor %}
       {% for req in done_requests[3:] %}
-      <div class="request-item hidden bg-zinc-900/60 border border-green-500/50 rounded-xl overflow-hidden card-interactive">
-        {% if req.completion_snapshot %}
-        <div class="relative cursor-pointer" onclick="showSnapshot('{{ req.completion_snapshot }}')">
-          <img src="data:image/jpeg;base64,{{ req.completion_snapshot }}" alt="Completed print" class="w-full h-32 object-cover" loading="lazy" />
-          <span class="absolute bottom-2 right-2 bg-black/60 px-2 py-1 rounded text-xs">📷</span>
-        </div>
-        {% endif %}
-        <a href="/my/{{ req.id }}?token={{ req.access_token }}" class="block p-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <h3 class="font-semibold">{{ req.print_name or 'Untitled' }}</h3>
-              <p class="text-xs text-zinc-500">#{{ req.id[:8] }}</p>
-            </div>
-            <span class="px-2 py-1 rounded-lg text-xs font-medium bg-green-600/25 border border-green-500/50 text-green-300">DONE</span>
+      <a href="/my/{{ req.id }}?token={{ req.access_token }}" class="request-item hidden flex items-center gap-3 bg-zinc-900/60 border border-emerald-500/20 rounded-2xl p-4 tap-highlight hover:bg-zinc-900 transition card-interactive">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-start justify-between gap-2 mb-1">
+            <h3 class="font-semibold truncate">{{ req.print_name or 'Untitled' }}</h3>
+            <span class="flex-shrink-0 px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 border border-emerald-500/40 text-emerald-300">Done</span>
           </div>
-        </a>
-      </div>
+          <p class="text-xs text-zinc-500">#{{ req.id[:8] }} · {{ req.created_at[:10] }}</p>
+        </div>
+        {% if req.completion_snapshot %}
+        <img src="data:image/jpeg;base64,{{ req.completion_snapshot }}" alt="" class="w-14 h-14 rounded-xl object-cover border border-emerald-500/20 flex-shrink-0" loading="lazy" />
+        {% else %}
+        <svg class="w-4 h-4 text-zinc-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        {% endif %}
+      </a>
       {% endfor %}
     </div>
     {% if done_requests|length > 3 %}
-    <button onclick="toggleShowMore('done-list', this)" class="mt-3 w-full text-center text-xs text-indigo-400 hover:text-indigo-300 py-2 rounded-lg hover:bg-zinc-800/50 transition">
-      Show {{ done_requests|length - 3 }} more ▼
+    <button onclick="toggleShowMore('done-list', this)" class="mt-2 w-full text-center text-xs text-zinc-500 hover:text-indigo-400 py-2.5 rounded-xl hover:bg-zinc-800/50 transition">
+      Show {{ done_requests|length - 3 }} more
     </button>
     {% endif %}
   </div>
@@ -681,74 +665,66 @@
   <!-- Currently printing (includes both PRINTING and IN_PROGRESS with active builds) -->
   {% set printing_requests = requests_list | selectattr('status', 'in', ['PRINTING', 'IN_PROGRESS']) | list %}
   {% if printing_requests %}
-  <div class="mb-6">
-    <h2 class="text-xl font-semibold text-indigo-400 mb-3 flex items-center gap-2">
-      <span>🖨️</span> Printing Now
-      <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-600/20 text-indigo-300">{{ printing_requests|length }}</span>
-    </h2>
-    <div class="space-y-3" id="printing-list">
+  <div class="mb-5">
+    <div class="flex items-center gap-2 mb-3">
+      <div class="w-6 h-6 rounded-lg bg-indigo-600/20 flex items-center justify-center">
+        <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17H7a2 2 0 01-2-2V5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2z"/></svg>
+      </div>
+      <h2 class="font-semibold text-sm text-white">Printing Now</h2>
+      <span class="px-2 py-0.5 text-xs rounded-full bg-zinc-800 text-zinc-400 font-medium">{{ printing_requests|length }}</span>
+    </div>
+    <div class="space-y-2" id="printing-list">
       {% for req in printing_requests[:3] %}
-      <a href="/my/{{ req.id }}?token={{ req.access_token }}" 
-         class="request-item stagger-item block bg-zinc-900/60 border {% if req.printer_status and req.printer_status.is_offline %}border-amber-500/50{% else %}border-indigo-500/50{% endif %} rounded-xl overflow-hidden card-interactive">
+      <a href="/my/{{ req.id }}?token={{ req.access_token }}"
+         class="request-item stagger-item block bg-zinc-900/60 border {% if req.printer_status and req.printer_status.is_offline %}border-amber-500/30{% else %}border-indigo-500/20{% endif %} rounded-2xl overflow-hidden tap-highlight card-interactive">
         {% if req.printer_status %}
-        <div class="{% if req.printer_status.is_offline %}bg-amber-950/40 border-b border-amber-500/30{% else %}bg-indigo-950/40 border-b border-indigo-500/30{% endif %} p-3">
-          <div class="flex items-center justify-between text-sm mb-2">
+        <div class="{% if req.printer_status.is_offline %}bg-amber-950/20{% else %}bg-indigo-950/20{% endif %} px-4 pt-3 pb-2 border-b {% if req.printer_status.is_offline %}border-amber-700/20{% else %}border-indigo-700/20{% endif %}">
+          <div class="flex items-center justify-between mb-1.5">
             <div class="flex items-center gap-2">
-              <span class="font-medium">{{ req.active_printer or req.printer }}</span>
-              {% if req.printer_status.is_offline %}
-              <span class="text-xs px-1.5 py-0.5 bg-amber-500/20 border border-amber-500/50 text-amber-300 rounded">Offline</span>
-              {% elif req.total_builds and req.total_builds > 1 %}
-              <span class="text-xs px-1.5 py-0.5 bg-amber-500/20 border border-amber-500/50 text-amber-300 rounded">Build {{ (req.completed_builds or 0) + 1 }}/{{ req.total_builds }}</span>
-              {% endif %}
+              <span class="font-medium text-sm">{{ req.active_printer or req.printer }}</span>
+              {% if req.printer_status.is_offline %}<span class="text-xs px-1.5 py-0.5 bg-amber-500/20 border border-amber-500/30 text-amber-300 rounded-lg">Offline</span>
+              {% elif req.total_builds and req.total_builds > 1 %}<span class="text-xs px-1.5 py-0.5 bg-amber-500/20 border border-amber-500/30 text-amber-300 rounded-lg">Build {{ (req.completed_builds or 0) + 1 }}/{{ req.total_builds }}</span>{% endif %}
             </div>
-            <span class="{% if req.printer_status.is_offline %}text-amber-300{% else %}text-emerald-300{% endif %}">{{ req.printer_status.progress or 0 }}%</span>
+            <span class="text-sm font-bold {% if req.printer_status.is_offline %}text-amber-300{% else %}text-emerald-300{% endif %}">{{ req.printer_status.progress or 0 }}%</span>
           </div>
-          {% if req.printer_status.progress is not none %}
-          <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-            <div class="h-full {% if req.printer_status.is_offline %}bg-amber-500{% else %}bg-emerald-500{% endif %} transition-all" style="width: {{ req.printer_status.progress }}%"></div>
+          <div class="h-1 bg-zinc-800/80 rounded-full overflow-hidden mb-1.5">
+            <div class="h-full {% if req.printer_status.is_offline %}bg-amber-500{% else %}bg-emerald-500{% endif %} rounded-full" style="width: {{ req.printer_status.progress or 0 }}%"></div>
           </div>
-          {% endif %}
-          {% if req.printer_status.is_offline and req.printer_status.last_seen %}
-          <p class="text-xs text-amber-400/80 mt-2">⚠️ Connection lost</p>
-          {% elif req.smart_eta_display %}
-          <p class="text-xs text-zinc-400 mt-2">ETA: <span class="eta-local" {% if req.smart_eta %}data-utc="{{ req.smart_eta }}"{% endif %}>{{ req.smart_eta_display }}</span></p>
-          {% endif %}
+          {% if req.printer_status.is_offline %}<p class="text-xs text-amber-400">⚠️ Connection lost</p>
+          {% elif req.smart_eta_display %}<p class="text-xs text-zinc-400">ETA: <span class="eta-local" {% if req.smart_eta %}data-utc="{{ req.smart_eta }}"{% endif %}>{{ req.smart_eta_display }}</span></p>{% endif %}
         </div>
         {% endif %}
-        <div class="p-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <h3 class="font-semibold">{{ req.print_name or 'Untitled' }}</h3>
-              <p class="text-xs text-zinc-500">#{{ req.id[:8] }}</p>
+        <div class="p-4 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-2 mb-1">
+              <h3 class="font-semibold truncate">{{ req.print_name or 'Untitled' }}</h3>
+              <span class="flex-shrink-0 px-2 py-0.5 rounded-lg text-xs font-medium bg-indigo-600/20 border border-indigo-500/30 text-indigo-300">{{ 'Printing' if req.status == 'IN_PROGRESS' else req.status }}</span>
             </div>
-            <span class="px-2 py-1 rounded-lg text-xs font-medium bg-indigo-600/25 border border-indigo-500/50 text-indigo-300">
-              {% if req.status == 'IN_PROGRESS' %}PRINTING{% else %}{{ req.status }}{% endif %}
-            </span>
+            <p class="text-xs text-zinc-500">#{{ req.id[:8] }} · {% if req.fulfillment_method == 'shipping' %}Shipping{% else %}Pickup{% endif %}</p>
           </div>
-          <div class="mt-2 text-xs text-zinc-500">
-            {% if req.fulfillment_method == 'shipping' %}Shipping{% else %}Pickup{% endif %}
-          </div>
+          <svg class="w-4 h-4 text-zinc-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
         </div>
       </a>
       {% endfor %}
       {% for req in printing_requests[3:] %}
-      <a href="/my/{{ req.id }}?token={{ req.access_token }}" 
-         class="request-item hidden block bg-zinc-900/60 border border-indigo-500/50 rounded-xl overflow-hidden card-interactive">
-        <div class="p-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <h3 class="font-semibold">{{ req.print_name or 'Untitled' }}</h3>
-              <p class="text-xs text-zinc-500">#{{ req.id[:8] }}</p>
+      <a href="/my/{{ req.id }}?token={{ req.access_token }}"
+         class="request-item hidden block bg-zinc-900/60 border border-indigo-500/20 rounded-2xl overflow-hidden tap-highlight card-interactive">
+        <div class="p-4 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-2 mb-1">
+              <h3 class="font-semibold truncate">{{ req.print_name or 'Untitled' }}</h3>
+              <span class="flex-shrink-0 px-2 py-0.5 rounded-lg text-xs font-medium bg-indigo-600/20 border border-indigo-500/30 text-indigo-300">Printing</span>
             </div>
-            <span class="px-2 py-1 rounded-lg text-xs font-medium bg-indigo-600/25 border border-indigo-500/50 text-indigo-300">PRINTING</span>
+            <p class="text-xs text-zinc-500">#{{ req.id[:8] }}</p>
           </div>
+          <svg class="w-4 h-4 text-zinc-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
         </div>
       </a>
       {% endfor %}
     </div>
     {% if printing_requests|length > 3 %}
-    <button onclick="toggleShowMore('printing-list', this)" class="mt-3 w-full text-center text-xs text-indigo-400 hover:text-indigo-300 py-2 rounded-lg hover:bg-zinc-800/50 transition">
-      Show {{ printing_requests|length - 3 }} more ▼
+    <button onclick="toggleShowMore('printing-list', this)" class="mt-2 w-full text-center text-xs text-zinc-500 hover:text-indigo-400 py-2.5 rounded-xl hover:bg-zinc-800/50 transition">
+      Show {{ printing_requests|length - 3 }} more
     </button>
     {% endif %}
   </div>
@@ -761,72 +737,56 @@
   
   <!-- Active Requests (NEW, NEEDS_INFO, APPROVED) -->
   {% if active_requests %}
-  <div class="mb-6">
-    <h2 class="text-xl font-semibold text-zinc-400 mb-3 flex items-center gap-2">
-      📋 In Queue
-      <span class="text-xs px-2 py-0.5 rounded-full bg-zinc-700/50 text-zinc-300">{{ active_requests|length }}</span>
-    </h2>
-    <div class="space-y-3" id="active-list">
+  <div class="mb-5">
+    <div class="flex items-center gap-2 mb-3">
+      <div class="w-6 h-6 rounded-lg bg-zinc-700/50 flex items-center justify-center">
+        <svg class="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h7"/></svg>
+      </div>
+      <h2 class="font-semibold text-sm text-white">In Queue</h2>
+      <span class="px-2 py-0.5 text-xs rounded-full bg-zinc-800 text-zinc-400 font-medium">{{ active_requests|length }}</span>
+    </div>
+    <div class="space-y-2" id="active-list">
       {% for req in active_requests[:3] %}
-      <a href="/my/{{ req.id }}?token={{ req.access_token }}" 
-         class="request-item stagger-item block bg-zinc-900/60 border {% if req.status == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-xl p-4 card-interactive">
-        <div class="flex items-center justify-between">
-          <div>
-            <h3 class="font-semibold">{{ req.print_name or 'Untitled' }}</h3>
-            <p class="text-xs text-zinc-500">#{{ req.id[:8] }} • {{ req.created_at[:10] }}</p>
+      <a href="/my/{{ req.id }}?token={{ req.access_token }}"
+         class="request-item stagger-item flex items-center gap-3 bg-zinc-900/60 border {% if req.status == 'NEEDS_INFO' %}border-orange-500/30{% else %}border-zinc-800{% endif %} rounded-2xl p-4 tap-highlight hover:bg-zinc-900 transition card-interactive">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-start justify-between gap-2 mb-1">
+            <h3 class="font-semibold truncate">{{ req.print_name or 'Untitled' }}</h3>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <span class="px-2 py-0.5 rounded-lg text-xs font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">{{ req.status.replace('_', ' ') }}</span>
+              {% if req.payment_badge == 'paid' %}<span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-600/30">{{ req.payment_badge_text }}</span>
+              {% elif req.payment_badge == 'refunded' %}<span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-red-600/20 text-red-300 border border-red-600/30">{{ req.payment_badge_text }}</span>
+              {% elif req.payment_badge == 'quote_pending' %}<span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-amber-600/20 text-amber-300 border border-amber-600/30">{{ req.payment_badge_text }}</span>{% endif %}
+            </div>
           </div>
-          <div class="flex items-center gap-2">
-          <span class="px-2 py-1 rounded-lg text-xs font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">
-            {{ req.status.replace('_', ' ') }}
-          </span>
-          {% if req.payment_badge == 'paid' %}
-            <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-600/30">{{ req.payment_badge_text }}</span>
-          {% elif req.payment_badge == 'refunded' %}
-            <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-red-600/20 text-red-300 border border-red-600/30">{{ req.payment_badge_text }}</span>
-          {% elif req.payment_badge == 'quote_pending' %}
-            <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-amber-600/20 text-amber-300 border border-amber-600/30">{{ req.payment_badge_text }}</span>
-          {% endif %}
-          </div>
+          <p class="text-xs text-zinc-500 mb-1.5">#{{ req.id[:8] }} · {{ req.created_at[:10] }}</p>
+          <p class="text-xs text-zinc-600">{{ req.printer or 'ANY' }} · {{ req.material }} · {% if req.fulfillment_method == 'shipping' %}Shipping{% else %}Pickup{% endif %}</p>
+          {% if req.status == 'NEEDS_INFO' %}<p class="text-xs text-orange-300 mt-2 flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>Response needed</p>{% endif %}
         </div>
-        <div class="flex gap-2 mt-2 text-xs text-zinc-500">
-          <span>{{ req.printer or 'ANY' }}</span>
-          <span>•</span>
-          <span>{{ req.material }}</span>
-          <span>•</span>
-          <span>{% if req.fulfillment_method == 'shipping' %}Shipping{% else %}Pickup{% endif %}</span>
-        </div>
-        {% if req.status == 'NEEDS_INFO' %}
-        <p class="text-sm text-orange-300 mt-2">⚠️ Response needed - tap to view</p>
-        {% endif %}
+        <svg class="w-4 h-4 text-zinc-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
       </a>
       {% endfor %}
       {% for req in active_requests[3:] %}
       <a href="/my/{{ req.id }}?token={{ req.access_token }}"
-         class="request-item hidden block bg-zinc-900/60 border {% if req.status == 'NEEDS_INFO' %}border-orange-500/50{% else %}border-zinc-800{% endif %} rounded-xl p-4 card-interactive">
-        <div class="flex items-center justify-between">
-          <div>
-            <h3 class="font-semibold">{{ req.print_name or 'Untitled' }}</h3>
-            <p class="text-xs text-zinc-500">#{{ req.id[:8] }}</p>
+         class="request-item hidden flex items-center gap-3 bg-zinc-900/60 border {% if req.status == 'NEEDS_INFO' %}border-orange-500/30{% else %}border-zinc-800{% endif %} rounded-2xl p-4 tap-highlight hover:bg-zinc-900 transition card-interactive">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-start justify-between gap-2 mb-1">
+            <h3 class="font-semibold truncate">{{ req.print_name or 'Untitled' }}</h3>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <span class="px-2 py-0.5 rounded-lg text-xs font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">{{ req.status.replace('_', ' ') }}</span>
+              {% if req.payment_badge == 'paid' %}<span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-600/30">{{ req.payment_badge_text }}</span>
+              {% elif req.payment_badge == 'quote_pending' %}<span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-amber-600/20 text-amber-300 border border-amber-600/30">{{ req.payment_badge_text }}</span>{% endif %}
+            </div>
           </div>
-          <div class="flex items-center gap-2">
-          <span class="px-2 py-1 rounded-lg text-xs font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">
-            {{ req.status.replace('_', ' ') }}
-          </span>
-          {% if req.payment_badge == 'paid' %}
-            <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-600/30">{{ req.payment_badge_text }}</span>
-          {% elif req.payment_badge == 'refunded' %}
-            <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-red-600/20 text-red-300 border border-red-600/30">{{ req.payment_badge_text }}</span>
-          {% elif req.payment_badge == 'quote_pending' %}
-            <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-amber-600/20 text-amber-300 border border-amber-600/30">{{ req.payment_badge_text }}</span>
-          {% endif %}
-          </div>
+          <p class="text-xs text-zinc-500">#{{ req.id[:8] }}</p>
         </div>
+        <svg class="w-4 h-4 text-zinc-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
       </a>
       {% endfor %}
     </div>
     {% if active_requests|length > 3 %}
-    <button onclick="toggleShowMore('active-list', this)" class="mt-3 w-full text-center text-xs text-indigo-400 hover:text-indigo-300 py-2 rounded-lg hover:bg-zinc-800/50 transition">
-      Show {{ active_requests|length - 3 }} more ▼
+    <button onclick="toggleShowMore('active-list', this)" class="mt-2 w-full text-center text-xs text-zinc-500 hover:text-indigo-400 py-2.5 rounded-xl hover:bg-zinc-800/50 transition">
+      Show {{ active_requests|length - 3 }} more
     </button>
     {% endif %}
   </div>
@@ -834,70 +794,51 @@
   
   <!-- Closed Requests (PICKED_UP, REJECTED, CANCELLED) - Collapsible -->
   {% if closed_requests %}
-  <details class="mb-6 bg-zinc-900/40 border border-zinc-800 rounded-xl group">
-    <summary class="p-4 cursor-pointer hover:bg-zinc-900/60 rounded-xl transition list-none">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span>📦</span>
-          <span class="font-semibold text-zinc-400">Past Prints</span>
-          <span class="text-xs px-2 py-0.5 rounded-full bg-zinc-700/50 text-zinc-400">{{ closed_requests|length }}</span>
-        </div>
-        <svg class="w-4 h-4 text-zinc-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-        </svg>
+  <details class="mb-5 group">
+    <summary class="flex items-center gap-2 mb-2 cursor-pointer list-none py-1">
+      <div class="w-6 h-6 rounded-lg bg-zinc-800 flex items-center justify-center">
+        <svg class="w-3.5 h-3.5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/></svg>
       </div>
+      <span class="font-semibold text-sm text-zinc-500">Past Prints</span>
+      <span class="px-2 py-0.5 text-xs rounded-full bg-zinc-800 text-zinc-600 font-medium">{{ closed_requests|length }}</span>
+      <svg class="w-3.5 h-3.5 text-zinc-600 ml-auto transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
     </summary>
-    <div class="px-4 pb-4">
-      <div class="space-y-2" id="closed-list">
-        {% for req in closed_requests[:4] %}
-        <a href="/my/{{ req.id }}?token={{ req.access_token }}"
-           class="request-item block bg-zinc-950/60 border border-zinc-800 rounded-lg p-3 hover:bg-zinc-900/60 transition">
-          <div class="flex items-center justify-between">
-            <div>
-              <h3 class="font-medium text-sm">{{ req.print_name or 'Untitled' }}</h3>
-              <p class="text-xs text-zinc-500">#{{ req.id[:8] }}</p>
-            </div>
-            <div class="flex items-center gap-2">
-            <span class="px-2 py-1 rounded-lg text-xs font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">
-              {{ req.status.replace('_', ' ') }}
-            </span>
-            {% if req.payment_badge == 'paid' %}
-              <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-600/30">{{ req.payment_badge_text }}</span>
-            {% elif req.payment_badge == 'refunded' %}
-              <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-red-600/20 text-red-300 border border-red-600/30">{{ req.payment_badge_text }}</span>
-            {% endif %}
+    <div class="space-y-1.5" id="closed-list">
+      {% for req in closed_requests[:4] %}
+      <a href="/my/{{ req.id }}?token={{ req.access_token }}"
+         class="request-item flex items-center gap-3 bg-zinc-900/40 border border-zinc-800/60 rounded-xl p-3 tap-highlight hover:bg-zinc-900/70 transition">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="font-medium text-sm truncate text-zinc-300">{{ req.print_name or 'Untitled' }}</h3>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <span class="px-2 py-0.5 rounded-lg text-xs font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">{{ req.status.replace('_', ' ') }}</span>
+              {% if req.payment_badge == 'refunded' %}<span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-red-600/20 text-red-300 border border-red-600/30">{{ req.payment_badge_text }}</span>{% endif %}
             </div>
           </div>
-        </a>
-        {% endfor %}
-        {% for req in closed_requests[4:] %}
-        <a href="/my/{{ req.id }}?token={{ req.access_token }}"
-           class="request-item hidden block bg-zinc-950/60 border border-zinc-800 rounded-lg p-3 hover:bg-zinc-900/60 transition">
-          <div class="flex items-center justify-between">
-            <div>
-              <h3 class="font-medium text-sm">{{ req.print_name or 'Untitled' }}</h3>
-              <p class="text-xs text-zinc-500">#{{ req.id[:8] }}</p>
-            </div>
-            <div class="flex items-center gap-2">
-            <span class="px-2 py-1 rounded-lg text-xs font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }}">
-              {{ req.status.replace('_', ' ') }}
-            </span>
-            {% if req.payment_badge == 'paid' %}
-              <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-600/30">{{ req.payment_badge_text }}</span>
-            {% elif req.payment_badge == 'refunded' %}
-              <span class="px-2 py-0.5 rounded-lg text-xs font-medium bg-red-600/20 text-red-300 border border-red-600/30">{{ req.payment_badge_text }}</span>
-            {% endif %}
-            </div>
+          <p class="text-xs text-zinc-600 mt-0.5">#{{ req.id[:8] }} · {{ req.created_at[:10] }}</p>
+        </div>
+        <svg class="w-3.5 h-3.5 text-zinc-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      </a>
+      {% endfor %}
+      {% for req in closed_requests[4:] %}
+      <a href="/my/{{ req.id }}?token={{ req.access_token }}"
+         class="request-item hidden flex items-center gap-3 bg-zinc-900/40 border border-zinc-800/60 rounded-xl p-3 tap-highlight hover:bg-zinc-900/70 transition">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="font-medium text-sm truncate text-zinc-300">{{ req.print_name or 'Untitled' }}</h3>
+            <span class="px-2 py-0.5 rounded-lg text-xs font-medium border {{ status_colors.get(req.status, 'bg-zinc-800 border-zinc-700') }} flex-shrink-0">{{ req.status.replace('_', ' ') }}</span>
           </div>
-        </a>
-        {% endfor %}
-      </div>
-      {% if closed_requests|length > 4 %}
-      <button onclick="toggleShowMore('closed-list', this)" class="mt-3 w-full text-center text-xs text-indigo-400 hover:text-indigo-300 py-2 rounded-lg hover:bg-zinc-800/50 transition">
-        Show {{ closed_requests|length - 4 }} more ▼
-      </button>
-      {% endif %}
+          <p class="text-xs text-zinc-600 mt-0.5">#{{ req.id[:8] }} · {{ req.created_at[:10] }}</p>
+        </div>
+        <svg class="w-3.5 h-3.5 text-zinc-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      </a>
+      {% endfor %}
     </div>
+    {% if closed_requests|length > 4 %}
+    <button onclick="toggleShowMore('closed-list', this)" class="mt-2 w-full text-center text-xs text-zinc-600 hover:text-zinc-400 py-2.5 rounded-xl hover:bg-zinc-800/50 transition">
+      Show {{ closed_requests|length - 4 }} more
+    </button>
+    {% endif %}
   </details>
   {% endif %}
 
@@ -976,22 +917,6 @@ function toggleShowMore(listId, btn) {
   }
 }
 
-// ========== Account Menu ==========
-// Dropdown now handled by pwa_base.html global account menu
-
-// ========== Notification Settings Modal ==========
-function showNotificationSettings() {
-  const menu = document.getElementById('global-account-dropdown');
-  if (menu) menu.classList.add('hidden');
-  document.getElementById('notification-modal').classList.remove('hidden');
-  initNotificationUI();
-  loadUserPrefs();
-}
-
-function hideNotificationSettings() {
-  document.getElementById('notification-modal').classList.add('hidden');
-}
-
 // ========== Snapshot Modal ==========
 function showSnapshot(b64) {
   document.getElementById('snapshot-img').src = 'data:image/jpeg;base64,' + b64;
@@ -1063,418 +988,6 @@ function updateTimer() {
   }
 }
 
-// ========== User Notification Preferences ==========
-let userPrefs = {
-  progress_push: true,
-  progress_email: false,
-  progress_milestones: '50,75',
-  status_push: true,
-  status_email: true,
-  broadcast_push: true,
-  broadcast_email: true,
-  shipping_push: true,
-  shipping_email: true,
-  messages_push: true,
-  messages_email: true,
-  design_push: true,
-  design_email: true,
-  trip_reminders_push: true,
-  submission_email: true,
-  email_unsubscribed_all: false,
-  notify_needs_info: true,
-  notify_approved: true,
-  notify_printing: true,
-  notify_done: true,
-  notify_picked_up: true,
-  notify_rejected: true,
-  notify_cancelled: true,
-  notify_blocked: true,
-};
-
-// Track selected milestones
-let selectedMilestones = new Set([50, 75]);
-
-// Debounce timer for saving preferences
-let prefsSaveTimeout = null;
-
-// Map of pref key → checkbox element id
-const PREF_CHECKBOX_MAP = {
-  progress_push: 'pref-progress-push',
-  progress_email: 'pref-progress-email',
-  status_push: 'pref-status-push',
-  status_email: 'pref-status-email',
-  broadcast_push: 'pref-broadcast-push',
-  broadcast_email: 'pref-broadcast-email',
-  shipping_push: 'pref-shipping-push',
-  shipping_email: 'pref-shipping-email',
-  messages_push: 'pref-messages-push',
-  messages_email: 'pref-messages-email',
-  design_push: 'pref-design-push',
-  design_email: 'pref-design-email',
-  trip_reminders_push: 'pref-trip-reminders-push',
-  submission_email: 'pref-submission-email',
-  notify_needs_info: 'pref-notify-needs-info',
-  notify_approved: 'pref-notify-approved',
-  notify_printing: 'pref-notify-printing',
-  notify_done: 'pref-notify-done',
-  notify_picked_up: 'pref-notify-picked-up',
-  notify_rejected: 'pref-notify-rejected',
-  notify_cancelled: 'pref-notify-cancelled',
-  notify_blocked: 'pref-notify-blocked',
-};
-
-async function loadUserPrefs() {
-  try {
-    const response = await fetch(`/api/user/notification-prefs?token=${encodeURIComponent(token)}`);
-    const data = await response.json();
-    
-    if (data.success && data.prefs) {
-      userPrefs = { ...userPrefs, ...data.prefs };
-      // Parse milestones
-      if (userPrefs.progress_milestones) {
-        selectedMilestones = new Set(
-          userPrefs.progress_milestones.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
-        );
-      } else {
-        selectedMilestones = new Set([50, 75]);
-      }
-      applyPrefsToUI();
-    }
-  } catch (e) {
-    console.error('Error loading user prefs:', e);
-  }
-}
-
-function applyPrefsToUI() {
-  for (const [key, elId] of Object.entries(PREF_CHECKBOX_MAP)) {
-    const el = document.getElementById(elId);
-    if (el) el.checked = !!userPrefs[key];
-  }
-  
-  // Master email toggle
-  const masterEl = document.getElementById('pref-email-master');
-  if (masterEl) {
-    masterEl.checked = !userPrefs.email_unsubscribed_all;
-    applyEmailMasterState(!userPrefs.email_unsubscribed_all);
-  }
-  
-  updateMilestoneChipsUI();
-}
-
-function applyEmailMasterState(enabled) {
-  document.querySelectorAll('.email-toggle').forEach(el => {
-    el.style.opacity = enabled ? '1' : '0.35';
-    el.style.pointerEvents = enabled ? 'auto' : 'none';
-  });
-}
-
-function toggleEmailMaster() {
-  const enabled = document.getElementById('pref-email-master').checked;
-  userPrefs.email_unsubscribed_all = !enabled;
-  applyEmailMasterState(enabled);
-  updateUserPrefs();
-}
-
-function updateMilestoneChipsUI() {
-  document.querySelectorAll('.milestone-chip').forEach(chip => {
-    const milestone = parseInt(chip.dataset.milestone);
-    if (selectedMilestones.has(milestone)) {
-      chip.className = 'milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border bg-indigo-600 border-indigo-500 text-white';
-    } else {
-      chip.className = 'milestone-chip px-3 py-1.5 rounded-full text-sm font-medium transition border bg-zinc-800 border-zinc-600 text-zinc-400 hover:border-zinc-500';
-    }
-  });
-}
-
-function toggleMilestone(value) {
-  if (selectedMilestones.has(value)) {
-    selectedMilestones.delete(value);
-  } else {
-    selectedMilestones.add(value);
-  }
-  updateMilestoneChipsUI();
-  updateUserPrefs();
-}
-
-function updateUserPrefs() {
-  // Gather values from UI
-  for (const [key, elId] of Object.entries(PREF_CHECKBOX_MAP)) {
-    const el = document.getElementById(elId);
-    if (el) userPrefs[key] = el.checked;
-  }
-  
-  // Convert milestone set to comma-separated string
-  userPrefs.progress_milestones = Array.from(selectedMilestones).sort((a, b) => a - b).join(',');
-  
-  // Debounce the save
-  if (prefsSaveTimeout) clearTimeout(prefsSaveTimeout);
-  
-  document.getElementById('prefs-saving').classList.remove('hidden');
-  
-  prefsSaveTimeout = setTimeout(async () => {
-    await saveUserPrefs();
-  }, 500);
-}
-
-async function saveUserPrefs() {
-  try {
-    const response = await fetch('/api/user/notification-prefs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: token,
-        prefs: userPrefs
-      })
-    });
-    
-    const data = await response.json();
-    
-    if (data.success) {
-      showToast('Preferences saved', 'success');
-    } else {
-      showToast('Failed to save preferences', 'error');
-    }
-  } catch (e) {
-    console.error('Error saving prefs:', e);
-    showToast('Error saving preferences', 'error');
-  } finally {
-    document.getElementById('prefs-saving').classList.add('hidden');
-  }
-}
-
-// ========== Push Notifications ==========
-let pushEnabled = false;
-
-async function initNotificationUI() {
-  // Check for iOS not in standalone mode
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-  
-  if (isIOS && !isStandalone) {
-    document.getElementById('ios-install-hint')?.classList.remove('hidden');
-  }
-  
-  // Fetch VAPID key
-  try {
-    const resp = await fetch('/api/push/vapid-public-key');
-    const data = await resp.json();
-    if (data.publicKey) {
-      VAPID_PUBLIC_KEY = data.publicKey;
-    }
-  } catch (e) {
-    console.warn('Could not fetch VAPID key');
-  }
-  
-  // Check push notification status
-  await checkPushStatus();
-}
-
-async function checkPushStatus() {
-  const statusIndicator = document.getElementById('push-status-indicator');
-  const banner = document.getElementById('push-status-banner');
-  const bannerMsg = document.getElementById('push-status-message');
-  
-  // Hide banner by default
-  banner.classList.add('hidden');
-  
-  // Check if service worker and push are supported
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    statusIndicator.textContent = '❌ Not supported';
-    statusIndicator.className = 'inline-flex items-center text-xs font-medium text-red-400';
-    banner.classList.remove('hidden');
-    bannerMsg.textContent = 'Push notifications are not supported in this browser.';
-    updatePushToggle(false, true);
-    return;
-  }
-  
-  // Check notification permission
-  const permission = Notification.permission;
-  
-  if (permission === 'denied') {
-    statusIndicator.textContent = '🚫 Blocked';
-    statusIndicator.className = 'inline-flex items-center text-xs font-medium text-red-400';
-    banner.classList.remove('hidden');
-    bannerMsg.textContent = 'Notifications are blocked. Please enable them in your browser settings.';
-    updatePushToggle(false, true);
-    return;
-  }
-  
-  // Check if we have an active subscription
-  try {
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.getSubscription();
-    
-    if (subscription) {
-      statusIndicator.textContent = '✅ Active';
-      statusIndicator.className = 'inline-flex items-center text-xs font-medium text-emerald-400';
-      pushEnabled = true;
-      updatePushToggle(true, false);
-    } else if (permission === 'granted') {
-      statusIndicator.textContent = '⚪ Inactive';
-      statusIndicator.className = 'inline-flex items-center text-xs font-medium text-zinc-400';
-      updatePushToggle(false, false);
-    } else {
-      statusIndicator.textContent = '⚪ Not enabled';
-      statusIndicator.className = 'inline-flex items-center text-xs font-medium text-zinc-400';
-      updatePushToggle(false, false);
-    }
-  } catch (e) {
-    statusIndicator.textContent = '⚠️ Error';
-    statusIndicator.className = 'inline-flex items-center text-xs font-medium text-yellow-400';
-    updatePushToggle(false, false);
-  }
-}
-
-function updatePushToggle(enabled, disabled) {
-  const toggle = document.getElementById('push-toggle');
-  const dot = document.getElementById('push-toggle-dot');
-  const testBtn = document.getElementById('test-push-btn');
-  
-  if (disabled) {
-    toggle.disabled = true;
-    toggle.className = 'relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-zinc-800 cursor-not-allowed opacity-50';
-    testBtn.disabled = true;
-    testBtn.className = 'w-full px-4 py-2 bg-white/10 rounded-xl text-sm font-medium text-white/40 flex items-center justify-center gap-2 cursor-not-allowed';
-    return;
-  }
-  
-  toggle.disabled = false;
-  testBtn.disabled = !enabled;
-  
-  if (enabled) {
-    toggle.className = 'relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-indigo-600';
-    dot.className = 'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform translate-x-6';
-    testBtn.className = 'w-full px-4 py-2 bg-white/10 hover:bg-white/15 rounded-xl text-sm font-medium text-white transition flex items-center justify-center gap-2';
-  } else {
-    toggle.className = 'relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none bg-zinc-700';
-    dot.className = 'inline-block h-5 w-5 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-1';
-    testBtn.className = 'w-full px-4 py-2 bg-white/10 rounded-xl text-sm font-medium text-white/40 flex items-center justify-center gap-2 cursor-not-allowed';
-  }
-}
-
-async function togglePushNotifications() {
-  if (pushEnabled) {
-    await unsubscribePush();
-  } else {
-    await subscribePush();
-  }
-}
-
-async function subscribePush() {
-  try {
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      showToast('Notification permission denied', 'error');
-      await checkPushStatus();
-      return;
-    }
-    
-    if (!VAPID_PUBLIC_KEY) {
-      showToast('Push notifications not configured on server', 'error');
-      return;
-    }
-    
-    const registration = await navigator.serviceWorker.ready;
-    
-    // Create subscription
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-    });
-    
-    // Send to server as JSON
-    const response = await fetch('/api/push/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: token,
-        subscription: subscription.toJSON()
-      })
-    });
-    
-    const data = await response.json();
-    if (data.ok) {
-      pushEnabled = true;
-      showToast('Push notifications enabled!', 'success');
-    } else {
-      showToast(data.error || 'Failed to enable push', 'error');
-    }
-  } catch (e) {
-    console.error('Push subscription error:', e);
-    showToast('Failed to enable push notifications', 'error');
-  }
-  
-  await checkPushStatus();
-}
-
-async function unsubscribePush() {
-  try {
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.getSubscription();
-    
-    if (subscription) {
-      // Unsubscribe locally
-      await subscription.unsubscribe();
-      
-      // Notify server as JSON
-      await fetch('/api/push/unsubscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: token,
-          endpoint: subscription.endpoint
-        })
-      });
-    }
-    
-    pushEnabled = false;
-    showToast('Push notifications disabled', 'success');
-  } catch (e) {
-    console.error('Unsubscribe error:', e);
-    showToast('Failed to disable push', 'error');
-  }
-  
-  await checkPushStatus();
-}
-
-async function testPushNotification() {
-  const btn = document.getElementById('test-push-btn');
-  const originalHTML = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<div class="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></div> Sending...';
-  
-  try {
-    const response = await fetch('/api/push/test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token })
-    });
-    
-    const data = await response.json();
-    if (data.ok) {
-      showToast('Test notification sent!', 'success');
-    } else {
-      showToast(data.error || 'Failed to send test', 'error');
-    }
-  } catch (e) {
-    showToast('Network error', 'error');
-  }
-  
-  btn.disabled = false;
-  btn.innerHTML = '<span>🧪</span> Send Test Notification';
-}
-
-// ========== Utility Functions ==========
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
 
 // ========== Account Upgrade Functions ==========
 function dismissUpgradeBanner() {
@@ -1546,50 +1059,11 @@ if (sessionStorage.getItem('upgrade_banner_dismissed')) {
   document.getElementById('upgrade-banner')?.style.setProperty('display', 'none');
 }
 
-// ========== Check Admin Status ==========
-// Show admin links if user is an admin
-async function checkAdminStatus() {
-  try {
-    const resp = await fetch('/api/admin/check', { credentials: 'include' });
-    if (resp.ok) {
-      const data = await resp.json();
-      if (data.is_admin) {
-        // Show admin link in desktop nav
-        const desktopAdminLink = document.getElementById('desktop-admin-link');
-        if (desktopAdminLink) {
-          desktopAdminLink.classList.remove('hidden');
-        }
-        // Show admin section in account dropdown
-        const adminSection = document.getElementById('account-admin-section');
-        if (adminSection) {
-          adminSection.classList.remove('hidden');
-        }
-        // Show admin tab in mobile bottom nav (handled by pwa_base)
-        const adminNav = document.getElementById('admin-nav');
-        if (adminNav) {
-          adminNav.classList.remove('hidden');
-          const grid = document.getElementById('bottom-nav-grid');
-          if (grid) grid.classList.replace('grid-cols-4', 'grid-cols-5');
-        }
-      }
-    }
-  } catch (e) {
-    // Silently fail - user is not admin
-  }
-}
-checkAdminStatus();
-
 // ========== Auto-open modals from query params ==========
 (function() {
   const params = new URLSearchParams(window.location.search);
   const show = params.get('show');
-  if (show === 'notifications') {
-    showNotificationSettings();
-    // Clean URL
-    const url = new URL(window.location);
-    url.searchParams.delete('show');
-    history.replaceState(null, '', url.pathname + url.search);
-  } else if (show === 'sync') {
+  if (show === 'sync') {
     showSyncCode();
     const url = new URL(window.location);
     url.searchParams.delete('show');

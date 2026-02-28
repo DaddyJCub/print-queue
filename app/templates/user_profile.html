@@ -2,19 +2,13 @@
 
 {% block title %}My Account | Printellect{% endblock %}
 
-{% block nav_myrequests %}text-white bg-zinc-800{% endblock %}
-{% block bnav_myrequests %}active{% endblock %}
+{% block nav_account %}text-white bg-zinc-800{% endblock %}
+{% block bnav_account %}active{% endblock %}
 
 {% block header_title %}My Account{% endblock %}
 
 {% block content %}
 <div class="max-w-2xl mx-auto">
-  
-  <!-- Back Button -->
-  <a href="/my-requests/view?token={{ token }}" class="inline-flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 text-sm mb-4 transition">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-    Back to My Prints
-  </a>
   
   {% if success %}
   <div class="mb-6 bg-emerald-900/30 border border-emerald-500/50 text-emerald-200 rounded-xl p-4 flex items-center gap-3">
@@ -65,11 +59,11 @@
     <!-- Quick Stats -->
     <div class="grid grid-cols-3 gap-3 text-center">
       <div class="bg-zinc-800/50 rounded-xl p-3">
-        <div class="text-2xl font-bold text-indigo-400">{{ user.total_requests or 0 }}</div>
+        <div class="text-2xl font-bold text-indigo-400">{{ total_requests or 0 }}</div>
         <div class="text-xs text-zinc-500">Total Requests</div>
       </div>
       <div class="bg-zinc-800/50 rounded-xl p-3">
-        <div class="text-2xl font-bold text-emerald-400">{{ user.total_prints or 0 }}</div>
+        <div class="text-2xl font-bold text-emerald-400">{{ total_prints or 0 }}</div>
         <div class="text-xs text-zinc-500">Prints Done</div>
       </div>
       <div class="bg-zinc-800/50 rounded-xl p-3">

@@ -16,6 +16,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Printellect{% if environment == 'qa' %} QA{% endif %}" />
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
+  <meta name="view-transition" content="same-origin" />
 
   <!-- Production Tailwind CSS (tree-shaken, minified) — replaces Play CDN -->
   <link rel="preload" href="/static/css/tailwind.css" as="style" />
@@ -34,7 +35,8 @@
       --safe-area-bottom: env(safe-area-inset-bottom, 0px);
       --nav-height: 64px;
     }
-    body { overscroll-behavior-y: contain; }
+    body { overscroll-behavior-y: contain; touch-action: manipulation; }
+    @view-transition { navigation: auto; }
 
     /* Screen-reader only */
     .sr-only {
@@ -285,6 +287,7 @@
             <span id="user-indicator" class="hidden w-2 h-2 rounded-full bg-indigo-500"></span>
             My Prints
           </a>
+          <a href="/auth/profile" id="desktop-account-link" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition {% block nav_account %}{% endblock %}">Account</a>
           <!-- Admin link - shown via JS if user is admin -->
           <a href="/admin" id="desktop-admin-link" class="hidden px-3 py-2 rounded-lg text-sm font-medium text-amber-400 hover:text-amber-300 hover:bg-amber-900/20 transition flex items-center gap-1.5">
             <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
@@ -414,7 +417,7 @@
 
   <!-- Bottom Navigation (Mobile PWA Style) -->
   <nav role="navigation" aria-label="Mobile navigation" class="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-lg border-t border-zinc-800 sm:hidden bottom-nav">
-    <div id="bottom-nav-grid" class="grid grid-cols-4 gap-1 px-2 pt-2">
+    <div id="bottom-nav-grid" class="grid grid-cols-5 gap-1 px-2 pt-2">
       <a href="/" class="nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_home %}{% endblock %}">
         <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
           <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -442,10 +445,18 @@
       <a href="/my-requests" id="my-requests-nav" class="nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_myrequests %}{% endblock %}">
         <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
           <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
         </div>
         <span class="text-xs mt-1">My Prints</span>
+      </a>
+      <a href="/auth/profile" id="account-nav" class="nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_account %}{% endblock %}">
+        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        </div>
+        <span class="text-xs mt-1">Account</span>
       </a>
       <!-- Admin tab - hidden by default, shown via JS if admin -->
       <a href="/admin" id="admin-nav" class="hidden nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_admin %}{% endblock %}">
@@ -472,9 +483,9 @@
             const adminNav = document.getElementById('admin-nav');
             if (adminNav) {
               adminNav.classList.remove('hidden');
-              // Change grid to 5 columns
+              // Change grid to 6 columns (5 standard + admin)
               const grid = document.getElementById('bottom-nav-grid');
-              if (grid) grid.classList.replace('grid-cols-4', 'grid-cols-5');
+              if (grid) grid.classList.replace('grid-cols-5', 'grid-cols-6');
             }
             // Show admin link in desktop nav
             const desktopAdminLink = document.getElementById('desktop-admin-link');
@@ -680,6 +691,12 @@
       // Update desktop nav link
       const desktopLink = document.getElementById('desktop-my-requests-link');
       if (desktopLink) desktopLink.href = '/my-requests/view?token=' + savedToken;
+      
+      // Update account nav links with token
+      const accountNav = document.getElementById('account-nav');
+      if (accountNav) accountNav.href = '/user/profile?token=' + savedToken;
+      const desktopAccountLink = document.getElementById('desktop-account-link');
+      if (desktopAccountLink) desktopAccountLink.href = '/user/profile?token=' + savedToken;
       
       // Show user indicator dot on desktop
       const userIndicator = document.getElementById('user-indicator');
