@@ -1664,6 +1664,68 @@ def ensure_oidc_columns():
         conn.close()
 
 
+def ensure_account_for_user(user) -> Optional[Account]:
+    """Ensure a User (from the users table) has a corresponding Account record.
+    
+    If an Account already exists (by email), return it. Otherwise, create one
+    by copying fields from the User record. This is needed because OIDC linking
+    operates on the accounts table, but legacy users only have users records.
+    
+    Args:
+        user: A User object from the users table
+    
+    Returns:
+        The existing or newly-created Account, or None on error.
+    """
+    if not user or not user.email:
+        return None
+    
+    # Check if an Account already exists in the accounts table (direct query, no fallback)
+    conn = db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM accounts WHERE LOWER(email) = LOWER(?)",
+            (user.email.strip(),)
+        ).fetchone()
+        if row:
+            conn.close()
+            return _row_to_account(row)
+    except Exception:
+        pass
+    finally:
+        conn.close()
+    
+    # No Account exists — create one from the User record
+    try:
+        account = create_account(
+            email=user.email,
+            name=user.name or user.email.split("@")[0],
+            password=None,  # Will set password_hash directly below
+            role=AccountRole.USER,
+            status=UserStatus(user.status) if user.status else UserStatus.VERIFIED,
+        )
+        if account and user.password_hash:
+            # Copy the password hash directly (don't re-hash)
+            conn2 = db()
+            conn2.execute(
+                "UPDATE accounts SET password_hash = ?, migrated_from_user_id = ? WHERE id = ?",
+                (user.password_hash, user.id, account.id)
+            )
+            if hasattr(user, 'avatar_url') and user.avatar_url:
+                conn2.execute(
+                    "UPDATE accounts SET avatar_url = ? WHERE id = ?",
+                    (user.avatar_url, account.id)
+                )
+            conn2.commit()
+            conn2.close()
+            account = get_account_by_id(account.id)
+        logger.info(f"Created Account for legacy User {user.email} (user_id={user.id}, account_id={account.id})")
+        return account
+    except Exception as e:
+        logger.error(f"Failed to create Account for User {user.email}: {e}")
+        return None
+
+
 def update_account(account_id: str, **kwargs) -> bool:
     """Update account fields."""
     allowed_fields = {

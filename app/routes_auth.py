@@ -22,7 +22,6 @@ from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Request, Form, HTTPException, Depends, Query, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
-from fastapi.templating import Jinja2Templates
 
 from app.auth import (
     # User auth
@@ -39,11 +38,12 @@ from app.auth import (
     check_legacy_admin_password, get_or_create_legacy_admin,
     
     # Unified account auth
-    authenticate_account, create_session, get_account_by_email,
+    authenticate_account, create_session, get_account_by_email, get_account_by_id,
     
     # OIDC account helpers
     get_account_by_oidc_subject, link_oidc_to_account, unlink_oidc_from_account,
-    create_oidc_account, ensure_oidc_columns,
+    create_oidc_account, ensure_oidc_columns, ensure_account_for_user,
+    get_session_by_token,
     
     # Feature flags
     get_feature_flag, get_all_feature_flags, update_feature_flag, is_feature_enabled,
@@ -56,7 +56,7 @@ from app.auth import (
 )
 
 from app.models import AdminRole, AccountRole, AuditAction, UserStatus
-from app.main import UPLOAD_DIR
+from app.main import UPLOAD_DIR, templates
 from app.oidc import (
     is_oidc_enabled, get_oidc_config,
     get_authorization_url, exchange_code, verify_id_token,
@@ -68,7 +68,6 @@ from app.oidc import (
 
 logger = logging.getLogger("printellect.routes_auth")
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
 
 # Timezone for display (default to US Eastern)
 DISPLAY_TIMEZONE = os.getenv("DISPLAY_TIMEZONE", "America/New_York")
@@ -1979,6 +1978,22 @@ async def user_profile_page(
     except Exception:
         pass
 
+    # OIDC / SSO link status
+    oidc_enabled = _oidc_available()
+    oidc_linked = False
+    oidc_linked_at = None
+    oidc_display_name = None
+    if oidc_enabled:
+        oidc_config = get_oidc_config()
+        oidc_display_name = oidc_config.get("display_name", "SSO")
+        try:
+            acct = get_account_by_email(user.email)
+            if acct and acct.oidc_subject:
+                oidc_linked = True
+                oidc_linked_at = acct.oidc_linked_at
+        except Exception:
+            pass
+
     return templates.TemplateResponse("user_profile.html", {
         "request": request,
         "user": user,
@@ -1995,6 +2010,10 @@ async def user_profile_page(
         "user_credits": user_credits,
         "total_requests": total_requests,
         "total_prints": total_prints,
+        "oidc_enabled": oidc_enabled,
+        "oidc_linked": oidc_linked,
+        "oidc_linked_at": oidc_linked_at,
+        "oidc_display_name": oidc_display_name,
     })
 
 
@@ -2369,6 +2388,76 @@ def _oidc_available() -> bool:
     return is_oidc_enabled() and is_feature_enabled("oidc_login")
 
 
+@router.get("/auth/oidc/link")
+async def oidc_link(request: Request):
+    """
+    Initiate OIDC linking flow for an already-authenticated user.
+    
+    Redirects to Authentik authorization endpoint, encoding the user's
+    account ID in the state cookie so the callback links instead of logging in.
+    """
+    if not _oidc_available():
+        raise HTTPException(status_code=404, detail="OIDC login is not enabled")
+    
+    # Require the user to be logged in
+    user = await get_current_user(request)
+    account = None
+    
+    if user:
+        # Legacy user — ensure they have an Account record
+        account = ensure_account_for_user(user)
+    else:
+        # Try unified session cookie
+        session_token = request.cookies.get("session")
+        if session_token:
+            session = get_session_by_token(session_token)
+            if session:
+                account = get_account_by_id(session.account_id)
+    
+    if not account:
+        return RedirectResponse(
+            url="/my-requests?error=not_logged_in",
+            status_code=303
+        )
+    
+    # Check if already linked
+    if account.oidc_subject:
+        return RedirectResponse(
+            url="/user/profile?error=SSO+is+already+linked+to+your+account",
+            status_code=303
+        )
+    
+    state = generate_state()
+    nonce = generate_nonce()
+    
+    # Build the return URL with token for profile page
+    from app.main import get_or_create_my_requests_token
+    profile_token = get_or_create_my_requests_token(account.email)
+    next_url = f"/user/profile?token={profile_token}"
+    
+    # Encode link intent in state cookie: "state|next_url|link:account_id"
+    state_value = f"{state}|{next_url}|link:{account.id}"
+    
+    auth_url = await get_authorization_url(state, nonce)
+    
+    resp = RedirectResponse(url=auth_url, status_code=302)
+    
+    is_secure = os.getenv("BASE_URL", "").startswith("https")
+    
+    resp.set_cookie(
+        "oidc_state", state_value,
+        httponly=True, samesite="lax", secure=is_secure,
+        path="/", max_age=300
+    )
+    resp.set_cookie(
+        "oidc_nonce", nonce,
+        httponly=True, samesite="lax", secure=is_secure,
+        path="/", max_age=300
+    )
+    
+    return resp
+
+
 @router.get("/auth/oidc/login")
 async def oidc_login(request: Request, next: str = None):
     """
@@ -2444,10 +2533,14 @@ async def oidc_callback(request: Request, code: str = None, state: str = None, e
             status_code=303
         )
     
-    # Parse state_cookie: "state|next_url"
-    state_parts = state_cookie.split("|", 1)
+    # Parse state_cookie: "state|next_url" or "state|next_url|link:account_id"
+    state_parts = state_cookie.split("|")
     expected_state = state_parts[0]
     next_url = state_parts[1] if len(state_parts) > 1 else ""
+    link_account_id = None
+    for part in state_parts[2:]:
+        if part.startswith("link:"):
+            link_account_id = part[5:]
     
     if not secrets.compare_digest(state, expected_state):
         logger.warning("OIDC callback: state mismatch")
@@ -2477,6 +2570,49 @@ async def oidc_callback(request: Request, code: str = None, state: str = None, e
             raise ValueError("ID token missing required claims (sub, email)")
         
         logger.info(f"OIDC login: sub={sub}, email={email}, name={name}")
+        
+        # ── Explicit link flow (user initiated from profile) ──
+        if link_account_id:
+            # Check that the OIDC subject isn't already linked to a different account
+            existing = get_account_by_oidc_subject(sub, issuer)
+            if existing and existing.id != link_account_id:
+                logger.warning(f"OIDC link failed: sub={sub} already linked to account {existing.id}")
+                resp = RedirectResponse(
+                    url=f"/user/profile?error=This+SSO+identity+is+already+linked+to+another+account",
+                    status_code=303
+                )
+                resp.delete_cookie("oidc_state", path="/")
+                resp.delete_cookie("oidc_nonce", path="/")
+                return resp
+            
+            link_oidc_to_account(link_account_id, sub, issuer)
+            logger.info(f"OIDC explicitly linked to account {link_account_id} (sub={sub})")
+            
+            log_audit(
+                action=AuditAction.USER_UPDATED,
+                actor_type="user",
+                actor_id=link_account_id,
+                target_type="account",
+                target_id=link_account_id,
+                details={
+                    "event": "oidc_linked_manual",
+                    "oidc_subject": sub,
+                    "oidc_issuer": issuer,
+                    "email": email,
+                }
+            )
+            
+            # Redirect back to profile (user is already logged in)
+            redirect_url = next_url if next_url and next_url.startswith("/") else "/user/profile"
+            if "?" in redirect_url:
+                redirect_url += "&success=SSO+account+linked+successfully"
+            else:
+                redirect_url += "?success=SSO+account+linked+successfully"
+            
+            resp = RedirectResponse(url=redirect_url, status_code=303)
+            resp.delete_cookie("oidc_state", path="/")
+            resp.delete_cookie("oidc_nonce", path="/")
+            return resp
         
         # ── Find or create account ──
         account = None

@@ -11,6 +11,9 @@ Tests cover:
 - OIDC disabled returns 404
 - Logout clears session
 - Account OIDC linking/unlinking
+- Explicit SSO linking from profile (/auth/oidc/link)
+- Callback with link intent links without creating new session
+- ensure_account_for_user creates Account for legacy User
 """
 
 import os
@@ -553,3 +556,268 @@ class TestAccountModelOIDCFields:
         
         d = account.to_dict()
         assert d["oidc_linked"] is False
+
+
+# ─────────────────────────── SSO LINKING TESTS ───────────────────────────
+
+def create_test_user_in_users_table(email="legacy@example.com", name="Legacy User"):
+    """Create a user in the legacy users table (not accounts)."""
+    import uuid
+    import hashlib
+    conn = get_test_db()
+    user_id = str(uuid.uuid4())
+    now = now_iso()
+    password_hash = hashlib.sha256("testpassword".encode()).hexdigest()
+    conn.execute("""
+        INSERT INTO users (id, email, name, password_hash, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'active', ?, ?)
+    """, (user_id, email, name, password_hash, now, now))
+    conn.commit()
+    conn.close()
+    return user_id
+
+
+class TestEnsureAccountForUser:
+    """Test ensure_account_for_user helper."""
+
+    def test_creates_account_for_legacy_user(self):
+        from app.auth import ensure_account_for_user, get_user_by_id
+        
+        user_id = create_test_user_in_users_table(email="legacy-create@example.com")
+        user = get_user_by_id(user_id)
+        assert user is not None
+        
+        account = ensure_account_for_user(user)
+        assert account is not None
+        assert account.email == "legacy-create@example.com"
+        # Account should be in the accounts table
+        conn = get_test_db()
+        row = conn.execute(
+            "SELECT * FROM accounts WHERE LOWER(email) = LOWER(?)", ("legacy-create@example.com",)
+        ).fetchone()
+        conn.close()
+        assert row is not None
+
+    def test_returns_existing_account(self):
+        from app.auth import ensure_account_for_user, get_user_by_id
+        
+        # Create account first
+        account_id = create_test_account(email="has-account@example.com", name="Has Account")
+        # Create legacy user with same email
+        user_id = create_test_user_in_users_table(email="has-account@example.com", name="Has Account")
+        user = get_user_by_id(user_id)
+        
+        account = ensure_account_for_user(user)
+        assert account is not None
+        assert account.id == account_id  # Should return existing, not create new
+
+    def test_returns_none_for_none_user(self):
+        from app.auth import ensure_account_for_user
+        assert ensure_account_for_user(None) is None
+
+
+class TestOIDCLinkRoute:
+    """Test the /auth/oidc/link route for explicit SSO linking."""
+
+    def test_link_requires_authentication(self, client, oidc_env):
+        enable_oidc_feature_flag()
+        resp = client.get("/auth/oidc/link", follow_redirects=False)
+        assert resp.status_code == 303
+        assert "/my-requests" in resp.headers["location"]
+
+    @patch("app.oidc.fetch_discovery")
+    def test_link_redirects_authenticated_user(self, mock_discovery, client, oidc_env):
+        enable_oidc_feature_flag()
+        mock_discovery.return_value = {
+            "authorization_endpoint": "https://authentik.example.com/application/o/authorize/",
+            "token_endpoint": "https://authentik.example.com/application/o/token/",
+            "userinfo_endpoint": "https://authentik.example.com/application/o/userinfo/",
+            "jwks_uri": "https://authentik.example.com/application/o/test/jwks/",
+            "issuer": "https://authentik.example.com/application/o/test/",
+        }
+        
+        # Create user and session
+        from app.auth import create_user_session
+        user_id = create_test_user_in_users_table(email="link-user@example.com")
+        session_token = create_user_session(user_id)
+        client.cookies.set("user_session", session_token)
+        
+        resp = client.get("/auth/oidc/link", follow_redirects=False)
+        assert resp.status_code == 302
+        location = resp.headers["location"]
+        assert "authentik.example.com" in location
+
+    def test_link_rejects_already_linked(self, client, oidc_env):
+        enable_oidc_feature_flag()
+        
+        # Create account that's already OIDC-linked
+        account_id = create_test_account(email="already-linked@example.com", name="Already Linked")
+        conn = get_test_db()
+        conn.execute(
+            "UPDATE accounts SET oidc_subject = ?, oidc_issuer = ? WHERE id = ?",
+            ("existing-sub", "https://issuer.example.com/", account_id)
+        )
+        conn.commit()
+        conn.close()
+        
+        # Create unified session for this account
+        from app.auth import create_session
+        session = create_session(account_id=account_id, device_info="test")
+        client.cookies.set("session", session.token)
+        
+        resp = client.get("/auth/oidc/link", follow_redirects=False)
+        assert resp.status_code == 303
+        assert "already+linked" in resp.headers["location"].lower() or "already" in resp.headers["location"].lower()
+
+    def test_link_disabled_returns_404(self, client):
+        resp = client.get("/auth/oidc/link", follow_redirects=False)
+        assert resp.status_code == 404
+
+
+class TestOIDCCallbackLinkIntent:
+    """Test OIDC callback with explicit link intent (link:account_id in state)."""
+
+    @patch("app.routes_auth.verify_id_token")
+    @patch("app.routes_auth.exchange_code")
+    def test_callback_links_to_specified_account(
+        self, mock_exchange, mock_verify, client, oidc_env
+    ):
+        enable_oidc_feature_flag()
+        
+        account_id = create_test_account(email="explicit-link@example.com", name="Explicit Link")
+        
+        test_state = "link-state-123"
+        test_nonce = "link-nonce-456"
+        
+        mock_exchange.return_value = {
+            "access_token": "mock-access-token",
+            "id_token": "mock-id-token",
+        }
+        mock_verify.return_value = {
+            "sub": "authentik-link-uuid-789",
+            "email": "explicit-link@example.com",
+            "name": "Explicit Link",
+            "iss": "https://authentik.example.com/application/o/test/",
+            "aud": "test-client-id",
+            "nonce": test_nonce,
+        }
+        
+        # State includes link intent
+        client.cookies.set("oidc_state", f"{test_state}|/user/profile|link:{account_id}")
+        client.cookies.set("oidc_nonce", test_nonce)
+        
+        resp = client.get(
+            f"/auth/oidc/callback?code=auth-code-link&state={test_state}",
+            follow_redirects=False
+        )
+        
+        assert resp.status_code == 303
+        assert "success" in resp.headers["location"].lower()
+        assert "linked" in resp.headers["location"].lower()
+        
+        # Verify OIDC was linked to the specified account
+        conn = get_test_db()
+        row = conn.execute(
+            "SELECT oidc_subject, oidc_issuer FROM accounts WHERE id = ?",
+            (account_id,)
+        ).fetchone()
+        conn.close()
+        
+        assert row["oidc_subject"] == "authentik-link-uuid-789"
+        assert row["oidc_issuer"] == "https://authentik.example.com/application/o/test/"
+
+    @patch("app.routes_auth.verify_id_token")
+    @patch("app.routes_auth.exchange_code")
+    def test_callback_link_rejects_already_linked_sub(
+        self, mock_exchange, mock_verify, client, oidc_env
+    ):
+        enable_oidc_feature_flag()
+        
+        # Account A — already linked to this OIDC sub
+        account_a = create_test_account(email="acct-a@example.com", name="Account A")
+        conn = get_test_db()
+        conn.execute(
+            "UPDATE accounts SET oidc_subject = ?, oidc_issuer = ? WHERE id = ?",
+            ("contested-sub", "https://authentik.example.com/application/o/test/", account_a)
+        )
+        conn.commit()
+        conn.close()
+        
+        # Account B — trying to link the same OIDC sub
+        account_b = create_test_account(email="acct-b@example.com", name="Account B")
+        
+        test_state = "link-state-conflict"
+        test_nonce = "link-nonce-conflict"
+        
+        mock_exchange.return_value = {
+            "access_token": "mock-access-token",
+            "id_token": "mock-id-token",
+        }
+        mock_verify.return_value = {
+            "sub": "contested-sub",
+            "email": "someone@example.com",
+            "name": "Someone",
+            "iss": "https://authentik.example.com/application/o/test/",
+            "aud": "test-client-id",
+            "nonce": test_nonce,
+        }
+        
+        client.cookies.set("oidc_state", f"{test_state}||link:{account_b}")
+        client.cookies.set("oidc_nonce", test_nonce)
+        
+        resp = client.get(
+            f"/auth/oidc/callback?code=auth-code-conflict&state={test_state}",
+            follow_redirects=False
+        )
+        
+        assert resp.status_code == 303
+        assert "already" in resp.headers["location"].lower() or "error" in resp.headers["location"].lower()
+        
+        # Account B should NOT have been linked
+        conn = get_test_db()
+        row = conn.execute(
+            "SELECT oidc_subject FROM accounts WHERE id = ?", (account_b,)
+        ).fetchone()
+        conn.close()
+        assert row["oidc_subject"] is None
+
+    @patch("app.routes_auth.verify_id_token")
+    @patch("app.routes_auth.exchange_code")
+    def test_callback_link_does_not_create_session(
+        self, mock_exchange, mock_verify, client, oidc_env
+    ):
+        """Link intent should NOT create a new unified session — user is already logged in."""
+        enable_oidc_feature_flag()
+        
+        account_id = create_test_account(email="no-session@example.com", name="No Session")
+        
+        test_state = "link-nosess"
+        test_nonce = "link-nosess-nonce"
+        
+        mock_exchange.return_value = {
+            "access_token": "mock-access-token",
+            "id_token": "mock-id-token",
+        }
+        mock_verify.return_value = {
+            "sub": "nosess-sub",
+            "email": "no-session@example.com",
+            "name": "No Session",
+            "iss": "https://authentik.example.com/application/o/test/",
+            "aud": "test-client-id",
+            "nonce": test_nonce,
+        }
+        
+        client.cookies.set("oidc_state", f"{test_state}||link:{account_id}")
+        client.cookies.set("oidc_nonce", test_nonce)
+        
+        resp = client.get(
+            f"/auth/oidc/callback?code=auth-code-nosess&state={test_state}",
+            follow_redirects=False
+        )
+        
+        assert resp.status_code == 303
+        # Should NOT have a 'session' cookie set in the response
+        set_cookie_header = resp.headers.get("set-cookie", "")
+        # The response may clear oidc_state/oidc_nonce but should NOT set a new 'session' cookie
+        # (it should only delete the oidc flow cookies)
+        assert "session=" not in set_cookie_header.replace("oidc_state=", "").replace("oidc_nonce=", "").replace("oidc_state", "").replace("oidc_nonce", "")
