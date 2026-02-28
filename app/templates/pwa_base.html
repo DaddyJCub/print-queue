@@ -54,11 +54,9 @@
     /* Bottom nav */
     .bottom-nav { padding-bottom: calc(var(--safe-area-bottom) + 8px); }
     .has-bottom-nav { padding-bottom: calc(var(--nav-height) + var(--safe-area-bottom) + 16px); }
+    .nav-item { color: #71717a; transition: color 0.15s; }
     .nav-item.active { color: #818cf8; }
-    .nav-item.active .nav-icon {
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      color: white; transform: scale(1.05);
-    }
+    .nav-item:active { transform: scale(0.92); }
     /* Tap / interactions */
     .tap-highlight { -webkit-tap-highlight-color: transparent; }
     .tap-highlight:active { transform: scale(0.97); }
@@ -417,56 +415,44 @@
 
   <!-- Bottom Navigation (Mobile PWA Style) -->
   <nav role="navigation" aria-label="Mobile navigation" class="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-lg border-t border-zinc-800 sm:hidden bottom-nav">
-    <div id="bottom-nav-grid" class="grid grid-cols-5 gap-1 px-2 pt-2">
-      <a href="/" class="nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_home %}{% endblock %}">
-        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
-          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-        </div>
-        <span class="text-xs mt-1">Submit</span>
+    <div id="bottom-nav-grid" class="flex items-stretch">
+      <a href="/" class="nav-item flex-1 flex flex-col items-center justify-center py-2 px-1 tap-highlight {% block bnav_home %}{% endblock %}">
+        <svg class="w-6 h-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+        </svg>
+        <span class="text-[10px] leading-tight">Submit</span>
       </a>
-      <a href="/queue" class="nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_queue %}{% endblock %}">
-        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
-          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-          </svg>
-        </div>
-        <span class="text-xs mt-1">Queue</span>
+      <a href="/queue" class="nav-item flex-1 flex flex-col items-center justify-center py-2 px-1 tap-highlight {% block bnav_queue %}{% endblock %}">
+        <svg class="w-6 h-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+        </svg>
+        <span class="text-[10px] leading-tight">Queue</span>
       </a>
-      <a href="/store" class="nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_store %}{% endblock %}">
-        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
-          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-          </svg>
-        </div>
-        <span class="text-xs mt-1">Store</span>
+      <a href="/store" class="nav-item flex-1 flex flex-col items-center justify-center py-2 px-1 tap-highlight {% block bnav_store %}{% endblock %}">
+        <svg class="w-6 h-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+        </svg>
+        <span class="text-[10px] leading-tight">Store</span>
       </a>
-      <a href="/my-requests" id="my-requests-nav" class="nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_myrequests %}{% endblock %}">
-        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
-          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-          </svg>
-        </div>
-        <span class="text-xs mt-1">My Prints</span>
+      <a href="/my-requests" id="my-requests-nav" class="nav-item flex-1 flex flex-col items-center justify-center py-2 px-1 tap-highlight {% block bnav_myrequests %}{% endblock %}">
+        <svg class="w-6 h-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+        <span class="text-[10px] leading-tight">My Prints</span>
       </a>
-      <a href="/auth/profile" id="account-nav" class="nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_account %}{% endblock %}">
-        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
-          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-          </svg>
-        </div>
-        <span class="text-xs mt-1">Account</span>
+      <a href="/auth/profile" id="account-nav" class="nav-item flex-1 flex flex-col items-center justify-center py-2 px-1 tap-highlight {% block bnav_account %}{% endblock %}">
+        <svg class="w-6 h-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+        <span class="text-[10px] leading-tight">Account</span>
       </a>
       <!-- Admin tab - hidden by default, shown via JS if admin -->
-      <a href="/admin" id="admin-nav" class="hidden nav-item flex flex-col items-center py-2 tap-highlight {% block bnav_admin %}{% endblock %}">
-        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center transition-all">
-          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </div>
-        <span class="text-xs mt-1">Admin</span>
+      <a href="/admin" id="admin-nav" class="hidden nav-item flex-1 flex flex-col items-center justify-center py-2 px-1 tap-highlight {% block bnav_admin %}{% endblock %}">
+        <svg class="w-6 h-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        <span class="text-[10px] leading-tight">Admin</span>
       </a>
     </div>
   </nav>
@@ -479,13 +465,10 @@
         if (resp.ok) {
           const data = await resp.json();
           if (data.is_admin) {
-            // Show admin tab (mobile bottom nav)
+            // Show admin tab (mobile bottom nav) — flex-1 handles sizing automatically
             const adminNav = document.getElementById('admin-nav');
             if (adminNav) {
               adminNav.classList.remove('hidden');
-              // Change grid to 6 columns (5 standard + admin)
-              const grid = document.getElementById('bottom-nav-grid');
-              if (grid) grid.classList.replace('grid-cols-5', 'grid-cols-6');
             }
             // Show admin link in desktop nav
             const desktopAdminLink = document.getElementById('desktop-admin-link');
