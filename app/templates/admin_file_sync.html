@@ -369,7 +369,7 @@ async function toggleFolder(folderId, enable) {
 }
 
 async function deleteFolder(folderId, name) {
-  if (!confirm(`Delete sync folder "${name}"?`)) return;
+  if (!await showConfirm(`Delete sync folder "${name}"?`, { title: 'Delete Folder', confirmText: 'Delete' })) return;
   
   try {
     const res = await fetch(`/admin/file-sync/folders/${folderId}`, { method: 'DELETE' });

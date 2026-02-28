@@ -804,6 +804,32 @@
 
 </div>
 
+<!-- Delete Account Modal -->
+<div id="delete-account-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true">
+  <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md">
+    <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+      <h2 class="font-semibold text-red-400">Delete Account</h2>
+      <button onclick="hideDeleteAccountModal()" class="text-zinc-400 hover:text-white transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="px-6 py-5">
+      <p class="text-sm text-zinc-300 mb-2">This will <span class="text-red-400 font-semibold">permanently delete</span> your account and all associated data. This action cannot be undone.</p>
+      <p class="text-sm text-zinc-400 mb-5">Type <span class="font-mono font-bold text-white">DELETE</span> to confirm:</p>
+      <input id="delete-confirm-input" type="text" autocomplete="off" spellcheck="false"
+        class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-white font-mono placeholder-zinc-600 outline-none focus:border-red-500 mb-4"
+        placeholder="DELETE" oninput="updateDeleteBtn()" />
+      <div class="flex gap-3 justify-end">
+        <button onclick="hideDeleteAccountModal()" class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm text-white transition">Cancel</button>
+        <button id="delete-account-btn" onclick="submitDeleteAccount()" disabled
+          class="px-4 py-2 rounded-xl bg-red-600 text-sm font-medium text-white transition opacity-40 cursor-not-allowed">
+          Delete Permanently
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Set/Change Password Modal -->
 <div id="password-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4">
   <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md">
@@ -1235,32 +1261,59 @@ function hidePasswordModal() {
 }
 
 function confirmDeleteAccount() {
-  if (confirm('Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently deleted.')) {
-    if (confirm('This is your final warning. Type "DELETE" in the next prompt to confirm.')) {
-      const confirmation = prompt('Type DELETE to confirm account deletion:');
-      if (confirmation === 'DELETE') {
-        fetch('/user/delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'token={{ token }}'
-        }).then(response => {
-          if (response.ok) {
-            localStorage.removeItem('my_requests_token');
-            localStorage.removeItem('my_requests_email');
-            window.location.href = '/?deleted=1';
-          } else {
-            alert('Failed to delete account. Please try again.');
-          }
-        });
-      }
-    }
+  document.getElementById('delete-confirm-input').value = '';
+  updateDeleteBtn();
+  const modal = document.getElementById('delete-account-modal');
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  setTimeout(() => document.getElementById('delete-confirm-input').focus(), 50);
+}
+
+function hideDeleteAccountModal() {
+  const modal = document.getElementById('delete-account-modal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+}
+
+function updateDeleteBtn() {
+  const val = document.getElementById('delete-confirm-input').value;
+  const btn = document.getElementById('delete-account-btn');
+  if (val === 'DELETE') {
+    btn.disabled = false;
+    btn.classList.remove('opacity-40', 'cursor-not-allowed');
+    btn.classList.add('hover:bg-red-500');
+  } else {
+    btn.disabled = true;
+    btn.classList.add('opacity-40', 'cursor-not-allowed');
+    btn.classList.remove('hover:bg-red-500');
   }
+}
+
+function submitDeleteAccount() {
+  fetch('/user/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'token={{ token }}'
+  }).then(response => {
+    if (response.ok) {
+      localStorage.removeItem('my_requests_token');
+      localStorage.removeItem('my_requests_email');
+      window.location.href = '/?deleted=1';
+    } else {
+      hideDeleteAccountModal();
+      showToast('Failed to delete account. Please try again.', 'error');
+    }
+  }).catch(() => {
+    hideDeleteAccountModal();
+    showToast('Failed to delete account. Please try again.', 'error');
+  });
 }
 
 // Close modal on escape
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     hidePasswordModal();
+    hideDeleteAccountModal();
     {% if printellect_enabled %}
     closePrintellectModal();
     {% endif %}
@@ -1270,6 +1323,9 @@ document.addEventListener('keydown', e => {
 // Close modal on backdrop click
 document.getElementById('password-modal')?.addEventListener('click', function(e) {
   if (e.target === this) hidePasswordModal();
+});
+document.getElementById('delete-account-modal')?.addEventListener('click', function(e) {
+  if (e.target === this) hideDeleteAccountModal();
 });
 
 {% if printellect_enabled %}

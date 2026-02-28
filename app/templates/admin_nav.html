@@ -268,3 +268,99 @@ if (window.innerWidth < 1024) {
   document.body.style.paddingBottom = 'calc(80px + env(safe-area-inset-bottom, 0px))';
 }
 </script>
+
+<!-- ── Admin Global Modals ─────────────────────────────────── -->
+<div id="_confirm_modal" class="hidden fixed inset-0 bg-black/70 z-[9999] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+  <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+    <h3 id="_confirm_title" class="font-semibold text-base text-white mb-2"></h3>
+    <p id="_confirm_msg" class="text-zinc-400 text-sm mb-6 leading-relaxed"></p>
+    <div class="flex gap-3 justify-end">
+      <button id="_confirm_cancel" class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm text-white transition-colors">Cancel</button>
+      <button id="_confirm_ok" class="px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors">Confirm</button>
+    </div>
+  </div>
+</div>
+<div id="_alert_modal" class="hidden fixed inset-0 bg-black/70 z-[9999] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+  <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+    <p id="_alert_msg" class="text-sm text-zinc-300 mb-5 leading-relaxed whitespace-pre-line"></p>
+    <button id="_alert_ok" class="w-full px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm text-white transition-colors">OK</button>
+  </div>
+</div>
+<!-- Admin toast container -->
+<div id="admin-toast-container" class="fixed bottom-4 right-4 z-[9998] flex flex-col gap-2 pointer-events-none"></div>
+
+<script>
+// ── showConfirm / showAlert / showToast ────────────────────────────────────
+window.showConfirm = function(msg, opts) {
+  opts = opts || {};
+  var title       = opts.title       || 'Confirm';
+  var confirmText = opts.confirmText || 'Confirm';
+  var cancelText  = opts.cancelText  || 'Cancel';
+  var destructive = opts.destructive !== false;
+  return new Promise(function(resolve) {
+    var modal  = document.getElementById('_confirm_modal');
+    document.getElementById('_confirm_title').textContent = title;
+    document.getElementById('_confirm_msg').textContent   = msg;
+    var ok     = document.getElementById('_confirm_ok');
+    var cancel = document.getElementById('_confirm_cancel');
+    ok.textContent     = confirmText;
+    cancel.textContent = cancelText;
+    ok.className = 'px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors ' +
+      (destructive ? 'bg-red-600 hover:bg-red-500' : 'bg-indigo-600 hover:bg-indigo-500');
+    modal.classList.remove('hidden');
+    function close(result) {
+      modal.classList.add('hidden');
+      ok.onclick = cancel.onclick = modal.onclick = null;
+      resolve(result);
+    }
+    ok.onclick     = function() { close(true);  };
+    cancel.onclick = function() { close(false); };
+    modal.onclick  = function(e) { if (e.target === modal) close(false); };
+  });
+};
+window.showAlert = function(msg) {
+  return new Promise(function(resolve) {
+    var modal = document.getElementById('_alert_modal');
+    document.getElementById('_alert_msg').textContent = msg;
+    modal.classList.remove('hidden');
+    var ok = document.getElementById('_alert_ok');
+    ok.onclick = function() { modal.classList.add('hidden'); resolve(); };
+    modal.onclick = function(e) { if (e.target === modal) { modal.classList.add('hidden'); resolve(); } };
+  });
+};
+// Lightweight fallback toast (templates with their own showToast will shadow this)
+if (!window.showToast) {
+  window.showToast = function(msg, type, duration) {
+    type = type || 'info';
+    duration = duration == null ? 4000 : duration;
+    var container = document.getElementById('admin-toast-container');
+    var el = document.createElement('div');
+    var colors = { success: 'bg-emerald-900 border-emerald-700 text-emerald-200', error: 'bg-red-900 border-red-700 text-red-200', warning: 'bg-amber-900 border-amber-700 text-amber-200', info: 'bg-zinc-800 border-zinc-700 text-zinc-200' };
+    el.className = 'pointer-events-auto px-4 py-3 rounded-xl border shadow-lg text-sm ' + (colors[type] || colors.info);
+    el.textContent = msg;
+    container.appendChild(el);
+    if (duration > 0) setTimeout(function() { el.remove(); }, duration);
+    return el;
+  };
+}
+// Intercept forms with data-confirm attribute
+document.addEventListener('submit', function(e) {
+  var msg = e.target.dataset.confirm;
+  if (!msg) return;
+  e.preventDefault();
+  var form = e.target;
+  showConfirm(msg).then(function(ok) { if (ok) form.submit(); });
+}, true);
+// Intercept buttons/links with data-confirm not inside a data-confirm form
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('button[data-confirm], a[data-confirm]');
+  if (!btn || btn.closest('form[data-confirm]')) return;
+  e.preventDefault();
+  showConfirm(btn.dataset.confirm, { destructive: btn.dataset.destructive !== 'false' }).then(function(ok) {
+    if (!ok) return;
+    var form = btn.closest('form');
+    if (form) form.submit();
+    else if (btn.href) window.location = btn.href;
+  });
+}, true);
+</script>

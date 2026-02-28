@@ -129,7 +129,7 @@
                 <form method="POST" action="/admin/credits/auto-grant/{{ rule.id }}/delete" class="inline">
                   {{ csrf_input(request) | safe }}
                   <button type="submit" class="text-xs text-red-400 hover:text-red-300 transition"
-                          onclick="return confirm('Remove this auto-grant rule?')">Remove</button>
+                          data-confirm="Remove this auto-grant rule?">Remove</button>
                 </form>
               </td>
             </tr>

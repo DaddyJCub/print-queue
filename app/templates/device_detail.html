@@ -539,8 +539,8 @@ document.getElementById('idleMode').addEventListener('change', () => markDirty('
 
 document.getElementById('playBtn').addEventListener('click', () => postAction('play', {perk: document.getElementById('perkSelect').value}));
 document.getElementById('stopBtn').addEventListener('click', () => postAction('stop', {}));
-document.getElementById('rebootBtn').addEventListener('click', () => {
-  if (!confirm('Reboot this device? It will go offline briefly.')) return;
+document.getElementById('rebootBtn').addEventListener('click', async () => {
+  if (!await showConfirm('Reboot this device? It will go offline briefly.', { title: 'Reboot Device', confirmText: 'Reboot' })) return;
   postAction('reboot', {});
 });
 document.getElementById('volumeBtn').addEventListener('click', () => {
@@ -561,9 +561,9 @@ document.getElementById('testAudioBtn').addEventListener('click', () =>
   postAction('test-audio', {track_id: document.getElementById('testTrack').value.trim()}));
 
 {% if is_admin %}
-document.getElementById('updateBtn')?.addEventListener('click', () => {
+document.getElementById('updateBtn')?.addEventListener('click', async () => {
   const version = document.getElementById('updateVersion').value.trim() || 'latest';
-  if (!confirm(`Apply firmware update "${version}"? The device will reboot.`)) return;
+  if (!await showConfirm(`Apply firmware update "${version}"? The device will reboot.`, { title: 'Apply Update', confirmText: 'Update' })) return;
   postAction('update', {version});
 });
 {% endif %}

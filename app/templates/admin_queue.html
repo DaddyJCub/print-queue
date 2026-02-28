@@ -222,7 +222,7 @@
 
       function showBatchEditModal() {
         if (selectedIds.size === 0) {
-          alert('Please select at least one request');
+          showToast('Please select at least one request', 'info');
           return;
         }
         document.getElementById('batch-ids').value = Array.from(selectedIds).join(',');
@@ -777,20 +777,20 @@
       }
 
       // Pause active build from printer card (sends M25)
-      function pausePrinterBuildConfirm(buildId, buildNumber, printer) {
+      async function pausePrinterBuildConfirm(buildId, buildNumber, printer) {
         if (!buildId) {
-          alert('No active build id found for this printer.');
+          showToast('No active build id found for this printer.', 'error');
           return;
         }
         const label = buildNumber ? `build ${buildNumber}` : 'the active build';
-        if (!confirm(`Pause ${label} on ${printer}? This will send M25 to the printer.`)) return;
+        if (!await showConfirm(`Pause ${label} on ${printer}? This will send M25 to the printer.`, { title: 'Pause Build', confirmText: 'Pause' })) return;
         window.location = `/api/admin/build/${buildId}/pause-open`;
       }
       
       // ── Moonraker Controls ──────────────────────────────────────────
       
       async function moonrakerControl(printerCode, action, confirmMsg) {
-        if (confirmMsg && !confirm(confirmMsg)) return;
+        if (confirmMsg && !await showConfirm(confirmMsg, { title: 'Confirm Action', confirmText: 'Confirm' })) return;
         
         try {
           const formData = new FormData();
@@ -803,14 +803,14 @@
           
           const data = await resp.json();
           if (!resp.ok) {
-            alert(`Error: ${data.detail || 'Unknown error'}`);
+            showToast(`Error: ${data.detail || 'Unknown error'}`, 'error');
             return;
           }
           
           // Refresh printer status immediately
           refreshPrinterStatus();
         } catch (e) {
-          alert(`Failed to ${action}: ${e.message}`);
+          showToast(`Failed to ${action}: ${e.message}`, 'error');
         }
       }
       
@@ -844,13 +844,13 @@
           
           const data = await resp.json();
           if (!resp.ok) {
-            alert(`Error: ${data.detail || 'Unknown error'}`);
+            showToast(`Error: ${data.detail || 'Unknown error'}`, 'error');
             return;
           }
           
           refreshPrinterStatus();
         } catch (e) {
-          alert(`Failed to cancel: ${e.message}`);
+          showToast(`Failed to cancel: ${e.message}`, 'error');
         }
       }
       
@@ -910,7 +910,7 @@
           // Show "Start Print" button
           startBtn.classList.remove('hidden');
           startBtn.onclick = async function() {
-            if (!confirm(`Start printing ${file.name} on ${printerCode}?`)) return;
+            if (!await showConfirm(`Start printing ${file.name} on ${printerCode}?`, { title: 'Start Print', confirmText: 'Start', destructive: false })) return;
             
             const startForm = new FormData();
             startForm.append('filename', file.name);
@@ -926,7 +926,7 @@
               refreshPrinterStatus();
             } else {
               const err = await startResp.json();
-              alert(`Failed to start: ${err.detail || 'Unknown error'}`);
+              showToast(`Failed to start: ${err.detail || 'Unknown error'}`, 'error');
             }
           };
         } catch (e) {

@@ -115,7 +115,7 @@
         <p id="admin-progress-status" class="text-xs text-zinc-500 mt-1">Loading setting…</p>
       </div>
       
-      <form method="POST" action="/admin/broadcast/send" class="space-y-4" onsubmit="return confirmBroadcast(this)">
+      <form method="POST" action="/admin/broadcast/send" class="space-y-4" id="broadcast-send-form">
         <div>
           <label class="block text-sm text-zinc-300 mb-1">Title</label>
           <input type="text" name="title" required
@@ -235,7 +235,7 @@
         
         <button type="submit" 
                 class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-6 py-3 font-semibold"
-                onclick="return confirm('Send app update notification to all {{ subscriber_count }} subscribers?')">
+                data-confirm="Send app update notification to all {{ subscriber_count }} subscribers?" data-destructive="false">
           🚀 Send Update Alert
         </button>
       </form>
@@ -309,7 +309,7 @@
     }
     
     async function cleanupSubscriptions(email) {
-      if (!confirm(`Remove invalid subscriptions for ${email}?`)) return;
+      if (!await showConfirm(`Remove invalid subscriptions for ${email}?`, { title: 'Cleanup Subscriptions', confirmText: 'Remove', destructive: true })) return;
       try {
         const resp = await fetch('/api/admin/push/cleanup', {
           method: 'POST',
@@ -329,7 +329,7 @@
     }
     
     async function cleanupAllStale() {
-      if (!confirm('Test all subscriptions and remove invalid ones?')) return;
+      if (!await showConfirm('Test all subscriptions and remove invalid ones?', { title: 'Cleanup All Stale', confirmText: 'Clean Up', destructive: true })) return;
       showToast('Testing subscriptions...');
       try {
         const resp = await fetch('/api/admin/push/cleanup-all', {
@@ -350,7 +350,7 @@
     }
     
     async function testAllSubscriptions() {
-      if (!confirm('Send a silent test to all subscriptions to check validity?')) return;
+      if (!await showConfirm('Send a silent test to all subscriptions to check validity?', { title: 'Test Subscriptions', confirmText: 'Run Test', destructive: false })) return;
       showToast('Testing...');
       try {
         const resp = await fetch('/api/admin/push/test-all', {
@@ -376,20 +376,27 @@
       container.classList.toggle('hidden', !isSpecific);
     }
     
-    function confirmBroadcast(form) {
+    async function confirmBroadcast(e) {
+      e.preventDefault();
+      const form = e.target;
       const target = form.querySelector('input[name="target"]:checked').value;
+      let msg;
       if (target === 'all') {
-        return confirm('Send this notification to all {{ subscriber_count }} subscribers?');
+        msg = 'Send this notification to all {{ subscriber_count }} subscribers?';
       } else {
         const emails = form.querySelector('#target-emails').value.trim();
         if (!emails) {
-          alert('Please enter at least one email address');
-          return false;
+          showToast('Please enter at least one email address', 'error');
+          return;
         }
         const count = emails.split(/[\n,]/).filter(e => e.trim()).length;
-        return confirm(`Send this notification to ${count} specified user(s)?`);
+        msg = `Send this notification to ${count} specified user(s)?`;
       }
+      if (await showConfirm(msg, { title: 'Send Notification', confirmText: 'Send', destructive: false })) form.submit();
     }
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('broadcast-send-form')?.addEventListener('submit', confirmBroadcast);
+    });
     
   function updateVersionPreview(version) {
     document.getElementById('preview-version').textContent = version;

@@ -147,10 +147,10 @@
         navigator.clipboard.writeText(fullUrl).then(() => {
           document.getElementById('copy-success').classList.remove('hidden');
         }).catch(() => {
-          alert('Copy this link:\\n\\n' + fullUrl);
+          showAlert('Copy this link:\n\n' + fullUrl);
         });
       } else {
-        alert('Copy this link:\\n\\n' + fullUrl);
+        showAlert('Copy this link:\n\n' + fullUrl);
       }
     }
     

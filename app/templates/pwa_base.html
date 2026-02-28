@@ -1027,6 +1027,98 @@
   })();
   </script>
 
+  <!-- Global Confirm Modal -->
+  <div id="_confirm_modal" class="hidden fixed inset-0 bg-black/70 z-[9999] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+      <h3 id="_confirm_title" class="font-semibold text-base text-white mb-2"></h3>
+      <p id="_confirm_msg" class="text-zinc-400 text-sm mb-6 leading-relaxed"></p>
+      <div class="flex gap-3 justify-end">
+        <button id="_confirm_cancel" class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm text-white transition-colors">Cancel</button>
+        <button id="_confirm_ok" class="px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Alert Modal -->
+  <div id="_alert_modal" class="hidden fixed inset-0 bg-black/70 z-[9999] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+      <p id="_alert_msg" class="text-sm text-zinc-300 mb-5 leading-relaxed whitespace-pre-wrap"></p>
+      <button id="_alert_ok" class="w-full px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm text-white transition-colors">OK</button>
+    </div>
+  </div>
+
+  <script>
+  // ── Custom Confirm / Alert ─────────────────────────────────────────────────
+  window.showConfirm = function(msg, opts) {
+    opts = opts || {};
+    var title        = opts.title       || 'Confirm';
+    var confirmText  = opts.confirmText || 'Confirm';
+    var cancelText   = opts.cancelText  || 'Cancel';
+    var destructive  = opts.destructive !== false;   // default true
+    return new Promise(function(resolve) {
+      var modal  = document.getElementById('_confirm_modal');
+      var titleEl = document.getElementById('_confirm_title');
+      var msgEl  = document.getElementById('_confirm_msg');
+      var ok     = document.getElementById('_confirm_ok');
+      var cancel = document.getElementById('_confirm_cancel');
+      titleEl.textContent = title;
+      msgEl.textContent   = msg;
+      ok.textContent      = confirmText;
+      cancel.textContent  = cancelText;
+      ok.className = 'px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors ' +
+        (destructive ? 'bg-red-600 hover:bg-red-500' : 'bg-indigo-600 hover:bg-indigo-500');
+      modal.classList.remove('hidden');
+      function close(result) {
+        modal.classList.add('hidden');
+        ok.onclick = cancel.onclick = modal.onclick = null;
+        resolve(result);
+      }
+      ok.onclick     = function() { close(true);  };
+      cancel.onclick = function() { close(false); };
+      modal.onclick  = function(e) { if (e.target === modal) close(false); };
+    });
+  };
+
+  window.showAlert = function(msg) {
+    return new Promise(function(resolve) {
+      var modal = document.getElementById('_alert_modal');
+      document.getElementById('_alert_msg').textContent = msg;
+      modal.classList.remove('hidden');
+      document.getElementById('_alert_ok').onclick = function() {
+        modal.classList.add('hidden');
+        resolve();
+      };
+      modal.onclick = function(e) { if (e.target === modal) { modal.classList.add('hidden'); resolve(); } };
+    });
+  };
+
+  // Intercept forms with data-confirm attribute (capture phase so it runs first)
+  document.addEventListener('submit', function(e) {
+    var msg = e.target.dataset.confirm;
+    if (!msg) return;
+    e.preventDefault();
+    var form = e.target;
+    showConfirm(msg).then(function(ok) {
+      if (ok) form.submit();
+    });
+  }, true);
+
+  // Intercept buttons/links with data-confirm that are NOT inside a data-confirm form
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('button[data-confirm], a[data-confirm]');
+    if (!btn) return;
+    if (btn.closest('form[data-confirm]')) return; // form handler covers it
+    e.preventDefault();
+    var destructive = btn.dataset.destructive !== 'false';
+    showConfirm(btn.dataset.confirm, { destructive: destructive }).then(function(ok) {
+      if (!ok) return;
+      var form = btn.closest('form');
+      if (form) form.submit();
+      else if (btn.href) window.location = btn.href;
+    });
+  }, true);
+  </script>
+
   {% block scripts %}{% endblock %}
 </body>
 </html>

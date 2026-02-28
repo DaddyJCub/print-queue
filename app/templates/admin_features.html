@@ -322,7 +322,7 @@
       const response = await fetch('/admin/features/' + key + '/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: enabled }) });
       if (!response.ok) throw new Error('Failed');
       location.reload();
-    } catch (e) { alert('Failed to update feature flag'); location.reload(); }
+    } catch (e) { showToast('Failed to update feature flag', 'error'); location.reload(); }
   }
 
   async function addFeatureEmail(event, key, inputId) {
@@ -340,12 +340,12 @@
       if (!response.ok) throw new Error('Failed');
       location.reload();
     } catch (e) {
-      alert('Failed to add email');
+      showToast('Failed to add email', 'error');
     }
   }
 
   async function removeFeatureEmail(key, email) {
-    if (!confirm('Remove ' + email + ' from access list?')) return;
+    if (!await showConfirm('Remove ' + email + ' from access list?', { title: 'Remove Access', confirmText: 'Remove' })) return;
     
     try {
       const response = await fetch('/admin/features/' + key + '/allowed-emails', {
@@ -356,7 +356,7 @@
       if (!response.ok) throw new Error('Failed');
       location.reload();
     } catch (e) {
-      alert('Failed to remove email');
+      showToast('Failed to remove email', 'error');
     }
   }
   </script>

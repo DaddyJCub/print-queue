@@ -90,67 +90,63 @@
     </div>
   </div>
 </div>
-{% endmacro %}
 
-
-{# Global script for modal management #}
+{# Inline the JS inside the macro, guarded so it only emits once per page #}
 <script>
-const modalCallbacks = {};
-const modalData = {};
+if (!window.openConfirmModal) {
+  const modalCallbacks = {};
+  const modalData = {};
 
-function openConfirmModal(id, data = {}, onConfirm = null) {
-  const modal = document.getElementById(`modal-${id}`);
-  if (!modal) return;
-  
-  // Store callback and data
-  if (onConfirm) modalCallbacks[id] = onConfirm;
-  modalData[id] = data;
-  
-  // Show modal with animation
-  modal.classList.remove('hidden');
-  modal.classList.add('flex');
-  document.body.classList.add('overflow-hidden');
-  
-  // Focus the cancel button for accessibility
-  const cancelBtn = modal.querySelector('button');
-  if (cancelBtn) cancelBtn.focus();
-  
-  // Setup confirm button click
-  const confirmBtn = document.getElementById(`modal-confirm-${id}`);
-  if (confirmBtn) {
-    confirmBtn.onclick = () => {
-      if (modalCallbacks[id]) {
-        modalCallbacks[id](modalData[id]);
-      }
-      closeConfirmModal(id);
-    };
+  function openConfirmModal(id, data, onConfirm) {
+    data = data || {};
+    onConfirm = onConfirm || null;
+    const modal = document.getElementById('modal-' + id);
+    if (!modal) { console.warn('confirm_modal: no element #modal-' + id); return; }
+
+    if (onConfirm) modalCallbacks[id] = onConfirm;
+    modalData[id] = data;
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    document.body.classList.add('overflow-hidden');
+
+    var cancelBtn = modal.querySelector('button');
+    if (cancelBtn) cancelBtn.focus();
+
+    var confirmBtn = document.getElementById('modal-confirm-' + id);
+    if (confirmBtn) {
+      confirmBtn.onclick = function() {
+        if (modalCallbacks[id]) {
+          modalCallbacks[id](modalData[id]);
+        }
+        closeConfirmModal(id);
+      };
+    }
   }
-}
 
-function closeConfirmModal(id) {
-  const modal = document.getElementById(`modal-${id}`);
-  if (!modal) return;
-  
-  modal.classList.add('hidden');
-  modal.classList.remove('flex');
-  document.body.classList.remove('overflow-hidden');
-  
-  // Clean up
-  delete modalCallbacks[id];
-  delete modalData[id];
-}
+  function closeConfirmModal(id) {
+    const modal = document.getElementById('modal-' + id);
+    if (!modal) return;
 
-// Close on escape key
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    document.querySelectorAll('[id^="modal-"]:not(.hidden)').forEach(modal => {
-      const id = modal.id.replace('modal-', '');
-      closeConfirmModal(id);
-    });
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    document.body.classList.remove('overflow-hidden');
+
+    delete modalCallbacks[id];
+    delete modalData[id];
   }
-});
 
-// Make globally available
-window.openConfirmModal = openConfirmModal;
-window.closeConfirmModal = closeConfirmModal;
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('[id^="modal-"]:not(.hidden)').forEach(function(modal) {
+        var id = modal.id.replace('modal-', '');
+        closeConfirmModal(id);
+      });
+    }
+  });
+
+  window.openConfirmModal = openConfirmModal;
+  window.closeConfirmModal = closeConfirmModal;
+}
 </script>
+{% endmacro %}

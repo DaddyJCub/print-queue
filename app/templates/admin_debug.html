@@ -204,13 +204,13 @@
         const res = await fetch(`/api/admin/pause-polling/${printer}?duration=${duration}`, { method: 'POST' });
         const data = await res.json();
         if (data.success) {
-          alert(`Polling paused for ${printer} for ${duration} seconds`);
+          showToast(`Polling paused for ${printer} for ${duration} seconds`, 'success');
           location.reload();
         } else {
-          alert('Failed to pause polling');
+          showToast('Failed to pause polling', 'error');
         }
       } catch (e) {
-        alert('Error: ' + e.message);
+        showToast('Error: ' + e.message, 'error');
       }
     }
     
@@ -219,13 +219,13 @@
         const res = await fetch(`/api/admin/resume-polling/${printer}`, { method: 'POST' });
         const data = await res.json();
         if (data.success) {
-          alert(`Polling resumed for ${printer}`);
+          showToast(`Polling resumed for ${printer}`, 'success');
           location.reload();
         } else {
-          alert('Failed to resume polling');
+          showToast('Failed to resume polling', 'error');
         }
       } catch (e) {
-        alert('Error: ' + e.message);
+        showToast('Error: ' + e.message, 'error');
       }
     }
     </script>

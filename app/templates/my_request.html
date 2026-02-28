@@ -239,18 +239,18 @@
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
         
         if (isIOS) {
-          alert('To open in the app:\\n\\n1. Open your home screen\\n2. Tap the Printellect app icon\\n3. Navigate to this request');
+          showAlert('To open in the app:\n\n1. Open your home screen\n2. Tap the Printellect app icon\n3. Navigate to this request');
         } else {
           // On Android, closing browser and opening app is the only reliable way
           // We can try copying the URL to clipboard
           if (navigator.clipboard) {
             navigator.clipboard.writeText(currentUrl).then(() => {
-              alert('URL copied!\\n\\nOpen the Printellect app from your home screen and paste the link, or navigate to your request.');
+              showToast('URL copied! Open the Printellect app and navigate to your request.', 'success', 5000);
             }).catch(() => {
-              alert('To view in the app:\\n\\nOpen the Printellect app from your home screen and navigate to your request.');
+              showAlert('To view in the app:\n\nOpen the Printellect app from your home screen and navigate to your request.');
             });
           } else {
-            alert('To view in the app:\\n\\nOpen the Printellect app from your home screen and navigate to your request.');
+            showAlert('To view in the app:\n\nOpen the Printellect app from your home screen and navigate to your request.');
           }
         }
       }

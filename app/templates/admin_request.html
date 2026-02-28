@@ -707,7 +707,7 @@
                 </div>
                 {% if payment["status"] == "completed" and payment.get("stripe_payment_intent_id") and payments_enabled %}
                 <form method="POST" action="/admin/request/{{ req['id'] }}/refund"
-                      onsubmit="return confirm('Refund ${{ '%.2f' | format(payment['amount_cents'] / 100.0) }} to ' + {{ (payment['payer_name'] or 'customer') | tojson }} + '? This cannot be undone.')">
+                      data-confirm="Refund ${{ '%.2f' | format(payment['amount_cents'] / 100.0) }} to {{ payment['payer_name'] or 'customer' }}? This cannot be undone.">
                   <button type="submit" class="w-full mt-2 rounded-lg bg-red-900/40 border border-red-700/50 text-red-300 hover:bg-red-900/60 transition px-3 py-2 text-xs font-semibold">
                     Refund ${{ '%.2f' | format(payment["amount_cents"] / 100.0) }}
                   </button>
@@ -893,13 +893,13 @@
                       {% elif b.status == 'PRINTING' %}
                         <form action="/admin/build/{{ b.id }}/complete" method="POST" class="inline">
                           <button type="submit" class="text-xs px-2 py-1 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white transition"
-                                  onclick="return confirm('Mark build #{{ b.build_number }} complete?')">
+                                  data-confirm="Mark build #{{ b.build_number }} complete?">
                             ✓ Done
                           </button>
                         </form>
                         <form action="/admin/build/{{ b.id }}/fail" method="POST" class="inline">
                           <button type="submit" class="text-xs px-2 py-1 rounded-md bg-red-700/80 hover:bg-red-600 text-white transition"
-                                  onclick="return confirm('Mark build #{{ b.build_number }} failed?')">
+                                  data-confirm="Mark build #{{ b.build_number }} failed?">
                             ✕ Fail
                           </button>
                         </form>
@@ -1189,7 +1189,7 @@
                     {% endif %}
                   </div>
                   {% if can_manage_queue %}
-                    <form method="POST" action="/admin/request/{{ req['id'] }}/unassign/{{ a.id }}" class="ml-2" onsubmit="return confirm('Remove this assignee?')">
+                  <form action="/admin/request/{{ req['id'] }}/unassign/{{ a.id }}" method="POST" class="ml-2" data-confirm="Remove this assignee?">
                       <button type="submit" class="text-red-400 hover:text-red-300 text-xs p-1" title="Remove">
                         ✕
                       </button>
@@ -1369,13 +1369,13 @@
                         <form action="/admin/build/{{ b.id }}/complete" method="POST" class="inline">
                           <input type="hidden" name="capture_snapshot" value="1" />
                           <button type="submit" class="text-xs px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white"
-                                  onclick="return confirm('Mark this build as complete?')">
+                                  data-confirm="Mark this build as complete?">
                             ✓ Complete
                           </button>
                         </form>
                         <form action="/admin/build/{{ b.id }}/fail" method="POST" class="inline">
                           <button type="submit" class="text-xs px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white"
-                                  onclick="return confirm('Mark this build as failed?')">
+                                  data-confirm="Mark this build as failed?">
                             ✕ Failed
                           </button>
                         </form>
@@ -1484,7 +1484,7 @@
                         {% endif %}
                         <a href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}" 
                            class="p-1.5 rounded-md hover:bg-zinc-600/50 text-zinc-400 hover:text-zinc-200 transition" title="Download">⬇️</a>
-                        <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" onsubmit="return confirm('Delete {{ f.original_filename }}?')">
+                        <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" data-confirm="Delete {{ f.original_filename }}?">
                           <button type="submit" class="p-1.5 rounded-md hover:bg-red-900/40 text-zinc-500 hover:text-red-400 transition" title="Delete">🗑️</button>
                         </form>
                       </div>
@@ -1513,7 +1513,7 @@
                               </form>
                               <a href="/admin/request/{{ req['id'] }}/file/{{ gc['id'] }}" 
                                  class="p-1 rounded-md hover:bg-zinc-600/50 text-zinc-400 hover:text-zinc-200 transition" title="Download">⬇️</a>
-                              <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ gc['id'] }}/delete" class="inline" onsubmit="return confirm('Delete {{ gc.original_filename }}?')">
+                              <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ gc['id'] }}/delete" class="inline" data-confirm="Delete {{ gc.original_filename }}?">
                                 <button type="submit" class="p-1 rounded-md hover:bg-red-900/40 text-zinc-500 hover:text-red-400 transition" title="Delete">🗑️</button>
                               </form>
                             </div>
@@ -1584,7 +1584,7 @@
                         {% endif %}
                         <a href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}" 
                            class="p-1.5 rounded-md hover:bg-zinc-600/50 text-zinc-400 hover:text-zinc-200 transition" title="Download">⬇️</a>
-                        <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" onsubmit="return confirm('Delete {{ f.original_filename }}?')">
+                        <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" data-confirm="Delete {{ f.original_filename }}?">
                           <button type="submit" class="p-1.5 rounded-md hover:bg-red-900/40 text-zinc-500 hover:text-red-400 transition" title="Delete">🗑️</button>
                         </form>
                       </div>
@@ -1626,7 +1626,7 @@
                       <div class="flex items-center gap-0.5 flex-shrink-0">
                         <a href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}" 
                            class="p-1.5 rounded-md hover:bg-zinc-600/50 text-zinc-400 hover:text-zinc-200 transition" title="Download">⬇️</a>
-                        <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" onsubmit="return confirm('Delete {{ f.original_filename }}?')">
+                        <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" data-confirm="Delete {{ f.original_filename }}?">
                           <button type="submit" class="p-1.5 rounded-md hover:bg-red-900/40 text-zinc-500 hover:text-red-400 transition" title="Delete">🗑️</button>
                         </form>
                       </div>
@@ -2224,9 +2224,9 @@
     }
     
     // Pause confirmation helper for printing builds (sends M25)
-    function pauseBuildConfirm(buildId, buildNumber, printer) {
+    async function pauseBuildConfirm(buildId, buildNumber, printer) {
       const label = printer ? ` on ${printer}` : '';
-      if (!confirm(`Pause build ${buildNumber}${label}? This will pause the active print (M25).`)) return;
+      if (!await showConfirm(`Pause build ${buildNumber}${label}? This will pause the active print (M25).`, { title: 'Pause Build', confirmText: 'Pause' })) return;
       window.location = `/api/admin/build/${buildId}/pause-open`;
     }
       

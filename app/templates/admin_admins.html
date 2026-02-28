@@ -131,7 +131,7 @@
   </div>
 
   <script>
-  function confirmDelete(adminId, username) { if (confirm('Delete admin "' + username + '"?')) document.getElementById('delete-form-' + adminId).submit(); }
+  function confirmDelete(adminId, username) { showConfirm('Delete admin "' + username + '"?', { title: 'Delete Admin', confirmText: 'Delete' }).then(function(ok) { if (ok) document.getElementById('delete-form-' + adminId).submit(); }); }
   function showCreateModal() { document.getElementById('create-modal').classList.remove('hidden'); }
   function hideCreateModal() { document.getElementById('create-modal').classList.add('hidden'); }
   function showEditModal(admin) { document.getElementById('edit-admin-id').value = admin.id; document.getElementById('edit-display-name').value = admin.display_name || ''; document.getElementById('edit-email').value = admin.email; document.getElementById('edit-role').value = admin.role; document.getElementById('edit-active').checked = admin.is_active; document.getElementById('edit-modal').classList.remove('hidden'); }

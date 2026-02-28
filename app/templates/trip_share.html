@@ -47,7 +47,7 @@
 
 <script>
   function copyShare(val) {
-    navigator.clipboard.writeText(val).then(() => alert('Copied'));
+    navigator.clipboard.writeText(val).then(() => showToast('Copied!', 'success'));
   }
 </script>
 {% endblock %}

@@ -298,7 +298,7 @@
         for (const btn of root.querySelectorAll('button[data-unclaim]')) {
           btn.addEventListener('click', async () => {
             const deviceId = btn.getAttribute('data-unclaim');
-            if (!confirm(`Unclaim ${deviceId} and revoke active tokens?`)) return;
+            if (!await showConfirm(`Unclaim ${deviceId} and revoke active tokens?`, { title: 'Unclaim Device', confirmText: 'Unclaim' })) return;
             setManageStatus(`Unclaiming ${deviceId}...`);
             const resp = await fetch(`/api/printellect/admin/devices/${deviceId}/unclaim`, {method: 'POST'});
             const raw = await resp.text();
@@ -316,7 +316,7 @@
         for (const btn of root.querySelectorAll('button[data-delete]')) {
           btn.addEventListener('click', async () => {
             const deviceId = btn.getAttribute('data-delete');
-            const force = confirm(`Delete ${deviceId} permanently? Click OK only if you understand this removes command/state/token history.`);
+            const force = await showConfirm(`Delete ${deviceId} permanently? Click OK only if you understand this removes command/state/token history.`, { title: 'Delete Device', confirmText: 'Delete Permanently' });
             if (!force) return;
             setManageStatus(`Deleting ${deviceId}...`);
             const resp = await fetch(`/api/printellect/admin/devices/${deviceId}?force=1`, {method: 'DELETE'});

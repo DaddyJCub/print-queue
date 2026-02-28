@@ -483,7 +483,7 @@
   }
 
   async function suspendUser(id, name) {
-    if (!confirm('Suspend user "' + name + '"? They will not be able to submit requests.')) return;
+    if (!await showConfirm('Suspend user "' + name + '"? They will not be able to submit requests.', { title: 'Suspend User', confirmText: 'Suspend' })) return;
     
     try {
       const res = await fetch('/admin/users/' + id + '/suspend', { method: 'POST' });
@@ -513,7 +513,7 @@
   }
 
   async function deleteUser(id, name) {
-    if (!confirm('Delete user "' + name + '"? This cannot be undone.')) return;
+    if (!await showConfirm('Delete user "' + name + '"? This cannot be undone.', { title: 'Delete User', confirmText: 'Delete' })) return;
     
     try {
       const res = await fetch('/admin/users/' + id, { method: 'DELETE' });

@@ -1245,7 +1245,7 @@
     } catch (e) { showToastLocal('Failed to load template', true); }
   }
   async function deleteTemplate(id, name) {
-    if (!confirm(`Delete "${name}"?`)) return;
+    if (!await showConfirm(`Delete "${name}"?`, { title: 'Delete Template', confirmText: 'Delete' })) return;
     try {
       await fetch(`/api/templates/${id}`, { method: 'DELETE' });
       showToastLocal(`Deleted: ${name}`);

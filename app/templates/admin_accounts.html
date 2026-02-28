@@ -311,26 +311,26 @@
   }
   
   async function suspendAccount(id, name) {
-    if (!confirm('Suspend account "' + name + '"? They will be logged out and unable to access the system.')) return;
+    if (!await showConfirm('Suspend account "' + name + '"? They will be logged out and unable to access the system.', { title: 'Suspend Account', confirmText: 'Suspend' })) return;
     const res = await fetch('/admin/accounts/' + id + '/suspend', { method: 'POST' });
     if (res.ok) location.reload();
-    else alert('Error suspending account');
+    else showToast('Error suspending account', 'error');
   }
   
   async function activateAccount(id) {
     const res = await fetch('/admin/accounts/' + id + '/activate', { method: 'POST' });
     if (res.ok) location.reload();
-    else alert('Error activating account');
+    else showToast('Error activating account', 'error');
   }
   
   async function forceLogout(id, name) {
-    if (!confirm('Force logout all sessions for "' + name + '"?')) return;
+    if (!await showConfirm('Force logout all sessions for "' + name + '"?', { title: 'Force Logout', confirmText: 'Log Out' })) return;
     const res = await fetch('/admin/accounts/' + id + '/logout-all', { method: 'POST' });
     if (res.ok) {
-      alert('All sessions terminated');
+      showToast('All sessions terminated', 'success');
       location.reload();
     } else {
-      alert('Error terminating sessions');
+      showToast('Error terminating sessions', 'error');
     }
   }
   

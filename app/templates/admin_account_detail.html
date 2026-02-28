@@ -288,7 +288,7 @@
                     <p class="text-xs text-zinc-600">since {{ account.oidc_linked_at[:10] if account.oidc_linked_at else 'unknown' }}</p>
                     <form action="/admin/accounts/{{ account.id }}/unlink-oidc" method="POST" class="mt-1 inline">
                       {{ csrf_input(request) | safe }}
-                      <button type="submit" onclick="return confirm('Unlink OIDC identity? The user will need to re-link on next SSO login.')"
+                      <button type="submit" data-confirm="Unlink OIDC identity? The user will need to re-link on next SSO login."
                               class="text-xs text-red-400 hover:text-red-300 underline">Unlink</button>
                     </form>
                   </div>
@@ -641,7 +641,7 @@
   }
   
   async function suspendAccount() {
-    if (!confirm('Suspend this account? They will be logged out and unable to access the system.')) return;
+    if (!await showConfirm('Suspend this account? They will be logged out and unable to access the system.', { title: 'Suspend Account', confirmText: 'Suspend' })) return;
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = '/admin/accounts/{{ account.id }}/suspend';
@@ -650,7 +650,7 @@
   }
   
   async function forceLogout() {
-    if (!confirm('Force logout all sessions for this account?')) return;
+    if (!await showConfirm('Force logout all sessions for this account?', { title: 'Force Logout', confirmText: 'Log Out' })) return;
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = '/admin/accounts/{{ account.id }}/logout-all';
