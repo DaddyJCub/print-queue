@@ -622,3 +622,177 @@ def test_admin_device_management_update_unclaim_delete(client):
     listed = client.get("/api/printellect/admin/devices", cookies=_admin_cookie())
     assert listed.status_code == 200
     assert all(d["device_id"] != device["device_id"] for d in listed.json().get("devices", []))
+
+
+# ────────────────────── Build from Source ──────────────────────
+
+
+def test_build_from_source_creates_release(client):
+    """Build a release from device/pico2w/ source and verify it appears in the list."""
+    resp = client.post(
+        "/api/printellect/admin/releases/build",
+        json={"channel": "stable", "notes": "auto build test"},
+        cookies=_admin_cookie(),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["mode"] == "build"
+    assert body["file_count"] >= 1
+    version = body["version"]
+
+    # Verify it shows in the list
+    listed = client.get("/api/printellect/admin/releases", cookies=_admin_cookie())
+    versions = [r["version"] for r in listed.json()["releases"]]
+    assert version in versions
+
+
+def test_build_from_source_auto_increments_version(client):
+    """Two consecutive builds should produce incrementing versions."""
+    resp1 = client.post(
+        "/api/printellect/admin/releases/build",
+        json={"channel": "stable"},
+        cookies=_admin_cookie(),
+    )
+    assert resp1.status_code == 200
+    v1 = resp1.json()["version"]
+
+    resp2 = client.post(
+        "/api/printellect/admin/releases/build",
+        json={"channel": "stable"},
+        cookies=_admin_cookie(),
+    )
+    assert resp2.status_code == 200
+    v2 = resp2.json()["version"]
+    assert v2 != v1
+
+
+# ────────────────────── Delete Release ──────────────────────
+
+
+def test_delete_release(client):
+    """Upload a release, then delete it."""
+    with tempfile.TemporaryDirectory() as td:
+        package_path = Path(td) / "firmware.zip"
+        with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("main.py", "print('delete me')\n")
+
+        with package_path.open("rb") as fh:
+            upload = client.post(
+                "/api/printellect/admin/releases/upload",
+                data={"version": "99.0.0-del", "channel": "beta"},
+                files={"package": ("firmware.zip", fh, "application/zip")},
+                cookies=_admin_cookie(),
+            )
+    assert upload.status_code == 200
+
+    # Delete it
+    resp = client.delete(
+        "/api/printellect/admin/releases/99.0.0-del",
+        cookies=_admin_cookie(),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] is True
+
+    # Verify it's gone
+    listed = client.get("/api/printellect/admin/releases", cookies=_admin_cookie())
+    versions = [r["version"] for r in listed.json()["releases"]]
+    assert "99.0.0-del" not in versions
+
+
+def test_delete_current_release_blocked(client):
+    """Cannot delete a release that is currently promoted."""
+    with tempfile.TemporaryDirectory() as td:
+        package_path = Path(td) / "firmware.zip"
+        with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("main.py", "print('keep me')\n")
+
+        with package_path.open("rb") as fh:
+            upload = client.post(
+                "/api/printellect/admin/releases/upload",
+                data={"version": "99.1.0-keep", "channel": "beta"},
+                files={"package": ("firmware.zip", fh, "application/zip")},
+                cookies=_admin_cookie(),
+            )
+    assert upload.status_code == 200
+
+    # Promote it
+    client.post(
+        "/api/printellect/admin/releases/99.1.0-keep/promote",
+        json={},
+        cookies=_admin_cookie(),
+    )
+
+    # Delete should fail with 409
+    resp = client.delete(
+        "/api/printellect/admin/releases/99.1.0-keep",
+        cookies=_admin_cookie(),
+    )
+    assert resp.status_code == 409
+
+
+# ────────────────────── Bulk OTA Push ──────────────────────
+
+
+def test_push_release_to_devices(client):
+    """Push a release OTA command to a claimed device."""
+    # Create + claim a device
+    create = client.post(
+        "/api/printellect/admin/devices",
+        json={"device_id": "perkbase-push-1", "name": "Push Test"},
+        cookies=_admin_cookie(),
+    )
+    assert create.status_code == 200
+    device = create.json()["device"]
+
+    _, session_token = _create_account_session(email="push-owner@example.com")
+    client.cookies.set("session", session_token)
+    claim = client.post(
+        "/api/printellect/pairing/claim",
+        json={"device_id": device["device_id"], "claim_code": device["claim_code"]},
+    )
+    assert claim.status_code == 200
+
+    # Create a release to push
+    with tempfile.TemporaryDirectory() as td:
+        package_path = Path(td) / "firmware.zip"
+        with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("main.py", "print('push test')\n")
+
+        with package_path.open("rb") as fh:
+            upload = client.post(
+                "/api/printellect/admin/releases/upload",
+                data={"version": "99.2.0-push", "channel": "stable"},
+                files={"package": ("firmware.zip", fh, "application/zip")},
+                cookies=_admin_cookie(),
+            )
+    assert upload.status_code == 200
+
+    # Push to all devices
+    resp = client.post(
+        "/api/printellect/admin/releases/99.2.0-push/push",
+        json={},
+        cookies=_admin_cookie(),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["devices_pushed"] >= 1
+    assert body["version"] == "99.2.0-push"
+
+    # Verify update status
+    status = client.get("/api/printellect/admin/update-status", cookies=_admin_cookie())
+    assert status.status_code == 200
+    device_statuses = {d["device_id"]: d for d in status.json()["devices"]}
+    assert "perkbase-push-1" in device_statuses
+    assert device_statuses["perkbase-push-1"]["target_version"] == "99.2.0-push"
+    assert device_statuses["perkbase-push-1"]["status"] == "available"
+
+
+# ────────────────────── OTA Status Page ──────────────────────
+
+
+def test_ota_status_page_renders(client):
+    resp = client.get("/admin/printellect/ota-status", cookies=_admin_cookie())
+    assert resp.status_code == 200
+    assert "OTA Update Status" in resp.text

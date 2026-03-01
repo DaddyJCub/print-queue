@@ -3,7 +3,9 @@ import io
 import logging
 import mimetypes
 import os
+import re
 import secrets
+import shutil
 import sqlite3
 import threading
 import time
@@ -43,6 +45,7 @@ ONLINE_WINDOW_SECONDS = int(os.getenv("DEVICE_ONLINE_WINDOW_SECONDS", "60"))
 DEVICE_MIN_POLL_SECONDS = float(os.getenv("DEVICE_MIN_POLL_SECONDS", "1.0"))
 PROVISION_POLL_INTERVAL_MS = int(os.getenv("DEVICE_PROVISION_POLL_MS", "1000"))
 RELEASES_DIR = os.getenv("RELEASES_DIR", os.path.join("local_data", "releases"))
+DEVICE_SOURCE_DIR = os.getenv("DEVICE_SOURCE_DIR", os.path.join("device", "pico2w"))
 PAIRING_SESSION_MINUTES = int(os.getenv("PAIRING_SESSION_MINUTES", "10"))
 PRINTELLECT_FEATURE_KEY = os.getenv("PRINTELLECT_FEATURE_KEY", "printellect_device_control")
 PRINTELLECT_DEMO_OPEN_ACCESS = os.getenv(
@@ -657,6 +660,11 @@ async def admin_devices_page(request: Request, admin=Depends(require_admin)):
 @router.get("/admin/printellect/releases", response_class=HTMLResponse)
 async def admin_releases_page(request: Request, admin=Depends(require_admin)):
     return templates.TemplateResponse("admin_printellect_releases.html", {"request": request, "admin": admin})
+
+
+@router.get("/admin/printellect/ota-status", response_class=HTMLResponse)
+async def admin_ota_status_page(request: Request, admin=Depends(require_admin)):
+    return templates.TemplateResponse("admin_printellect_ota_status.html", {"request": request, "admin": admin})
 
 
 @router.post("/api/printellect/pairing/start")
@@ -1690,6 +1698,87 @@ async def admin_list_devices(admin=Depends(require_admin)):
     return JSONResponse({"ok": True, "devices": devices})
 
 
+# --------------- release helpers ---------------
+
+
+def _next_version(conn: sqlite3.Connection) -> str:
+    """Auto-increment the latest release version (minor bump)."""
+    row = conn.execute("SELECT version FROM releases ORDER BY created_at DESC LIMIT 1").fetchone()
+    if not row:
+        return "0.1.0"
+    latest = row["version"]
+    # Strip any suffix like "-pkg", "-test" etc.
+    base = re.split(r"[^0-9.]", latest, maxsplit=1)[0].rstrip(".")
+    parts = base.split(".")
+    try:
+        nums = [int(p) for p in parts]
+    except ValueError:
+        nums = [0, 0, 0]
+    while len(nums) < 3:
+        nums.append(0)
+    nums[1] += 1
+    nums[2] = 0
+    return ".".join(str(n) for n in nums[:3])
+
+
+def _finalize_release(
+    *,
+    version: str,
+    channel: str,
+    notes: str,
+    manifest_json: Dict[str, Any],
+    bundle_bytes: bytes,
+    bundle_sha256: str,
+    admin: Any,
+    mode: str = "upload",
+) -> JSONResponse:
+    """Persist a release to disk + DB and return the standard JSON response."""
+    paths = _release_paths(version)
+    actor_id = getattr(admin, "id", None)
+    conn = db()
+    exists = conn.execute("SELECT version FROM releases WHERE version = ?", (version,)).fetchone()
+    if exists:
+        conn.execute(
+            """
+            UPDATE releases
+            SET channel = ?, notes = ?, manifest_json = ?, bundle_path = ?
+            WHERE version = ?
+            """,
+            (channel, notes.strip() or None, _json_dumps(manifest_json), str(paths["bundle"]), version),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO releases (version, channel, created_at, created_by_user_id, notes, manifest_json, bundle_path, is_current)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            (version, channel, now_iso(), actor_id, notes.strip() or None, _json_dumps(manifest_json), str(paths["bundle"])),
+        )
+
+    _audit(
+        conn,
+        action="printellect_release_uploaded",
+        actor_type="user",
+        actor_id=actor_id,
+        target_type="release",
+        target_id=version,
+        details={"channel": channel, "mode": mode},
+    )
+    conn.commit()
+    conn.close()
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "version": version,
+            "channel": channel,
+            "bundle_sha256": bundle_sha256,
+            "mode": mode,
+            "file_count": len(manifest_json.get("files") or []),
+        }
+    )
+
+
 @router.post("/api/printellect/admin/releases/upload")
 async def admin_upload_release(
     manifest: Optional[UploadFile] = File(None),
@@ -1795,48 +1884,15 @@ async def admin_upload_release(
 
     paths["manifest"].write_text(_json_dumps(manifest_json), encoding="utf-8")
 
-    actor_id = getattr(admin, "id", None)
-    conn = db()
-    exists = conn.execute("SELECT version FROM releases WHERE version = ?", (version,)).fetchone()
-    if exists:
-        conn.execute(
-            """
-            UPDATE releases
-            SET channel = ?, notes = ?, manifest_json = ?, bundle_path = ?
-            WHERE version = ?
-            """,
-            (channel, notes.strip() or None, _json_dumps(manifest_json), str(paths["bundle"]), version),
-        )
-    else:
-        conn.execute(
-            """
-            INSERT INTO releases (version, channel, created_at, created_by_user_id, notes, manifest_json, bundle_path, is_current)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-            """,
-            (version, channel, now_iso(), actor_id, notes.strip() or None, _json_dumps(manifest_json), str(paths["bundle"])),
-        )
-
-    _audit(
-        conn,
-        action="printellect_release_uploaded",
-        actor_type="user",
-        actor_id=actor_id,
-        target_type="release",
-        target_id=version,
-        details={"channel": channel},
-    )
-    conn.commit()
-    conn.close()
-
-    return JSONResponse(
-        {
-            "ok": True,
-            "version": version,
-            "channel": channel,
-            "bundle_sha256": bundle_sha256,
-            "mode": mode,
-            "file_count": len(manifest_json.get("files") or []),
-        }
+    return _finalize_release(
+        version=version,
+        channel=channel,
+        notes=notes,
+        manifest_json=manifest_json,
+        bundle_bytes=bundle_bytes,
+        bundle_sha256=bundle_sha256,
+        admin=admin,
+        mode=mode,
     )
 
 
@@ -1872,6 +1928,180 @@ async def admin_promote_release(version: str, request: Request, admin=Depends(re
     conn.close()
 
     return JSONResponse({"ok": True, "version": version, "channel": channel, "is_current": True})
+
+
+@router.post("/api/printellect/admin/releases/build")
+async def admin_build_from_source(request: Request, admin=Depends(require_admin)):
+    """Build a release from the device/pico2w/ source directory."""
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    channel = str(payload.get("channel") or "stable").strip()
+    if channel not in {"stable", "beta"}:
+        raise HTTPException(status_code=422, detail="channel must be stable or beta")
+    notes = str(payload.get("notes") or "").strip()
+    entrypoint = str(payload.get("entrypoint") or "main.py").strip() or "main.py"
+
+    source_dir = Path(DEVICE_SOURCE_DIR)
+    if not source_dir.is_dir():
+        raise HTTPException(status_code=500, detail=f"Device source directory not found: {DEVICE_SOURCE_DIR}")
+
+    # Auto-increment version
+    conn = db()
+    version = _next_version(conn)
+    conn.close()
+
+    # Collect firmware source files (exclude non-firmware files)
+    exclude_names = {"__pycache__", ".git", ".DS_Store"}
+    exclude_suffixes = {".example", ".example.json"}
+    exclude_files = {"README.md", "config.example.json", "device.json.example"}
+
+    buf = io.BytesIO()
+    file_count = 0
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for file_path in sorted(source_dir.rglob("*")):
+            if not file_path.is_file():
+                continue
+            # Skip excluded dirs
+            if any(part in exclude_names for part in file_path.parts):
+                continue
+            rel = file_path.relative_to(source_dir).as_posix()
+            if file_path.name in exclude_files:
+                continue
+            if any(rel.endswith(s) for s in exclude_suffixes):
+                continue
+            zf.write(file_path, rel)
+            file_count += 1
+
+    if file_count == 0:
+        raise HTTPException(status_code=422, detail="No firmware source files found in device source directory")
+
+    bundle_bytes = buf.getvalue()
+    bundle_sha256 = _hash_bytes(bundle_bytes)
+
+    # Write release to disk
+    paths = _release_paths(version)
+    paths["root"].mkdir(parents=True, exist_ok=True)
+    paths["bundle"].write_bytes(bundle_bytes)
+    _extract_bundle(paths["bundle"], paths["extracted"])
+    extracted_files = _build_manifest_file_list(paths["extracted"])
+
+    manifest_json = {
+        "version": version,
+        "channel": channel,
+        "entrypoint": entrypoint,
+        "bundle_sha256": bundle_sha256,
+        "bundle_size": len(bundle_bytes),
+        "files": extracted_files,
+    }
+    paths["manifest"].write_text(_json_dumps(manifest_json), encoding="utf-8")
+
+    return _finalize_release(
+        version=version,
+        channel=channel,
+        notes=notes,
+        manifest_json=manifest_json,
+        bundle_bytes=bundle_bytes,
+        bundle_sha256=bundle_sha256,
+        admin=admin,
+        mode="build",
+    )
+
+
+@router.delete("/api/printellect/admin/releases/{version}")
+async def admin_delete_release(version: str, admin=Depends(require_admin)):
+    """Delete a release. Cannot delete a release that is_current."""
+    conn = db()
+    row = _resolve_release_row(conn, version)
+    if row["is_current"]:
+        conn.close()
+        raise HTTPException(status_code=409, detail="Cannot delete the current release — demote it first")
+
+    conn.execute("DELETE FROM releases WHERE version = ?", (version,))
+    _audit(
+        conn,
+        action="printellect_release_deleted",
+        actor_type="user",
+        actor_id=getattr(admin, "id", None),
+        target_type="release",
+        target_id=version,
+    )
+    conn.commit()
+    conn.close()
+
+    # Remove release files from disk
+    paths = _release_paths(version)
+    if paths["root"].exists():
+        shutil.rmtree(paths["root"], ignore_errors=True)
+
+    return JSONResponse({"ok": True, "version": version, "deleted": True})
+
+
+@router.post("/api/printellect/admin/releases/{version}/push")
+async def admin_push_release(version: str, request: Request, admin=Depends(require_admin)):
+    """Push an OTA update command to all claimed devices (or a filtered subset)."""
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    conn = db()
+    _resolve_release_row(conn, version)
+
+    # Optionally filter by device_ids
+    device_ids = payload.get("device_ids") or []
+    if device_ids:
+        placeholders = ",".join("?" for _ in device_ids)
+        rows = conn.execute(
+            f"SELECT * FROM devices WHERE owner_user_id IS NOT NULL AND device_id IN ({placeholders})",
+            device_ids,
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM devices WHERE owner_user_id IS NOT NULL").fetchall()
+
+    actor_id = getattr(admin, "id", None) or "admin"
+    pushed = 0
+    ts = now_iso()
+    for device_row in rows:
+        _enqueue_command(
+            conn,
+            device_row,
+            actor_id,
+            "ota_apply",
+            {"version": version},
+            require_online=False,
+        )
+        # Upsert device_update_status
+        conn.execute(
+            """
+            INSERT INTO device_update_status (device_id, target_version, status, progress, last_error, updated_at)
+            VALUES (?, ?, 'available', 0, NULL, ?)
+            ON CONFLICT(device_id) DO UPDATE SET
+                target_version = excluded.target_version,
+                status = 'available',
+                progress = 0,
+                last_error = NULL,
+                updated_at = excluded.updated_at
+            """,
+            (device_row["device_id"], version, ts),
+        )
+        pushed += 1
+
+    _audit(
+        conn,
+        action="printellect_release_pushed",
+        actor_type="user",
+        actor_id=actor_id,
+        target_type="release",
+        target_id=version,
+        details={"devices_pushed": pushed},
+    )
+    conn.commit()
+    conn.close()
+
+    return JSONResponse({"ok": True, "version": version, "devices_pushed": pushed})
 
 
 @router.get("/api/printellect/admin/releases")

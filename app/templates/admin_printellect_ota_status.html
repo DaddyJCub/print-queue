@@ -1,0 +1,151 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin OTA Status</title>
+  <link rel="stylesheet" href="/static/css/tailwind.css" />
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-7xl mx-auto p-6">
+    {% set active_page = 'printellect-ota' %}
+    {% include 'admin_nav.html' %}
+
+    <div class="mb-5 rounded-2xl border border-indigo-900/60 bg-gradient-to-r from-indigo-950/30 to-zinc-900/80 p-4">
+      <h1 class="text-2xl font-bold">OTA Update Status</h1>
+      <p class="text-sm text-zinc-300 mt-1">Live view of firmware update progress across all devices. Auto-refreshes every 5 seconds.</p>
+    </div>
+
+    <!-- Summary Bar -->
+    <div id="summary" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 text-center">
+        <div id="sum-total" class="text-2xl font-bold">—</div>
+        <div class="text-xs text-zinc-400">Total</div>
+      </div>
+      <div class="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-3 text-center">
+        <div id="sum-success" class="text-2xl font-bold text-emerald-400">—</div>
+        <div class="text-xs text-zinc-400">Success</div>
+      </div>
+      <div class="rounded-xl border border-amber-900/40 bg-amber-950/20 p-3 text-center">
+        <div id="sum-active" class="text-2xl font-bold text-amber-400">—</div>
+        <div class="text-xs text-zinc-400">Updating</div>
+      </div>
+      <div class="rounded-xl border border-red-900/40 bg-red-950/20 p-3 text-center">
+        <div id="sum-failed" class="text-2xl font-bold text-red-400">—</div>
+        <div class="text-xs text-zinc-400">Failed</div>
+      </div>
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 text-center">
+        <div id="sum-idle" class="text-2xl font-bold text-zinc-400">—</div>
+        <div class="text-xs text-zinc-400">Idle</div>
+      </div>
+    </div>
+
+    <!-- Device List -->
+    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+      <h2 class="font-semibold mb-3">Devices</h2>
+      <div id="devices" class="space-y-2"></div>
+      <p id="empty-msg" class="text-sm text-zinc-500 hidden">No devices registered.</p>
+    </div>
+  </div>
+
+  <script>
+    function htmlEscape(s) {
+      const el = document.createElement('span');
+      el.textContent = s || '';
+      return el.innerHTML;
+    }
+
+    function statusBadge(status) {
+      const map = {
+        success:     'bg-emerald-900/40 text-emerald-300 border-emerald-800',
+        downloading: 'bg-amber-900/40 text-amber-300 border-amber-800',
+        applying:    'bg-amber-900/40 text-amber-300 border-amber-800',
+        available:   'bg-blue-900/40 text-blue-300 border-blue-800',
+        failed:      'bg-red-900/40 text-red-300 border-red-800',
+        rollback:    'bg-red-900/40 text-red-300 border-red-800',
+        idle:        'bg-zinc-800/60 text-zinc-400 border-zinc-700',
+      };
+      const cls = map[status] || map.idle;
+      return `<span class="inline-block rounded-full border px-2 py-0.5 text-xs font-medium ${cls}">${htmlEscape(status)}</span>`;
+    }
+
+    function progressBar(pct, status) {
+      if (status === 'idle' || status === 'success') return '';
+      const color = (status === 'failed' || status === 'rollback') ? 'bg-red-500' : 'bg-amber-500';
+      return `
+        <div class="w-full bg-zinc-800 rounded-full h-1.5 mt-1">
+          <div class="${color} h-1.5 rounded-full transition-all" style="width: ${pct}%"></div>
+        </div>
+      `;
+    }
+
+    async function loadStatus() {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const resp = await fetch('/api/printellect/admin/update-status');
+        const data = await resp.json();
+        const devices = data.devices || [];
+
+        // Summary counts
+        let total = devices.length, success = 0, active = 0, failed = 0, idle = 0;
+        for (const d of devices) {
+          if (d.status === 'success') success++;
+          else if (d.status === 'downloading' || d.status === 'applying' || d.status === 'available') active++;
+          else if (d.status === 'failed' || d.status === 'rollback') failed++;
+          else idle++;
+        }
+        document.getElementById('sum-total').textContent = total;
+        document.getElementById('sum-success').textContent = success;
+        document.getElementById('sum-active').textContent = active;
+        document.getElementById('sum-failed').textContent = failed;
+        document.getElementById('sum-idle').textContent = idle;
+
+        const root = document.getElementById('devices');
+        const emptyMsg = document.getElementById('empty-msg');
+        if (!devices.length) {
+          root.innerHTML = '';
+          emptyMsg.classList.remove('hidden');
+          return;
+        }
+        emptyMsg.classList.add('hidden');
+
+        root.innerHTML = '';
+        for (const d of devices) {
+          const row = document.createElement('div');
+          row.className = 'rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm';
+          row.innerHTML = `
+            <div class="grid md:grid-cols-12 md:items-center gap-2">
+              <div class="md:col-span-3">
+                <div class="font-semibold">${htmlEscape(d.name || d.device_id)}</div>
+                <div class="text-xs text-zinc-500 font-mono">${htmlEscape(d.device_id)}</div>
+              </div>
+              <div class="md:col-span-2">
+                ${statusBadge(d.status)}
+              </div>
+              <div class="md:col-span-2 text-xs font-mono text-zinc-300">
+                ${d.target_version ? 'v' + htmlEscape(d.target_version) : '—'}
+              </div>
+              <div class="md:col-span-3">
+                ${progressBar(d.progress, d.status)}
+                ${d.last_error ? `<div class="text-xs text-red-400 mt-1 truncate" title="${htmlEscape(d.last_error)}">${htmlEscape(d.last_error)}</div>` : ''}
+              </div>
+              <div class="md:col-span-2 text-xs text-zinc-500 text-right font-mono">
+                ${d.updated_at ? htmlEscape(d.updated_at) : '—'}
+              </div>
+            </div>
+          `;
+          root.appendChild(row);
+        }
+      } catch (err) {
+        console.error('Failed to load OTA status:', err);
+      }
+    }
+
+    loadStatus();
+    setInterval(loadStatus, 5000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') loadStatus();
+    });
+  </script>
+</body>
+</html>
