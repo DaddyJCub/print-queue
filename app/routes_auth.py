@@ -507,18 +507,25 @@ async def auth_profile_update_redirect(
 
 @router.get("/auth/logout")
 async def user_logout(request: Request):
-    """Log out user (handles both legacy and OIDC sessions)."""
+    """Log out user — clears ALL session cookies and server-side sessions."""
     from app.auth import delete_session_by_token
     
-    # Clear legacy user session
+    # Clear legacy user session (server-side)
     token = request.cookies.get("user_session")
     if token:
         delete_user_session(token)
     
-    # Clear unified/OIDC session
+    # Clear unified/OIDC session (server-side)
     session_token = request.cookies.get("session")
     if session_token:
         delete_session_by_token(session_token)
+    
+    # Clear admin session (server-side)
+    admin_token = request.cookies.get("admin_session")
+    if admin_token:
+        admin = await get_current_admin(request)
+        if admin and admin.id != "legacy":
+            logout_admin(admin.id)
     
     # If user had an OIDC session, redirect through Authentik end-session
     redirect_url = "/"
@@ -533,6 +540,8 @@ async def user_logout(request: Request):
     resp = RedirectResponse(url=redirect_url, status_code=303)
     resp.delete_cookie("session", path="/")
     resp.delete_cookie("user_session", path="/")
+    resp.delete_cookie("admin_session", path="/")
+    resp.delete_cookie("admin_pw", path="/")
     return resp
 
 
@@ -618,16 +627,8 @@ async def admin_login_new_submit(
 
 @router.get("/admin/logout/new")
 async def admin_logout_new(request: Request):
-    """Log out admin (new system)."""
-    admin = await get_current_admin(request)
-    if admin and admin.id != "legacy":
-        logout_admin(admin.id)
-    
-    resp = RedirectResponse(url="/", status_code=303)
-    resp.delete_cookie("admin_session", path="/")
-    resp.delete_cookie("admin_pw", path="/")  # Also clear legacy cookie
-    resp.delete_cookie("session", path="/")   # Also clear unified/OIDC session
-    return resp
+    """Log out admin (new system) — redirects to unified logout."""
+    return RedirectResponse(url="/auth/logout", status_code=303)
 
 
 # ─────────────────────────── ADMIN MANAGEMENT ROUTES ───────────────────────────

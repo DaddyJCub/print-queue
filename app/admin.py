@@ -180,11 +180,10 @@ def admin_login_post(password: str = Form(...), next: Optional[str] = Form(None)
 
 @router.get("/admin/logout")
 def admin_logout():
-    """Clear admin session cookie and redirect to home."""
-    resp = RedirectResponse(url="/", status_code=303)
-    resp.delete_cookie("admin_pw", path="/")  # Must match path used when setting
-    resp.delete_cookie("session", path="/")   # Also clear unified/OIDC session
-    return resp
+    """Clear all session cookies and redirect to unified logout."""
+    # Redirect to /auth/logout which handles full cleanup
+    # (clears all cookies, invalidates server sessions, OIDC end-session)
+    return RedirectResponse(url="/auth/logout", status_code=303)
 
 
 def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
