@@ -28,6 +28,7 @@ from app.main import (
     format_eta_display,
     get_smart_eta,
     get_print_match_suggestions,
+    get_active_unmatched_prints,
     is_feature_enabled,
     is_polling_paused,
     now_iso,
@@ -363,6 +364,9 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
 
     # Get print match suggestions
     print_match_suggestions = get_print_match_suggestions()
+
+    # Get active unmatched prints (printer printing with no matching request)
+    unmatched_prints = get_active_unmatched_prints()
     
     # Admin context for design filters and permissions
     current_admin = admin if hasattr(admin, "to_dict") else None
@@ -387,6 +391,7 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
         },
         "active_builds_by_printer": active_builds_by_printer,
         "print_match_suggestions": print_match_suggestions,
+        "unmatched_prints": unmatched_prints,
         "printers": PRINTERS,
         "materials": MATERIALS,
         "version": APP_VERSION,

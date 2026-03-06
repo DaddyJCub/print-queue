@@ -1,0 +1,279 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Identify Print — {{ unmatched.file_display }} | Admin</title>
+  <link rel="stylesheet" href="/static/css/tailwind.css" />
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-7xl mx-auto p-6">
+    <!-- Navigation -->
+    {% set active_page = 'queue' %}
+    {% include 'admin_nav.html' %}
+
+    <!-- Header -->
+    <div class="mb-6">
+      <a href="/admin" class="text-sm text-zinc-400 hover:text-zinc-200 transition">&larr; Back to Queue</a>
+      <h1 class="text-2xl font-bold mt-2 text-white flex items-center gap-3">
+        ❓ Unknown Print Detected
+        {% if unmatched.status == 'ACTIVE' %}
+          <span class="px-2 py-0.5 bg-red-500/20 text-red-300 text-xs rounded-full border border-red-500/50">Active</span>
+        {% else %}
+          <span class="px-2 py-0.5 bg-zinc-700/50 text-zinc-400 text-xs rounded-full">{{ unmatched.status }}</span>
+        {% endif %}
+      </h1>
+      <p class="text-zinc-400 mt-1">A print was detected on <strong>{{ unmatched.printer_code.replace('_', ' ').title() }}</strong> with no matching request in the queue.</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Left: Print Info -->
+      <div class="space-y-4">
+        <!-- Print Details Card -->
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <h2 class="text-lg font-semibold mb-4 text-white">🖨 Print Details</h2>
+          <div class="space-y-3">
+            <div class="flex justify-between">
+              <span class="text-zinc-400 text-sm">File</span>
+              <span class="text-white text-sm font-medium">{{ unmatched.file_display }}</span>
+            </div>
+            <div class="flex justify-between gap-4">
+              <span class="text-zinc-400 text-sm shrink-0">Full Path</span>
+              <span class="text-zinc-300 text-xs font-mono break-all text-right">{{ unmatched.file_name }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-zinc-400 text-sm">Printer</span>
+              <span class="text-white text-sm">{{ unmatched.printer_code.replace('_', ' ').title() }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-zinc-400 text-sm">Detected At</span>
+              <span class="text-zinc-300 text-sm">{{ unmatched.detected_at[:19].replace('T', ' ') }} UTC</span>
+            </div>
+            {% if metadata.estimated_time_display %}
+            <div class="flex justify-between">
+              <span class="text-zinc-400 text-sm">Est. Print Time</span>
+              <span class="text-white text-sm">{{ metadata.estimated_time_display }}</span>
+            </div>
+            {% endif %}
+            {% if metadata.filament_type %}
+            <div class="flex justify-between">
+              <span class="text-zinc-400 text-sm">Filament Type</span>
+              <span class="text-white text-sm">{{ metadata.filament_type }}</span>
+            </div>
+            {% endif %}
+            {% if metadata.filament_colors %}
+            <div class="flex justify-between">
+              <span class="text-zinc-400 text-sm">Colors</span>
+              <span class="text-white text-sm">{{ metadata.filament_colors }}</span>
+            </div>
+            {% endif %}
+            {% if metadata.filament_name %}
+            <div class="flex justify-between">
+              <span class="text-zinc-400 text-sm">Filament Name</span>
+              <span class="text-white text-sm">{{ metadata.filament_name }}</span>
+            </div>
+            {% endif %}
+            {% if metadata.current_layer and metadata.total_layers %}
+            <div class="flex justify-between">
+              <span class="text-zinc-400 text-sm">Layer Progress</span>
+              <span class="text-white text-sm">{{ metadata.current_layer }} / {{ metadata.total_layers }}</span>
+            </div>
+            {% endif %}
+            {% if metadata.progress %}
+            <div class="flex justify-between">
+              <span class="text-zinc-400 text-sm">Progress</span>
+              <span class="text-white text-sm">{{ metadata.progress|round(1) }}%</span>
+            </div>
+            {% endif %}
+            {% if metadata.bed_temp %}
+            <div class="flex justify-between">
+              <span class="text-zinc-400 text-sm">Bed Temp</span>
+              <span class="text-white text-sm">{{ metadata.bed_temp }}°C</span>
+            </div>
+            {% endif %}
+          </div>
+
+          {% if metadata.thumbnail_url %}
+          <div class="mt-4 border border-zinc-700 rounded-lg overflow-hidden">
+            <img src="{{ metadata.thumbnail_url }}" alt="Print thumbnail" class="w-full h-auto" />
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Live Camera Feed -->
+        {% if camera_url %}
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <h2 class="text-lg font-semibold mb-3 text-white">📷 Live Camera</h2>
+          <div class="rounded-lg overflow-hidden border border-zinc-700">
+            <img src="{{ camera_url }}" alt="Printer camera feed" class="w-full h-auto"
+                 onerror="this.parentElement.innerHTML='<div class=\'p-4 text-zinc-500 text-sm text-center\'>Camera unavailable</div>'" />
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Printer Status -->
+        {% if printer_status and not printer_status.is_offline %}
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <h2 class="text-lg font-semibold mb-3 text-white">📊 Printer Status</h2>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-zinc-400">Status</span>
+              <span class="text-emerald-300">{{ printer_status.status or 'Unknown' }}</span>
+            </div>
+            {% if printer_status.progress is not none %}
+            <div>
+              <div class="flex justify-between mb-1">
+                <span class="text-zinc-400">Progress</span>
+                <span class="text-white">{{ printer_status.progress|round(1) }}%</span>
+              </div>
+              <div class="w-full bg-zinc-700 rounded-full h-2">
+                <div class="bg-emerald-500 h-2 rounded-full transition-all" style="width: {{ printer_status.progress|round(1) }}%"></div>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Right: Actions -->
+      <div class="space-y-4">
+        {% if unmatched.status == 'ACTIVE' %}
+        <!-- Create New Request -->
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <h2 class="text-lg font-semibold mb-4 text-white">➕ Create Request</h2>
+          <p class="text-zinc-400 text-sm mb-4">Create a new request pre-filled with this print's info. It will auto-set to PRINTING status.</p>
+          <form method="POST" action="/admin/unmatched/{{ unmatched.id }}/create-request" class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-zinc-400 mb-1">Print Name *</label>
+              <input type="text" name="print_name" value="{{ unmatched.file_display }}" required
+                     class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-zinc-400 mb-1">Requester Name *</label>
+              <input type="text" name="requester_name" placeholder="Who is this print for?" required
+                     class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-zinc-400 mb-1">Requester Email</label>
+              <input type="email" name="requester_email" placeholder="Optional — for notifications"
+                     class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">Printer</label>
+                <select name="printer" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white">
+                  {% for code, label in printers %}
+                    <option value="{{ code }}" {% if code == unmatched.printer_code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">Material</label>
+                <select name="material" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white">
+                  {% for code, label in materials %}
+                    <option value="{{ code }}" {% if code == guessed_material %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-zinc-400 mb-1">Colors</label>
+              <input type="text" name="colors" value="{{ metadata.filament_colors or '' }}" placeholder="e.g., Black, White"
+                     class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-zinc-400 mb-1">Notes</label>
+              <textarea name="notes" rows="2" placeholder="Optional notes"
+                        class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"></textarea>
+            </div>
+            <button type="submit" class="w-full px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-lg transition text-sm">
+              Create Request &amp; Mark Printing
+            </button>
+          </form>
+        </div>
+
+        <!-- Match to Existing Request -->
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <h2 class="text-lg font-semibold mb-4 text-white">🔗 Match to Existing Request</h2>
+          <p class="text-zinc-400 text-sm mb-4">Link this print to a request already in the queue.</p>
+          {% if potential_matches %}
+            <div class="space-y-2 max-h-80 overflow-y-auto">
+              {% for match in potential_matches %}
+                <div class="flex items-center justify-between gap-2 p-3 bg-zinc-800/50 border border-zinc-700/50 rounded-lg hover:border-zinc-600 transition">
+                  <div class="min-w-0 flex-1">
+                    <div class="text-sm text-white font-medium truncate">{{ match.print_name or match.id[:8] }}</div>
+                    <div class="text-xs text-zinc-400">
+                      {{ match.requester_name }} · {{ match.status }}
+                      {% if match.material %} · {{ match.material }}{% endif %}
+                      {% if match.colors %} · {{ match.colors }}{% endif %}
+                    </div>
+                  </div>
+                  <form method="POST" action="/admin/unmatched/{{ unmatched.id }}/match/{{ match.id }}">
+                    <button type="submit" class="px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-500/50 rounded text-xs font-medium text-blue-200 transition whitespace-nowrap">
+                      Match
+                    </button>
+                  </form>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-zinc-500 text-sm italic">No pending requests found for this printer.</p>
+          {% endif %}
+        </div>
+
+        <!-- Dismiss -->
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <h2 class="text-lg font-semibold mb-3 text-white">🚫 Dismiss</h2>
+          <p class="text-zinc-400 text-sm mb-3">Ignore this alert (e.g., test print, personal print).</p>
+          <form method="POST" action="/admin/unmatched/{{ unmatched.id }}/dismiss" class="space-y-3">
+            <textarea name="notes" rows="2" placeholder="Optional reason for dismissal"
+                      class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-red-500 focus:border-transparent"></textarea>
+            <button type="submit" class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg transition text-sm">
+              Dismiss Alert
+            </button>
+          </form>
+        </div>
+        {% else %}
+        <!-- Already resolved -->
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <h2 class="text-lg font-semibold mb-3 text-white">✅ Resolved</h2>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-zinc-400">Status</span>
+              <span class="text-white">{{ unmatched.status }}</span>
+            </div>
+            {% if unmatched.resolved_at %}
+            <div class="flex justify-between">
+              <span class="text-zinc-400">Resolved At</span>
+              <span class="text-zinc-300">{{ unmatched.resolved_at[:19].replace('T', ' ') }}</span>
+            </div>
+            {% endif %}
+            {% if unmatched.resolved_by %}
+            <div class="flex justify-between">
+              <span class="text-zinc-400">Resolved By</span>
+              <span class="text-zinc-300">{{ unmatched.resolved_by }}</span>
+            </div>
+            {% endif %}
+            {% if unmatched.matched_request_id %}
+            <div class="flex justify-between">
+              <span class="text-zinc-400">Linked Request</span>
+              <a href="/admin/request/{{ unmatched.matched_request_id }}" class="text-blue-400 hover:text-blue-300">
+                {{ unmatched.matched_request_id[:8] }}…
+              </a>
+            </div>
+            {% endif %}
+            {% if unmatched.notes %}
+            <div>
+              <span class="text-zinc-400 block mb-1">Notes</span>
+              <span class="text-zinc-300">{{ unmatched.notes }}</span>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -44,16 +44,22 @@ APP_VERSION = "0.18.0"
 #   - 0.x.PATCH = Bug fixes only
 #
 # Changelog:
+# 0.18.0 - [FEATURE] OIDC SSO via Authentik: discovery + authorization-code flow, account linking/unlinking, JWKS token validation, and auto-create on first sign-in
+# 0.17.1 - [FEATURE] Private trips: trip planning with member roles, events, itinerary uploads, push reminders, and offline-aware PWA support
 # 0.17.0 - [FEATURE] Printellect production flow upgrades: /pair deep-link auto-claim + redirect, admin registry management (save/unclaim/delete), admin QR/device.json automation, OTA package-zip upload mode, expanded device control panel, finalized Pico provisioning contract docs
+# 0.16.1 - [FEATURE] Store commerce foundation: Stripe Checkout (items, rush fees, quotes, webhooks), credits/rewards ledger, and scheduled credit grants
 # 0.16.0 - [FEATURE] Printellect device control foundation: user/account modal flow, private feature toggle management, device debug endpoint, Pico handoff docs, CI feature-flag fixes
+# 0.15.2 - [FEATURE] Legal & compliance pages: Terms of Use, Privacy Policy, Acceptable Use, and Refund & Shipping policy routes
 # 0.15.1 - [PATCH] Camera fix: skip ustreamer placeholder frames, use Moonraker snapshot URL, Shippo webhook hardening, shipping from-address override, 295 tests
 # 0.15.0 - [FEATURE] Shipping fulfillment: Shippo integration (rates, labels, tracking), admin shipping dashboard, requester shipping portal, webhook support, 291 tests
 # 0.14.0 - [FEATURE] ETA local timezone: server defaults to CST/CDT, client-side JS converts to user's local time with timezone label, 282 tests
+# 0.13.1 - [FEATURE] File sync automation: watched folders, fuzzy request matching, and archive workflows for incoming print files
 # 0.13.0 - [FEATURE] Moonraker live ETA integration, file linking (G-code ↔ STL/3MF), card-based files UI, 260 tests (94 Moonraker + 28 file linking)
 # 0.12.1 - [PATCH] Auto-start next build after completion, auto-match IN_PROGRESS requests, improved error logging
 # 0.12.0 - [FEATURE] Guest account creation tips in emails: subtle CTAs in all notification emails, pre-filled registration, auto-link existing requests
 # 0.11.1 - [PATCH] Safer printer controls & admin progress alerts
 # 0.11.0 - [FEATURE] Designer workflow with assignments and design completion tracking
+# 0.10.8 - [SECURITY] Security hardening: CSRF protection, rate limiting, security headers, account migration tooling, and expanded demo data support
 # 0.10.0 - [MAJOR] User accounts system: registration/login, profiles, multi-admin, feature flags, user management
 # 0.9.0 - [FEATURE] Admin PWA navigation: Admin tab in bottom nav, unified navigation on admin pages, My Prints pagination
 # --- Version scheme changed from 1.x.x to 0.x.x (Dec 2025) - all prior versions below are historical ---
@@ -2033,6 +2039,30 @@ def ensure_migrations():
     if "payment_id" not in req_pay_cols:
         cur.execute("ALTER TABLE requests ADD COLUMN payment_id TEXT")
 
+    # ─────────────────────────────────────────────────────────────────────────────
+    # UNMATCHED PRINTS TABLE — persists detected prints with no matching request
+    # ─────────────────────────────────────────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS unmatched_prints (
+            id TEXT PRIMARY KEY,
+            printer_code TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            file_display TEXT NOT NULL,
+            printer_metadata TEXT,
+            status TEXT NOT NULL DEFAULT 'ACTIVE',
+            detected_at TEXT NOT NULL,
+            notification_sent_at TEXT,
+            reminder_sent_at TEXT,
+            resolved_at TEXT,
+            resolved_by TEXT,
+            created_request_id TEXT,
+            matched_request_id TEXT,
+            notes TEXT
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_unmatched_prints_status ON unmatched_prints(status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_unmatched_prints_printer ON unmatched_prints(printer_code, status)")
+
     conn.commit()
     conn.close()
 
@@ -3344,6 +3374,180 @@ def clear_print_match_suggestion(printer_code: str):
         del _print_match_suggestions[printer_code]
 
 
+# ─────────────────────────── UNMATCHED PRINT DETECTION ───────────────────────────
+
+def record_unmatched_print(printer_code: str, file_name: str, metadata: Dict) -> Optional[str]:
+    """
+    Record an unmatched print (printer is printing but no request matches).
+    Deduplicates: won't insert if an ACTIVE record for this printer+file already exists.
+    Returns the unmatched print id if newly created, None if duplicate.
+    """
+    conn = db()
+    existing = conn.execute(
+        "SELECT id FROM unmatched_prints WHERE printer_code = ? AND file_name = ? AND status = 'ACTIVE'",
+        (printer_code, file_name)
+    ).fetchone()
+    if existing:
+        conn.close()
+        return None  # Already tracking this
+
+    uid = str(uuid.uuid4())
+    now = now_iso()
+    conn.execute(
+        """INSERT INTO unmatched_prints
+           (id, printer_code, file_name, file_display, printer_metadata, status, detected_at)
+           VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?)""",
+        (uid, printer_code, file_name, get_filename_base(file_name), json.dumps(metadata), now)
+    )
+    conn.commit()
+    conn.close()
+    return uid
+
+
+def get_active_unmatched_prints() -> List[Dict]:
+    """Return all ACTIVE unmatched prints."""
+    conn = db()
+    rows = conn.execute(
+        "SELECT * FROM unmatched_prints WHERE status = 'ACTIVE' ORDER BY detected_at DESC"
+    ).fetchall()
+    conn.close()
+    results = []
+    for r in rows:
+        d = dict(r)
+        if d.get("printer_metadata"):
+            try:
+                d["printer_metadata"] = json.loads(d["printer_metadata"])
+            except Exception:
+                pass
+        results.append(d)
+    return results
+
+
+def get_unmatched_print(unmatched_id: str) -> Optional[Dict]:
+    """Fetch a single unmatched print record by id."""
+    conn = db()
+    row = conn.execute("SELECT * FROM unmatched_prints WHERE id = ?", (unmatched_id,)).fetchone()
+    conn.close()
+    if not row:
+        return None
+    d = dict(row)
+    if d.get("printer_metadata"):
+        try:
+            d["printer_metadata"] = json.loads(d["printer_metadata"])
+        except Exception:
+            pass
+    return d
+
+
+def resolve_unmatched_print(unmatched_id: str, status: str, resolved_by: str = None,
+                            request_id: str = None, notes: str = None):
+    """
+    Mark an unmatched print as resolved.
+    status: 'MATCHED', 'DISMISSED', 'COMPLETED'
+    """
+    conn = db()
+    update_fields = {
+        "status": status,
+        "resolved_at": now_iso(),
+    }
+    if resolved_by:
+        update_fields["resolved_by"] = resolved_by
+    if request_id:
+        if status == "MATCHED":
+            update_fields["matched_request_id"] = request_id
+        else:
+            update_fields["created_request_id"] = request_id
+    if notes:
+        update_fields["notes"] = notes
+
+    set_clause = ", ".join(f"{k} = ?" for k in update_fields)
+    values = list(update_fields.values()) + [unmatched_id]
+    conn.execute(f"UPDATE unmatched_prints SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
+
+
+def auto_resolve_unmatched_for_printer(printer_code: str):
+    """Auto-resolve any ACTIVE unmatched prints for a printer (e.g., print finished)."""
+    conn = db()
+    conn.execute(
+        "UPDATE unmatched_prints SET status = 'COMPLETED', resolved_at = ? WHERE printer_code = ? AND status = 'ACTIVE'",
+        (now_iso(), printer_code)
+    )
+    conn.commit()
+    conn.close()
+
+
+def mark_unmatched_notification_sent(unmatched_id: str, field: str = "notification_sent_at"):
+    """Update the notification timestamp for an unmatched print."""
+    conn = db()
+    conn.execute(
+        f"UPDATE unmatched_prints SET {field} = ? WHERE id = ?",
+        (now_iso(), unmatched_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def send_unmatched_print_notification(unmatched: Dict, is_reminder: bool = False):
+    """Send push + email notification to admins about an unmatched print."""
+    printer_code = unmatched["printer_code"]
+    file_display = unmatched["file_display"]
+    unmatched_id = unmatched["id"]
+    metadata = unmatched.get("printer_metadata") or {}
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except Exception:
+            metadata = {}
+
+    printer_label = _human_printer(printer_code)
+    prefix = "\u23f0 Reminder: " if is_reminder else ""
+
+    # Push notification
+    send_push_notification_to_admins(
+        title=f"{prefix}\u2753 Unknown Print on {printer_label}",
+        body=f'File: "{file_display}" \u2014 tap to identify',
+        url=f"/admin/unmatched/{unmatched_id}",
+        tag=f"unmatched-{printer_code}",
+        image_url=metadata.get("thumbnail_url"),
+    )
+
+    # Email notification
+    admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))
+    if admin_emails:
+        rows = [
+            ("Printer", printer_label),
+            ("File", file_display),
+        ]
+        if metadata.get("estimated_time_display"):
+            rows.append(("Est. Time", metadata["estimated_time_display"]))
+        if metadata.get("filament_type"):
+            rows.append(("Filament", metadata["filament_type"]))
+        if metadata.get("filament_colors"):
+            rows.append(("Colors", metadata["filament_colors"]))
+        if metadata.get("current_layer") and metadata.get("total_layers"):
+            rows.append(("Layers", f"{metadata['current_layer']} / {metadata['total_layers']}"))
+
+        subject = f"[{APP_TITLE}] {prefix}Unknown print on {printer_label}: {file_display}"
+        title = f"{prefix}Unknown Print Detected"
+        subtitle = f"{printer_label} is printing a file not matched to any request."
+        text = f"Printer: {printer_label}\nFile: {file_display}\n\nIdentify: {BASE_URL}/admin/unmatched/{unmatched_id}\n"
+
+        html = build_email_html(
+            title=title,
+            subtitle=subtitle,
+            rows=rows,
+            cta_url=f"{BASE_URL}/admin/unmatched/{unmatched_id}",
+            cta_label="Identify This Print",
+            header_color="#d97706",
+        )
+        send_email(admin_emails, subject, text, html)
+
+    # Mark notification sent
+    field = "reminder_sent_at" if is_reminder else "notification_sent_at"
+    mark_unmatched_notification_sent(unmatched_id, field)
+    logger.info(f"[UNMATCHED] {'Reminder' if is_reminder else 'Alert'} sent for {printer_code}: {file_display}")
 
 
 def _estimate_total_seconds_from_progress(elapsed_seconds: float, progress_percent: float,
@@ -6318,6 +6522,8 @@ async def poll_printer_status_worker():
                     if not is_printing:
                         # Printer not printing, clear any suggestions
                         clear_print_match_suggestion(printer_code)
+                        # Auto-resolve any active unmatched prints for this printer
+                        auto_resolve_unmatched_for_printer(printer_code)
                         continue
                     
                     # Get current file being printed
@@ -6354,8 +6560,79 @@ async def poll_printer_status_worker():
                     matches = find_matching_requests_for_file(current_file, printer_code)
                     
                     if not matches:
-                        # No matches found
+                        # No matches found — record as unmatched print
                         clear_print_match_suggestion(printer_code)
+
+                        # Gather rich metadata from printer
+                        unmatched_metadata = {
+                            "file_name": current_file,
+                        }
+                        try:
+                            if hasattr(printer_api, 'get_file_metadata'):
+                                file_meta = await printer_api.get_file_metadata(current_file)
+                                if file_meta:
+                                    est_seconds = file_meta.get("estimated_time")
+                                    if est_seconds:
+                                        mins = int(est_seconds / 60)
+                                        unmatched_metadata["estimated_time_seconds"] = est_seconds
+                                        unmatched_metadata["estimated_time_display"] = f"{mins // 60}h {mins % 60}m" if mins >= 60 else f"{mins}m"
+                                    unmatched_metadata["filament_type"] = file_meta.get("filament_type")
+                                    unmatched_metadata["filament_colors"] = file_meta.get("filament_colors")
+                                    unmatched_metadata["filament_name"] = file_meta.get("filament_name")
+                                    unmatched_metadata["referenced_tools"] = file_meta.get("referenced_tools")
+                            if hasattr(printer_api, 'get_thumbnail_url'):
+                                thumb = await printer_api.get_thumbnail_url()
+                                if thumb:
+                                    unmatched_metadata["thumbnail_url"] = thumb
+                            if extended:
+                                unmatched_metadata["current_layer"] = extended.get("current_layer")
+                                unmatched_metadata["total_layers"] = extended.get("total_layers")
+                                unmatched_metadata["print_duration"] = extended.get("print_duration")
+                                unmatched_metadata["filament_used"] = extended.get("filament_used")
+                            # Bed temp from cached status
+                            cached = get_cached_printer_status(printer_code)
+                            if cached:
+                                unmatched_metadata["bed_temp"] = cached.get("bed_temp")
+                                unmatched_metadata["progress"] = cached.get("progress")
+                        except Exception as meta_err:
+                            print(f"[UNMATCHED] Error gathering metadata for {printer_code}: {meta_err}")
+
+                        new_id = record_unmatched_print(printer_code, current_file, unmatched_metadata)
+                        if new_id:
+                            # Newly recorded — send initial notification
+                            unmatched_record = get_unmatched_print(new_id)
+                            if unmatched_record:
+                                send_unmatched_print_notification(unmatched_record, is_reminder=False)
+                            add_poll_debug_log({
+                                "type": "unmatched_print",
+                                "printer": printer_code,
+                                "file": current_file,
+                                "message": f"Unknown print detected: {get_filename_base(current_file)}"
+                            })
+                        else:
+                            # Already tracked — check if 10-minute reminder is due
+                            conn_um = db()
+                            existing_um = conn_um.execute(
+                                "SELECT * FROM unmatched_prints WHERE printer_code = ? AND file_name = ? AND status = 'ACTIVE'",
+                                (printer_code, current_file)
+                            ).fetchone()
+                            conn_um.close()
+                            if existing_um:
+                                um_dict = dict(existing_um)
+                                if um_dict.get("printer_metadata"):
+                                    try:
+                                        um_dict["printer_metadata"] = json.loads(um_dict["printer_metadata"])
+                                    except Exception:
+                                        pass
+                                if um_dict.get("notification_sent_at") and not um_dict.get("reminder_sent_at"):
+                                    try:
+                                        sent_at = datetime.fromisoformat(um_dict["notification_sent_at"].replace("Z", "+00:00"))
+                                        now_dt = datetime.fromisoformat(now_iso().replace("Z", "+00:00"))
+                                        elapsed_minutes = (now_dt - sent_at).total_seconds() / 60
+                                        if elapsed_minutes >= 10:
+                                            send_unmatched_print_notification(um_dict, is_reminder=True)
+                                    except Exception as remind_err:
+                                        print(f"[UNMATCHED] Reminder check error: {remind_err}")
                         continue
                     
                     # Check if auto-match is enabled

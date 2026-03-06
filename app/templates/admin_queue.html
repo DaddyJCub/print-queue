@@ -369,6 +369,48 @@
       </span>
     {%- endmacro %}
 
+    <!-- Unmatched Print Alerts - Unknown prints with no matching request -->
+    {% if unmatched_prints %}
+      {% for um in unmatched_prints %}
+        <div class="mb-3 bg-red-900/20 border border-red-500/50 rounded-xl p-3 flex items-center justify-between gap-3">
+          <div class="flex-1 min-w-0">
+            <span class="text-sm text-red-200">
+              ❓ <strong>{{ um.printer_code.replace('_', ' ').title() }}</strong> printing
+              "<span class="text-red-100 font-semibold">{{ um.file_display }}</span>" —
+              <span class="text-red-300">no matching request</span>
+            </span>
+            {% if um.printer_metadata and um.printer_metadata is mapping %}
+              <div class="flex flex-wrap gap-2 mt-1 text-xs text-zinc-400">
+                {% if um.printer_metadata.estimated_time_display is defined and um.printer_metadata.estimated_time_display %}
+                  <span>⏱ {{ um.printer_metadata.estimated_time_display }}</span>
+                {% endif %}
+                {% if um.printer_metadata.filament_type is defined and um.printer_metadata.filament_type %}
+                  <span>🧵 {{ um.printer_metadata.filament_type }}</span>
+                {% endif %}
+                {% if um.printer_metadata.progress is defined and um.printer_metadata.progress %}
+                  <span>📊 {{ um.printer_metadata.progress|round(1) }}%</span>
+                {% endif %}
+              </div>
+            {% endif %}
+            <div class="flex gap-2 mt-2">
+              <a href="/admin/unmatched/{{ um.id }}" class="px-3 py-1.5 bg-red-600/30 hover:bg-red-600/50 border border-red-500/50 rounded-lg text-xs font-medium transition text-red-100">
+                Identify Print
+              </a>
+              <form method="POST" action="/admin/unmatched/{{ um.id }}/dismiss" class="inline">
+                <input type="hidden" name="notes" value="" />
+                <button type="submit" class="px-2 py-1.5 text-zinc-400 hover:text-zinc-200 text-xs transition" title="Dismiss">
+                  ✕ Dismiss
+                </button>
+              </form>
+            </div>
+          </div>
+          <div class="text-xs text-zinc-500 text-right shrink-0">
+            {{ um.detected_at[:16].replace('T', ' ') }}
+          </div>
+        </div>
+      {% endfor %}
+    {% endif %}
+
     <!-- Print Match Suggestions - Compact Alert -->
     {% if print_match_suggestions %}
       {% for printer_code, suggestion in print_match_suggestions.items() %}

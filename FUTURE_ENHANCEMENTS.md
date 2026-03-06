@@ -1,7 +1,7 @@
 # Printellect Future Enhancements Roadmap
 
-**Last Updated:** December 19, 2025  
-**Current Version:** 0.10.0
+**Last Updated:** March 6, 2026  
+**Current Version:** 0.18.0
 
 This document tracks planned enhancements and improvements for Printellect. Items are organized by priority and category. Check items off as they are completed.
 
@@ -122,9 +122,10 @@ This document tracks planned enhancements and improvements for Printellect. Item
 2. Update version in `app/main.py` following semver:
    - `0.X.0` for new features
    - `0.x.Y` for bug fixes
-3. Add changelog entry in `app/main.py` header comments
-4. Add changelog entry in `app/templates/changelog.html`
-5. Mark item complete in this file with completion date
+3. Update `CHANGELOG.md` as the canonical changelog
+4. Add changelog entry in `app/main.py` header comments
+5. Add changelog entry in `app/templates/changelog.html`
+6. Mark item complete in this file with completion date
 
 ### Testing Checklist
 
@@ -142,7 +143,7 @@ Before marking a feature complete:
 | Area | Files |
 |------|-------|
 | Version | `app/main.py` (line ~32) |
-| Changelog | `app/templates/changelog.html` |
+| Changelog | `CHANGELOG.md`, `app/templates/changelog.html`, `app/main.py` |
 | Navigation | `app/templates/admin_nav.html`, `app/templates/pwa_base.html` |
 | Components | `app/templates/_components/` |
 | Routes | `app/main.py`, `app/routes_auth.py` |

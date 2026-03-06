@@ -74,12 +74,90 @@
         </p>
       </div>
 
+      <!-- v0.18.0 -->
+      <div id="v0.18.0" class="bg-gradient-to-br from-zinc-900/80 via-violet-900/30 to-zinc-900/80 border border-violet-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-violet-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.18.0" class="px-3 py-1 bg-violet-600 text-white text-sm font-bold rounded-lg hover:bg-violet-500 transition">v0.18.0</a>
+          <span class="text-zinc-400 text-sm">March 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">OIDC SSO via Authentik</h3>
+        <p class="text-sm text-zinc-400 mb-4">Added a feature-flagged OpenID Connect sign-in flow so accounts can use Authentik SSO with secure token validation and account linking.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🔐 Authentication</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-violet-400 mt-1">•</span>
+            <span>Added OpenID Connect discovery, authorization-code login, callback handling, and userinfo retrieval for Authentik-backed sign-in.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-violet-400 mt-1">•</span>
+            <span>Accounts can now link or unlink their OIDC identity and first-time SSO users can be provisioned automatically when allowed.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-violet-400 mt-1">•</span>
+            <span>ID tokens are validated against provider JWKS metadata before a session is created.</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>Controlled by the <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">oidc_login</code> feature flag for staged rollout.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>Covered by the dedicated OIDC test suite to keep login, linking, and callback behavior stable.</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v0.17.1 -->
+      <div id="v0.17.1" class="bg-gradient-to-br from-zinc-900/80 via-cyan-900/20 to-zinc-900/80 border border-cyan-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-cyan-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.17.1" class="px-3 py-1 bg-cyan-600 text-white text-sm font-bold rounded-lg hover:bg-cyan-500 transition">v0.17.1</a>
+          <span class="text-zinc-400 text-sm">February 2026</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Private Trips planning workspace</h3>
+        <p class="text-sm text-zinc-400 mb-4">Backfilled the private Trips release covering trip planning, collaboration, reminders, and offline-friendly itinerary access.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🧳 Trip management</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-cyan-400 mt-1">•</span>
+            <span>Create and manage trips with date ranges, descriptions, share tokens, and role-based member access.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-cyan-400 mt-1">•</span>
+            <span>Add flights, hotels, meals, and activities to a unified timeline with comments and “What’s Next” summaries.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-cyan-400 mt-1">•</span>
+            <span>Upload itinerary PDFs and deliver reminder notifications for upcoming events.</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>Trips remains a private rollout behind the <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">trips</code> feature flag.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>Offline-aware caching keeps itinerary details available in the installed app.</span>
+          </li>
+        </ul>
+      </div>
+
       <!-- v0.17.0 -->
       <div id="v0.17.0" class="bg-gradient-to-br from-zinc-900/80 via-indigo-900/20 to-zinc-900/80 border border-indigo-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.17.0" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.17.0</a>
           <span class="text-zinc-400 text-sm">February 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Printellect production onboarding + OTA packaging flow</h3>
@@ -126,6 +204,41 @@
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
             <span>QR images are generated from HTTPS fallback URLs for better camera/scanner compatibility.</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v0.16.1 -->
+      <div id="v0.16.1" class="bg-gradient-to-br from-zinc-900/80 via-amber-900/20 to-zinc-900/80 border border-amber-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-amber-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.16.1" class="px-3 py-1 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-500 transition">v0.16.1</a>
+          <span class="text-zinc-400 text-sm">February 2026</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Store commerce foundation</h3>
+        <p class="text-sm text-zinc-400 mb-4">Backfilled the commerce infrastructure release that added Stripe-backed checkout flows and the internal credits / rewards ledger.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">💳 Payments & rewards</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-1">•</span>
+            <span>Added Stripe Checkout session support for store items, rush fees, quote payments, and webhook-driven payment state updates.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-1">•</span>
+            <span>Added credits and rewards ledger operations for grants, spends, transaction history, and scheduled credit automation.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-amber-400 mt-1">•</span>
+            <span>Prepared store items and request records for mixed cash / credit checkout workflows.</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>Controlled by the <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">store_payments</code> and <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">store_rewards</code> feature flags.</span>
           </li>
         </ul>
       </div>
@@ -244,6 +357,37 @@
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
             <span>Extended MJPEG read timeout to 8s to allow time for real frames to arrive</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v0.15.2 -->
+      <div id="v0.15.2" class="bg-gradient-to-br from-zinc-900/80 via-emerald-900/20 to-zinc-900/80 border border-emerald-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-emerald-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.15.2" class="px-3 py-1 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-500 transition">v0.15.2</a>
+          <span class="text-zinc-400 text-sm">February 2026</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Legal & compliance policy pages</h3>
+        <p class="text-sm text-zinc-400 mb-4">Backfilled the policy rollout that added public-facing legal pages to support shipping, payments, and account operations.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📄 Public policies</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400 mt-1">•</span>
+            <span>Added dedicated Terms of Use, Privacy Policy, Acceptable Use, and Refund &amp; Shipping pages.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400 mt-1">•</span>
+            <span>Wired public routes so policy pages can be linked from account, shipping, and transactional flows.</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>Policy templates use the February 15, 2026 effective-date set captured in the public routes.</span>
           </li>
         </ul>
       </div>
@@ -386,6 +530,37 @@
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
             <span>282 automated tests passing</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- v0.13.1 -->
+      <div id="v0.13.1" class="bg-gradient-to-br from-zinc-900/80 via-sky-900/20 to-zinc-900/80 border border-sky-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-sky-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.13.1" class="px-3 py-1 bg-sky-600 text-white text-sm font-bold rounded-lg hover:bg-sky-500 transition">v0.13.1</a>
+          <span class="text-zinc-400 text-sm">February 2026</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">File sync automation</h3>
+        <p class="text-sm text-zinc-400 mb-4">Backfilled the file-sync service that extends file linking with watched folders, automatic matching, and archive workflows.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📁 Automation</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-sky-400 mt-1">•</span>
+            <span>Watch configured folders for new STL, 3MF, and G-code files as they land on disk.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-sky-400 mt-1">•</span>
+            <span>Use fuzzy matching to associate files with open requests and move completed files into archive destinations.</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>Controlled by the <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">file_sync</code> feature flag for opt-in rollout.</span>
           </li>
         </ul>
       </div>
@@ -632,6 +807,35 @@
               <li>Admin notes system for internal account annotations.</li>
               <li>Automatic migration: users and admins are merged into accounts on startup.</li>
               <li>Change/link account on any request from admin request detail page.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- v0.10.7 -->
+      <!-- v0.10.8 -->
+      <div id="v0.10.8" class="bg-gradient-to-br from-zinc-900/80 to-purple-950/20 border border-purple-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-purple-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.10.8" class="px-3 py-1 bg-purple-600 text-white text-sm font-bold rounded-lg hover:bg-purple-500 transition">v0.10.8</a>
+          <span class="text-zinc-400 text-sm">January 2026</span>
+          <span class="px-2 py-1 bg-purple-600/20 text-purple-300 text-xs rounded-lg border border-purple-500/50">🔒 Security</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Security hardening & migration support</h3>
+        <p class="text-sm text-zinc-400 mb-4">Backfilled the security pass that hardened form submission, rate limiting, headers, and legacy account migration support.</p>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
+            <h4 class="text-xs font-bold text-purple-400 mb-2">🔒 Hardening</h4>
+            <ul class="space-y-1 text-sm text-zinc-300">
+              <li class="flex items-start gap-2"><span class="text-purple-500">•</span><span>Added CSRF token generation and validation for state-changing browser forms.</span></li>
+              <li class="flex items-start gap-2"><span class="text-purple-500">•</span><span>Added request throttling for sensitive endpoints and consistent security headers on responses.</span></li>
+              <li class="flex items-start gap-2"><span class="text-purple-500">•</span><span>Added tooling to migrate legacy users and admins into the unified accounts model.</span></li>
+            </ul>
+          </div>
+          <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
+            <h4 class="text-xs font-bold text-indigo-400 mb-2">🧪 Dev support</h4>
+            <ul class="space-y-1 text-sm text-zinc-300">
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Expanded demo-data support to make local account and feature-flag testing easier.</span></li>
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Backfilled release note based on implemented middleware and migration utilities already present in the app.</span></li>
             </ul>
           </div>
         </div>

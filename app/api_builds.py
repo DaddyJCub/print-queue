@@ -73,6 +73,12 @@ from app.main import (
     _human_material,
     is_feature_enabled,
     get_camera_snapshot_url_async,
+    get_active_unmatched_prints,
+    get_unmatched_print,
+    resolve_unmatched_print,
+    record_unmatched_print,
+    find_matching_requests_for_file,
+    fetch_printer_status_with_cache,
 )
 from app.main import MoonrakerAPI
 from app.auth import (
@@ -3197,6 +3203,212 @@ def admin_dismiss_match_suggestion(
 ):
     """Dismiss a print match suggestion."""
     clear_print_match_suggestion(printer)
+    return RedirectResponse(url="/admin", status_code=303)
+
+
+# ─────────────────────────── UNMATCHED PRINT ROUTES ───────────────────────────
+
+@router.get("/admin/unmatched/{unmatched_id}", response_class=HTMLResponse)
+async def admin_unmatched_detail(request: Request, unmatched_id: str, _=Depends(require_permission("manage_queue"))):
+    """Detail page for an unmatched print — identify, create request, or dismiss."""
+    unmatched = get_unmatched_print(unmatched_id)
+    if not unmatched:
+        raise HTTPException(status_code=404, detail="Unmatched print not found")
+
+    metadata = unmatched.get("printer_metadata") or {}
+    printer_code = unmatched["printer_code"]
+
+    # Get potential matching requests (widened search)
+    conn = db()
+    potential_matches = conn.execute(
+        """SELECT id, print_name, printer, material, colors, requester_name, status, priority, created_at
+           FROM requests
+           WHERE status IN ('NEW', 'QUEUED', 'APPROVED', 'IN_PROGRESS')
+             AND (printer = ? OR printer = 'ANY')
+           ORDER BY
+             CASE WHEN printer = ? THEN 0 ELSE 1 END,
+             COALESCE(priority, 999),
+             created_at
+           LIMIT 20""",
+        (printer_code, printer_code)
+    ).fetchall()
+    conn.close()
+
+    # Try to guess material from metadata
+    guessed_material = "PLA"
+    filament_type = metadata.get("filament_type", "")
+    if filament_type:
+        upper = filament_type.upper()
+        for code, label in MATERIALS:
+            if code != "ANY" and code in upper:
+                guessed_material = code
+                break
+
+    # Get live printer status
+    printer_status = await fetch_printer_status_with_cache(printer_code, timeout=3.0)
+
+    # Camera URL for live feed
+    camera_url = await get_camera_url_async(printer_code)
+
+    return templates.TemplateResponse("admin_unmatched_detail.html", {
+        "request": request,
+        "unmatched": unmatched,
+        "metadata": metadata,
+        "potential_matches": [dict(r) for r in potential_matches],
+        "printers": PRINTERS,
+        "materials": MATERIALS,
+        "guessed_material": guessed_material,
+        "printer_status": printer_status or {},
+        "camera_url": camera_url,
+        "version": APP_VERSION,
+    })
+
+
+@router.post("/admin/unmatched/{unmatched_id}/create-request")
+def admin_unmatched_create_request(
+    request: Request,
+    unmatched_id: str,
+    print_name: str = Form(...),
+    requester_name: str = Form(...),
+    requester_email: str = Form(""),
+    printer: str = Form(...),
+    material: str = Form("PLA"),
+    colors: str = Form(""),
+    notes: str = Form(""),
+    admin=Depends(require_permission("manage_queue"))
+):
+    """Create a new request from an unmatched print and auto-set to PRINTING."""
+    unmatched = get_unmatched_print(unmatched_id)
+    if not unmatched:
+        raise HTTPException(status_code=404, detail="Unmatched print not found")
+    if unmatched["status"] != "ACTIVE":
+        raise HTTPException(status_code=400, detail="This unmatched print has already been resolved")
+
+    now = now_iso()
+    rid = str(uuid.uuid4())
+    access_token = secrets.token_urlsafe(32)
+
+    conn = db()
+    conn.execute(
+        """INSERT INTO requests
+           (id, created_at, updated_at, requester_name, requester_email, print_name,
+            printer, material, colors, notes, status, priority, access_token,
+            printing_started_at, fulfillment_method, admin_notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PRINTING', 3, ?, ?, 'pickup', ?)""",
+        (rid, now, now, requester_name, requester_email, print_name,
+         printer, material, colors, notes, access_token,
+         unmatched["detected_at"],
+         f"Created from unmatched print detection (file: {unmatched['file_name']})")
+    )
+    # Create a status event
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now, "NEW", "PRINTING",
+         f"Auto-created from unmatched print on {unmatched['printer_code']} (file: {unmatched['file_display']})")
+    )
+    # Create a single build in PRINTING status
+    build_id = str(uuid.uuid4())
+    conn.execute(
+        """INSERT INTO builds
+           (id, request_id, build_number, status, printer, material, print_name, file_name, colors, started_at, created_at, updated_at)
+           VALUES (?, ?, 1, 'PRINTING', ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (build_id, rid, printer, material, print_name, unmatched["file_name"], colors, now, now, now)
+    )
+    conn.execute(
+        "UPDATE requests SET total_builds = 1, active_build_id = ? WHERE id = ?",
+        (build_id, rid)
+    )
+    conn.commit()
+    conn.close()
+
+    # Resolve the unmatched print
+    admin_email = admin.email if hasattr(admin, "email") else "admin"
+    resolve_unmatched_print(unmatched_id, "MATCHED", resolved_by=admin_email, request_id=rid)
+
+    # Clear any match suggestion for this printer
+    clear_print_match_suggestion(unmatched["printer_code"])
+
+    add_poll_debug_log({
+        "type": "unmatched_create_request",
+        "unmatched_id": unmatched_id[:8],
+        "request_id": rid[:8],
+        "printer": printer,
+        "message": f"Created request from unmatched print: {print_name}"
+    })
+
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@router.post("/admin/unmatched/{unmatched_id}/match/{rid}")
+def admin_unmatched_match_request(
+    request: Request,
+    unmatched_id: str,
+    rid: str,
+    admin=Depends(require_permission("manage_queue"))
+):
+    """Match an unmatched print to an existing request."""
+    unmatched = get_unmatched_print(unmatched_id)
+    if not unmatched:
+        raise HTTPException(status_code=404, detail="Unmatched print not found")
+    if unmatched["status"] != "ACTIVE":
+        raise HTTPException(status_code=400, detail="Already resolved")
+
+    conn = db()
+    req = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    old_status = req["status"]
+    printer_code = unmatched["printer_code"]
+    now = now_iso()
+
+    # Transition request to PRINTING
+    if old_status not in ("PRINTING", "IN_PROGRESS"):
+        conn.execute(
+            "UPDATE requests SET status = 'PRINTING', printer = ?, printing_started_at = ?, printing_email_sent = 0, updated_at = ? WHERE id = ?",
+            (printer_code, unmatched["detected_at"], now, rid)
+        )
+        conn.execute(
+            "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), rid, now, old_status, "PRINTING",
+             f"Matched from unmatched print on {printer_code} (file: {unmatched['file_display']})")
+        )
+        conn.commit()
+
+    # Start next READY/PENDING build if exists
+    next_build = conn.execute(
+        "SELECT id FROM builds WHERE request_id = ? AND status IN ('READY', 'PENDING') ORDER BY build_number LIMIT 1",
+        (rid,)
+    ).fetchone()
+    conn.close()
+
+    if next_build:
+        start_build(next_build["id"], printer_code,
+                     f"Matched from unmatched print (file: {unmatched['file_display']})")
+
+    admin_email = admin.email if hasattr(admin, "email") else "admin"
+    resolve_unmatched_print(unmatched_id, "MATCHED", resolved_by=admin_email, request_id=rid)
+    clear_print_match_suggestion(printer_code)
+
+    return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@router.post("/admin/unmatched/{unmatched_id}/dismiss")
+def admin_unmatched_dismiss(
+    request: Request,
+    unmatched_id: str,
+    notes: str = Form(""),
+    admin=Depends(require_permission("manage_queue"))
+):
+    """Dismiss an unmatched print alert."""
+    unmatched = get_unmatched_print(unmatched_id)
+    if not unmatched:
+        raise HTTPException(status_code=404, detail="Unmatched print not found")
+
+    admin_email = admin.email if hasattr(admin, "email") else "admin"
+    resolve_unmatched_print(unmatched_id, "DISMISSED", resolved_by=admin_email, notes=notes)
+
     return RedirectResponse(url="/admin", status_code=303)
 
 
