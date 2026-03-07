@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 
-from app.auth import optional_user, create_request_assignment
+from app.auth import optional_user, create_request_assignment, get_current_account
 from app.models import AssignmentRole
 from app.main import (
     templates,
@@ -56,10 +56,18 @@ router = APIRouter()
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     user = await optional_user(request)
+    # Resolve email/id for feature-flag check: prefer User, fall back to unified Account
+    user_id = user.id if user else None
+    email = user.email if user else None
+    if not email:
+        account = await get_current_account(request)
+        if account:
+            user_id = account.id
+            email = account.email
     dashboard_enabled = is_feature_enabled(
         "dashboard_home",
-        user_id=user.id if user else None,
-        email=user.email if user else None,
+        user_id=user_id,
+        email=email,
     )
     if dashboard_enabled:
         return await render_dashboard(request, user)
