@@ -1,12 +1,13 @@
 @echo off
 REM Local Development Script for Print Queue App
-REM Run this from the print-queue directory
+REM Run this script from anywhere inside the repo checkout.
 REM
 REM Usage:
-REM   run_local.bat          - Normal mode
-REM   run_local.bat demo     - Demo mode with fake data
+REM   scripts\windows\run_local.bat          - Normal mode
+REM   scripts\windows\run_local.bat demo     - Demo mode with fake data
 
 set DEMO_FLAG=%1
+pushd "%~dp0\..\.."
 
 echo ========================================
 echo   Print Queue - Local Development
@@ -68,6 +69,7 @@ echo.
 echo ========================================
 echo   Environment Configuration:
 echo ========================================
+echo   REPO_ROOT:      %CD%
 echo   DB_PATH:        %DB_PATH%
 echo   UPLOAD_DIR:     %UPLOAD_DIR%
 echo   BASE_URL:       %BASE_URL%

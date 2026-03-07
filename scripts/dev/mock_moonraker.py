@@ -6,7 +6,7 @@ by the print-queue app's send-to-printer feature. Runs on port 7125
 (Moonraker's default port).
 
 Usage:
-    python3 -m uvicorn mock_moonraker:app --host 127.0.0.1 --port 7125
+    uvicorn scripts.dev.mock_moonraker:app --host 127.0.0.1 --port 7125
 
 Endpoints mocked:
     POST /server/files/upload       - Accept G-code uploads
@@ -29,7 +29,8 @@ from fastapi.responses import JSONResponse
 app = FastAPI(title="Mock Moonraker", version="0.1.0")
 
 # In-memory store for uploaded files
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "mock_gcodes")
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+UPLOAD_DIR = os.path.join(ROOT_DIR, "mock_gcodes")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Track uploaded files and their metadata
@@ -105,10 +106,10 @@ async def upload_file(request: Request):
     file_field = form.get("file")
     print_flag = form.get("print", "false")
     
-    if not file_field:
+    if not isinstance(file_field, UploadFile):
         return JSONResponse({"error": "No file provided"}, status_code=400)
     
-    filename = file_field.filename
+    filename = file_field.filename or "upload.gcode"
     content = await file_field.read()
     file_size = len(content)
     

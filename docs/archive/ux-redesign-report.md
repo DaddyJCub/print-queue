@@ -258,7 +258,7 @@ def get_admin_context(request: Request) -> dict:
 
 Current: Generic buttons  
 Proposed: Clear destructive styling
-
+```
 ```html
 <!-- Non-destructive -->
 <button class="bg-indigo-600 hover:bg-indigo-500">Approve</button>

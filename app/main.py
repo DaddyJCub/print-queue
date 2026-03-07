@@ -59,6 +59,13 @@ APP_VERSION = "0.18.0"
 # 0.11.1 - [PATCH] Safer printer controls & admin progress alerts
 # 0.11.0 - [FEATURE] Designer workflow with assignments and design completion tracking
 # 0.10.8 - [SECURITY] Security hardening: CSRF protection, rate limiting, security headers, account migration tooling, and expanded demo data support
+# 0.10.7 - [FEATURE] Profile photos, editable avatars, and sturdier notification delivery for print lifecycle and design flows
+# 0.10.6 - [FEATURE] Designer role and guarded design workflow with request-level assignment and completion checks
+# 0.10.5 - [PATCH] Full BLOCKED status support across dashboard, notifications, and requester/admin UI cleanup
+# 0.10.4 - [CHANGE] Modularized app structure and improved ETA calculations for multi-build requests
+# 0.10.3 - [FEATURE] Multi-file uploads and improved admin user management tools
+# 0.10.2 - [PATCH] Hotfix for user account preference saving and password reset usability
+# 0.10.1 - [PATCH] Navigation and UX consistency improvements for the initial user accounts release
 # 0.10.0 - [MAJOR] User accounts system: registration/login, profiles, multi-admin, feature flags, user management
 # 0.9.0 - [FEATURE] Admin PWA navigation: Admin tab in bottom nav, unified navigation on admin pages, My Prints pagination
 # --- Version scheme changed from 1.x.x to 0.x.x (Dec 2025) - all prior versions below are historical ---

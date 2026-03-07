@@ -153,6 +153,6 @@ Before marking a feature complete:
 
 ## References
 
-- [UX_REDESIGN_REPORT.md](UX_REDESIGN_REPORT.md) - Detailed UX audit and recommendations
-- [TESTING_GUIDE.md](TESTING_GUIDE.md) - Testing procedures
-- [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md) - Development setup
+- [docs/archive/ux-redesign-report.md](docs/archive/ux-redesign-report.md) - Archived UX audit and recommendations
+- [docs/qa/testing-guide.md](docs/qa/testing-guide.md) - Testing procedures
+- [docs/dev/local-development.md](docs/dev/local-development.md) - Development setup

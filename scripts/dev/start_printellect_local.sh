@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 export DB_PATH="${DB_PATH:-$ROOT_DIR/local_data/app.db}"
 export UPLOAD_DIR="${UPLOAD_DIR:-$ROOT_DIR/local_data/uploads}"

@@ -14,6 +14,7 @@ import sys
 import uuid
 import json
 from datetime import datetime, timedelta
+from typing import cast
 
 import httpx
 
@@ -131,8 +132,9 @@ def main():
         if prov.status_code != 200 or body.get("status") != "provisioned":
             fail("provision failed: %s %s" % (prov.status_code, prov.text))
         token = body.get("device_token")
-        if not token:
+        if not isinstance(token, str) or not token:
             fail("provisioned response missing device_token")
+        token = cast(str, token)
         print("OK: provisioned token")
 
         auth_headers = {"Authorization": "Bearer " + token}

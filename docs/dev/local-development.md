@@ -6,17 +6,17 @@ This guide explains how to run the Print Queue app locally for testing and devel
 
 ### Normal Mode (empty database)
 ```powershell
-.\run_local.ps1
+.\scripts\windows\run_local.ps1
 ```
 
 ### Demo Mode (pre-populated with fake data)
 ```powershell
-.\run_local.ps1 -Demo
+.\scripts\windows\run_local.ps1 -Demo
 ```
 
 Or using Command Prompt:
 ```cmd
-run_local.bat demo
+scripts\windows\run_local.bat demo
 ```
 
 ## What You Get
@@ -58,7 +58,7 @@ run_local.bat demo
 If the PowerShell script doesn't work due to execution policy restrictions, you can start the server manually:
 
 ```powershell
-cd "E:\Github\Print Request\print-queue"
+Set-Location "C:\path\to\print-queue"
 $env:DB_PATH = "$PWD\local_data\demo.db"
 $env:UPLOAD_DIR = "$PWD\local_uploads"
 $env:BASE_URL = "http://localhost:3000"
@@ -187,8 +187,10 @@ When testing new features locally:
 
 ```
 print-queue/
-├── run_local.ps1        # PowerShell start script
-├── run_local.bat        # CMD start script
+├── scripts/
+│   └── windows/
+│       ├── run_local.ps1    # PowerShell start script
+│       └── run_local.bat    # CMD start script
 ├── .env.local           # Example environment config
 ├── local_data/          # Local databases (gitignored)
 │   ├── app.db          # Normal mode database

@@ -3,7 +3,7 @@
 ## 1) Start backend locally
 
 ```bash
-bash scripts/start_printellect_local.sh
+bash scripts/dev/start_printellect_local.sh
 ```
 
 ## 2) Run smoke flow
@@ -14,7 +14,7 @@ In another terminal:
 export DB_PATH=$PWD/local_data/app.db
 export BASE_URL=http://127.0.0.1:3000
 export ADMIN_PASSWORD=admin
-python3 scripts/printellect_local_smoke.py
+python3 scripts/dev/printellect_local_smoke.py
 ```
 
 Expected ending line:
@@ -29,7 +29,7 @@ Printellect user routes are gated by feature flag `printellect_device_control`.
 Assign access in admin features before manual testing:
 
 ```bash
-bash scripts/assign_printellect_feature.sh your-test-email@example.com
+bash scripts/dev/assign_printellect_feature.sh your-test-email@example.com
 ```
 
 ## 3) Manual pages

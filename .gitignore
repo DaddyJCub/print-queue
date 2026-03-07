@@ -31,3 +31,7 @@ Thumbs.db
 tests/tmp_data/
 tests/tmp_uploads/
 tests/tmp_trip_uploads/
+.pytest_cache/
+.test.log
+.uploads/
+node_modules/

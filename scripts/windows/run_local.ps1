@@ -1,13 +1,16 @@
 # Local Development Script for Print Queue App
-# Run this script from the print-queue directory
+# Run this script from anywhere inside the repo checkout.
 #
 # Usage:
-#   .\run_local.ps1          # Normal mode
-#   .\run_local.ps1 -Demo    # Demo mode with fake data
+#   .\scripts\windows\run_local.ps1          # Normal mode
+#   .\scripts\windows\run_local.ps1 -Demo    # Demo mode with fake data
 
 param(
     [switch]$Demo
 )
+
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+Set-Location $RepoRoot
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Print Queue - Local Development" -ForegroundColor Cyan
@@ -76,6 +79,7 @@ Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Environment Configuration:" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "  Repo Root:    $RepoRoot" -ForegroundColor Gray
 Write-Host "  DB_PATH:      $env:DB_PATH" -ForegroundColor Gray
 Write-Host "  UPLOAD_DIR:   $env:UPLOAD_DIR" -ForegroundColor Gray
 Write-Host "  BASE_URL:     $env:BASE_URL" -ForegroundColor Gray
