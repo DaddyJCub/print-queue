@@ -148,7 +148,7 @@ async def user_login_page(request: Request, next: str = None, error: str = None,
     # Already logged in?
     user = await get_current_user(request)
     if user:
-        return RedirectResponse(url=next or "/auth/profile", status_code=303)
+        return RedirectResponse(url=next or "/", status_code=303)
     
     return templates.TemplateResponse("auth_login.html", {
         "request": request,
@@ -184,7 +184,7 @@ async def user_login_submit(
             ip_address=get_client_ip(request)
         )
         
-        redirect_url = next if next else "/auth/profile"
+        redirect_url = next if next else "/"
         resp = RedirectResponse(url=redirect_url, status_code=303)
         resp.set_cookie(
             "user_session",
@@ -221,7 +221,7 @@ async def user_login_submit(
         remember_me=True
     )
     
-    redirect_url = next if next else "/auth/profile"
+    redirect_url = next if next else "/"
     resp = RedirectResponse(url=redirect_url, status_code=303)
     resp.set_cookie(
         "session",
@@ -311,7 +311,7 @@ async def user_verify_magic_link(request: Request, token: str):
         ip_address=get_client_ip(request)
     )
     
-    resp = RedirectResponse(url="/auth/profile", status_code=303)
+    resp = RedirectResponse(url="/", status_code=303)
     resp.set_cookie(
         "user_session",
         session_token,
@@ -347,7 +347,7 @@ async def user_register_page(
     
     user = await get_current_user(request)
     if user:
-        return RedirectResponse(url="/auth/profile", status_code=303)
+        return RedirectResponse(url="/", status_code=303)
     
     return templates.TemplateResponse("auth_register.html", {
         "request": request,
@@ -417,7 +417,7 @@ async def user_register_submit(
             ip_address=get_client_ip(request)
         )
         
-        redirect_url = next if next else "/auth/profile"
+        redirect_url = next if next else "/"
         
         # Add success message if requests were linked
         if linked_count > 0:
@@ -2698,7 +2698,7 @@ async def oidc_callback(request: Request, code: str = None, state: str = None, e
         elif account.is_admin_level():
             redirect_url = "/admin"
         else:
-            redirect_url = "/auth/profile"
+            redirect_url = "/"
         
         resp = RedirectResponse(url=redirect_url, status_code=303)
         resp.set_cookie(

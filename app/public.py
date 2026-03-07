@@ -45,15 +45,163 @@ from app.main import (
     update_user_notification_prefs,
     should_send_email,
     logger,
+    get_cached_printer_status,
+    DEMO_MODE,
+    PRINTERS as PRINTERS_LIST,
 )
+from app.demo_data import get_demo_all_printers_status
 
 router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    # Check if user is logged in
+    user = await optional_user(request)
+    dashboard_enabled = is_feature_enabled(
+        "dashboard_home",
+        user_id=user.id if user else None,
+        email=user.email if user else None,
+    )
+    if dashboard_enabled:
+        return await render_dashboard(request, user)
+    return render_form(request, None, form={}, user=user)
+
+
+@router.get("/new-request", response_class=HTMLResponse)
+async def new_request_page(request: Request):
+    """Request form page (moved from / when dashboard is enabled)."""
     user = await optional_user(request)
     return render_form(request, None, form={}, user=user)
+
+
+async def render_dashboard(request: Request, user=None):
+    """Render the dashboard landing page."""
+    conn = db()
+
+    # ── Queue stats ──
+    queue_stats = {"printing": 0, "queued": 0, "avg_wait": "1-2 days"}
+    try:
+        printing = conn.execute(
+            "SELECT COUNT(*) FROM requests WHERE status IN ('PRINTING', 'IN_PROGRESS')"
+        ).fetchone()[0]
+        queued = conn.execute(
+            "SELECT COUNT(*) FROM requests WHERE status IN ('PENDING', 'APPROVED', 'NEEDS_INFO')"
+        ).fetchone()[0]
+        queue_stats = {
+            "printing": printing,
+            "queued": queued,
+            "avg_wait": "1-2 days" if queued < 5 else "2-4 days" if queued < 10 else "4-7 days",
+        }
+    except Exception:
+        pass
+
+    # ── Fun stats ──
+    fun_stats = {"total_prints": 0, "est_hours": 0, "est_meters": 0}
+    try:
+        total_completed = conn.execute(
+            "SELECT COUNT(*) FROM requests WHERE status IN ('DONE', 'PICKED_UP')"
+        ).fetchone()[0]
+        fun_stats = {
+            "total_prints": total_completed,
+            "est_hours": total_completed * 3,
+            "est_meters": round(total_completed * 15, 0),
+        }
+    except Exception:
+        pass
+
+    # ── User's active requests ──
+    active_requests = []
+    user_stats = {"total_requests": 0, "total_prints": 0, "credits": 0}
+    if user:
+        try:
+            rows = conn.execute(
+                """SELECT r.id, r.print_name, r.status, r.updated_at, r.printer,
+                          r.total_builds, r.completed_builds, r.access_token
+                   FROM requests r
+                   WHERE r.account_id = ? AND r.status NOT IN ('DONE', 'PICKED_UP', 'REJECTED', 'CANCELLED')
+                   ORDER BY r.updated_at DESC LIMIT 5""",
+                (user.id,),
+            ).fetchall()
+            for r in rows:
+                active_requests.append(dict(r))
+        except Exception:
+            pass
+        user_stats = {
+            "total_requests": user.total_requests or 0,
+            "total_prints": user.total_prints or 0,
+            "credits": user.credits or 0,
+        }
+
+    # ── Printer status ──
+    printer_status = {}
+    try:
+        if DEMO_MODE:
+            printer_status = get_demo_all_printers_status()
+        else:
+            for printer_code in ["ADVENTURER_4", "AD5X"]:
+                cached = get_cached_printer_status(printer_code)
+                if cached:
+                    printer_status[printer_code] = cached
+                else:
+                    printer_status[printer_code] = {
+                        "status": None, "is_offline": True,
+                        "is_printing": False, "progress": None,
+                    }
+    except Exception:
+        pass
+
+    # ── Recent activity feed ──
+    activity_feed = []
+    try:
+        rows = conn.execute(
+            """SELECT se.to_status, se.created_at, se.comment,
+                      r.print_name, r.id as request_id
+               FROM status_events se
+               JOIN requests r ON se.request_id = r.id
+               ORDER BY se.created_at DESC LIMIT 8"""
+        ).fetchall()
+        for r in rows:
+            activity_feed.append(dict(r))
+    except Exception:
+        pass
+
+    # ── Announcements ──
+    announcements = []
+    try:
+        rows = conn.execute(
+            """SELECT title, body, broadcast_type, sent_at
+               FROM broadcast_notifications
+               ORDER BY sent_at DESC LIMIT 3"""
+        ).fetchall()
+        for r in rows:
+            announcements.append(dict(r))
+    except Exception:
+        pass
+
+    conn.close()
+
+    # Printer display labels
+    printer_labels = {p[0]: p[1] for p in PRINTERS_LIST if p[0] != "ANY"}
+
+    credits_enabled = False
+    try:
+        credits_enabled = is_feature_enabled("store_rewards")
+    except Exception:
+        pass
+
+    return templates.TemplateResponse("dashboard.html", {
+        "request": request,
+        "user": user,
+        "queue_stats": queue_stats,
+        "fun_stats": fun_stats,
+        "active_requests": active_requests,
+        "user_stats": user_stats,
+        "printer_status": printer_status,
+        "printer_labels": printer_labels,
+        "activity_feed": activity_feed,
+        "announcements": announcements,
+        "credits_enabled": credits_enabled,
+        "version": APP_VERSION,
+    })
 
 
 @router.post("/submit")

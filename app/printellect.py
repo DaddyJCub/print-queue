@@ -41,6 +41,20 @@ def _credits_nav_enabled():
         return False
 templates.env.globals["credits_nav_enabled"] = _credits_nav_enabled
 
+def _dashboard_nav_enabled():
+    try:
+        return is_feature_enabled("dashboard_home")
+    except Exception:
+        return False
+templates.env.globals["dashboard_nav_enabled"] = _dashboard_nav_enabled
+
+def _new_request_url():
+    try:
+        return "/new-request" if is_feature_enabled("dashboard_home") else "/"
+    except Exception:
+        return "/"
+templates.env.globals["new_request_url"] = _new_request_url
+
 ONLINE_WINDOW_SECONDS = int(os.getenv("DEVICE_ONLINE_WINDOW_SECONDS", "60"))
 DEVICE_MIN_POLL_SECONDS = float(os.getenv("DEVICE_MIN_POLL_SECONDS", "1.0"))
 PROVISION_POLL_INTERVAL_MS = int(os.getenv("DEVICE_PROVISION_POLL_MS", "1000"))

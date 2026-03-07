@@ -42,6 +42,40 @@ class TestHomePage:
         response = client.get("/")
         assert response.status_code == 200
 
+    def test_new_request_route_loads(self, client):
+        """/new-request should always serve the request form."""
+        response = client.get("/new-request")
+        assert response.status_code == 200
+        assert_html_contains(response, "New Print Request", "form")
+
+    def test_dashboard_loads_when_flag_enabled(self, client):
+        """When dashboard_home flag is on, / should show the dashboard."""
+        conn = get_test_db()
+        conn.execute(
+            "UPDATE feature_flags SET enabled = 1 WHERE key = 'dashboard_home'"
+        )
+        conn.commit()
+        conn.close()
+        from app.auth import invalidate_feature_flag_cache
+        invalidate_feature_flag_cache()
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "dashboard" in response.text.lower() or "what's happening" in response.text.lower() or "Welcome" in response.text
+
+    def test_dashboard_flag_off_shows_form(self, client):
+        """When dashboard_home flag is off, / should show the request form."""
+        conn = get_test_db()
+        conn.execute(
+            "UPDATE feature_flags SET enabled = 0 WHERE key = 'dashboard_home'"
+        )
+        conn.commit()
+        conn.close()
+        from app.auth import invalidate_feature_flag_cache
+        invalidate_feature_flag_cache()
+        response = client.get("/")
+        assert response.status_code == 200
+        assert_html_contains(response, "New Print Request", "form")
+
 
 class TestPolicyPages:
     """Basic smoke tests for legal/policy pages."""

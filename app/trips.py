@@ -42,6 +42,31 @@ logger = logging.getLogger("printellect.trips")
 router = APIRouter(prefix="/trips", tags=["trips"])
 templates = Jinja2Templates(directory="app/templates")
 
+# Dashboard / nav globals (needed by pwa_base.html)
+def _dashboard_nav_enabled():
+    try:
+        from app.main import is_feature_enabled
+        return is_feature_enabled("dashboard_home")
+    except Exception:
+        return False
+templates.env.globals["dashboard_nav_enabled"] = _dashboard_nav_enabled
+
+def _new_request_url():
+    try:
+        from app.main import is_feature_enabled
+        return "/new-request" if is_feature_enabled("dashboard_home") else "/"
+    except Exception:
+        return "/"
+templates.env.globals["new_request_url"] = _new_request_url
+
+def _credits_nav_enabled():
+    try:
+        from app.main import is_feature_enabled
+        return is_feature_enabled("store_rewards")
+    except Exception:
+        return False
+templates.env.globals["credits_nav_enabled"] = _credits_nav_enabled
+
 # Timezone for display
 DISPLAY_TIMEZONE = os.getenv("DISPLAY_TIMEZONE", "America/Los_Angeles")
 BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")

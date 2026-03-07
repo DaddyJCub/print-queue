@@ -278,7 +278,7 @@
         {% block header_right %}
         <!-- Desktop nav links -->
         <nav aria-label="Main navigation" class="hidden sm:flex items-center gap-1">
-          <a href="/" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition {% block nav_home %}{% endblock %}">Submit</a>
+          <a href="/" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition {% block nav_home %}{% endblock %}">{% if dashboard_nav_enabled() %}Home{% else %}Submit{% endif %}</a>
           <a href="/queue" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition {% block nav_queue %}{% endblock %}">Queue</a>
           <a href="/store" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition {% block nav_store %}{% endblock %}">Store</a>
           <a href="/my-requests" id="desktop-my-requests-link" class="px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition flex items-center gap-1.5 {% block nav_myrequests %}{% endblock %}">
@@ -417,10 +417,17 @@
   <nav role="navigation" aria-label="Mobile navigation" class="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-lg border-t border-zinc-800 sm:hidden bottom-nav">
     <div id="bottom-nav-grid" class="flex items-stretch">
       <a href="/" class="nav-item flex-1 flex flex-col items-center justify-center py-2 px-1 tap-highlight {% block bnav_home %}{% endblock %}">
+        {% if dashboard_nav_enabled() %}
+        <svg class="w-6 h-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2z" />
+        </svg>
+        <span class="text-[10px] leading-tight">Home</span>
+        {% else %}
         <svg class="w-6 h-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
         </svg>
         <span class="text-[10px] leading-tight">Submit</span>
+        {% endif %}
       </a>
       <a href="/queue" class="nav-item flex-1 flex flex-col items-center justify-center py-2 px-1 tap-highlight {% block bnav_queue %}{% endblock %}">
         <svg class="w-6 h-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

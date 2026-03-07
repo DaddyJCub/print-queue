@@ -18,15 +18,6 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 - Controlled by the `oidc_login` feature flag.
 - Covered by the OIDC test suite in `tests/test_oidc.py`.
 
-## 0.17.1
-### Added
-- Added the private Trips experience with trip CRUD, member roles, event timelines, itinerary uploads, reminders, and offline-aware PWA support.
-- Added trip sharing and collaboration flows for owners, editors, and viewers.
-
-### Notes
-- Controlled by the private `trips` feature flag.
-- Backfilled release note based on implemented code and test coverage.
-
 ## 0.17.0
 ### Added
 - Printellect production flow upgrades: `/pair` deep-link auto-claim + redirect, admin registry management, admin QR/device.json automation, OTA package-zip upload mode, expanded device control panel, and finalized Pico provisioning contract docs.

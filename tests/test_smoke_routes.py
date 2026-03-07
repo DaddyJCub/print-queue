@@ -257,6 +257,13 @@ def test_home_page_loads(client):
     assert "New Print Request" in response.text
 
 
+def test_new_request_page_loads(client):
+    """The /new-request route should always serve the request form."""
+    response = client.get("/new-request")
+    assert response.status_code == 200
+    assert "New Print Request" in response.text
+
+
 def test_queue_page_loads(client):
     response = client.get("/queue")
     assert response.status_code == 200

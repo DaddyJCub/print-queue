@@ -45,7 +45,6 @@ APP_VERSION = "0.18.0"
 #
 # Changelog:
 # 0.18.0 - [FEATURE] OIDC SSO via Authentik: discovery + authorization-code flow, account linking/unlinking, JWKS token validation, and auto-create on first sign-in
-# 0.17.1 - [FEATURE] Private trips: trip planning with member roles, events, itinerary uploads, push reminders, and offline-aware PWA support
 # 0.17.0 - [FEATURE] Printellect production flow upgrades: /pair deep-link auto-claim + redirect, admin registry management (save/unclaim/delete), admin QR/device.json automation, OTA package-zip upload mode, expanded device control panel, finalized Pico provisioning contract docs
 # 0.16.1 - [FEATURE] Store commerce foundation: Stripe Checkout (items, rush fees, quotes, webhooks), credits/rewards ledger, and scheduled credit grants
 # 0.16.0 - [FEATURE] Printellect device control foundation: user/account modal flow, private feature toggle management, device debug endpoint, Pico handoff docs, CI feature-flag fixes
@@ -346,6 +345,21 @@ def _credits_nav_enabled():
     except Exception:
         return False
 templates.env.globals["credits_nav_enabled"] = _credits_nav_enabled
+
+# Dashboard feature flag globals
+def _dashboard_nav_enabled():
+    try:
+        return is_feature_enabled("dashboard_home")
+    except Exception:
+        return False
+templates.env.globals["dashboard_nav_enabled"] = _dashboard_nav_enabled
+
+def _new_request_url():
+    try:
+        return "/new-request" if is_feature_enabled("dashboard_home") else "/"
+    except Exception:
+        return "/"
+templates.env.globals["new_request_url"] = _new_request_url
 
 # NOTE: app/static must exist in your repo (can be empty with a .gitkeep)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")

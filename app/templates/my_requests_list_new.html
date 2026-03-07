@@ -530,7 +530,7 @@
     <a href="/auth/profile#notifications" class="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition tap-highlight" title="Notification settings" aria-label="Notification settings">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
     </a>
-    <a href="/" class="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-xl text-sm font-medium transition tap-highlight">
+    <a href="{{ new_request_url() }}" class="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-xl text-sm font-medium transition tap-highlight">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
       </svg>
@@ -859,7 +859,7 @@
     </div>
     <h3 class="text-lg font-semibold text-zinc-300 mb-2">No requests yet</h3>
     <p class="text-sm text-zinc-500 mb-6 max-w-xs mx-auto">Submit your first print request and track it here!</p>
-    <a href="/" class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-6 py-3 font-semibold tap-highlight transition">
+    <a href="{{ new_request_url() }}" class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-6 py-3 font-semibold tap-highlight transition">
       New Request
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>

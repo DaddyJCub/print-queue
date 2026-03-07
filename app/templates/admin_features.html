@@ -164,9 +164,10 @@
       <p class="text-sm text-zinc-500 mb-4">Customize the user interface experience.</p>
       <div class="space-y-3">
         {% set ui_flag_details = {
-          'dark_mode_toggle': {'icon': '🌙', 'title': 'Dark Mode Toggle', 'desc': 'Allow users to switch between light and dark themes. Currently dark-only.'}
+          'dark_mode_toggle': {'icon': '🌙', 'title': 'Dark Mode Toggle', 'desc': 'Allow users to switch between light and dark themes. Currently dark-only.'},
+          'dashboard_home': {'icon': '🏠', 'title': 'Dashboard Home', 'desc': 'Replace the request form at / with a dashboard landing page. Shows quick actions, active requests, printer status, and activity feed. Request form moves to /new-request.'}
         } %}
-        {% for key in ['dark_mode_toggle'] %}
+        {% for key in ['dark_mode_toggle', 'dashboard_home'] %}
         {% set flag = flags.get(key) %}
         {% set details = ui_flag_details.get(key, {}) %}
         {% if flag %}
@@ -178,8 +179,35 @@
                 <span class="font-medium">{{ details.title }}</span>
                 {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
                 {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
+                {% if flag.allowed_emails is defined %}<span class="px-2 py-0.5 bg-purple-600/20 text-purple-300 text-xs rounded-lg">User-Gated</span>{% endif %}
               </div>
               <p class="text-sm text-zinc-400 mt-2">{{ details.desc }}</p>
+              {% if flag.allowed_emails is defined %}
+              <!-- Allowed Emails Section -->
+              <div class="mt-4 p-3 bg-zinc-950 border border-zinc-800 rounded-lg">
+                <p class="text-xs text-zinc-400 mb-2 font-medium">👥 Allowed Users ({{ flag.allowed_emails|length if flag.allowed_emails else 0 }} emails)</p>
+                <div class="flex flex-wrap gap-1 mb-3">
+                  {% if flag.allowed_emails %}
+                    {% for email in flag.allowed_emails %}
+                    <span class="inline-flex items-center gap-1 px-2 py-1 bg-indigo-600/20 text-indigo-300 text-xs rounded-lg">
+                      {{ email }}
+                      <button type="button" onclick="removeFeatureEmail('{{ key }}', '{{ email }}')" class="hover:text-red-400">×</button>
+                    </span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="text-xs text-zinc-500">No users granted access yet</span>
+                  {% endif %}
+                </div>
+                <form onsubmit="addFeatureEmail(event, '{{ key }}', '{{ key }}-new-email')" class="flex gap-2">
+                  <input type="email" id="{{ key }}-new-email" placeholder="user@example.com" 
+                         class="flex-1 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm focus:border-indigo-500 outline-none">
+                  <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium transition">
+                    Add Email
+                  </button>
+                </form>
+                <p class="text-xs text-zinc-600 mt-2">Tip: Use wildcards like *@yourdomain.com to allow all emails from a domain</p>
+              </div>
+              {% endif %}
             </div>
             <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
               <input type="checkbox" class="sr-only peer" {% if flag.enabled %}checked{% endif %} onchange="toggleFlag('{{ flag.key }}', this.checked)">

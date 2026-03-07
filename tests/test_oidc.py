@@ -308,8 +308,9 @@ class TestOIDCCallback:
         )
         
         assert resp.status_code == 303
-        # Should redirect to profile, not pending (existing active account)
-        assert "/auth/profile" in resp.headers["location"] or "/admin" in resp.headers["location"]
+        # Should redirect to home or admin, not pending (existing active account)
+        location = resp.headers["location"]
+        assert location == "/" or "/admin" in location or "/auth/profile" in location
         
         # Verify OIDC was linked
         conn = get_test_db()
@@ -363,7 +364,8 @@ class TestOIDCCallback:
         )
         
         assert resp.status_code == 303
-        assert "/auth/profile" in resp.headers["location"] or "/admin" in resp.headers["location"]
+        location = resp.headers["location"]
+        assert location == "/" or "/admin" in location or "/auth/profile" in location
     
     @patch("app.routes_auth.verify_id_token")
     @patch("app.routes_auth.exchange_code")

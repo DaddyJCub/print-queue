@@ -930,6 +930,13 @@ DEFAULT_FEATURE_FLAGS = {
         enabled=False,
         description="Allow users to toggle between dark/light mode",
     ),
+    "dashboard_home": FeatureFlag(
+        key="dashboard_home",
+        enabled=False,
+        description="Dashboard-style landing page replacing the request form at /",
+        rollout_percentage=0,
+        allowed_emails=[],
+    ),
     "3d_preview": FeatureFlag(
         key="3d_preview",
         enabled=True,  # Already implemented
