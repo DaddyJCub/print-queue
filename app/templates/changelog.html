@@ -74,12 +74,55 @@
         </p>
       </div>
 
+      <!-- v0.19.0 -->
+      <div id="v0.19.0" class="bg-gradient-to-br from-zinc-900/80 via-emerald-900/30 to-zinc-900/80 border border-emerald-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-emerald-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.19.0" class="px-3 py-1 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-500 transition">v0.19.0</a>
+          <span class="text-zinc-400 text-sm">March 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Dashboard Home</h3>
+        <p class="text-sm text-zinc-400 mb-4">Added a feature-flagged dashboard landing page that replaces the request form at <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/</code> with an at-a-glance overview of queue activity, printer status, and quick actions.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🏠 Dashboard</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400 mt-1">•</span>
+            <span>New landing page with greeting, 2×2 quick-action grid, active request cards, queue and fun stats, and announcements.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400 mt-1">•</span>
+            <span>Live printer status row with horizontal scroll, showing each printer's state, current file, and progress.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400 mt-1">•</span>
+            <span>Activity feed displaying recent queue events so users can see what's happening at a glance.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400 mt-1">•</span>
+            <span>Request form moved to <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/new-request</code> with all nav links and submit buttons adapting automatically.</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>Controlled by the <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">dashboard_home</code> feature flag with per-user email allow-list for staged rollout.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>When the flag is off, <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/</code> continues to serve the request form as before.</span>
+          </li>
+        </ul>
+      </div>
+
       <!-- v0.18.0 -->
       <div id="v0.18.0" class="bg-gradient-to-br from-zinc-900/80 via-violet-900/30 to-zinc-900/80 border border-violet-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-violet-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.18.0" class="px-3 py-1 bg-violet-600 text-white text-sm font-bold rounded-lg hover:bg-violet-500 transition">v0.18.0</a>
           <span class="text-zinc-400 text-sm">March 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">OIDC SSO via Authentik</h3>

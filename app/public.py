@@ -56,21 +56,17 @@ router = APIRouter()
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     user = await optional_user(request)
-    # Resolve email/id for feature-flag check: prefer User, fall back to unified Account
-    user_id = user.id if user else None
-    email = user.email if user else None
-    if not email:
-        account = await get_current_account(request)
-        if account:
-            user_id = account.id
-            email = account.email
+    # Resolve identity: prefer legacy User, fall back to unified Account
+    identity = user  # User or Account — both have .id, .email, .display_name, .credits etc.
+    if not identity:
+        identity = await get_current_account(request)
     dashboard_enabled = is_feature_enabled(
         "dashboard_home",
-        user_id=user_id,
-        email=email,
+        user_id=identity.id if identity else None,
+        email=identity.email if identity else None,
     )
     if dashboard_enabled:
-        return await render_dashboard(request, user)
+        return await render_dashboard(request, identity)
     return render_form(request, None, form={}, user=user)
 
 
@@ -78,6 +74,9 @@ async def home(request: Request):
 async def new_request_page(request: Request):
     """Request form page (moved from / when dashboard is enabled)."""
     user = await optional_user(request)
+    if not user:
+        # Unified account fallback — Account has same fields render_form needs
+        user = await get_current_account(request)
     return render_form(request, None, form={}, user=user)
 
 

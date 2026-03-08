@@ -45,16 +45,18 @@ templates = Jinja2Templates(directory="app/templates")
 # Dashboard / nav globals (needed by pwa_base.html)
 def _dashboard_nav_enabled():
     try:
-        from app.main import is_feature_enabled
-        return is_feature_enabled("dashboard_home")
+        from app.auth import get_feature_flag
+        flag = get_feature_flag("dashboard_home")
+        return flag.enabled if flag else False
     except Exception:
         return False
 templates.env.globals["dashboard_nav_enabled"] = _dashboard_nav_enabled
 
 def _new_request_url():
     try:
-        from app.main import is_feature_enabled
-        return "/new-request" if is_feature_enabled("dashboard_home") else "/"
+        from app.auth import get_feature_flag
+        flag = get_feature_flag("dashboard_home")
+        return "/new-request" if (flag and flag.enabled) else "/"
     except Exception:
         return "/"
 templates.env.globals["new_request_url"] = _new_request_url

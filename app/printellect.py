@@ -43,14 +43,18 @@ templates.env.globals["credits_nav_enabled"] = _credits_nav_enabled
 
 def _dashboard_nav_enabled():
     try:
-        return is_feature_enabled("dashboard_home")
+        from app.auth import get_feature_flag
+        flag = get_feature_flag("dashboard_home")
+        return flag.enabled if flag else False
     except Exception:
         return False
 templates.env.globals["dashboard_nav_enabled"] = _dashboard_nav_enabled
 
 def _new_request_url():
     try:
-        return "/new-request" if is_feature_enabled("dashboard_home") else "/"
+        from app.auth import get_feature_flag
+        flag = get_feature_flag("dashboard_home")
+        return "/new-request" if (flag and flag.enabled) else "/"
     except Exception:
         return "/"
 templates.env.globals["new_request_url"] = _new_request_url

@@ -32,7 +32,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.18.0"
+APP_VERSION = "0.19.0"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -44,6 +44,7 @@ APP_VERSION = "0.18.0"
 #   - 0.x.PATCH = Bug fixes only
 #
 # Changelog:
+# 0.19.0 - [FEATURE] Dashboard home: feature-flagged landing page with quick actions, active requests, printer status, activity feed, and announcements. Request form moves to /new-request. Per-user rollout via dashboard_home flag with email allow-list.
 # 0.18.0 - [FEATURE] OIDC SSO via Authentik: discovery + authorization-code flow, account linking/unlinking, JWKS token validation, and auto-create on first sign-in
 # 0.17.0 - [FEATURE] Printellect production flow upgrades: /pair deep-link auto-claim + redirect, admin registry management (save/unclaim/delete), admin QR/device.json automation, OTA package-zip upload mode, expanded device control panel, finalized Pico provisioning contract docs
 # 0.16.1 - [FEATURE] Store commerce foundation: Stripe Checkout (items, rush fees, quotes, webhooks), credits/rewards ledger, and scheduled credit grants
@@ -354,16 +355,24 @@ def _credits_nav_enabled():
 templates.env.globals["credits_nav_enabled"] = _credits_nav_enabled
 
 # Dashboard feature flag globals
+# These check flag.enabled (not per-user gating) because nav/link globals
+# have no request context. Per-user gating only controls who sees the
+# dashboard on /; the nav label and submit links must be consistent
+# whenever the flag is toggled on globally.
 def _dashboard_nav_enabled():
     try:
-        return is_feature_enabled("dashboard_home")
+        from app.auth import get_feature_flag
+        flag = get_feature_flag("dashboard_home")
+        return flag.enabled if flag else False
     except Exception:
         return False
 templates.env.globals["dashboard_nav_enabled"] = _dashboard_nav_enabled
 
 def _new_request_url():
     try:
-        return "/new-request" if is_feature_enabled("dashboard_home") else "/"
+        from app.auth import get_feature_flag
+        flag = get_feature_flag("dashboard_home")
+        return "/new-request" if (flag and flag.enabled) else "/"
     except Exception:
         return "/"
 templates.env.globals["new_request_url"] = _new_request_url

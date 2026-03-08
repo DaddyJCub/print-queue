@@ -9,6 +9,17 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.19.0
+### Added
+- Added a feature-flagged dashboard landing page at `/` with quick actions, active request tracking, printer status, activity feed, and announcements.
+- Request form moved to `/new-request` when the dashboard is active.
+- Per-user rollout via the `dashboard_home` feature flag with email allow-list and wildcard support.
+- All post-login redirects and submit links dynamically adapt based on the flag state.
+
+### Notes
+- Controlled by the `dashboard_home` feature flag for staged rollout.
+- Supports both legacy User and unified Account authentication for identity detection.
+
 ## 0.18.0
 ### Added
 - Added OpenID Connect / Authentik sign-in support with discovery, authorization-code flow, callback handling, JWKS token validation, and account linking.
