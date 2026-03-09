@@ -83,7 +83,7 @@
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Dashboard Home</h3>
-        <p class="text-sm text-zinc-400 mb-4">Added a feature-flagged dashboard landing page that replaces the request form at <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/</code> with an at-a-glance overview of queue activity, printer status, and quick actions.</p>
+        <p class="text-sm text-zinc-400 mb-4">Added a new dashboard home that gives users a quick overview of queue activity, printer status, and common actions.</p>
 
         <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🏠 Dashboard</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
@@ -101,7 +101,7 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400 mt-1">•</span>
-            <span>Request form moved to <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/new-request</code> with all nav links and submit buttons adapting automatically.</span>
+            <span>The request form now lives on its own page, with navigation and buttons updated to match.</span>
           </li>
         </ul>
 
@@ -109,11 +109,7 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>Controlled by the <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">dashboard_home</code> feature flag with per-user email allow-list for staged rollout.</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <span class="text-zinc-500 mt-1">•</span>
-            <span>When the flag is off, <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/</code> continues to serve the request form as before.</span>
+            <span>This update introduces a more welcoming starting point while keeping the request flow easy to reach.</span>
           </li>
         </ul>
       </div>
@@ -125,22 +121,22 @@
           <span class="text-zinc-400 text-sm">March 2026</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
-        <h3 class="text-lg font-semibold mb-2 text-white">OIDC SSO via Authentik</h3>
-        <p class="text-sm text-zinc-400 mb-4">Added a feature-flagged OpenID Connect sign-in flow so accounts can use Authentik SSO with secure token validation and account linking.</p>
+        <h3 class="text-lg font-semibold mb-2 text-white">Single sign-on with Authentik</h3>
+        <p class="text-sm text-zinc-400 mb-4">Added Authentik single sign-on so users can sign in more easily and connect that login to their account.</p>
 
         <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🔐 Authentication</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-violet-400 mt-1">•</span>
-            <span>Added OpenID Connect discovery, authorization-code login, callback handling, and userinfo retrieval for Authentik-backed sign-in.</span>
+            <span>Added a smoother Authentik sign-in flow for supported accounts.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-violet-400 mt-1">•</span>
-            <span>Accounts can now link or unlink their OIDC identity and first-time SSO users can be provisioned automatically when allowed.</span>
+            <span>Accounts can now connect or disconnect their single sign-on login.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-violet-400 mt-1">•</span>
-            <span>ID tokens are validated against provider JWKS metadata before a session is created.</span>
+            <span>New sign-ins are checked carefully before access is granted.</span>
           </li>
         </ul>
 
@@ -148,11 +144,7 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>Controlled by the <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">oidc_login</code> feature flag for staged rollout.</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <span class="text-zinc-500 mt-1">•</span>
-            <span>Covered by the dedicated OIDC test suite to keep login, linking, and callback behavior stable.</span>
+            <span>This release focused on easier access for organizations using Authentik.</span>
           </li>
         </ul>
       </div>
@@ -164,34 +156,34 @@
           <span class="text-zinc-400 text-sm">February 2026</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
-        <h3 class="text-lg font-semibold mb-2 text-white">Printellect production onboarding + OTA packaging flow</h3>
-        <p class="text-sm text-zinc-400 mb-4">Completed the account-native claim flow, admin QR label workflow, OTA package zip upload mode, and final Pico implementation contract alignment.</p>
+        <h3 class="text-lg font-semibold mb-2 text-white">Printellect onboarding & device setup</h3>
+        <p class="text-sm text-zinc-400 mb-4">Expanded Printellect setup with easier claiming, QR pairing, release management, and more device controls.</p>
 
         <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🚀 Enhancements</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Added <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/pair</code> deep-link flow so QR/fallback links auto-fill claim data for the signed-in user and redirect to device control once online.</span>
+            <span>Added a smoother QR pairing flow so claiming a device takes fewer steps.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Admin Device Registry now auto-generates printable QR labels and includes copy/print actions for manufacturing handoff.</span>
+            <span>Admins can generate printable QR labels for devices more easily.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Admin Device Registry now supports full device management actions: save metadata, unclaim, and delete (with force protection).</span>
+            <span>Admins can now update, unclaim, and remove devices with better safeguards.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Admin OTA uploads now support a single full firmware folder zip (package mode) in addition to legacy manifest + bundle mode.</span>
+            <span>Device release uploads are easier to manage with a simpler package workflow.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Expanded owner device control screen with volume, brightness, idle mode, diagnostics, and OTA trigger controls.</span>
+            <span>Owners get more device controls, including display and update options.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Added direct admin navigation entries for Printellect Devices and Printellect Releases.</span>
+            <span>Admins can get to Printellect devices and releases faster from navigation.</span>
           </li>
         </ul>
 
@@ -199,15 +191,7 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>Pico identity remains server-assigned at manufacturing (<code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">device_id + claim_code</code>), then provisioned token is fetched by device after account claim.</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <span class="text-zinc-500 mt-1">•</span>
-            <span>QR fallback URLs now target <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/pair</code> and can include optional <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">name</code> metadata.</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <span class="text-zinc-500 mt-1">•</span>
-            <span>QR images are generated from HTTPS fallback URLs for better camera/scanner compatibility.</span>
+            <span>This release focused on making Printellect setup easier for both owners and admins.</span>
           </li>
         </ul>
       </div>
@@ -220,21 +204,21 @@
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Store commerce foundation</h3>
-        <p class="text-sm text-zinc-400 mb-4">Backfilled the commerce infrastructure release that added Stripe-backed checkout flows and the internal credits / rewards ledger.</p>
+        <p class="text-sm text-zinc-400 mb-4">Added the first store checkout and rewards features, including Stripe-powered payments and account credits.</p>
 
         <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">💳 Payments & rewards</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-amber-400 mt-1">•</span>
-            <span>Added Stripe Checkout session support for store items, rush fees, quote payments, and webhook-driven payment state updates.</span>
+            <span>Added Stripe checkout support for store purchases, rush fees, and quoted jobs.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-amber-400 mt-1">•</span>
-            <span>Added credits and rewards ledger operations for grants, spends, transaction history, and scheduled credit automation.</span>
+            <span>Added credits and rewards tools so balances and history are easier to track.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-amber-400 mt-1">•</span>
-            <span>Prepared store items and request records for mixed cash / credit checkout workflows.</span>
+            <span>Prepared the store for purchases that can combine credits with regular payment.</span>
           </li>
         </ul>
 
@@ -242,7 +226,7 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>Controlled by the <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">store_payments</code> and <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">store_rewards</code> feature flags.</span>
+            <span>This laid the groundwork for future store and rewards features.</span>
           </li>
         </ul>
       </div>
@@ -255,25 +239,25 @@
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Printellect device control foundation</h3>
-        <p class="text-sm text-zinc-400 mb-4">Shipped the first full Printellect device-control workflow with Pico-oriented contracts, admin feature controls, and account-native onboarding UI.</p>
+        <p class="text-sm text-zinc-400 mb-4">Introduced the first full Printellect device-control experience with account setup, admin tools, and owner controls.</p>
 
         <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🚀 Enhancements</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>My Account now includes native Printellect Device Control with Quick Add modal, claim form, and integrated QR scan.</span>
+            <span>My Account now includes built-in Printellect device setup with quick add and QR support.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Printellect user pages were aligned to the app shell and admin Printellect pages were aligned to the admin shell.</span>
+            <span>Printellect pages now feel more consistent with the rest of the app.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Added a device-focused debug discovery endpoint at <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/api/printellect/device/v1/debug</code>.</span>
+            <span>Added more support tools to help admins manage devices.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Added complete Pico handoff documentation and linked it from the programming guide.</span>
+            <span>Expanded setup guidance for the Printellect device rollout.</span>
           </li>
         </ul>
 
@@ -281,11 +265,11 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>Fixed feature flag parsing where <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">rollout_percentage=0</code> could be incorrectly treated as enabled.</span>
+            <span>Fixed rollout settings so access is applied more reliably.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>Hardened Printellect tests so feature-flag gating is deterministic in CI.</span>
+            <span>Improved reliability for Printellect access and setup behavior.</span>
           </li>
         </ul>
 
@@ -293,11 +277,7 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>Printellect remains user-gated via feature flags in production.</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <span class="text-zinc-500 mt-1">•</span>
-            <span>In local demo mode, Printellect account access can be opened with <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">PRINTELLECT_DEMO_OPEN_ACCESS=1</code>.</span>
+            <span>This release established the core Printellect device experience for future updates.</span>
           </li>
         </ul>
       </div>
@@ -310,7 +290,7 @@
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Legal & compliance policy pages</h3>
-        <p class="text-sm text-zinc-400 mb-4">Backfilled the policy rollout that added public-facing legal pages to support shipping, payments, and account operations.</p>
+        <p class="text-sm text-zinc-400 mb-4">Added public policy pages to better support shipping, payments, and account activity.</p>
 
         <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📄 Public policies</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
@@ -320,7 +300,7 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400 mt-1">•</span>
-            <span>Wired public routes so policy pages can be linked from account, shipping, and transactional flows.</span>
+            <span>These pages can now be reached from the parts of the app where they matter most.</span>
           </li>
         </ul>
 
@@ -328,7 +308,7 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>Policy templates use the February 15, 2026 effective-date set captured in the public routes.</span>
+            <span>All policy pages now share a consistent effective-date set.</span>
           </li>
         </ul>
       </div>
@@ -341,7 +321,7 @@
           <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Camera fix & stability improvements</h3>
-        <p class="text-sm text-zinc-400 mb-4">Fixed AD5X camera always showing "Camera Off" by handling ustreamer's initial placeholder frame, plus shipping robustness improvements.</p>
+        <p class="text-sm text-zinc-400 mb-4">Fixed camera previews that could appear offline by mistake, along with several shipping improvements.</p>
 
         <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📷 Camera</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
@@ -355,15 +335,15 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>New <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">get_camera_snapshot_url_async()</code> uses Moonraker's dedicated snapshot URL when available</span>
+            <span>Camera snapshots now use a more reliable image source when available</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Smart frame selection: reads up to 5 MJPEG frames, skips small placeholders (&lt;15KB), returns first real frame</span>
+            <span>Snapshot capture is better at skipping placeholder images and showing a real camera frame</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>3-layer fallback: Moonraker snapshot URL → MJPEG stream extraction → derived snapshot URL</span>
+            <span>Added multiple fallback steps so camera previews work more consistently</span>
           </li>
         </ul>
 
@@ -371,7 +351,7 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Shippo webhook processing hardened against malformed payloads and edge cases</span>
+            <span>Shippo updates now handle unusual or incomplete shipping events more reliably</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
@@ -379,19 +359,19 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Save-destination endpoint for persisting shipping preferences</span>
+            <span>Shipping preferences are easier to save and reuse</span>
           </li>
         </ul>
 
-        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🔧 Technical</h4>
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>295 automated tests passing</span>
+            <span>This patch focused on camera reliability and smoother shipping workflows.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>Extended MJPEG read timeout to 8s to allow time for real frames to arrive</span>
+            <span>Preview loading is more forgiving when cameras take a moment to respond.</span>
           </li>
         </ul>
       </div>
@@ -430,7 +410,7 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Form draft saved to localStorage so nothing is lost during registration</span>
+            <span>Your form draft is saved so you do not lose progress during registration</span>
           </li>
         </ul>
 
@@ -438,7 +418,7 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>New Shipping dashboard (<code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/admin/shipping</code>) with task filters, status counts, and search</span>
+            <span>New shipping dashboard with filters, status counts, and search</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
@@ -454,7 +434,7 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Shipping settings in admin: enable toggle, package defaults, ship-from profile, Shippo API config</span>
+            <span>Admin shipping settings now cover package defaults, sender details, and Shippo setup</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
@@ -462,23 +442,19 @@
           </li>
         </ul>
 
-        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🔧 Technical</h4>
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>New <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">ShippoClient</code> API client for address validation, shipment rates, label purchase, and tracking</span>
+            <span>Shippo powers live rates, label buying, and tracking updates for shipped requests.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>DB tables: <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">request_shipping</code>, <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">request_shipping_rate_snapshots</code>, <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">request_shipping_events</code></span>
+            <span>Shipping details and status history are now tracked more completely inside the app.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>Shippo webhook endpoint (<code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/webhooks/shippo</code>) with idempotent event processing</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <span class="text-zinc-500 mt-1">•</span>
-            <span>291 automated tests passing</span>
+            <span>Tracking updates can flow back into requests automatically after labels are created.</span>
           </li>
         </ul>
       </div>
@@ -509,7 +485,7 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
-            <span>Live AJAX polling updates also convert to your local time</span>
+            <span>Live updates also convert times to your local timezone</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-indigo-400 mt-1">•</span>
@@ -517,23 +493,19 @@
           </li>
         </ul>
 
-        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🔧 Technical improvements</h4>
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>UTC ISO strings now include proper "Z" suffix for correct browser parsing</span>
+            <span>ETA times are now more consistent across browsers and devices.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>API <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">/api/queue</code> now returns <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">smart_eta</code> (UTC ISO) alongside display text</span>
+            <span>Live updates and queue views now stay aligned with local timezone display.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>Fixed <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">moonraker_time_remaining</code> not being passed in API queue endpoint</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <span class="text-zinc-500 mt-1">•</span>
-            <span>282 automated tests passing</span>
+            <span>Queue timing is based on better live printer data when available.</span>
           </li>
         </ul>
       </div>
@@ -546,17 +518,17 @@
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">File sync automation</h3>
-        <p class="text-sm text-zinc-400 mb-4">Backfilled the file-sync service that extends file linking with watched folders, automatic matching, and archive workflows.</p>
+        <p class="text-sm text-zinc-400 mb-4">Added file-sync automation to help match incoming files with requests and keep folders organized.</p>
 
         <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📁 Automation</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-sky-400 mt-1">•</span>
-            <span>Watch configured folders for new STL, 3MF, and G-code files as they land on disk.</span>
+            <span>Watch selected folders for newly added print files.</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-sky-400 mt-1">•</span>
-            <span>Use fuzzy matching to associate files with open requests and move completed files into archive destinations.</span>
+            <span>Automatically match likely files to open requests and move finished files into archive folders.</span>
           </li>
         </ul>
 
@@ -564,7 +536,7 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>Controlled by the <code class="text-xs bg-zinc-800 px-1 py-0.5 rounded">file_sync</code> feature flag for opt-in rollout.</span>
+            <span>This release reduced manual file handling for teams managing lots of print files.</span>
           </li>
         </ul>
       </div>
@@ -576,26 +548,26 @@
           <span class="text-zinc-400 text-sm">February 2026</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
-        <h3 class="text-lg font-semibold mb-2 text-white">Moonraker live ETA, send-to-printer & file management</h3>
-        <p class="text-sm text-zinc-400 mb-4">Major printer integration update — real-time ETA from Moonraker/Klipper, one-click send-to-printer, and a new file management system.</p>
+        <h3 class="text-lg font-semibold mb-2 text-white">Live printer ETA, send-to-printer & file management</h3>
+        <p class="text-sm text-zinc-400 mb-4">Major printer integration update with better live ETAs, one-click send-to-printer, and improved file management.</p>
         
-        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🖨️ Moonraker / Klipper integration</h4>
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🖨️ Printer integration</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-blue-400 mt-1">•</span>
-            <span><strong>Live ETA from the printer</strong> — Moonraker reports actual time remaining, used to calculate a real completion ETA</span>
+            <span><strong>Live ETA from the printer</strong> — Completion times are now based on live printer progress when available</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-blue-400 mt-1">•</span>
-            <span><strong>Send-to-printer</strong> — Upload G-code and start printing directly from the admin request page (with ZMOD bypass for AD5X)</span>
+            <span><strong>Send-to-printer</strong> — Start prints directly from the admin request page</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-blue-400 mt-1">•</span>
-            <span><strong>Thumbnail proxy</strong> — G-code thumbnail images load through the app, no CORS issues</span>
+            <span><strong>Thumbnail previews</strong> — File previews now load more reliably inside the app</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-blue-400 mt-1">•</span>
-            <span><strong>Smart ETA</strong> — Combines slicer estimates, Moonraker live data, and print progress for the most accurate ETA</span>
+            <span><strong>Smarter ETA</strong> — Estimates use both file timing and live printer progress for better accuracy</span>
           </li>
         </ul>
 
@@ -603,7 +575,7 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-blue-400 mt-1">•</span>
-            <span><strong>G-code ↔ STL/3MF linking</strong> — Associate sliced G-code files with their source models</span>
+            <span><strong>Linked print files</strong> — Connect ready-to-print files with their source models</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-blue-400 mt-1">•</span>
@@ -619,15 +591,15 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>Fixed ETA UTC/local time mismatch — server was using inconsistent timezone offsets</span>
+            <span>Fixed ETA display issues caused by inconsistent timezone handling</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>Auto-start next build after completion, auto-match IN_PROGRESS requests</span>
+            <span>Improved automatic next-build starts and matching for jobs already in progress</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>260 automated tests (94 Moonraker + 28 file linking)</span>
+            <span>Polished the release with additional reliability improvements for printer sync and file handling</span>
           </li>
         </ul>
       </div>
@@ -640,7 +612,7 @@
           <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Auto-start and matching reliability</h3>
-        <p class="text-sm text-zinc-400 mb-4">Backfilled patch release covering the next-build auto-start flow, in-progress matching, and logging improvements shipped alongside the Moonraker rollout.</p>
+        <p class="text-sm text-zinc-400 mb-4">Improved auto-start for the next build, matching for jobs already in progress, and overall reliability.</p>
         
         <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🔧 Fixes</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
@@ -654,7 +626,7 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400 mt-1">•</span>
-            <span><strong>Improved logging</strong> — Error output now gives clearer diagnostics when printer sync or auto-start fails</span>
+            <span><strong>Clearer issue reporting</strong> — Problems with printer sync or auto-start are easier to understand</span>
           </li>
         </ul>
       </div>
@@ -716,7 +688,7 @@
           <span class="px-2 py-1 bg-purple-600/20 text-purple-300 text-xs rounded-lg border border-purple-500/50">🔒 Security</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Designer workflow & assignment tracking</h3>
-        <p class="text-sm text-zinc-400 mb-4">Introduced the feature-level designer workflow release with assignment tracking, completion controls, and requester visibility.</p>
+        <p class="text-sm text-zinc-400 mb-4">Introduced a designer workflow with assignment tracking, completion controls, and better visibility for requesters.</p>
         <div class="grid md:grid-cols-2 gap-4">
           <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
             <h4 class="text-xs font-bold text-blue-400 mb-2">🚀 Workflow</h4>
@@ -730,8 +702,8 @@
             <h4 class="text-xs font-bold text-purple-400 mb-2">🛡️ Guardrails</h4>
             <ul class="list-disc list-inside text-sm text-zinc-200 space-y-1">
               <li>Printing and approval actions stay blocked until required design work is marked complete.</li>
-              <li>Designer-specific notifications keep requesters and internal staff in sync on handoffs.</li>
-              <li>The release builds on the earlier designer role foundation introduced in v0.10.6.</li>
+              <li>Designer-specific notifications keep requesters and staff in sync during handoffs.</li>
+              <li>This update builds on the earlier designer role foundation.</li>
             </ul>
           </div>
         </div>
@@ -745,21 +717,21 @@
           <span class="px-2 py-1 bg-purple-600/20 text-purple-300 text-xs rounded-lg border border-purple-500/50">🔒 Security</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Security hardening & migration support</h3>
-        <p class="text-sm text-zinc-400 mb-4">Backfilled the security pass that hardened form submission, rate limiting, headers, and legacy account migration support.</p>
+        <p class="text-sm text-zinc-400 mb-4">Strengthened account security, request protection, and support for older accounts moving into the newer system.</p>
         <div class="grid md:grid-cols-2 gap-4">
           <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
             <h4 class="text-xs font-bold text-purple-400 mb-2">🔒 Hardening</h4>
             <ul class="space-y-1 text-sm text-zinc-300">
-              <li class="flex items-start gap-2"><span class="text-purple-500">•</span><span>Added CSRF token generation and validation for state-changing browser forms.</span></li>
-              <li class="flex items-start gap-2"><span class="text-purple-500">•</span><span>Added request throttling for sensitive endpoints and consistent security headers on responses.</span></li>
-              <li class="flex items-start gap-2"><span class="text-purple-500">•</span><span>Added tooling to migrate legacy users and admins into the unified accounts model.</span></li>
+              <li class="flex items-start gap-2"><span class="text-purple-500">•</span><span>Added stronger protection around forms and other sensitive actions.</span></li>
+              <li class="flex items-start gap-2"><span class="text-purple-500">•</span><span>Improved safeguards against abusive or suspicious request activity.</span></li>
+              <li class="flex items-start gap-2"><span class="text-purple-500">•</span><span>Added support for moving older user and admin accounts into the newer system.</span></li>
             </ul>
           </div>
           <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
             <h4 class="text-xs font-bold text-indigo-400 mb-2">🧪 Dev support</h4>
             <ul class="space-y-1 text-sm text-zinc-300">
-              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Expanded demo-data support to make local account and feature-flag testing easier.</span></li>
-              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Backfilled release note based on implemented middleware and migration utilities already present in the app.</span></li>
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Improved demo and setup support for testing account flows.</span></li>
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>This release packaged together several security and migration improvements already in active use.</span></li>
             </ul>
           </div>
         </div>
@@ -787,8 +759,8 @@
             <h4 class="text-xs font-bold text-amber-400 mb-2">🔧 Reliability</h4>
             <ul class="list-disc list-inside text-sm text-zinc-200 space-y-1">
               <li>Auto-start and auto-finish notifications now fire for single-build prints, including 50%/75% email checkpoints.</li>
-              <li>Design update endpoint returns JSON for API callers instead of a 303 redirect to avoid client errors.</li>
-              <li>Progress and completion messages keep “Report a problem” hooks and snapshot attachments where available.</li>
+              <li>Design updates now behave more consistently across the app.</li>
+              <li>Progress and completion messages remain more helpful, including extra context when available.</li>
             </ul>
           </div>
         </div>
@@ -807,9 +779,9 @@
           <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
             <h4 class="text-xs font-bold text-blue-400 mb-2">🚀 New</h4>
             <ul class="list-disc list-inside text-sm text-zinc-200 space-y-1">
-              <li>Designer role with <code>manage_designs</code> permission and admin UI labels/forms.</li>
-              <li>Design flags on requests (requires design, assigned designer, notes, completed at) with dedicated panel on request details.</li>
-              <li>Design queue filters/badges plus requester-facing design status banner and designer attribution.</li>
+              <li>Designer role with dedicated design controls and clearer admin tools.</li>
+              <li>Requests can now track whether design work is needed, who owns it, and when it is complete.</li>
+              <li>Design filters, status badges, and clearer requester updates make design progress easier to follow.</li>
               <li>Notifications: designers get assignment emails; requesters get design-complete email/push.</li>
             </ul>
           </div>
@@ -817,8 +789,8 @@
             <h4 class="text-xs font-bold text-amber-400 mb-2">🔧 Guardrails</h4>
             <ul class="list-disc list-inside text-sm text-zinc-200 space-y-1">
               <li>Approval/printing/build start blocked until design is marked complete when design is required.</li>
-              <li>Feature-flagged under <code>designer_workflow</code> to allow controlled rollout.</li>
-              <li>Designers restricted to design actions; queue actions require manage_queue.</li>
+              <li>Rolled out carefully to keep the workflow stable.</li>
+              <li>Design tools stay focused on design work while queue management stays separate.</li>
             </ul>
           </div>
         </div>
@@ -832,7 +804,7 @@
           <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">BLOCKED Status & UI Cleanup</h3>
-        <p class="text-sm text-zinc-400 mb-4">Full support for BLOCKED status in admin dashboard, notifications, and removal of redundant special notes feature.</p>
+        <p class="text-sm text-zinc-400 mb-4">Added fuller support for blocked requests, clearer notifications, and a simpler request experience.</p>
         <div class="grid md:grid-cols-2 gap-4">
           <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
             <h4 class="text-xs font-bold text-blue-400 mb-2">🚀 New Features</h4>
@@ -847,14 +819,14 @@
             <h4 class="text-xs font-bold text-rose-400 mb-2">🐛 Bug Fixes</h4>
             <ul class="space-y-1 text-sm text-zinc-300">
               <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed requests disappearing from dashboard when set to BLOCKED status</span></li>
-              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed sqlite3.Row object access errors in requester portal view</span></li>
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed requester portal errors that could appear on some request views</span></li>
               <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>BLOCKED status now included in batch edit dropdown options</span></li>
             </ul>
           </div>
           <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30 md:col-span-2">
             <h4 class="text-xs font-bold text-indigo-400 mb-2">✨ Improvements</h4>
             <ul class="space-y-1 text-sm text-zinc-300">
-              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Removed redundant "Special Notes" feature - use Messages for requester communication</span></li>
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Removed an extra notes feature to keep requester communication simpler</span></li>
               <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Rush request info now stored in admin Work Notes for better organization</span></li>
             </ul>
           </div>
@@ -868,26 +840,26 @@
           <span class="text-zinc-400 text-sm">December 21, 2025</span>
           <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
         </div>
-        <h3 class="text-lg font-semibold mb-2 text-white">Modular Architecture & ETA System</h3>
-        <p class="text-sm text-zinc-400 mb-4">Codebase refactor for maintainability, ETA calculations for multi-build requests, and Windows logging fixes.</p>
+        <h3 class="text-lg font-semibold mb-2 text-white">ETA improvements & app cleanup</h3>
+        <p class="text-sm text-zinc-400 mb-4">Improved ETA calculations for multi-build requests, cleaned up app structure, and fixed logging issues.</p>
         <div class="grid md:grid-cols-2 gap-4">
           <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
             <h4 class="text-xs font-bold text-indigo-400 mb-2">✨ Improvements</h4>
             <ul class="space-y-1 text-sm text-zinc-300">
-              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Refactor: split main.py into modular components (admin, api_builds, api_push, my_requests, public)</span></li>
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Reorganized the app to make future updates easier to maintain</span></li>
               <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>ETA calculations and display for multi-build print requests</span></li>
               <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Improved handling for blocked status in ETA estimates</span></li>
-              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Estimated printing time calculations and display across all endpoints</span></li>
-              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Enhanced logging robustness with exception handling in write/flush</span></li>
-              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>New smoke route tests and ETA logic unit tests</span></li>
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Estimated print times are shown more consistently throughout the app</span></li>
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Improved logging stability, especially on Windows</span></li>
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Extra cleanup helped make ETA behavior more dependable</span></li>
             </ul>
           </div>
           <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
             <h4 class="text-xs font-bold text-rose-400 mb-2">🐛 Bug Fixes</h4>
             <ul class="space-y-1 text-sm text-zinc-300">
-              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed file handler settings to prevent rotation and conflicts on Windows</span></li>
-              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Added isatty method to PrintToLogger for log formatters compatibility</span></li>
-              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Updated admin dashboard URL in documentation for consistency</span></li>
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed Windows logging issues that could cause conflicts</span></li>
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Improved compatibility with logging and formatting tools</span></li>
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Cleaned up admin references for a more consistent experience</span></li>
             </ul>
           </div>
         </div>
@@ -907,13 +879,13 @@
             <h4 class="text-xs font-bold text-blue-400 mb-2">🚀 New Features</h4>
             <ul class="space-y-1 text-sm text-zinc-300">
               <li class="flex items-start gap-2"><span class="text-blue-500">•</span><span>Bulk file uploads: submit multiple files at once on the request form</span></li>
-              <li class="flex items-start gap-2"><span class="text-blue-500">•</span><span>Admin password reset: send magic link or set password directly for users</span></li>
+              <li class="flex items-start gap-2"><span class="text-blue-500">•</span><span>Admins can help users reset passwords more easily</span></li>
             </ul>
           </div>
           <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
             <h4 class="text-xs font-bold text-indigo-400 mb-2">✨ Improvements</h4>
             <ul class="space-y-1 text-sm text-zinc-300">
-              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Consistent API responses with standardized ok/error fields</span></li>
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>More consistent responses and error handling across the app</span></li>
               <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>UI polish: improved padding and font sizes across pages</span></li>
             </ul>
           </div>
@@ -921,7 +893,7 @@
             <h4 class="text-xs font-bold text-rose-400 mb-2">🐛 Bug Fixes</h4>
             <ul class="space-y-1 text-sm text-zinc-300">
               <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed 500 error on request submission when "Email requester on submit" was enabled</span></li>
-              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed magic link emails not sending for password reset</span></li>
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed password reset emails not sending in some cases</span></li>
               <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed printer preferences dropdown in admin user management</span></li>
               <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed admin users page not loading correct template</span></li>
             </ul>
@@ -953,8 +925,8 @@
             <h4 class="text-xs font-bold text-indigo-400 mb-2">✨ Improvements</h4>
             <ul class="space-y-1 text-sm text-zinc-300">
               <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Added "Forgot password?" link to login page</span></li>
-              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Magic link now works as password reset</span></li>
-              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Set/change password from My Account after magic link login</span></li>
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>Password reset now works more smoothly from sign-in links</span></li>
+              <li class="flex items-start gap-2"><span class="text-indigo-500">•</span><span>You can now set or change your password more easily from My Account</span></li>
             </ul>
           </div>
         </div>
@@ -983,9 +955,9 @@
           <div class="bg-zinc-800/30 rounded-xl p-3 border border-zinc-700/30">
             <h4 class="text-xs font-bold text-rose-400 mb-2">🐛 Bug Fixes</h4>
             <ul class="space-y-1 text-sm text-zinc-300">
-              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed /api/user/me returning wrong token format</span></li>
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed account details loading in some cases</span></li>
               <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed My Account page not opening in PWA</span></li>
-              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed account upgrade prompt not showing for magic link users</span></li>
+              <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed account upgrade prompts for users coming in from sign-in links</span></li>
               <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed pages missing standard header (feedback, store item, request detail)</span></li>
               <li class="flex items-start gap-2"><span class="text-rose-500">•</span><span>Fixed user profile overriding nav links</span></li>
             </ul>
@@ -1002,7 +974,7 @@
         </div>
         
         <h3 class="text-xl font-bold mb-2 text-white">User Accounts System & Multi-Admin Support</h3>
-        <p class="text-sm text-zinc-400 mb-6">Major release introducing a complete user account system with authentication, profile management, multi-admin capabilities, and feature flags.</p>
+        <p class="text-sm text-zinc-400 mb-6">Major release introducing full user accounts, profile management, and better admin support.</p>
         
         <!-- Feature Grid -->
         <div class="grid md:grid-cols-2 gap-4 mb-6">
@@ -1014,7 +986,7 @@
             <ul class="space-y-1.5 text-sm text-zinc-300">
               <li class="flex items-start gap-2">
                 <span class="text-emerald-500 mt-0.5">•</span>
-                <span>Registration & login with email/password or magic links</span>
+                <span>Registration and login with email/password or sign-in links</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-emerald-500 mt-0.5">•</span>
@@ -1026,11 +998,11 @@
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-emerald-500 mt-0.5">•</span>
-                <span>30-day persistent sessions with secure cookies</span>
+                <span>Stay signed in longer for a smoother return experience</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-emerald-500 mt-0.5">•</span>
-                <span>Token-to-account migration for existing users</span>
+                <span>Easier upgrade path for existing users moving into accounts</span>
               </li>
             </ul>
           </div>
@@ -1038,7 +1010,7 @@
           <!-- Multi-Admin -->
           <div class="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700/50">
             <h4 class="text-sm font-bold text-blue-400 mb-3 flex items-center gap-2">
-              <span class="text-base">🔐</span> Multi-Admin System
+              <span class="text-base">🔐</span> Multi-Admin Support
             </h4>
             <ul class="space-y-1.5 text-sm text-zinc-300">
               <li class="flex items-start gap-2">
@@ -1047,7 +1019,7 @@
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-blue-500 mt-0.5">•</span>
-                <span>Role-based permissions (Super Admin / Admin)</span>
+                <span>Different admin access levels for better team management</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-blue-500 mt-0.5">•</span>
@@ -1055,7 +1027,7 @@
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-blue-500 mt-0.5">•</span>
-                <span>Comprehensive audit logging</span>
+                <span>Better tracking of important admin changes</span>
               </li>
             </ul>
           </div>
@@ -1063,20 +1035,20 @@
           <!-- Feature Flags -->
           <div class="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700/50">
             <h4 class="text-sm font-bold text-purple-400 mb-3 flex items-center gap-2">
-              <span class="text-base">🎛️</span> Feature Flags
+              <span class="text-base">🎛️</span> Flexible rollout tools
             </h4>
             <ul class="space-y-1.5 text-sm text-zinc-300">
               <li class="flex items-start gap-2">
                 <span class="text-purple-500 mt-0.5">•</span>
-                <span>Toggle features on/off without code changes</span>
+                <span>Turn new features on or off more easily</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-purple-500 mt-0.5">•</span>
-                <span>Visual admin interface for flag management</span>
+                <span>Manage rollout settings from the admin area</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-purple-500 mt-0.5">•</span>
-                <span>Gradual rollout with percentage controls</span>
+                <span>Gradually open new features to more users over time</span>
               </li>
             </ul>
           </div>
@@ -1108,20 +1080,20 @@
           <!-- API -->
           <div class="bg-zinc-800/30 rounded-xl p-4 border border-zinc-700/30">
             <h4 class="text-sm font-bold text-cyan-400 mb-3 flex items-center gap-2">
-              <span class="text-base">🔌</span> API Enhancements
+              <span class="text-base">🔌</span> Access improvements
             </h4>
             <ul class="space-y-1.5 text-sm text-zinc-300">
               <li class="flex items-start gap-2">
                 <span class="text-cyan-500 mt-0.5">•</span>
-                <span>JSON login: <code class="text-xs bg-zinc-900 px-1.5 py-0.5 rounded font-mono">/api/user/login</code></span>
+                <span>Added more flexible sign-in support for app integrations</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-cyan-500 mt-0.5">•</span>
-                <span>JSON register: <code class="text-xs bg-zinc-900 px-1.5 py-0.5 rounded font-mono">/api/user/register</code></span>
+                <span>Registration flows now work better across app experiences</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-cyan-500 mt-0.5">•</span>
-                <span>Session-based API auth (no token required)</span>
+                <span>Signed-in sessions work more smoothly across connected features</span>
               </li>
             </ul>
           </div>
@@ -1138,23 +1110,23 @@
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-rose-500 mt-0.5">•</span>
-                <span>Fixed redirect URLs with <code class="text-xs bg-zinc-900 px-1 rounded">token=None</code></span>
+                <span>Fixed login and redirect issues that could send users to the wrong place</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-rose-500 mt-0.5">•</span>
-                <span>Fixed email case sensitivity in push subscription lookups</span>
+                <span>Improved reliability for notifications tied to user email addresses</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-rose-500 mt-0.5">•</span>
-                <span>Fixed notification prefs lookup with case-insensitive email</span>
+                <span>Notification preferences now load more consistently</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-rose-500 mt-0.5">•</span>
-                <span>Added session auth fallback to push notification APIs</span>
+                <span>Notification features now work better for signed-in users</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-rose-500 mt-0.5">•</span>
-                <span>Admin quick actions now use AJAX (no page redirect)</span>
+                <span>Admin quick actions now feel faster and smoother</span>
               </li>
             </ul>
           </div>
@@ -1168,7 +1140,7 @@
           <ul class="space-y-1 text-sm text-indigo-200/80">
             <li class="flex items-start gap-2">
               <span class="text-indigo-400">ℹ</span>
-              <span>User accounts controlled by <code class="text-xs bg-indigo-900/50 px-1.5 py-0.5 rounded font-mono">user_accounts</code> feature flag (off by default)</span>
+              <span>This release introduced the foundation for the modern account experience.</span>
             </li>
           </ul>
         </div>
@@ -1281,7 +1253,7 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>3MF file support</strong> - Full support for OrcaSlicer/PrusaSlicer 3MF project files in the 3D viewer</span>
+            <span><strong>3MF file support</strong> - Better support for popular 3MF project files in the 3D viewer</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -1305,7 +1277,7 @@
           <span class="text-zinc-400 text-sm">2025-12-16</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
-        <h3 class="text-lg font-semibold mb-3">User Notification Preferences & Push Debugging</h3>
+        <h3 class="text-lg font-semibold mb-3">User Notification Preferences & Push Improvements</h3>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -1325,11 +1297,11 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Push subscription debugging</strong> - Admin can now view subscriber device counts and cleanup stale subscriptions</span>
+            <span><strong>Better notification management</strong> - Admins can now review subscriber activity and clean up older subscriptions</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Subscription health tools</strong> - Test all subscriptions and auto-remove invalid/expired ones</span>
+            <span><strong>More reliable subscriptions</strong> - Notification delivery is easier to maintain when subscriptions expire or stop working</span>
           </li>
         </ul>
         <!-- Tip box -->
@@ -1407,23 +1379,23 @@
           <span class="text-zinc-400 text-sm">December 2024</span>
           <span class="px-2 py-1 bg-red-600/20 text-red-300 text-xs rounded-lg border border-red-500/50">🚨 Hotfix</span>
         </div>
-        <h3 class="text-lg font-semibold mb-3">Push Notification Robustness</h3>
+        <h3 class="text-lg font-semibold mb-3">Push Notification Reliability</h3>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Safe request body parsing</strong> - All push endpoints now gracefully handle empty bodies, wrong Content-Types, and malformed JSON</span>
+            <span><strong>Safer notification handling</strong> - Push actions now recover better from incomplete or invalid requests</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Consistent JSON API contract</strong> - Push subscribe/unsubscribe/test/prefs endpoints return structured <code class="bg-zinc-800 px-1 rounded">{success: bool, error: "..."}</code> responses</span>
+            <span><strong>More consistent responses</strong> - Notification actions now report success and failure more clearly</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Push health endpoint</strong> - New <code class="bg-zinc-800 px-1 rounded">/api/push/health</code> admin diagnostic shows VAPID config, subscription counts, JWT generation status</span>
+            <span><strong>Notification health checks</strong> - Admins can better review whether push notifications are ready to send</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Frontend consistency</strong> - All push JS now sends JSON with proper Content-Type headers instead of mixed FormData/JSON</span>
+            <span><strong>Frontend consistency</strong> - Notification actions now behave more consistently across the app</span>
           </li>
         </ul>
       </div>
@@ -1446,11 +1418,11 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Push notifications fixed</strong> - Resolved JSONDecodeError that broke subscribe/unsubscribe/test flows</span>
+            <span><strong>Push notifications fixed</strong> - Fixed an issue that could break subscribe, unsubscribe, and test actions</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Push diagnostics panel</strong> - New floating panel showing notification permission, SW state, and subscription status for debugging</span>
+            <span><strong>Notification status panel</strong> - Added an easier way to see whether push notifications are ready on your device</span>
           </li>
         </ul>
       </div>
@@ -1488,7 +1460,7 @@
           <a href="#v1.8.10" class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg hover:bg-zinc-600 transition">v1.8.10</a>
           <span class="text-zinc-400 text-sm">December 2024</span>
         </div>
-        <h3 class="text-lg font-semibold mb-3">Session Persistence & Development Tools</h3>
+        <h3 class="text-lg font-semibold mb-3">Session Persistence & Health Checks</h3>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -1496,11 +1468,11 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Cookie configuration</strong> - Session cookies now work correctly on both HTTP (localhost) and HTTPS (production)</span>
+            <span><strong>Better session handling</strong> - Sign-in now stays more reliable across different environments</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Smoke check endpoint</strong> - New <code class="bg-zinc-800 px-1 rounded">/admin/smoke-check</code> route for quick system health verification</span>
+            <span><strong>Quick system check</strong> - Admins now have a faster way to confirm the system is healthy</span>
           </li>
         </ul>
       </div>
@@ -1523,7 +1495,7 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Faster page loads</strong> - 3-second timeouts on printer API calls prevent slow queue page loads when printers are offline</span>
+            <span><strong>Faster page loads</strong> - Queue pages stay more responsive when printers are offline</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -1565,23 +1537,23 @@
           <a href="#v1.8.7" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v1.8.7</a>
           <span class="text-zinc-400 text-sm">December 2024</span>
         </div>
-        <h3 class="text-lg font-semibold mb-3">Comprehensive Logging & Debug Tools</h3>
+        <h3 class="text-lg font-semibold mb-3">Improved Logs & Support Tools</h3>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Application logs API</strong> - New /api/logs endpoint with level/search/limit filtering for debugging</span>
+            <span><strong>App logs</strong> - Admins can review app activity more easily when troubleshooting issues</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Admin logs viewer</strong> - Application Logs section in admin debug page with live filtering and download</span>
+            <span><strong>Admin log viewer</strong> - Added a more useful logs view with filtering and download options</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Comprehensive log capture</strong> - Captures all print() statements, uvicorn logs, unhandled exceptions with tracebacks</span>
+            <span><strong>Broader log capture</strong> - More important app events and errors are now captured in one place</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>File logging</strong> - Rotating file logs at /data/printellect.log (10MB, 5 backups) for persistent debugging</span>
+            <span><strong>Saved log history</strong> - Log files are kept around longer to help with support and troubleshooting</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -1600,7 +1572,7 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>3D file dimensions</strong> - STL, 3MF, and OBJ files now show model dimensions (X × Y × Z mm) and volume/triangle count in admin view</span>
+            <span><strong>3D file details</strong> - Admins can now see richer model details for uploaded 3D files</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -1627,7 +1599,7 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Bug reports & suggestions</strong> - Users can submit bug reports and suggestions via a new feedback form (Turnstile-protected)</span>
+            <span><strong>Bug reports & suggestions</strong> - Users can submit bug reports and suggestions through a new protected feedback form</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -1662,7 +1634,7 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Fuzzy filename matching</strong> - Handles slicer filename variations (spaces, underscores, extensions) when matching</span>
+            <span><strong>Flexible filename matching</strong> - Matching works better even when file names vary slightly</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -1681,19 +1653,19 @@
           <a href="#v1.8.3" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v1.8.3</a>
           <span class="text-zinc-400 text-sm">December 2024</span>
         </div>
-        <h3 class="text-lg font-semibold mb-3">Smart Print Time Estimation & Debugging Tools</h3>
+        <h3 class="text-lg font-semibold mb-3">Smarter Print Time Estimates</h3>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Slicer accuracy tracking</strong> - System learns from completed prints to predict how accurate your slicer estimates are per printer and material</span>
+            <span><strong>Estimate accuracy tracking</strong> - The system learns from completed prints to improve future time estimates</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Auto-adjusted print times</strong> - When entering print times, the system suggests an adjusted estimate based on historical accuracy (e.g., "Typically 15% longer than slicer")</span>
+            <span><strong>Auto-adjusted print times</strong> - Suggested print times now reflect how long similar jobs usually take</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Debug logging page</strong> - New admin debug page shows real-time polling activity, printer status checks, and troubleshooting info</span>
+            <span><strong>Support tools</strong> - Added better admin tools for understanding printer activity and troubleshooting issues</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -1747,7 +1719,7 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>"My Requests" Lookup</strong> - Enter your email to get a magic link to view all your requests at once</span>
+            <span><strong>"My Requests" Lookup</strong> - Enter your email to get a sign-in link for all your requests at once</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -1844,23 +1816,23 @@
           <span class="px-3 py-1 bg-zinc-700 text-white text-sm font-bold rounded-lg">v1.7.3</span>
           <span class="text-zinc-400 text-sm">December 2024</span>
         </div>
-        <h3 class="text-lg font-semibold mb-3">Timelapse API</h3>
+        <h3 class="text-lg font-semibold mb-3">Timelapse access</h3>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>List timelapses</strong> - API to list available timelapse videos from printers</span>
+            <span><strong>List timelapses</strong> - Browse available timelapse videos from printers</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Download videos</strong> - Stream/download timelapse videos via HTTP</span>
+            <span><strong>Download videos</strong> - Watch or download timelapse videos more easily</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Probe endpoint</strong> - Discover printer web interfaces and file access methods</span>
+            <span><strong>Printer discovery</strong> - Improved support for finding available printer web tools and file access</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>File listing</strong> - List all files on printer SD card via M-codes</span>
+            <span><strong>File listing</strong> - View more of the files available on connected printers</span>
           </li>
         </ul>
       </div>
@@ -1887,7 +1859,7 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>API endpoints</strong> - /api/templates for CRUD operations</span>
+            <span><strong>Template management</strong> - Templates can now be saved, loaded, and removed more easily</span>
           </li>
         </ul>
       </div>
@@ -1902,7 +1874,7 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Queue-based pricing</strong> - Rush fee adjusts based on how busy the queue is (+$0-10)</span>
+            <span><strong>Queue-based pricing</strong> - Rush pricing adjusts based on how busy the queue is</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -1910,7 +1882,7 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>API endpoint</strong> - /api/rush-pricing for real-time pricing calculations</span>
+            <span><strong>Live rush pricing</strong> - Rush pricing updates automatically as request details change</span>
           </li>
         </ul>
       </div>
@@ -1991,11 +1963,11 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Current filename display</strong> - Shows what file is currently printing (M119 command)</span>
+            <span><strong>Current filename display</strong> - Shows what file is currently printing</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Layer progress</strong> - Shows current layer / total layers (M27 command)</span>
+            <span><strong>Layer progress</strong> - Shows current layer and total layers while printing</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -2003,7 +1975,7 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>AJAX auto-refresh</strong> - Admin dashboard updates every 15 seconds</span>
+            <span><strong>Auto-refresh</strong> - The admin dashboard updates regularly on its own</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -2053,11 +2025,11 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>FlashForge API</strong> - Direct integration with Adventurer 4 and AD5X printers</span>
+            <span><strong>FlashForge support</strong> - Direct integration with Adventurer 4 and AD5X printers</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Real-time status</strong> - Live printer status, temperature, and progress</span>
+            <span><strong>Real-time status</strong> - Live printer status, temperature, and progress updates</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -2107,7 +2079,7 @@
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>File uploads</strong> - Upload STL, 3MF, and GCode files with requests</span>
+            <span><strong>File uploads</strong> - Upload STL, 3MF, and G-code files with requests</span>
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
@@ -2142,7 +2114,7 @@
           </li>
           <li class="flex items-start gap-2">
             <span class="text-emerald-400">✓</span>
-            <span><strong>Cloudflare Turnstile</strong> - Bot protection on form submissions</span>
+            <span><strong>Bot protection</strong> - Added extra protection on form submissions</span>
           </li>
         </ul>
       </div>
