@@ -182,6 +182,7 @@ class TestAdminShipping:
                     ],
                 }
 
+        monkeypatch.setattr(api_builds, "_usps_configured", lambda: False)
         monkeypatch.setattr(api_builds, "ShippoClient", lambda **kw: FakeShippo())
         response = admin_client.post(
             f"/admin/request/{req['request_id']}/shipping/rates",
@@ -216,6 +217,7 @@ class TestAdminShipping:
                     ],
                 }
 
+        monkeypatch.setattr(api_builds, "_usps_configured", lambda: False)
         monkeypatch.setattr(api_builds, "ShippoClient", lambda **kw: FakeShippo())
         response = admin_client.post(
             f"/admin/request/{req['request_id']}/shipping/rates",
@@ -318,6 +320,7 @@ class TestAdminShipping:
                     },
                 }
 
+        monkeypatch.setattr(api_builds, "_usps_configured", lambda: False)
         monkeypatch.setattr(api_builds, "ShippoClient", lambda **kw: FakeShippo())
         response = admin_client.post(
             f"/admin/request/{req['request_id']}/shipping/buy-label",

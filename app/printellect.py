@@ -456,7 +456,69 @@ def _validate_action_payload(action: str, payload: Dict[str, Any]) -> Dict[str, 
             raise HTTPException(status_code=422, detail="version is required")
         return {"version": version.strip()}
 
+    if action == "notify_shipping":
+        status = payload.get("status", "in_transit")
+        allowed = ("in_transit", "out_for_delivery", "delivered", "exception")
+        if status not in allowed:
+            status = "in_transit"
+        return {"status": status}
+
     return {}
+
+
+def notify_device_shipping_status(requester_email: str, shipping_status: str):
+    """Queue a shipping LED notification to all devices owned by the requester.
+
+    Called by the tracking poller when a shipment status changes.
+    Maps shipping_status to a simplified LED status and enqueues a command.
+    """
+    status_map = {
+        "IN_TRANSIT": "in_transit",
+        "OUT_FOR_DELIVERY": "out_for_delivery",
+        "DELIVERED": "delivered",
+        "EXCEPTION": "exception",
+        "RETURNED": "exception",
+    }
+    led_status = status_map.get(shipping_status)
+    if not led_status:
+        return  # No LED notification for this status
+
+    try:
+        conn = db()
+        # Find the Printellect account for this email
+        acct = conn.execute(
+            "SELECT id FROM printellect_accounts WHERE email = ?",
+            (requester_email,),
+        ).fetchone()
+        if not acct:
+            conn.close()
+            return
+
+        # Find all online devices for this account
+        devices = conn.execute(
+            "SELECT * FROM printellect_devices WHERE owner_id = ?",
+            (acct["id"],),
+        ).fetchall()
+
+        for device in devices:
+            if not _is_online(device["last_seen_at"]):
+                continue
+            try:
+                _enqueue_command(
+                    conn,
+                    device,
+                    requested_by_user_id=acct["id"],
+                    action="notify_shipping",
+                    payload={"status": led_status},
+                    require_online=False,
+                )
+            except Exception:
+                pass  # Device might have gone offline
+
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # Don't let device notification failures break shipping flow
 
 
 def _enqueue_command(
@@ -662,11 +724,38 @@ async def help_page(request: Request, account=Depends(_require_printellect_accou
 async def owner_device_detail_page(device_id: str, request: Request, account=Depends(_require_printellect_account)):
     conn = db()
     _get_device_for_owner(conn, device_id, account.id)
+
+    # Fetch active shipments for this account's email so we can show shipping status
+    active_shipments = []
+    try:
+        email = account.email
+        ship_rows = conn.execute(
+            """SELECT r.id, r.print_name, r.requester_name,
+                      rs.shipping_status, rs.tracking_number, rs.tracking_url,
+                      rs.carrier, rs.service, rs.estimated_delivery_date, rs.delivered_at
+               FROM requests r
+               JOIN request_shipping rs ON rs.request_id = r.id
+               WHERE r.requester_email = ? AND r.fulfillment_method = 'shipping'
+                 AND rs.shipping_status NOT IN ('CANCELLED')
+               ORDER BY rs.updated_at DESC
+               LIMIT 5""",
+            (email,),
+        ).fetchall()
+        active_shipments = [dict(row) for row in ship_rows]
+    except Exception:
+        pass
+
     conn.close()
     admin = await get_current_admin(request)
     return templates.TemplateResponse(
         "device_detail.html",
-        {"request": request, "account": account, "device_id": device_id, "is_admin": bool(admin)},
+        {
+            "request": request,
+            "account": account,
+            "device_id": device_id,
+            "is_admin": bool(admin),
+            "active_shipments": active_shipments,
+        },
     )
 
 

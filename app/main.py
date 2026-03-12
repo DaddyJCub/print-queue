@@ -1904,6 +1904,21 @@ def ensure_migrations():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_request_shipping_events_provider_event ON request_shipping_events(provider, provider_event_id)")
 
     # ─────────────────────────────────────────────────────────────────────────────
+    # SHIPPING V2 MIGRATION – USPS integration + new columns (v0.14.0)
+    # ─────────────────────────────────────────────────────────────────────────────
+    cur.execute("PRAGMA table_info(request_shipping)")
+    rs_cols = {row[1] for row in cur.fetchall()}
+    if rs_cols:
+        if "estimated_delivery_date" not in rs_cols:
+            cur.execute("ALTER TABLE request_shipping ADD COLUMN estimated_delivery_date TEXT")
+        if "shipping_paid_at" not in rs_cols:
+            cur.execute("ALTER TABLE request_shipping ADD COLUMN shipping_paid_at TEXT")
+        if "label_file_path" not in rs_cols:
+            cur.execute("ALTER TABLE request_shipping ADD COLUMN label_file_path TEXT")
+        if "usps_last_polled_at" not in rs_cols:
+            cur.execute("ALTER TABLE request_shipping ADD COLUMN usps_last_polled_at TEXT")
+
+    # ─────────────────────────────────────────────────────────────────────────────
     # MIGRATE USERS + ADMINS → ACCOUNTS (v0.11.0 one-time migration)
     # ─────────────────────────────────────────────────────────────────────────────
     
@@ -2951,6 +2966,10 @@ def _startup():
     # Start credit auto-grant scheduler
     from app.credits import start_credit_grant_scheduler
     start_credit_grant_scheduler()
+
+    # Start USPS tracking poller
+    from app.shipping_poller import start_usps_tracking_poller
+    start_usps_tracking_poller()
 
 # Mount auth routes
 from app.routes_auth import router as auth_router

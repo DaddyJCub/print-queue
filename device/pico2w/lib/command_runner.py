@@ -36,6 +36,8 @@ class CommandRunner:
                 self.hw.test_lights(payload.get("pattern"), int(payload.get("duration_ms", 0)))
             elif action == "test_audio":
                 self.hw.test_audio(payload.get("track_id"))
+            elif action == "notify_shipping":
+                self.hw.notify_shipping(payload.get("status", "in_transit"))
             elif action == "reboot":
                 self.hw.reboot()
             elif action == "ota_apply":

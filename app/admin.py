@@ -439,6 +439,9 @@ def admin_shipping_dashboard(
              rs.state,
              rs.postal_code,
              rs.country,
+             rs.label_url,
+             rs.label_file_path,
+             rs.estimated_delivery_date,
              rs.updated_at as shipping_updated_at
            FROM requests r
            LEFT JOIN request_shipping rs ON rs.request_id = r.id
@@ -539,6 +542,85 @@ def admin_shipping_dashboard(
     })
 
 
+@router.post("/admin/shipping/batch")
+def admin_shipping_batch(
+    request: Request,
+    action: str = Form(...),
+    ids: str = Form(""),
+    _=Depends(require_admin),
+):
+    """Apply a batch action to multiple shipping requests."""
+    rid_list = [s.strip() for s in ids.split(",") if s.strip()]
+    if not rid_list:
+        return RedirectResponse(url="/admin/shipping", status_code=303)
+
+    conn = db()
+    now = now_iso()
+
+    if action == "mark-delivered":
+        for rid in rid_list:
+            shipping_row = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
+            if not shipping_row:
+                continue
+            ship = dict(shipping_row)
+            if ship.get("shipping_status") in ("DELIVERED", "CANCELLED"):
+                continue
+            conn.execute(
+                """UPDATE request_shipping
+                   SET updated_at = ?, shipping_status = 'DELIVERED', tracking_status = 'DELIVERED', delivered_at = ?
+                   WHERE request_id = ?""",
+                (now, now, rid),
+            )
+            conn.execute(
+                """INSERT INTO request_shipping_events
+                   (id, request_id, created_at, event_type, shipping_status, message)
+                   VALUES (?, ?, ?, 'delivered_batch', 'DELIVERED', 'Batch marked delivered')""",
+                (str(uuid.uuid4()), rid, now),
+            )
+
+    elif action == "validate-address":
+        from app.shipping_usps import USPSClient
+        usps_client_id = get_setting("usps_client_id", "").strip() or os.getenv("USPS_CLIENT_ID", "").strip()
+        usps_client_secret = get_setting("usps_client_secret", "").strip() or os.getenv("USPS_CLIENT_SECRET", "").strip()
+        if usps_client_id and usps_client_secret:
+            usps_test = get_bool_setting("usps_test_mode", True)
+            client = USPSClient(client_id=usps_client_id, client_secret=usps_client_secret, test_mode=usps_test)
+            for rid in rid_list:
+                shipping_row = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
+                if not shipping_row:
+                    continue
+                ship = dict(shipping_row)
+                req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+                if not req_row:
+                    continue
+                address = {
+                    "streetAddress": ship.get("address_line1") or "",
+                    "city": ship.get("city") or "",
+                    "state": ship.get("state") or "",
+                    "ZIPCode": ship.get("postal_code") or "",
+                }
+                if not address["streetAddress"] or not address["city"]:
+                    continue
+                try:
+                    result = client.validate_address(address)
+                    is_valid = result.get("_dpv_valid", False)
+                    import json
+                    next_status = "ADDRESS_VALIDATED" if is_valid else (ship.get("shipping_status") or "REQUESTED")
+                    conn.execute(
+                        """UPDATE request_shipping
+                           SET updated_at = ?, shipping_status = ?, address_validation_status = ?,
+                               address_validation_messages = ?, normalized_address_json = ?
+                           WHERE request_id = ?""",
+                        (now, next_status, "valid" if is_valid else "invalid", json.dumps([]), json.dumps(result), rid),
+                    )
+                except Exception:
+                    pass
+
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url="/admin/shipping", status_code=303)
+
+
 @router.get("/admin/settings", response_class=HTMLResponse)
 def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[str] = None):
     model = {
@@ -592,6 +674,14 @@ def admin_settings(request: Request, _=Depends(require_admin), saved: Optional[s
         "shippo_api_key_configured": bool(get_setting("shippo_api_key", "").strip() or os.getenv("SHIPPO_API_KEY", "").strip()),
         "shippo_webhook_pass_configured": bool(get_setting("shippo_webhook_pass", "").strip() or os.getenv("SHIPPO_WEBHOOK_PASS", "").strip()),
         "shippo_webhook_token_configured": bool(get_setting("shippo_webhook_token", "").strip() or os.getenv("SHIPPO_WEBHOOK_TOKEN", "").strip()),
+        # USPS v3 API settings
+        "usps_client_id_configured": bool(get_setting("usps_client_id", "").strip() or os.getenv("USPS_CLIENT_ID", "").strip()),
+        "usps_client_secret_configured": bool(get_setting("usps_client_secret", "").strip() or os.getenv("USPS_CLIENT_SECRET", "").strip()),
+        "usps_crid": get_setting("usps_crid", "").strip(),
+        "usps_mid": get_setting("usps_mid", "").strip(),
+        "usps_eps_account": get_setting("usps_eps_account", "").strip(),
+        "usps_test_mode": get_bool_setting("usps_test_mode", True),
+        "usps_tracking_poll_minutes": get_setting("usps_tracking_poll_minutes", "30"),
         # Stripe / Payment settings
         "stripe_secret_key_configured": bool(get_setting("stripe_secret_key", "").strip() or os.getenv("STRIPE_SECRET_KEY", "").strip()),
         "stripe_publishable_key": get_setting("stripe_publishable_key", "").strip() or os.getenv("STRIPE_PUBLISHABLE_KEY", "").strip(),
@@ -666,6 +756,16 @@ def admin_settings_post(
     clear_shippo_webhook_pass: Optional[str] = Form(None),
     shippo_webhook_token: Optional[str] = Form(None),
     clear_shippo_webhook_token: Optional[str] = Form(None),
+    # USPS v3 API config
+    usps_client_id: Optional[str] = Form(None),
+    clear_usps_client_id: Optional[str] = Form(None),
+    usps_client_secret: Optional[str] = Form(None),
+    clear_usps_client_secret: Optional[str] = Form(None),
+    usps_crid: str = Form(""),
+    usps_mid: str = Form(""),
+    usps_eps_account: str = Form(""),
+    usps_test_mode: Optional[str] = Form(None),
+    usps_tracking_poll_minutes: str = Form("30"),
     # Stripe / Payment config
     stripe_secret_key: Optional[str] = Form(None),
     clear_stripe_secret_key: Optional[str] = Form(None),
@@ -740,6 +840,20 @@ def admin_settings_post(
         set_setting("shippo_webhook_token", "")
     elif shippo_webhook_token and shippo_webhook_token.strip():
         set_setting("shippo_webhook_token", shippo_webhook_token.strip())
+    # USPS v3 API config
+    if clear_usps_client_id:
+        set_setting("usps_client_id", "")
+    elif usps_client_id and usps_client_id.strip():
+        set_setting("usps_client_id", usps_client_id.strip())
+    if clear_usps_client_secret:
+        set_setting("usps_client_secret", "")
+    elif usps_client_secret and usps_client_secret.strip():
+        set_setting("usps_client_secret", usps_client_secret.strip())
+    set_setting("usps_crid", (usps_crid or "").strip())
+    set_setting("usps_mid", (usps_mid or "").strip())
+    set_setting("usps_eps_account", (usps_eps_account or "").strip())
+    set_setting("usps_test_mode", "1" if usps_test_mode else "0")
+    set_setting("usps_tracking_poll_minutes", (usps_tracking_poll_minutes or "30").strip())
     # Stripe / Payment config
     if clear_stripe_secret_key:
         set_setting("stripe_secret_key", "")

@@ -448,52 +448,134 @@
         </div>
 
         <div class="mt-6">
-          <h3 class="text-lg font-semibold">Shippo API configuration</h3>
-          <p class="text-xs text-zinc-500 mt-1">Credentials can be managed here. Leaving password fields blank keeps existing secrets unchanged.</p>
+          <h3 class="text-lg font-semibold flex items-center gap-2">
+            USPS v3 API configuration
+            {% if s.usps_client_id_configured and s.usps_client_secret_configured %}
+              <span class="text-xs bg-emerald-600/30 text-emerald-300 px-2 py-0.5 rounded">Configured</span>
+            {% else %}
+              <span class="text-xs bg-zinc-700 text-zinc-400 px-2 py-0.5 rounded">Not configured</span>
+            {% endif %}
+            {% if s.usps_test_mode %}<span class="text-xs bg-amber-600/30 text-amber-300 px-2 py-0.5 rounded">Test mode</span>{% endif %}
+          </h3>
+          <p class="text-xs text-zinc-500 mt-1">Free USPS REST API for address validation, rates, labels, and tracking. <a href="https://developer.usps.com" target="_blank" class="text-sky-400 underline">Register at developer.usps.com</a></p>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-            <label class="block md:col-span-2">
-              <span class="text-sm text-zinc-300">Shippo API key</span>
-              <input name="shippo_api_key" type="password"
-                     placeholder="{% if s.shippo_api_key_configured %}Configured (enter new value to replace){% else %}Enter Shippo API key{% endif %}"
+            <label class="block">
+              <span class="text-sm text-zinc-300">Client ID (Consumer Key)</span>
+              <input name="usps_client_id" type="password"
+                     placeholder="{% if s.usps_client_id_configured %}Configured (enter new value to replace){% else %}Enter USPS Client ID{% endif %}"
                      class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
               <label class="mt-2 inline-flex items-center gap-2 text-xs text-zinc-400">
-                <input type="checkbox" name="clear_shippo_api_key" />
-                <span>Clear stored API key</span>
+                <input type="checkbox" name="clear_usps_client_id" />
+                <span>Clear stored Client ID</span>
               </label>
             </label>
 
             <label class="block">
-              <span class="text-sm text-zinc-300">Webhook basic auth user</span>
-              <input name="shippo_webhook_user" type="text"
-                     value="{{ s.shippo_webhook_user }}"
-                     placeholder="shippo-webhook"
+              <span class="text-sm text-zinc-300">Client Secret (Consumer Secret)</span>
+              <input name="usps_client_secret" type="password"
+                     placeholder="{% if s.usps_client_secret_configured %}Configured (enter new value to replace){% else %}Enter USPS Client Secret{% endif %}"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+              <label class="mt-2 inline-flex items-center gap-2 text-xs text-zinc-400">
+                <input type="checkbox" name="clear_usps_client_secret" />
+                <span>Clear stored Client Secret</span>
+              </label>
+            </label>
+
+            <label class="block">
+              <span class="text-sm text-zinc-300">CRID (Customer Registration ID)</span>
+              <input name="usps_crid" type="text"
+                     value="{{ s.usps_crid }}"
+                     placeholder="For rate lookups"
                      class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
             </label>
 
             <label class="block">
-              <span class="text-sm text-zinc-300">Webhook basic auth password</span>
-              <input name="shippo_webhook_pass" type="password"
-                     placeholder="{% if s.shippo_webhook_pass_configured %}Configured (enter new value to replace){% else %}Enter webhook password{% endif %}"
+              <span class="text-sm text-zinc-300">MID (Mailer ID)</span>
+              <input name="usps_mid" type="text"
+                     value="{{ s.usps_mid }}"
+                     placeholder="For rate lookups"
                      class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
-              <label class="mt-2 inline-flex items-center gap-2 text-xs text-zinc-400">
-                <input type="checkbox" name="clear_shippo_webhook_pass" />
-                <span>Clear stored webhook password</span>
-              </label>
             </label>
 
-            <label class="block md:col-span-2">
-              <span class="text-sm text-zinc-300">Webhook URL token (recommended)</span>
-              <input name="shippo_webhook_token" type="password"
-                     placeholder="{% if s.shippo_webhook_token_configured %}Configured (enter new value to replace){% else %}Enter random token used in webhook URL{% endif %}"
+            <label class="block">
+              <span class="text-sm text-zinc-300">EPS Account Number</span>
+              <input name="usps_eps_account" type="text"
+                     value="{{ s.usps_eps_account }}"
+                     placeholder="Required for label purchasing"
                      class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
-              <p class="text-xs text-zinc-500 mt-1">Use this with Shippo URL like: <code>/webhooks/shippo?token=YOUR_TOKEN</code></p>
-              <label class="mt-2 inline-flex items-center gap-2 text-xs text-zinc-400">
-                <input type="checkbox" name="clear_shippo_webhook_token" />
-                <span>Clear stored webhook URL token</span>
-              </label>
+              <p class="text-xs text-zinc-500 mt-1">Enterprise Payment System account for prepaid postage.</p>
+            </label>
+
+            <label class="block">
+              <span class="text-sm text-zinc-300">Tracking poll interval (minutes)</span>
+              <input name="usps_tracking_poll_minutes" type="text"
+                     value="{{ s.usps_tracking_poll_minutes }}"
+                     placeholder="30"
+                     class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+              <p class="text-xs text-zinc-500 mt-1">How often to check USPS for tracking updates on active shipments.</p>
+            </label>
+
+            <label class="flex items-center gap-3 md:col-span-2">
+              <input type="checkbox" name="usps_test_mode" class="scale-125"
+                     {% if s.usps_test_mode %}checked{% endif %} />
+              <div>
+                <span class="text-sm text-zinc-300">Use USPS test environment (TEM)</span>
+                <p class="text-xs text-zinc-500">Connect to apis-tem.usps.com instead of production. Disable for live shipments.</p>
+              </div>
             </label>
           </div>
+        </div>
+
+        <div class="mt-6">
+          <details>
+            <summary class="text-lg font-semibold cursor-pointer text-zinc-400 hover:text-zinc-300">Shippo API configuration (legacy)</summary>
+            <p class="text-xs text-zinc-500 mt-1">Shippo integration is deprecated in favor of the USPS v3 API above. These settings are kept for backward compatibility.</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+              <label class="block md:col-span-2">
+                <span class="text-sm text-zinc-300">Shippo API key</span>
+                <input name="shippo_api_key" type="password"
+                       placeholder="{% if s.shippo_api_key_configured %}Configured (enter new value to replace){% else %}Enter Shippo API key{% endif %}"
+                       class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+                <label class="mt-2 inline-flex items-center gap-2 text-xs text-zinc-400">
+                  <input type="checkbox" name="clear_shippo_api_key" />
+                  <span>Clear stored API key</span>
+                </label>
+              </label>
+
+              <label class="block">
+                <span class="text-sm text-zinc-300">Webhook basic auth user</span>
+                <input name="shippo_webhook_user" type="text"
+                       value="{{ s.shippo_webhook_user }}"
+                       placeholder="shippo-webhook"
+                       class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+              </label>
+
+              <label class="block">
+                <span class="text-sm text-zinc-300">Webhook basic auth password</span>
+                <input name="shippo_webhook_pass" type="password"
+                       placeholder="{% if s.shippo_webhook_pass_configured %}Configured (enter new value to replace){% else %}Enter webhook password{% endif %}"
+                       class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+                <label class="mt-2 inline-flex items-center gap-2 text-xs text-zinc-400">
+                  <input type="checkbox" name="clear_shippo_webhook_pass" />
+                  <span>Clear stored webhook password</span>
+                </label>
+              </label>
+
+              <label class="block md:col-span-2">
+                <span class="text-sm text-zinc-300">Webhook URL token (recommended)</span>
+                <input name="shippo_webhook_token" type="password"
+                       placeholder="{% if s.shippo_webhook_token_configured %}Configured (enter new value to replace){% else %}Enter random token used in webhook URL{% endif %}"
+                       class="mt-1 w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3" />
+                <p class="text-xs text-zinc-500 mt-1">Use this with Shippo URL like: <code>/webhooks/shippo?token=YOUR_TOKEN</code></p>
+                <label class="mt-2 inline-flex items-center gap-2 text-xs text-zinc-400">
+                  <input type="checkbox" name="clear_shippo_webhook_token" />
+                  <span>Clear stored webhook URL token</span>
+                </label>
+              </label>
+            </div>
+          </details>
         </div>
       </section>
 

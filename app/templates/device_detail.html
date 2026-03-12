@@ -239,6 +239,62 @@
     </details>
   </section>
 
+  <!-- ── Shipping Status ────────────────────────────────────────────────── -->
+  {% if active_shipments %}
+  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-semibold flex items-center gap-2">📦 Shipment Tracking
+        <span class="text-xs bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">{{ active_shipments|length }}</span>
+      </h2>
+    </div>
+    <div class="space-y-2">
+      {% for shipment in active_shipments %}
+        {% set ss = shipment.shipping_status or 'REQUESTED' %}
+        <div class="rounded-xl border p-3
+          {% if ss == 'DELIVERED' %}border-emerald-800/40 bg-emerald-950/30
+          {% elif ss in ['EXCEPTION', 'RETURNED'] %}border-red-800/40 bg-red-950/30
+          {% elif ss in ['IN_TRANSIT', 'OUT_FOR_DELIVERY'] %}border-sky-800/40 bg-sky-950/30
+          {% else %}border-zinc-800 bg-zinc-950/40{% endif %}">
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-zinc-200 truncate">{{ shipment.print_name or ('Request ' ~ shipment.id[:8]) }}</p>
+              <div class="flex items-center gap-2 mt-1 flex-wrap">
+                <span class="text-[10px] px-1.5 py-0.5 rounded font-medium border
+                  {% if ss == 'DELIVERED' %}bg-emerald-900/40 text-emerald-300 border-emerald-700/30
+                  {% elif ss in ['EXCEPTION', 'RETURNED'] %}bg-red-900/40 text-red-300 border-red-700/30
+                  {% elif ss in ['IN_TRANSIT', 'OUT_FOR_DELIVERY'] %}bg-sky-900/40 text-sky-300 border-sky-700/30
+                  {% elif ss == 'PRE_TRANSIT' %}bg-indigo-900/40 text-indigo-300 border-indigo-700/30
+                  {% else %}bg-zinc-800 text-zinc-400 border-zinc-700{% endif %}">
+                  {% if ss == 'DELIVERED' %}✅{% elif ss == 'IN_TRANSIT' %}🚚{% elif ss == 'OUT_FOR_DELIVERY' %}📬{% elif ss == 'EXCEPTION' %}⚠️{% elif ss == 'PRE_TRANSIT' %}📋{% else %}📦{% endif %}
+                  {{ ss.replace('_', ' ').title() }}
+                </span>
+                {% if shipment.carrier %}<span class="text-[10px] text-zinc-500">{{ shipment.carrier }}</span>{% endif %}
+              </div>
+            </div>
+            <div class="text-right shrink-0">
+              {% if shipment.estimated_delivery_date and ss not in ['DELIVERED', 'CANCELLED'] %}
+                <p class="text-[10px] text-zinc-500">Est. delivery</p>
+                <p class="text-xs text-zinc-300">{{ shipment.estimated_delivery_date }}</p>
+              {% elif ss == 'DELIVERED' and shipment.delivered_at %}
+                <p class="text-[10px] text-zinc-500">Delivered</p>
+                <p class="text-xs text-emerald-300">{{ shipment.delivered_at[:10] }}</p>
+              {% endif %}
+            </div>
+          </div>
+          {% if shipment.tracking_number %}
+            <div class="mt-2 flex items-center gap-2">
+              <span class="text-[10px] text-zinc-500 font-mono">{{ shipment.tracking_number }}</span>
+              {% if shipment.tracking_url %}
+                <a href="{{ shipment.tracking_url }}" target="_blank" class="text-[10px] text-sky-400 hover:text-sky-300 underline">Track →</a>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
   <!-- ── Diagnostics ────────────────────────────────────────────────────── -->
   <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
     <div class="flex items-center justify-between mb-3">

@@ -11,33 +11,42 @@
     {% set active_page = 'shipping' %}
     {% include 'admin_nav.html' %}
 
-    <div class="mb-5">
-      <h1 class="text-2xl font-bold">Shipping Operations</h1>
-      <p class="text-sm text-zinc-400 mt-1">Central view for all shipping requests, statuses, and fulfillment tasks.</p>
+    <div class="mb-5 flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-bold">Shipping Operations</h1>
+        <p class="text-sm text-zinc-400 mt-1">Central view for all shipping requests, statuses, and fulfillment tasks.</p>
+      </div>
+      {# Batch action bar — hidden until checkboxes selected #}
+      <div id="batch-bar" class="hidden items-center gap-2">
+        <span id="batch-count" class="text-xs text-zinc-400">0 selected</span>
+        <button onclick="batchAction('mark-delivered')" class="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-xs font-medium">Mark Delivered</button>
+        <button onclick="batchAction('validate-address')" class="px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-xs font-medium">Validate Addresses</button>
+        <button onclick="document.querySelectorAll('.batch-cb').forEach(c=>c.checked=false); updateBatchBar()" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs">Clear</button>
+      </div>
     </div>
 
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
-      <a href="/admin/shipping" class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 hover:bg-zinc-900">
+      <a href="/admin/shipping" class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 hover:bg-zinc-900{% if not task_filter %} ring-1 ring-zinc-600{% endif %}">
         <div class="text-xs text-zinc-500">All</div>
         <div class="text-lg font-semibold">{{ task_counts.get("all", 0) }}</div>
       </a>
-      <a href="/admin/shipping?task=ready_for_fulfillment" class="rounded-xl border border-emerald-700/40 bg-emerald-900/20 p-3 hover:bg-emerald-900/30">
+      <a href="/admin/shipping?task=ready_for_fulfillment" class="rounded-xl border border-emerald-700/40 bg-emerald-900/20 p-3 hover:bg-emerald-900/30{% if task_filter == 'ready_for_fulfillment' %} ring-1 ring-emerald-500{% endif %}">
         <div class="text-xs text-emerald-300">Ready to Fulfill</div>
         <div class="text-lg font-semibold text-emerald-200">{{ task_counts.get("ready_for_fulfillment", 0) }}</div>
       </a>
-      <a href="/admin/shipping?task=in_transit" class="rounded-xl border border-sky-700/40 bg-sky-900/20 p-3 hover:bg-sky-900/30">
+      <a href="/admin/shipping?task=in_transit" class="rounded-xl border border-sky-700/40 bg-sky-900/20 p-3 hover:bg-sky-900/30{% if task_filter == 'in_transit' %} ring-1 ring-sky-500{% endif %}">
         <div class="text-xs text-sky-300">In Transit</div>
         <div class="text-lg font-semibold text-sky-200">{{ task_counts.get("in_transit", 0) }}</div>
       </a>
-      <a href="/admin/shipping?task=exceptions" class="rounded-xl border border-red-700/40 bg-red-900/20 p-3 hover:bg-red-900/30">
+      <a href="/admin/shipping?task=exceptions" class="rounded-xl border border-red-700/40 bg-red-900/20 p-3 hover:bg-red-900/30{% if task_filter == 'exceptions' %} ring-1 ring-red-500{% endif %}">
         <div class="text-xs text-red-300">Exceptions</div>
         <div class="text-lg font-semibold text-red-200">{{ task_counts.get("exceptions", 0) }}</div>
       </a>
-      <a href="/admin/shipping?task=delivered" class="rounded-xl border border-indigo-700/40 bg-indigo-900/20 p-3 hover:bg-indigo-900/30">
+      <a href="/admin/shipping?task=delivered" class="rounded-xl border border-indigo-700/40 bg-indigo-900/20 p-3 hover:bg-indigo-900/30{% if task_filter == 'delivered' %} ring-1 ring-indigo-500{% endif %}">
         <div class="text-xs text-indigo-300">Delivered</div>
         <div class="text-lg font-semibold text-indigo-200">{{ task_counts.get("delivered", 0) }}</div>
       </a>
-      <a href="/admin/shipping?task=pending_print" class="rounded-xl border border-amber-700/40 bg-amber-900/20 p-3 hover:bg-amber-900/30">
+      <a href="/admin/shipping?task=pending_print" class="rounded-xl border border-amber-700/40 bg-amber-900/20 p-3 hover:bg-amber-900/30{% if task_filter == 'pending_print' %} ring-1 ring-amber-500{% endif %}">
         <div class="text-xs text-amber-300">Pending Print</div>
         <div class="text-lg font-semibold text-amber-200">{{ task_counts.get("pending_print", 0) }}</div>
       </a>
@@ -80,24 +89,71 @@
     </form>
 
     {% if items %}
+      {# Select-all row #}
+      <div class="flex items-center gap-3 mb-2 px-1">
+        <label class="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer">
+          <input type="checkbox" id="select-all" onchange="document.querySelectorAll('.batch-cb').forEach(c=>{c.checked=this.checked}); updateBatchBar()" class="accent-indigo-500" />
+          Select all
+        </label>
+        <span class="text-xs text-zinc-600">{{ items|length }} item{{ 's' if items|length != 1 else '' }}</span>
+      </div>
+
       <div class="space-y-3">
         {% for item in items %}
+        {# -- Determine next action badge -- #}
+        {% set next_action = '' %}
+        {% set next_action_color = '' %}
+        {% if item.is_exception %}
+          {% set next_action = 'Resolve Exception' %}
+          {% set next_action_color = 'bg-red-900/40 text-red-300 border-red-700/30' %}
+        {% elif not item.print_complete %}
+          {% set next_action = 'Awaiting Print' %}
+          {% set next_action_color = 'bg-amber-900/40 text-amber-300 border-amber-700/30' %}
+        {% elif item.needs_address_validation %}
+          {% set next_action = 'Validate Address' %}
+          {% set next_action_color = 'bg-amber-900/40 text-amber-300 border-amber-700/30' %}
+        {% elif item.needs_quote %}
+          {% set next_action = 'Get Quote' %}
+          {% set next_action_color = 'bg-cyan-900/40 text-cyan-300 border-cyan-700/30' %}
+        {% elif item.needs_label %}
+          {% set next_action = 'Create Label' %}
+          {% set next_action_color = 'bg-indigo-900/40 text-indigo-300 border-indigo-700/30' %}
+        {% elif item.in_transit %}
+          {% set next_action = 'In Transit' %}
+          {% set next_action_color = 'bg-sky-900/40 text-sky-300 border-sky-700/30' %}
+        {% elif item.is_delivered %}
+          {% set next_action = 'Complete' %}
+          {% set next_action_color = 'bg-emerald-900/40 text-emerald-300 border-emerald-700/30' %}
+        {% endif %}
+
         <div class="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
           <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <a href="/admin/request/{{ item.id }}#shipping" class="font-semibold text-base hover:text-indigo-300">
-                {{ item.print_name or ("Request " ~ item.id[:8]) }}
-              </a>
-              <div class="text-xs text-zinc-500 mt-1">ID: {{ item.id[:8] }}</div>
-              <div class="text-sm text-zinc-300 mt-2">
-                {{ item.requester_name }} • {{ item.material or "—" }} {% if item.colors %}• {{ item.colors }}{% endif %}
-              </div>
-              <div class="text-sm text-zinc-400 mt-1">
-                {{ item.recipient_name or item.requester_name }} • {{ item.city or "—" }}, {{ item.state or "—" }} {{ item.postal_code or "" }} {{ item.country or "US" }}
+            <div class="flex items-start gap-3 min-w-0">
+              <input type="checkbox" class="batch-cb mt-1.5 accent-indigo-500 shrink-0" value="{{ item.id }}" onchange="updateBatchBar()" />
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <a href="/admin/request/{{ item.id }}#shipping" class="font-semibold text-base hover:text-indigo-300">
+                    {{ item.print_name or ("Request " ~ item.id[:8]) }}
+                  </a>
+                  {% if next_action %}
+                    <span class="px-2 py-0.5 rounded-lg text-[10px] font-semibold border {{ next_action_color }}">⚡ {{ next_action }}</span>
+                  {% endif %}
+                </div>
+                <div class="text-xs text-zinc-500 mt-1">ID: {{ item.id[:8] }}</div>
+                <div class="text-sm text-zinc-300 mt-2">
+                  {{ item.requester_name }} • {{ item.material or "—" }} {% if item.colors %}• {{ item.colors }}{% endif %}
+                </div>
+                <div class="text-sm text-zinc-400 mt-1">
+                  {{ item.recipient_name or item.requester_name }} • {{ item.city or "—" }}, {{ item.state or "—" }} {{ item.postal_code or "" }} {{ item.country or "US" }}
+                </div>
               </div>
             </div>
-            <div class="text-right">
-              <div class="inline-flex items-center px-2 py-1 rounded-lg border border-sky-700/40 bg-sky-900/20 text-sky-200 text-xs">
+            <div class="text-right shrink-0">
+              <div class="inline-flex items-center px-2 py-1 rounded-lg border
+                {% if item.is_delivered %}border-emerald-500/40 bg-emerald-900/20 text-emerald-200
+                {% elif item.is_exception %}border-red-500/40 bg-red-900/20 text-red-200
+                {% elif item.shipping_status == 'CANCELLED' %}border-zinc-500/40 bg-zinc-900/20 text-zinc-400
+                {% else %}border-sky-700/40 bg-sky-900/20 text-sky-200{% endif %} text-xs">
                 {{ item.shipping_status.replace("_", " ").title() }}
               </div>
               <div class="mt-2 text-xs">
@@ -105,6 +161,9 @@
                   Print: {{ item.status.replace("_", " ").title() }}
                 </span>
               </div>
+              {% if item.estimated_delivery_date %}
+                <div class="mt-1 text-[10px] text-zinc-500">Est. {{ item.estimated_delivery_date }}</div>
+              {% endif %}
             </div>
           </div>
 
@@ -124,7 +183,11 @@
             <div class="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2.5">
               <div class="text-xs text-zinc-500">Tracking</div>
               <div class="mt-1 {% if item.has_tracking %}text-emerald-300{% else %}text-zinc-400{% endif %}">
-                {{ item.tracking_number or "Not set" }}
+                {% if item.has_tracking %}
+                  <a href="{{ item.tracking_url or '#' }}" target="_blank" class="font-mono text-xs hover:text-sky-300 underline decoration-zinc-700">{{ item.tracking_number }}</a>
+                {% else %}
+                  Not set
+                {% endif %}
               </div>
             </div>
             <div class="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2.5">
@@ -137,6 +200,9 @@
             <a href="/admin/request/{{ item.id }}#shipping" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm">Open Request</a>
             {% if item.tracking_url %}
               <a href="{{ item.tracking_url }}" target="_blank" class="px-3 py-1.5 rounded-lg bg-sky-700 hover:bg-sky-600 text-sm">Track</a>
+            {% endif %}
+            {% if item.label_url or item.label_file_path %}
+              <a href="{{ item.label_url or ('/admin/request/' + item.id + '/shipping/label.pdf') }}" target="_blank" class="px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-sm">📄 Label PDF</a>
             {% endif %}
             {% if item.needs_address_validation %}
               <form method="POST" action="/admin/request/{{ item.id }}/shipping/validate-address">
@@ -174,5 +240,37 @@
       <a href="/changelog" class="hover:text-indigo-400 transition">Printellect v{{ version }}</a>
     </div>
   </div>
+
+  {# Batch operations form (hidden, submitted via JS) #}
+  <form id="batch-form" method="POST" action="/admin/shipping/batch" class="hidden">
+    {{ csrf_input(request)|safe }}
+    <input type="hidden" name="action" id="batch-action" />
+    <input type="hidden" name="ids" id="batch-ids" />
+  </form>
+
+  <script>
+    function updateBatchBar() {
+      const checked = document.querySelectorAll('.batch-cb:checked');
+      const bar = document.getElementById('batch-bar');
+      const count = document.getElementById('batch-count');
+      if (checked.length > 0) {
+        bar.classList.remove('hidden');
+        bar.classList.add('flex');
+        count.textContent = checked.length + ' selected';
+      } else {
+        bar.classList.add('hidden');
+        bar.classList.remove('flex');
+      }
+    }
+    function batchAction(action) {
+      const checked = document.querySelectorAll('.batch-cb:checked');
+      if (checked.length === 0) return;
+      const ids = Array.from(checked).map(c => c.value);
+      if (!confirm('Apply "' + action.replace('-', ' ') + '" to ' + ids.length + ' item(s)?')) return;
+      document.getElementById('batch-action').value = action;
+      document.getElementById('batch-ids').value = ids.join(',');
+      document.getElementById('batch-form').submit();
+    }
+  </script>
 </body>
 </html>

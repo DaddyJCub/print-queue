@@ -94,6 +94,7 @@ from app.demo_data import (
     get_demo_all_printers_status,
 )
 from app.shipping_shippo import ShippoClient, map_shippo_tracking_status
+from app.shipping_usps import USPSClient, map_usps_tracking_status, usps_tracking_url, save_label_pdf
 
 router = APIRouter()
 
@@ -157,6 +158,39 @@ def _shipping_from_address() -> Dict[str, Any]:
 
 def _shippo_api_key() -> str:
     return (get_setting("shippo_api_key", "").strip() or os.getenv("SHIPPO_API_KEY", "").strip())
+
+
+def _usps_client_id() -> str:
+    return (get_setting("usps_client_id", "").strip() or os.getenv("USPS_CLIENT_ID", "").strip())
+
+
+def _usps_client_secret() -> str:
+    return (get_setting("usps_client_secret", "").strip() or os.getenv("USPS_CLIENT_SECRET", "").strip())
+
+
+def _usps_configured() -> bool:
+    return bool(_usps_client_id() and _usps_client_secret())
+
+
+def _usps_client() -> USPSClient:
+    test_mode = get_bool_setting("usps_test_mode", True)
+    return USPSClient(
+        client_id=_usps_client_id(),
+        client_secret=_usps_client_secret(),
+        use_test_env=test_mode,
+    )
+
+
+def _usps_crid() -> str:
+    return get_setting("usps_crid", "").strip()
+
+
+def _usps_mid() -> str:
+    return get_setting("usps_mid", "").strip()
+
+
+def _usps_eps_account() -> str:
+    return get_setting("usps_eps_account", "").strip()
 
 
 def _shippo_webhook_credentials() -> tuple[str, str]:
@@ -3529,26 +3563,11 @@ def admin_fetch_shipping_rates(
 
     parsed_parcel = _parse_parcel_inputs(package_weight_oz, package_length_in, package_width_in, package_height_in)
     selected_template = (flat_rate_template or "").strip()
-    if selected_template and selected_template not in SHIPPO_USPS_FLAT_RATE_TEMPLATES:
-        conn.close()
-        raise HTTPException(status_code=400, detail="Invalid flat-rate package template")
 
-    if selected_template:
-        parcel = {
-            "template": selected_template,
-            "mass_unit": "oz",
-            "weight": parsed_parcel["weight"],
-        }
-        parcel_weight = float(parsed_parcel["weight"])
-        parcel_length = None
-        parcel_width = None
-        parcel_height = None
-    else:
-        parcel = parsed_parcel
-        parcel_weight = float(parsed_parcel["weight"])
-        parcel_length = float(parsed_parcel["length"])
-        parcel_width = float(parsed_parcel["width"])
-        parcel_height = float(parsed_parcel["height"])
+    parcel_weight = float(parsed_parcel["weight"])
+    parcel_length = float(parsed_parcel.get("length", 0) or 0)
+    parcel_width = float(parsed_parcel.get("width", 0) or 0)
+    parcel_height = float(parsed_parcel.get("height", 0) or 0)
 
     metadata: Dict[str, Any] = {}
     try:
@@ -3563,51 +3582,98 @@ def admin_fetch_shipping_rates(
         metadata.pop("flat_rate_template", None)
     metadata_json = json.dumps(metadata) if metadata else None
 
-    try:
-        client = ShippoClient(api_key=_shippo_api_key())
-        shipment = client.create_shipment_and_rates(
-            address_from=_shipping_from_address(),
-            address_to=address_to,
-            parcel=parcel,
-            metadata=f"request_id={rid}",
-        )
-    except Exception as exc:
-        conn.close()
-        raise HTTPException(status_code=502, detail=str(exc))
+    provider = "usps"
+    provider_shipment_id = None
+    rates: list = []
 
-    rates = shipment.get("rates", [])
+    if _usps_configured():
+        # Use USPS v3 API for rates
+        from_addr = _shipping_from_address()
+        origin_zip = from_addr.get("zip", "").strip()[:5]
+        dest_zip = (address_to.get("zip") or "").strip()[:5]
+        if not origin_zip:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Ship-from ZIP code is not configured in settings")
+        try:
+            client = _usps_client()
+            raw_rates = client.get_rates(
+                origin_zip=origin_zip,
+                dest_zip=dest_zip,
+                weight_oz=parcel_weight,
+                length_in=parcel_length,
+                width_in=parcel_width,
+                height_in=parcel_height,
+            )
+            rates = client.normalize_rates(raw_rates)
+        except Exception as exc:
+            conn.close()
+            raise HTTPException(status_code=502, detail=str(exc))
+    else:
+        # Fallback to Shippo
+        provider = "shippo"
+        if selected_template and selected_template not in SHIPPO_USPS_FLAT_RATE_TEMPLATES:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Invalid flat-rate package template")
+
+        if selected_template:
+            parcel = {
+                "template": selected_template,
+                "mass_unit": "oz",
+                "weight": parsed_parcel["weight"],
+            }
+            parcel_length = 0
+            parcel_width = 0
+            parcel_height = 0
+        else:
+            parcel = parsed_parcel
+
+        try:
+            shippo_client = ShippoClient(api_key=_shippo_api_key())
+            shipment = shippo_client.create_shipment_and_rates(
+                address_from=_shipping_from_address(),
+                address_to=address_to,
+                parcel=parcel,
+                metadata=f"request_id={rid}",
+            )
+        except Exception as exc:
+            conn.close()
+            raise HTTPException(status_code=502, detail=str(exc))
+        rates = shipment.get("rates", [])
+        provider_shipment_id = shipment.get("object_id")
+
     now = now_iso()
     conn.execute(
         """INSERT INTO request_shipping_rate_snapshots
            (id, request_id, created_at, provider, parcel_weight_oz, parcel_length_in, parcel_width_in, parcel_height_in, rates_json)
-           VALUES (?, ?, ?, 'shippo', ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             str(uuid.uuid4()),
             rid,
             now,
+            provider,
             parcel_weight,
-            parcel_length,
-            parcel_width,
-            parcel_height,
+            parcel_length or None,
+            parcel_width or None,
+            parcel_height or None,
             json.dumps(rates),
         ),
     )
     conn.execute(
         """UPDATE request_shipping
            SET updated_at = ?, package_weight_oz = ?, package_length_in = ?, package_width_in = ?, package_height_in = ?,
-               metadata_json = ?, provider = 'shippo', provider_shipment_id = ?
+               metadata_json = ?, provider = ?, provider_shipment_id = ?
            WHERE request_id = ?""",
-        (now, parcel_weight, parcel_length, parcel_width, parcel_height, metadata_json, shipment.get("object_id"), rid),
+        (now, parcel_weight, parcel_length or None, parcel_width or None, parcel_height or None, metadata_json, provider, provider_shipment_id, rid),
     )
     _insert_shipping_event(
         conn,
         rid,
         event_type="rates_fetched",
         shipping_status=shipping.get("shipping_status"),
-        provider="shippo",
+        provider=provider,
         provider_event_id=None,
         message=f"Fetched {len(rates)} live rates",
-        payload={"shipment_id": shipment.get("object_id"), "rate_count": len(rates), "flat_rate_template": selected_template or None},
+        payload={"rate_count": len(rates), "flat_rate_template": selected_template or None},
     )
     conn.execute(
         "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
@@ -3699,16 +3765,34 @@ def admin_validate_shipping_address(
         conn.close()
         raise HTTPException(status_code=400, detail="Shipping address is incomplete")
 
+    provider = "usps"
     try:
-        client = ShippoClient(api_key=_shippo_api_key())
-        result = client.validate_address(address)
+        if _usps_configured():
+            client = _usps_client()
+            result = client.validate_address(
+                street=address["street1"],
+                city=address["city"],
+                state=address["state"],
+                zip_code=address["zip"],
+                secondary=address.get("street2", ""),
+            )
+            is_valid = client.is_address_valid(result)
+            messages = []
+            if not is_valid:
+                info = result.get("additionalInfo") or {}
+                footnotes = info.get("footnotes") or ""
+                if footnotes:
+                    messages.append({"text": footnotes})
+        else:
+            provider = "shippo"
+            shippo = ShippoClient(api_key=_shippo_api_key())
+            result = shippo.validate_address(address)
+            validation = result.get("validation_results", {}) if isinstance(result, dict) else {}
+            messages = validation.get("messages") or []
+            is_valid = bool(validation.get("is_valid"))
     except Exception as exc:
         conn.close()
         raise HTTPException(status_code=502, detail=str(exc))
-
-    validation = result.get("validation_results", {}) if isinstance(result, dict) else {}
-    messages = validation.get("messages") or []
-    is_valid = bool(validation.get("is_valid"))
     next_status = "ADDRESS_VALIDATED" if is_valid else shipping.get("shipping_status") or "REQUESTED"
     now = now_iso()
     conn.execute(
@@ -3729,7 +3813,7 @@ def admin_validate_shipping_address(
         rid,
         event_type="address_validated",
         shipping_status=next_status,
-        provider="shippo",
+        provider=provider,
         message="Address validation completed",
         payload={"is_valid": is_valid, "messages": messages},
     )
@@ -3747,6 +3831,7 @@ def admin_buy_shipping_label(
     request: Request,
     rid: str,
     rate_id: Optional[str] = Form(None),
+    mail_class: Optional[str] = Form(None),
     _=Depends(require_permission("manage_queue")),
 ):
     conn = db()
@@ -3756,49 +3841,125 @@ def admin_buy_shipping_label(
         raise HTTPException(status_code=404, detail="Request not found")
     req = dict(req_row)
     shipping = dict(_upsert_shipping_record(conn, rid, req))
-    chosen_rate_id = (rate_id or shipping.get("selected_rate_id") or "").strip()
-    if not chosen_rate_id:
-        conn.close()
-        raise HTTPException(status_code=400, detail="Rate ID is required to buy a label")
-
-    try:
-        client = ShippoClient(api_key=_shippo_api_key())
-        txn = client.buy_label(chosen_rate_id, metadata=f"request_id={rid}")
-    except Exception as exc:
-        conn.close()
-        raise HTTPException(status_code=502, detail=str(exc))
-
-    rate_obj = txn.get("rate") or {}
-    tracking_number = txn.get("tracking_number")
-    carrier = txn.get("tracking_provider") or rate_obj.get("provider")
-    tracking_status = (txn.get("tracking_status") or "UNKNOWN").upper()
-    internal_status = map_shippo_tracking_status(tracking_status)
-    if internal_status == "LABEL_PURCHASED" and tracking_number:
-        internal_status = "PRE_TRANSIT"
 
     now = now_iso()
+    tracking_number = None
+    carrier_name = "USPS"
+    service_name = None
+    rate_amount = None
+    internal_status = "PRE_TRANSIT"
+    label_url_val = None
+    label_file_path_val = None
+    provider_txn_id = None
+    provider_ship_id = None
+    provider_name = "usps"
+    last_payload = {}
+
+    if _usps_configured():
+        # USPS v3 label purchase
+        chosen_mail_class = (mail_class or "PRIORITY_MAIL").strip().upper()
+        from_addr = _shipping_from_address()
+        to_addr = {
+            "name": shipping.get("recipient_name") or req.get("requester_name") or "",
+            "street1": shipping.get("address_line1") or "",
+            "street2": shipping.get("address_line2") or "",
+            "city": shipping.get("city") or "",
+            "state": shipping.get("state") or "",
+            "zip": shipping.get("postal_code") or "",
+        }
+        weight_oz = float(shipping.get("package_weight_oz") or 16)
+        length_in = float(shipping.get("package_length_in") or 8)
+        width_in = float(shipping.get("package_width_in") or 6)
+        height_in = float(shipping.get("package_height_in") or 4)
+
+        try:
+            client = _usps_client()
+            # Get payment token
+            crid = _usps_crid()
+            mid = _usps_mid()
+            eps = _usps_eps_account()
+            if not crid or not mid or not eps:
+                conn.close()
+                raise HTTPException(status_code=400, detail="USPS CRID, MID, and EPS account are required for label purchase. Configure in Settings.")
+            payment_token = client.get_payment_token(crid=crid, mid=mid, account_number=eps)
+            result = client.create_label(
+                from_address=from_addr,
+                to_address=to_addr,
+                weight_oz=weight_oz,
+                length_in=length_in,
+                width_in=width_in,
+                height_in=height_in,
+                mail_class=chosen_mail_class,
+                payment_token=payment_token,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            conn.close()
+            raise HTTPException(status_code=502, detail=str(exc))
+
+        tracking_number = result.get("tracking_number")
+        rate_amount = result.get("postage")
+        service_name = chosen_mail_class.replace("_", " ").title()
+        last_payload = result.get("raw_response", {})
+
+        # Save label PDF locally
+        if result.get("label_bytes"):
+            label_file_path_val = save_label_pdf(rid, result["label_bytes"])
+
+    else:
+        # Fallback to Shippo
+        provider_name = "shippo"
+        chosen_rate_id = (rate_id or shipping.get("selected_rate_id") or "").strip()
+        if not chosen_rate_id:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Rate ID is required to buy a label")
+        try:
+            shippo_client = ShippoClient(api_key=_shippo_api_key())
+            txn = shippo_client.buy_label(chosen_rate_id, metadata=f"request_id={rid}")
+        except Exception as exc:
+            conn.close()
+            raise HTTPException(status_code=502, detail=str(exc))
+        rate_obj = txn.get("rate") or {}
+        tracking_number = txn.get("tracking_number")
+        carrier_name = txn.get("tracking_provider") or rate_obj.get("provider")
+        tracking_status_raw = (txn.get("tracking_status") or "UNKNOWN").upper()
+        internal_status = map_shippo_tracking_status(tracking_status_raw)
+        if internal_status == "LABEL_PURCHASED" and tracking_number:
+            internal_status = "PRE_TRANSIT"
+        service_name = rate_obj.get("servicelevel_name")
+        rate_amount = rate_obj.get("amount")
+        label_url_val = txn.get("label_url")
+        provider_txn_id = txn.get("object_id")
+        provider_ship_id = txn.get("shipment")
+        last_payload = txn
+
+    tracking_url_val = _shipping_tracking_url(carrier_name, tracking_number) if tracking_number else None
+    chosen_rate_id_val = rate_id or shipping.get("selected_rate_id") or ""
+
     conn.execute(
         """UPDATE request_shipping
-           SET updated_at = ?, shipping_status = ?, provider = 'shippo', provider_transaction_id = ?, provider_shipment_id = ?,
+           SET updated_at = ?, shipping_status = ?, provider = ?, provider_transaction_id = ?, provider_shipment_id = ?,
                selected_rate_id = ?, carrier = ?, service = ?, rate_amount = ?, tracking_number = ?, tracking_status = ?,
-               tracking_url = ?, label_url = ?, label_pdf_url = ?, shipped_at = ?, last_provider_payload = ?
+               tracking_url = ?, label_url = ?, label_file_path = ?, shipped_at = ?, last_provider_payload = ?
            WHERE request_id = ?""",
         (
             now,
             internal_status,
-            txn.get("object_id"),
-            txn.get("shipment"),
-            chosen_rate_id,
-            carrier,
-            rate_obj.get("servicelevel_name"),
-            rate_obj.get("amount"),
+            provider_name,
+            provider_txn_id,
+            provider_ship_id,
+            chosen_rate_id_val.strip() or None,
+            carrier_name,
+            service_name,
+            rate_amount,
             tracking_number,
-            tracking_status,
-            _shipping_tracking_url(carrier, tracking_number),
-            txn.get("label_url"),
-            txn.get("label_file"),
+            internal_status,
+            tracking_url_val,
+            label_url_val,
+            label_file_path_val,
             now if tracking_number else None,
-            json.dumps(txn),
+            json.dumps(last_payload),
             rid,
         ),
     )
@@ -3807,9 +3968,9 @@ def admin_buy_shipping_label(
         rid,
         event_type="label_purchased",
         shipping_status=internal_status,
-        provider="shippo",
-        provider_event_id=txn.get("object_id"),
-        message=f"Label purchased ({carrier or 'carrier unknown'})",
+        provider=provider_name,
+        provider_event_id=provider_txn_id,
+        message=f"Label purchased ({carrier_name or 'carrier unknown'})",
         payload={"tracking_number": tracking_number},
     )
     conn.execute(
@@ -3823,6 +3984,24 @@ def admin_buy_shipping_label(
         _notify_requester_shipping_status(req, dict(shipping_updated), internal_status)
     conn.close()
     return RedirectResponse(url=f"/admin/request/{rid}#shipping", status_code=303)
+
+
+@router.get("/admin/request/{rid}/shipping/label.pdf")
+def admin_serve_label_pdf(
+    request: Request,
+    rid: str,
+    _=Depends(require_permission("manage_queue")),
+):
+    """Serve a locally stored USPS label PDF."""
+    conn = db()
+    row = conn.execute("SELECT label_file_path FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
+    conn.close()
+    if not row or not row["label_file_path"]:
+        raise HTTPException(status_code=404, detail="No label PDF found for this request")
+    filepath = row["label_file_path"]
+    if not os.path.isfile(filepath):
+        raise HTTPException(status_code=404, detail="Label PDF file not found on disk")
+    return FileResponse(filepath, media_type="application/pdf", filename=f"label-{rid[:8]}.pdf")
 
 
 @router.post("/admin/request/{rid}/shipping/set-tracking")

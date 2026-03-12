@@ -53,6 +53,18 @@ class HardwareAdapter:
             "idle_mode": self.idle_mode,
         }
 
+    def notify_shipping(self, status):
+        """Flash LED pattern to indicate shipping status.
+        Patterns:
+          in_transit   - 3 slow blue pulses
+          out_for_delivery - 5 fast green pulses
+          delivered    - solid green 3s
+          exception    - 3 red flashes
+        """
+        # On real hardware, drive NeoPixel/WS2812 or onboard LED.
+        # This is a stub for the hardware abstraction.
+        _ = status
+
     def set_led_phase(self, phase):
         # Hook for button-hold feedback patterns.
         _ = phase
