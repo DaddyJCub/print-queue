@@ -2902,8 +2902,16 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
     }
     shipping_from = _shipping_from_address()
     shipping_data = dict(shipping_row) if shipping_row else None
+    tracking_detail = {}
     selected_flat_rate_template = ""
     if shipping_data:
+        # Parse last_provider_payload for tracking scan events
+        try:
+            lpp = json.loads(shipping_data.get("last_provider_payload") or "{}")
+            if isinstance(lpp, dict) and lpp.get("scanEvents"):
+                tracking_detail = lpp
+        except Exception:
+            pass
         try:
             shipping_meta = json.loads(shipping_data.get("metadata_json") or "{}")
             if isinstance(shipping_meta, dict):
@@ -2937,6 +2945,7 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         "shipping_events": [dict(e) for e in shipping_events],
         "shipping_defaults": shipping_defaults,
         "shipping_from": shipping_from,
+        "tracking_detail": tracking_detail,
         "shippo_flat_rate_templates": list(SHIPPO_USPS_FLAT_RATE_TEMPLATES.items()),
         "selected_flat_rate_template": selected_flat_rate_template,
         "shipping_enabled": get_bool_setting("shipping_enabled", False),

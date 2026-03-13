@@ -128,6 +128,38 @@ async def _usps_tracking_poll_loop():
                     update_fields += ", delivered_at = COALESCE(delivered_at, ?)"
                     update_values.append(now)
 
+                # Always persist the full tracking response for detail display
+                tracking_detail = {
+                    "statusCategory": status_category,
+                    "status": tracking_data.get("status", ""),
+                    "statusSummary": tracking_data.get("statusSummary", ""),
+                    "estimatedDeliveryDate": est_delivery,
+                }
+                # Extract last known location from most recent tracking event
+                tracking_events_raw = tracking_data.get("trackingEvents") or []
+                if tracking_events_raw:
+                    latest_event = tracking_events_raw[0] if isinstance(tracking_events_raw, list) else None
+                    if latest_event:
+                        event_city = latest_event.get("eventCity", "")
+                        event_state = latest_event.get("eventState", "")
+                        event_zip = latest_event.get("eventZIPCode", "")
+                        if event_city or event_state:
+                            tracking_detail["lastLocation"] = f"{event_city}, {event_state} {event_zip}".strip()
+                    # Persist the last N scan events for UI display
+                    tracking_detail["scanEvents"] = [
+                        {
+                            "date": e.get("eventDate", ""),
+                            "time": e.get("eventTime", ""),
+                            "city": e.get("eventCity", ""),
+                            "state": e.get("eventState", ""),
+                            "zip": e.get("eventZIPCode", ""),
+                            "description": e.get("eventDescription", "") or e.get("event", ""),
+                        }
+                        for e in (tracking_events_raw[:20] if isinstance(tracking_events_raw, list) else [])
+                    ]
+                update_fields += ", last_provider_payload = ?"
+                update_values.append(json.dumps(tracking_detail))
+
                 update_values.append(rid)
                 conn.execute(
                     f"UPDATE request_shipping SET {update_fields} WHERE request_id = ?",
@@ -136,6 +168,10 @@ async def _usps_tracking_poll_loop():
 
                 if status_changed:
                     import uuid
+                    location_str = tracking_detail.get("lastLocation", "")
+                    status_msg = f"USPS tracking updated: {old_status} → {new_internal_status}"
+                    if location_str:
+                        status_msg += f" ({location_str})"
                     conn.execute(
                         """INSERT INTO request_shipping_events
                            (id, request_id, created_at, event_type, shipping_status, provider, message, payload_json)
@@ -145,8 +181,8 @@ async def _usps_tracking_poll_loop():
                             rid,
                             now,
                             new_internal_status,
-                            f"USPS tracking updated: {old_status} → {new_internal_status}",
-                            json.dumps({"statusCategory": status_category, "status": tracking_data.get("status", "")}),
+                            status_msg,
+                            json.dumps(tracking_detail),
                         ),
                     )
                     updated_count += 1

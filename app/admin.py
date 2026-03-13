@@ -584,7 +584,7 @@ def admin_shipping_batch(
         usps_client_secret = get_setting("usps_client_secret", "").strip() or os.getenv("USPS_CLIENT_SECRET", "").strip()
         if usps_client_id and usps_client_secret:
             usps_test = get_bool_setting("usps_test_mode", True)
-            client = USPSClient(client_id=usps_client_id, client_secret=usps_client_secret, test_mode=usps_test)
+            client = USPSClient(client_id=usps_client_id, client_secret=usps_client_secret, use_test_env=usps_test)
             for rid in rid_list:
                 shipping_row = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
                 if not shipping_row:
@@ -593,17 +593,21 @@ def admin_shipping_batch(
                 req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
                 if not req_row:
                     continue
-                address = {
-                    "streetAddress": ship.get("address_line1") or "",
-                    "city": ship.get("city") or "",
-                    "state": ship.get("state") or "",
-                    "ZIPCode": ship.get("postal_code") or "",
-                }
-                if not address["streetAddress"] or not address["city"]:
+                street = ship.get("address_line1") or ""
+                city = ship.get("city") or ""
+                state = ship.get("state") or ""
+                zip_code = ship.get("postal_code") or ""
+                if not street or not city:
                     continue
                 try:
-                    result = client.validate_address(address)
-                    is_valid = result.get("_dpv_valid", False)
+                    result = client.validate_address(
+                        street=street,
+                        city=city,
+                        state=state,
+                        zip_code=zip_code,
+                        secondary=ship.get("address_line2") or "",
+                    )
+                    is_valid = client.is_address_valid(result)
                     import json
                     next_status = "ADDRESS_VALIDATED" if is_valid else (ship.get("shipping_status") or "REQUESTED")
                     conn.execute(

@@ -537,6 +537,53 @@
                 </div>
               {% endif %}
 
+              {# ── Tracking summary bar ── #}
+              {% if shipping and shipping.tracking_number %}
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400 bg-zinc-900/60 rounded-lg px-3 py-2 border border-zinc-800">
+                  <span class="font-mono text-zinc-300">{{ shipping.carrier or 'USPS' }} {{ shipping.tracking_number }}</span>
+                  {% if shipping.tracking_url %}
+                    <a href="{{ shipping.tracking_url }}" target="_blank" class="text-sky-400 hover:text-sky-300 underline">Track on carrier site →</a>
+                  {% endif %}
+                  {% if tracking_detail.get('estimatedDeliveryDate') %}
+                    <span>Est. delivery: <span class="text-zinc-200 font-medium">{{ tracking_detail['estimatedDeliveryDate'] }}</span></span>
+                  {% elif shipping.estimated_delivery_date %}
+                    <span>Est. delivery: <span class="text-zinc-200 font-medium">{{ shipping.estimated_delivery_date }}</span></span>
+                  {% endif %}
+                  {% if tracking_detail.get('lastLocation') %}
+                    <span>Last seen: <span class="text-zinc-200">{{ tracking_detail['lastLocation'] }}</span></span>
+                  {% endif %}
+                </div>
+              {% endif %}
+
+              {# ── Status summary ── #}
+              {% if tracking_detail.get('statusSummary') or tracking_detail.get('status') %}
+                <div class="text-xs text-zinc-300 bg-zinc-900/40 rounded px-3 py-1.5 border border-zinc-800/60">
+                  {{ tracking_detail.get('statusSummary') or tracking_detail.get('status') }}
+                </div>
+              {% endif %}
+
+              {# ── USPS scan event history ── #}
+              {% if tracking_detail.get('scanEvents') %}
+                <details open class="text-xs">
+                  <summary class="text-zinc-400 cursor-pointer hover:text-zinc-300 font-medium mb-1">USPS Scan History ({{ tracking_detail['scanEvents']|length }})</summary>
+                  <div class="space-y-0.5 max-h-56 overflow-y-auto pl-3 border-l-2 border-zinc-800">
+                    {% for scan in tracking_detail['scanEvents'] %}
+                      <div class="relative pl-3 py-1 {% if loop.first %}text-zinc-200{% else %}text-zinc-400{% endif %}">
+                        <span class="absolute -left-[7px] top-2 w-2.5 h-2.5 rounded-full border-2
+                          {% if loop.first %}border-sky-500 bg-sky-500/30{% else %}border-zinc-600 bg-zinc-800{% endif %}"></span>
+                        <div class="flex flex-wrap items-baseline gap-x-2">
+                          <span class="font-medium">{{ scan.description }}</span>
+                          {% if scan.city or scan.state %}
+                            <span class="text-zinc-500">{{ scan.city }}{% if scan.state %}, {{ scan.state }}{% endif %}{% if scan.zip %} {{ scan.zip }}{% endif %}</span>
+                          {% endif %}
+                        </div>
+                        <span class="text-zinc-600">{{ scan.date }}{% if scan.time %} {{ scan.time }}{% endif %}</span>
+                      </div>
+                    {% endfor %}
+                  </div>
+                </details>
+              {% endif %}
+
               {% if transit_active and not transit_done %}
                 <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/mark-delivered">
                   <button type="submit" class="w-full rounded-lg bg-emerald-700 hover:bg-emerald-600 transition py-2 text-sm font-medium">Mark Delivered (Manual Override)</button>
