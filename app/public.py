@@ -302,12 +302,16 @@ async def submit(
         if (ship_country or "US").strip().upper() != "US":
             return render_form(request, "Shipping currently supports US destinations only.", form_state)
 
-    try:
-        ok = await verify_turnstile(turnstile_token or "", client_ip)
-    except Exception as e:
-        logger.error(f"[SUBMIT] Turnstile verification exception: {e}", exc_info=True)
-        # Allow submission on error to avoid blocking users
+    # Skip Turnstile for authenticated users — they've already proven identity
+    if user:
         ok = True
+    else:
+        try:
+            ok = await verify_turnstile(turnstile_token or "", client_ip)
+        except Exception as e:
+            logger.error(f"[SUBMIT] Turnstile verification exception: {e}", exc_info=True)
+            # Allow submission on error to avoid blocking users
+            ok = True
     
     if not ok:
         logger.warning(f"[SUBMIT] Turnstile failed for {requester_email} from {client_ip}")
