@@ -28,7 +28,7 @@ from app.main import (
     build_email_html,
     send_push_notification_to_admins,
 )
-from app.auth import optional_user, create_request_assignment
+from app.auth import optional_user, create_request_assignment, get_current_account
 from app.models import AssignmentRole
 from app.auth import get_current_user, get_current_admin
 from app.oidc import is_oidc_enabled, get_oidc_config
@@ -622,11 +622,22 @@ def requester_resubmit(request: Request, rid: str, token: str):
 # ─────────────────────────── MY REQUESTS LOOKUP ───────────────────────────
 
 @router.get("/my-requests", response_class=HTMLResponse)
-def my_requests_lookup(request: Request, sent: Optional[str] = None, error: Optional[str] = None, token: Optional[str] = None):
+async def my_requests_lookup(request: Request, sent: Optional[str] = None, error: Optional[str] = None, token: Optional[str] = None):
     """Email lookup form for viewing all requests"""
     # If token provided in URL, redirect to view page (for PWA deep linking)
     if token:
         return RedirectResponse(url=f"/my-requests/view?token={token}", status_code=302)
+    
+    # Auto-redirect logged-in users (legacy or OIDC) to their requests
+    user = await get_current_user(request)
+    if not user:
+        account = await get_current_account(request)
+        if account:
+            view_token = get_or_create_my_requests_token(account.email)
+            return RedirectResponse(url=f"/my-requests/view?token={view_token}", status_code=302)
+    if user:
+        view_token = get_or_create_my_requests_token(user.email)
+        return RedirectResponse(url=f"/my-requests/view?token={view_token}", status_code=302)
     
     # Check if user accounts feature is enabled
     user_accounts_enabled = is_feature_enabled("user_accounts")
@@ -745,6 +756,16 @@ async def my_requests_view(request: Request, token: str = None, user_session: st
                 is_admin_user = True
             if is_feature_enabled("user_accounts") and not user.password_hash:
                 needs_password_prompt = True
+    
+    # Try unified account session (OIDC / new account system)
+    if not email:
+        account = await get_current_account(request)
+        if account:
+            email = account.email
+            token_to_use = get_or_create_my_requests_token(email)
+            admin = await get_current_admin(request)
+            if admin and admin.id != "legacy":
+                is_admin_user = True
     
     # If no session auth, try token auth
     if not email and token:

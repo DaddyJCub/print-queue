@@ -242,8 +242,11 @@ async def submit(
     logger.info(f"[SUBMIT] New request from {requester_email} ({client_ip}), print_name: {print_name}")
     
     # Get current logged-in user if any (for account linking)
+    # Prefer legacy User, fall back to unified Account (mirrors home route)
     try:
         user = await optional_user(request)
+        if not user:
+            user = await get_current_account(request)
     except Exception as e:
         logger.warning(f"[SUBMIT] Error getting user session: {e}")
         user = None

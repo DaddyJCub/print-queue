@@ -447,8 +447,18 @@ async def user_register_submit(
 @router.get("/auth/profile", response_class=HTMLResponse)
 async def auth_profile_redirect(request: Request, success: str = None):
     """Redirect to new user profile page."""
+    from app.auth import get_current_account
     user = await get_current_user(request)
     if not user:
+        # Fall back to unified account (OIDC)
+        account = await get_current_account(request)
+        if account:
+            from app.main import get_or_create_my_requests_token
+            token = get_or_create_my_requests_token(account.email)
+            redirect_url = f"/user/profile?token={token}"
+            if success:
+                redirect_url += f"&success={quote(success)}"
+            return RedirectResponse(url=redirect_url, status_code=303)
         return RedirectResponse(url="/my-requests?error=not_logged_in", status_code=303)
     
     # Get or create a token for this user's email
@@ -1922,6 +1932,14 @@ async def user_profile_page(
     
     if not user:
         user = await get_current_user(request)
+    
+    # Fall back to unified account (OIDC)
+    if not user:
+        from app.auth import get_current_account
+        account = await get_current_account(request)
+        if account:
+            # Wrap account as a user-like object for the template
+            user = account
     
     if not user:
         return RedirectResponse(url="/my-requests?error=not_logged_in", status_code=303)
