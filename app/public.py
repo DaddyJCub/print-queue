@@ -673,12 +673,29 @@ async def submit(
 
     logger.info(f"[SUBMIT] Successfully created request {rid[:8]} for {requester_email}")
     
-    # Show thanks page with portal link
+    # PRG pattern: redirect to success page to avoid GET /submit on reload
+    return RedirectResponse(
+        url=f"/submit/success?rid={rid}&token={access_token}",
+        status_code=303,
+    )
+
+
+@router.get("/submit/success", response_class=HTMLResponse)
+async def submit_success(request: Request, rid: str = "", token: str = ""):
+    """Success page after submitting a request (PRG pattern)."""
+    # Look up print name for display
+    print_name = None
+    if rid:
+        conn = db()
+        row = conn.execute("SELECT print_name FROM requests WHERE id = ? AND access_token = ?", (rid, token)).fetchone()
+        conn.close()
+        if row:
+            print_name = row["print_name"]
     return templates.TemplateResponse("thanks_new.html", {
         "request": request,
         "rid": rid,
-        "print_name": print_name.strip() if print_name else None,
-        "access_token": access_token,
+        "print_name": print_name,
+        "access_token": token,
         "version": APP_VERSION,
     })
 

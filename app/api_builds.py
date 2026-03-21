@@ -77,6 +77,7 @@ from app.main import (
     get_unmatched_print,
     resolve_unmatched_print,
     record_unmatched_print,
+    process_filament_metadata,
     find_matching_requests_for_file,
     fetch_printer_status_with_cache,
 )
@@ -1516,6 +1517,8 @@ async def admin_send_file_to_printer(
         referenced_tools = metadata.get("referenced_tools") or []
         filament_colors = metadata.get("filament_colors") or []
         filament_type = metadata.get("filament_type") or ""
+        if isinstance(filament_type, list):
+            filament_type = ", ".join(dict.fromkeys(t for t in filament_type if t))
         filament_names = metadata.get("filament_name") or ""
         filament_change_count = metadata.get("filament_change_count") or 0
         
@@ -3259,6 +3262,9 @@ async def admin_unmatched_detail(request: Request, unmatched_id: str, _=Depends(
         raise HTTPException(status_code=404, detail="Unmatched print not found")
 
     metadata = unmatched.get("printer_metadata") or {}
+    # Ensure display-friendly filament fields exist (backward compat for old records)
+    if metadata and not metadata.get("filament_type_display"):
+        process_filament_metadata(metadata)
     printer_code = unmatched["printer_code"]
 
     # Get potential matching requests (widened search)
@@ -3279,7 +3285,9 @@ async def admin_unmatched_detail(request: Request, unmatched_id: str, _=Depends(
 
     # Try to guess material from metadata
     guessed_material = "PLA"
-    filament_type = metadata.get("filament_type", "")
+    filament_type = metadata.get("filament_type_display") or metadata.get("filament_type", "")
+    if isinstance(filament_type, list):
+        filament_type = ", ".join(dict.fromkeys(t for t in filament_type if t))
     if filament_type:
         upper = filament_type.upper()
         for code, label in MATERIALS:

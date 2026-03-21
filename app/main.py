@@ -3425,6 +3425,68 @@ def clear_print_match_suggestion(printer_code: str):
 
 # ─────────────────────────── UNMATCHED PRINT DETECTION ───────────────────────────
 
+
+def process_filament_metadata(metadata: Dict) -> Dict:
+    """Process raw Moonraker filament fields into display-friendly formats.
+
+    Moonraker returns per-tool lists for multi-color prints:
+      filament_type: ["PLA", "PLA", "PETG"] or "PLA;PLA;PETG"
+      filament_colors: ["#FF0000", "#00FF00"]
+      filament_name: ["Generic PLA @System", "Generic PLA @System - 1{file.3mf}"]
+
+    This creates cleaned display versions alongside the raw data.
+    """
+    import re
+
+    # --- filament_type: deduplicate to e.g. "PLA" or "PLA, PETG" ---
+    raw_type = metadata.get("filament_type")
+    if raw_type:
+        if isinstance(raw_type, list):
+            types = raw_type
+        elif isinstance(raw_type, str) and ";" in raw_type:
+            types = [t.strip() for t in raw_type.split(";")]
+        else:
+            types = [raw_type] if isinstance(raw_type, str) else []
+        unique_types = list(dict.fromkeys(t for t in types if t))
+        metadata["filament_type_display"] = ", ".join(unique_types) if unique_types else None
+    else:
+        metadata["filament_type_display"] = None
+
+    # --- filament_colors: ensure it's a flat list of hex strings ---
+    raw_colors = metadata.get("filament_colors")
+    if raw_colors:
+        if isinstance(raw_colors, list):
+            metadata["filament_colors"] = [c for c in raw_colors if isinstance(c, str)]
+        elif isinstance(raw_colors, str):
+            metadata["filament_colors"] = [c.strip() for c in raw_colors.split(",") if c.strip()]
+
+    # --- filament_name: clean up slicer noise and deduplicate ---
+    raw_name = metadata.get("filament_name")
+    if raw_name:
+        if isinstance(raw_name, list):
+            names = raw_name
+        elif isinstance(raw_name, str) and ";" in raw_name:
+            names = [n.strip() for n in raw_name.split(";")]
+        else:
+            names = [raw_name] if isinstance(raw_name, str) else []
+        cleaned = []
+        for n in names:
+            if not n:
+                continue
+            # Remove @System suffix and {filename} references
+            n = re.sub(r"\s*@System\b", "", n)
+            n = re.sub(r"\s*[-–]?\s*\d*\{[^}]*\}", "", n)
+            n = n.strip(" -–")
+            if n:
+                cleaned.append(n)
+        unique_names = list(dict.fromkeys(cleaned))
+        metadata["filament_name_display"] = ", ".join(unique_names) if unique_names else None
+    else:
+        metadata["filament_name_display"] = None
+
+    return metadata
+
+
 def record_unmatched_print(printer_code: str, file_name: str, metadata: Dict) -> Optional[str]:
     """
     Record an unmatched print (printer is printing but no request matches).
@@ -3466,6 +3528,8 @@ def get_active_unmatched_prints() -> List[Dict]:
         if d.get("printer_metadata"):
             try:
                 d["printer_metadata"] = json.loads(d["printer_metadata"])
+                if not d["printer_metadata"].get("filament_type_display"):
+                    process_filament_metadata(d["printer_metadata"])
             except Exception:
                 pass
         results.append(d)
@@ -3483,6 +3547,8 @@ def get_unmatched_print(unmatched_id: str) -> Optional[Dict]:
     if d.get("printer_metadata"):
         try:
             d["printer_metadata"] = json.loads(d["printer_metadata"])
+            if not d["printer_metadata"].get("filament_type_display"):
+                process_filament_metadata(d["printer_metadata"])
         except Exception:
             pass
     return d
@@ -3571,10 +3637,14 @@ def send_unmatched_print_notification(unmatched: Dict, is_reminder: bool = False
         ]
         if metadata.get("estimated_time_display"):
             rows.append(("Est. Time", metadata["estimated_time_display"]))
-        if metadata.get("filament_type"):
-            rows.append(("Filament", metadata["filament_type"]))
+        if metadata.get("filament_type_display") or metadata.get("filament_type"):
+            rows.append(("Filament", metadata.get("filament_type_display") or metadata["filament_type"]))
         if metadata.get("filament_colors"):
-            rows.append(("Colors", metadata["filament_colors"]))
+            colors = metadata["filament_colors"]
+            if isinstance(colors, list):
+                rows.append(("Colors", ", ".join(colors)))
+            else:
+                rows.append(("Colors", colors))
         if metadata.get("current_layer") and metadata.get("total_layers"):
             rows.append(("Layers", f"{metadata['current_layer']} / {metadata['total_layers']}"))
 
@@ -6629,6 +6699,7 @@ async def poll_printer_status_worker():
                                     unmatched_metadata["filament_colors"] = file_meta.get("filament_colors")
                                     unmatched_metadata["filament_name"] = file_meta.get("filament_name")
                                     unmatched_metadata["referenced_tools"] = file_meta.get("referenced_tools")
+                                    process_filament_metadata(unmatched_metadata)
                             if hasattr(printer_api, 'get_thumbnail_url'):
                                 thumb = await printer_api.get_thumbnail_url()
                                 if thumb:

@@ -384,8 +384,10 @@
                 {% if um.printer_metadata.estimated_time_display is defined and um.printer_metadata.estimated_time_display %}
                   <span>⏱ {{ um.printer_metadata.estimated_time_display }}</span>
                 {% endif %}
-                {% if um.printer_metadata.filament_type is defined and um.printer_metadata.filament_type %}
-                  <span>🧵 {{ um.printer_metadata.filament_type }}</span>
+                {% if um.printer_metadata.filament_type_display is defined and um.printer_metadata.filament_type_display %}
+                  <span>🧵 {{ um.printer_metadata.filament_type_display }}</span>
+                {% elif um.printer_metadata.filament_type is defined and um.printer_metadata.filament_type %}
+                  <span>🧵 {% if um.printer_metadata.filament_type is string %}{{ um.printer_metadata.filament_type }}{% else %}{{ um.printer_metadata.filament_type | join(', ') }}{% endif %}</span>
                 {% endif %}
                 {% if um.printer_metadata.progress is defined and um.printer_metadata.progress %}
                   <span>📊 {{ um.printer_metadata.progress|round(1) }}%</span>

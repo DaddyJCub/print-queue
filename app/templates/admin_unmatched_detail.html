@@ -55,22 +55,26 @@
               <span class="text-white text-sm">{{ metadata.estimated_time_display }}</span>
             </div>
             {% endif %}
-            {% if metadata.filament_type %}
+            {% if metadata.filament_type_display or metadata.filament_type %}
             <div class="flex justify-between">
               <span class="text-zinc-400 text-sm">Filament Type</span>
-              <span class="text-white text-sm">{{ metadata.filament_type }}</span>
+              <span class="text-white text-sm">{{ metadata.filament_type_display or metadata.filament_type }}</span>
             </div>
             {% endif %}
             {% if metadata.filament_colors %}
-            <div class="flex justify-between">
+            <div class="flex justify-between items-center">
               <span class="text-zinc-400 text-sm">Colors</span>
-              <span class="text-white text-sm">{{ metadata.filament_colors }}</span>
+              <div class="flex flex-wrap gap-1 justify-end">
+                {% for color in metadata.filament_colors %}
+                  <span class="inline-block w-5 h-5 rounded-full border border-zinc-600" style="background-color: {{ color }}" title="{{ color }}"></span>
+                {% endfor %}
+              </div>
             </div>
             {% endif %}
-            {% if metadata.filament_name %}
-            <div class="flex justify-between">
-              <span class="text-zinc-400 text-sm">Filament Name</span>
-              <span class="text-white text-sm">{{ metadata.filament_name }}</span>
+            {% if metadata.filament_name_display or metadata.filament_name %}
+            <div class="flex justify-between gap-4">
+              <span class="text-zinc-400 text-sm shrink-0">Filament Name</span>
+              <span class="text-white text-sm text-right">{{ metadata.filament_name_display or metadata.filament_name }}</span>
             </div>
             {% endif %}
             {% if metadata.current_layer and metadata.total_layers %}
@@ -179,7 +183,7 @@
             </div>
             <div>
               <label class="block text-xs font-medium text-zinc-400 mb-1">Colors</label>
-              <input type="text" name="colors" value="{{ metadata.filament_colors or '' }}" placeholder="e.g., Black, White"
+              <input type="text" name="colors" value="{% if metadata.filament_colors is iterable and metadata.filament_colors is not string %}{{ metadata.filament_colors | join(', ') }}{% else %}{{ metadata.filament_colors or '' }}{% endif %}" placeholder="e.g., Black, White"
                      class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
             </div>
             <div>
