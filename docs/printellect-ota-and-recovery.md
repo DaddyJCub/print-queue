@@ -1,5 +1,7 @@
 # Printellect OTA and Recovery
 
+> See also: [Device API](printellect-device-api.md) · [Firmware Dev Workflow](printellect-firmware-dev.md) · [Flashing Guide](printellect-flashing-guide.md) · [Docs Index](README.md)
+
 ## OTA model
 - Backend stores app releases with `manifest_json` and `bundle_path`.
 - Device checks `/api/printellect/device/v1/releases/latest`.

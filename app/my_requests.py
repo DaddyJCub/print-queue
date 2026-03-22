@@ -105,6 +105,7 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
 
     shipping = None
     shipping_events = []
+    tracking_detail = {}
     if (req.get("fulfillment_method") or "pickup") == "shipping":
         shipping_row = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
         if shipping_row:
@@ -113,6 +114,13 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
                 "SELECT * FROM request_shipping_events WHERE request_id = ? ORDER BY created_at DESC LIMIT 20",
                 (rid,),
             ).fetchall()
+            try:
+                payload = shipping.get("last_provider_payload") or ""
+                if payload:
+                    import json as _json
+                    tracking_detail = _json.loads(payload)
+            except Exception:
+                tracking_detail = {}
     
     # Get builds with snapshots (for multi-build requests or DONE status)
     builds_with_snapshots = []
@@ -251,6 +259,7 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
         "builds_with_snapshots": builds_with_snapshots,
         "shipping": shipping,
         "shipping_events": shipping_events,
+        "tracking_detail": tracking_detail,
         "requester_email": requester_email,
         "current_printing_build": current_printing_build,
         "current_printing_file": current_printing_file,

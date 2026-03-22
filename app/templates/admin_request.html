@@ -541,79 +541,126 @@
               <svg class="w-4 h-4 text-zinc-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
             </button>
             <div id="step-transit" class="{% if not transit_active and not transit_done and not (ship_status in ['RETURNED', 'CANCELLED']) %}hidden{% endif %} px-3 pb-3 space-y-3">
+              {# ── Status hero ── #}
               {% if transit_done %}
-                <div class="flex items-center gap-2 p-2 rounded-lg bg-emerald-900/20 border border-emerald-800/30">
-                  <span class="text-lg">✅</span>
+                <div class="flex items-center gap-3 p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/30">
+                  <div class="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-lg shrink-0">✅</div>
                   <div>
-                    <p class="text-sm font-medium text-emerald-200">Delivered</p>
-                    {% if shipping and shipping.delivered_at %}<p class="text-xs text-emerald-300/70">{{ shipping.delivered_at|localtime }}</p>{% endif %}
+                    <p class="text-sm font-semibold text-emerald-200">Delivered</p>
+                    {% if shipping and shipping.delivered_at %}<p class="text-xs text-emerald-300/60">{{ shipping.delivered_at|localtime }}</p>{% endif %}
+                    {% if tracking_detail.get('lastLocation') %}<p class="text-xs text-emerald-300/60">{{ tracking_detail['lastLocation'] }}</p>{% endif %}
                   </div>
                 </div>
               {% elif ship_status == 'EXCEPTION' %}
-                <div class="flex items-center gap-2 p-2 rounded-lg bg-red-900/20 border border-red-800/30">
-                  <span class="text-lg">⚠️</span>
-                  <p class="text-sm text-red-200">Carrier reported an exception — check tracking for details.</p>
+                <div class="flex items-center gap-3 p-3 rounded-xl bg-red-950/40 border border-red-800/30">
+                  <div class="w-10 h-10 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center text-lg shrink-0">⚠️</div>
+                  <div>
+                    <p class="text-sm font-semibold text-red-200">Delivery Exception</p>
+                    <p class="text-xs text-red-300/70">The carrier reported an issue — see scan history below.</p>
+                  </div>
+                </div>
+              {% elif ship_status == 'OUT_FOR_DELIVERY' %}
+                <div class="flex items-center gap-3 p-3 rounded-xl bg-sky-950/40 border border-sky-800/30">
+                  <div class="w-10 h-10 rounded-full bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-lg shrink-0">🚚</div>
+                  <div>
+                    <p class="text-sm font-semibold text-sky-200">Out for Delivery</p>
+                    {% if tracking_detail.get('lastLocation') %}<p class="text-xs text-sky-300/60">{{ tracking_detail['lastLocation'] }}</p>{% endif %}
+                  </div>
+                </div>
+              {% elif ship_status in ['IN_TRANSIT', 'PRE_TRANSIT'] %}
+                <div class="flex items-center gap-3 p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/40">
+                  <div class="w-10 h-10 rounded-full bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-lg shrink-0">📦</div>
+                  <div>
+                    <p class="text-sm font-semibold text-sky-200">{{ ship_status.replace('_', ' ').title() }}</p>
+                    {% if tracking_detail.get('lastLocation') %}<p class="text-xs text-zinc-400">Last seen: {{ tracking_detail['lastLocation'] }}</p>{% endif %}
+                  </div>
                 </div>
               {% endif %}
 
-              {# ── Tracking summary bar ── #}
+              {# ── Info grid ── #}
               {% if shipping and shipping.tracking_number %}
-                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400 bg-zinc-900/60 rounded-lg px-3 py-2 border border-zinc-800">
-                  <span class="font-mono text-zinc-300">{{ shipping.carrier or 'USPS' }} {{ shipping.tracking_number }}</span>
-                  {% if shipping.tracking_url %}
-                    <a href="{{ shipping.tracking_url }}" target="_blank" class="text-sky-400 hover:text-sky-300 underline">Track on carrier site →</a>
-                  {% endif %}
-                  {% if tracking_detail.get('estimatedDeliveryDate') %}
-                    <span>Est. delivery: <span class="text-zinc-200 font-medium">{{ tracking_detail['estimatedDeliveryDate'] }}</span></span>
-                  {% elif shipping.estimated_delivery_date %}
-                    <span>Est. delivery: <span class="text-zinc-200 font-medium">{{ shipping.estimated_delivery_date }}</span></span>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                  <div class="rounded-lg bg-zinc-900/60 border border-zinc-800/60 px-3 py-2">
+                    <div class="text-zinc-500 mb-0.5">Tracking</div>
+                    <div class="font-mono text-zinc-200 break-all text-[11px]">{{ shipping.tracking_number }}</div>
+                  </div>
+                  <div class="rounded-lg bg-zinc-900/60 border border-zinc-800/60 px-3 py-2">
+                    <div class="text-zinc-500 mb-0.5">Carrier</div>
+                    <div class="text-zinc-200">{{ shipping.carrier or 'USPS' }}{% if shipping.service %} · {{ shipping.service }}{% endif %}</div>
+                  </div>
+                  {% if tracking_detail.get('estimatedDeliveryDate') or shipping.estimated_delivery_date %}
+                    <div class="rounded-lg bg-zinc-900/60 border border-zinc-800/60 px-3 py-2">
+                      <div class="text-zinc-500 mb-0.5">Est. Delivery</div>
+                      <div class="text-zinc-200 font-medium">{{ tracking_detail.get('estimatedDeliveryDate') or shipping.estimated_delivery_date }}</div>
+                    </div>
                   {% endif %}
                   {% if tracking_detail.get('lastLocation') %}
-                    <span>Last seen: <span class="text-zinc-200">{{ tracking_detail['lastLocation'] }}</span></span>
+                    <div class="rounded-lg bg-zinc-900/60 border border-zinc-800/60 px-3 py-2">
+                      <div class="text-zinc-500 mb-0.5">Last Location</div>
+                      <div class="text-zinc-200">{{ tracking_detail['lastLocation'] }}</div>
+                    </div>
                   {% endif %}
                 </div>
+                {% if shipping.tracking_url %}
+                  <a href="{{ shipping.tracking_url }}" target="_blank" class="inline-flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300">
+                    <span>Track on carrier site</span>
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                  </a>
+                {% endif %}
               {% endif %}
 
               {# ── Status summary ── #}
-              {% if tracking_detail.get('statusSummary') or tracking_detail.get('status') %}
-                <div class="text-xs text-zinc-300 bg-zinc-900/40 rounded px-3 py-1.5 border border-zinc-800/60">
-                  {{ tracking_detail.get('statusSummary') or tracking_detail.get('status') }}
+              {% if tracking_detail.get('statusSummary') %}
+                <div class="text-xs text-zinc-300 bg-zinc-900/40 rounded-lg px-3 py-2 border border-zinc-800/40 italic">
+                  "{{ tracking_detail['statusSummary'] }}"
                 </div>
               {% endif %}
 
-              {# ── USPS scan event history ── #}
+              {# ── Tracking timeline ── #}
               {% if tracking_detail.get('scanEvents') %}
-                <details open class="text-xs">
-                  <summary class="text-zinc-400 cursor-pointer hover:text-zinc-300 font-medium mb-1">USPS Scan History ({{ tracking_detail['scanEvents']|length }})</summary>
-                  <div class="space-y-0.5 max-h-56 overflow-y-auto pl-3 border-l-2 border-zinc-800">
+                <div class="text-xs">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-zinc-400 font-medium">Tracking History</span>
+                    <span class="text-zinc-600">{{ tracking_detail['scanEvents']|length }} scans</span>
+                  </div>
+                  <div class="space-y-0 max-h-64 overflow-y-auto">
                     {% for scan in tracking_detail['scanEvents'] %}
-                      <div class="relative pl-3 py-1 {% if loop.first %}text-zinc-200{% else %}text-zinc-400{% endif %}">
-                        <span class="absolute -left-[7px] top-2 w-2.5 h-2.5 rounded-full border-2
-                          {% if loop.first %}border-sky-500 bg-sky-500/30{% else %}border-zinc-600 bg-zinc-800{% endif %}"></span>
-                        <div class="flex flex-wrap items-baseline gap-x-2">
-                          <span class="font-medium">{{ scan.description }}</span>
-                          {% if scan.city or scan.state %}
-                            <span class="text-zinc-500">{{ scan.city }}{% if scan.state %}, {{ scan.state }}{% endif %}{% if scan.zip %} {{ scan.zip }}{% endif %}</span>
-                          {% endif %}
+                      <div class="flex gap-3">
+                        <div class="flex flex-col items-center">
+                          <div class="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5
+                            {% if loop.first %}bg-sky-500 ring-2 ring-sky-500/30
+                            {% elif scan.description and 'deliver' in scan.description|lower %}bg-emerald-500
+                            {% else %}bg-zinc-700{% endif %}"></div>
+                          {% if not loop.last %}<div class="w-px flex-1 bg-zinc-800 min-h-[20px]"></div>{% endif %}
                         </div>
-                        <span class="text-zinc-600">{{ scan.date }}{% if scan.time %} {{ scan.time }}{% endif %}</span>
+                        <div class="pb-3 min-w-0">
+                          <div class="{% if loop.first %}text-zinc-100 font-medium{% else %}text-zinc-400{% endif %} leading-snug">{{ scan.description }}</div>
+                          <div class="flex flex-wrap gap-x-3 mt-0.5 text-zinc-500">
+                            {% if scan.city or scan.state %}
+                              <span>{{ scan.city }}{% if scan.state %}, {{ scan.state }}{% endif %}{% if scan.zip %} {{ scan.zip }}{% endif %}</span>
+                            {% endif %}
+                            <span>{{ scan.date }}{% if scan.time %} · {{ scan.time }}{% endif %}</span>
+                          </div>
+                        </div>
                       </div>
                     {% endfor %}
                   </div>
-                </details>
+                </div>
               {% endif %}
 
               {# ── Action buttons ── #}
-              {% if shipping and shipping.tracking_number %}
-                <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/refresh-tracking">
-                  <button type="submit" class="w-full rounded-lg bg-sky-700 hover:bg-sky-600 transition py-2 text-sm font-medium">Refresh Tracking Now</button>
-                </form>
-              {% endif %}
-              {% if transit_active and not transit_done %}
-                <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/mark-delivered">
-                  <button type="submit" class="w-full rounded-lg bg-emerald-700 hover:bg-emerald-600 transition py-2 text-sm font-medium">Mark Delivered (Manual Override)</button>
-                </form>
-              {% endif %}
+              <div class="flex gap-2">
+                {% if shipping and shipping.tracking_number %}
+                  <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/refresh-tracking" class="flex-1">
+                    <button type="submit" class="w-full rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition py-2 text-sm font-medium">Refresh Tracking</button>
+                  </form>
+                {% endif %}
+                {% if transit_active and not transit_done %}
+                  <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/mark-delivered" class="flex-1">
+                    <button type="submit" class="w-full rounded-lg bg-emerald-700 hover:bg-emerald-600 transition py-2 text-sm font-medium">Mark Delivered</button>
+                  </form>
+                {% endif %}
+              </div>
             </div>
           </div>
 

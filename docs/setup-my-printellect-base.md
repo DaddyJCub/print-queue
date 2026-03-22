@@ -1,5 +1,7 @@
 # Setup My Printellect Base
 
+> See also: [Flashing Guide](printellect-flashing-guide.md) · [OTA & Recovery](printellect-ota-and-recovery.md) · [Docs Index](README.md)
+
 ## 1) Power on
 Power on your Printellect base.
 

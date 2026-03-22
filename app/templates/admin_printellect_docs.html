@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% if doc_name %}{{ doc_name }} — {% endif %}Printellect Docs</title>
+  <link rel="stylesheet" href="/static/css/tailwind.css"/>
+  <style>
+    /* Documentation typography */
+    .doc-content h1 { font-size: 1.75rem; font-weight: 700; margin: 2rem 0 1rem; color: #f4f4f5; border-bottom: 1px solid #3f3f46; padding-bottom: 0.5rem; }
+    .doc-content h2 { font-size: 1.375rem; font-weight: 600; margin: 1.75rem 0 0.75rem; color: #e4e4e7; border-bottom: 1px solid #27272a; padding-bottom: 0.375rem; }
+    .doc-content h3 { font-size: 1.125rem; font-weight: 600; margin: 1.5rem 0 0.5rem; color: #d4d4d8; }
+    .doc-content h4 { font-size: 1rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: #a1a1aa; }
+    .doc-content p { margin: 0.5rem 0; line-height: 1.7; color: #d4d4d8; }
+    .doc-content ul { margin: 0.5rem 0 0.5rem 1.5rem; list-style: disc; color: #d4d4d8; }
+    .doc-content li { margin: 0.25rem 0; line-height: 1.6; }
+    .doc-content blockquote { border-left: 3px solid #6366f1; padding: 0.5rem 1rem; margin: 1rem 0; background: rgba(99,102,241,0.08); border-radius: 0 0.5rem 0.5rem 0; color: #a5b4fc; }
+    .doc-content hr { border: none; border-top: 1px solid #3f3f46; margin: 1.5rem 0; }
+    .doc-content pre { background: #18181b; border: 1px solid #27272a; border-radius: 0.5rem; padding: 1rem; overflow-x: auto; margin: 0.75rem 0; font-size: 0.8125rem; line-height: 1.5; }
+    .doc-content code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.8125rem; color: #a5b4fc; }
+    .doc-content pre code { color: #d4d4d8; }
+    .doc-content .doc-table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.875rem; }
+    .doc-content .doc-table td { padding: 0.5rem 0.75rem; border: 1px solid #27272a; color: #d4d4d8; }
+    .doc-content .doc-table tr:first-child td { font-weight: 600; background: #18181b; color: #e4e4e7; }
+    .doc-content .doc-link { color: #818cf8; text-decoration: underline; text-underline-offset: 2px; }
+    .doc-content .doc-link:hover { color: #a5b4fc; }
+    .doc-content strong { color: #f4f4f5; }
+
+    /* Sidebar */
+    .doc-sidebar a { display: block; padding: 0.4rem 0.75rem; border-radius: 0.375rem; font-size: 0.8125rem; color: #a1a1aa; transition: all 0.15s; text-decoration: none; }
+    .doc-sidebar a:hover { color: #e4e4e7; background: rgba(255,255,255,0.04); }
+    .doc-sidebar a.active { color: #818cf8; background: rgba(99,102,241,0.12); font-weight: 500; }
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+  <div class="max-w-7xl mx-auto p-6">
+    {% set active_page = 'printellect-docs' %}
+    {% include 'admin_nav.html' %}
+
+    <div class="flex flex-col lg:flex-row gap-6 mt-4">
+      <!-- Sidebar -->
+      <aside class="lg:w-64 shrink-0">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 doc-sidebar lg:sticky lg:top-32">
+          <h3 class="text-xs uppercase tracking-widest text-zinc-500 mb-3">Documentation</h3>
+          <a href="/admin/printellect/docs" {% if not doc_name %}class="active"{% endif %}>📑 Index</a>
+
+          <p class="text-[10px] uppercase tracking-widest text-zinc-600 mt-3 mb-1 px-3">Getting Started</p>
+          <a href="/admin/printellect/docs/printellect-flashing-guide.md" {% if doc_name == 'printellect-flashing-guide.md' %}class="active"{% endif %}>Flashing Guide</a>
+          <a href="/admin/printellect/docs/setup-my-printellect-base.md" {% if doc_name == 'setup-my-printellect-base.md' %}class="active"{% endif %}>User Setup</a>
+          <a href="/admin/printellect/docs/printellect-firmware-dev.md" {% if doc_name == 'printellect-firmware-dev.md' %}class="active"{% endif %}>Firmware Dev Workflow</a>
+
+          <p class="text-[10px] uppercase tracking-widest text-zinc-600 mt-3 mb-1 px-3">API Reference</p>
+          <a href="/admin/printellect/docs/printellect-device-api.md" {% if doc_name == 'printellect-device-api.md' %}class="active"{% endif %}>Device API</a>
+          <a href="/admin/printellect/docs/printellect-user-api.md" {% if doc_name == 'printellect-user-api.md' %}class="active"{% endif %}>User API</a>
+          <a href="/admin/printellect/docs/printellect-admin-api.md" {% if doc_name == 'printellect-admin-api.md' %}class="active"{% endif %}>Admin API</a>
+
+          <p class="text-[10px] uppercase tracking-widest text-zinc-600 mt-3 mb-1 px-3">Architecture</p>
+          <a href="/admin/printellect/docs/printellect-device-state-machine.md" {% if doc_name == 'printellect-device-state-machine.md' %}class="active"{% endif %}>State Machine</a>
+          <a href="/admin/printellect/docs/printellect-ota-and-recovery.md" {% if doc_name == 'printellect-ota-and-recovery.md' %}class="active"{% endif %}>OTA & Recovery</a>
+          <a href="/admin/printellect/docs/printellect-pico-api-programming-guide.md" {% if doc_name == 'printellect-pico-api-programming-guide.md' %}class="active"{% endif %}>Pico Programming Guide</a>
+          <a href="/admin/printellect/docs/printellect-pico-integration-handoff.md" {% if doc_name == 'printellect-pico-integration-handoff.md' %}class="active"{% endif %}>Integration Handoff</a>
+          <a href="/admin/printellect/docs/printellect-pico-final-implementation-guide.md" {% if doc_name == 'printellect-pico-final-implementation-guide.md' %}class="active"{% endif %}>Final Implementation</a>
+
+          <p class="text-[10px] uppercase tracking-widest text-zinc-600 mt-3 mb-1 px-3">Development</p>
+          <a href="/admin/printellect/docs/printellect-local-qa.md" {% if doc_name == 'printellect-local-qa.md' %}class="active"{% endif %}>Local QA</a>
+        </div>
+      </aside>
+
+      <!-- Content -->
+      <main class="flex-1 min-w-0">
+        {% if doc_html %}
+          <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 lg:p-8 doc-content">
+            {{ doc_html | safe }}
+          </div>
+        {% else %}
+          <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 lg:p-8">
+            <h1 class="text-2xl font-bold mb-6">Printellect Documentation</h1>
+            <p class="text-zinc-400 mb-6">All documentation for the Printellect device platform — firmware, APIs, setup, and development workflows.</p>
+
+            <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <a href="/admin/printellect/docs/printellect-flashing-guide.md" class="block p-4 bg-zinc-800/50 border border-zinc-700/50 rounded-xl hover:border-indigo-500/30 transition group">
+                <div class="text-2xl mb-2">🔧</div>
+                <h3 class="font-semibold text-sm group-hover:text-indigo-300 transition">Flashing Guide</h3>
+                <p class="text-xs text-zinc-500 mt-1">Flash MicroPython &amp; firmware onto a blank Pico 2W</p>
+              </a>
+              <a href="/admin/printellect/docs/setup-my-printellect-base.md" class="block p-4 bg-zinc-800/50 border border-zinc-700/50 rounded-xl hover:border-indigo-500/30 transition group">
+                <div class="text-2xl mb-2">📱</div>
+                <h3 class="font-semibold text-sm group-hover:text-indigo-300 transition">User Setup</h3>
+                <p class="text-xs text-zinc-500 mt-1">End-user Wi-Fi setup, claiming, and reset</p>
+              </a>
+              <a href="/admin/printellect/docs/printellect-firmware-dev.md" class="block p-4 bg-zinc-800/50 border border-zinc-700/50 rounded-xl hover:border-indigo-500/30 transition group">
+                <div class="text-2xl mb-2">⚡</div>
+                <h3 class="font-semibold text-sm group-hover:text-indigo-300 transition">Firmware Dev Workflow</h3>
+                <p class="text-xs text-zinc-500 mt-1">Edit → build → OTA deploy cycle</p>
+              </a>
+              <a href="/admin/printellect/docs/printellect-device-api.md" class="block p-4 bg-zinc-800/50 border border-zinc-700/50 rounded-xl hover:border-indigo-500/30 transition group">
+                <div class="text-2xl mb-2">📟</div>
+                <h3 class="font-semibold text-sm group-hover:text-indigo-300 transition">Device API</h3>
+                <p class="text-xs text-zinc-500 mt-1">Pico-to-server contract: provision, heartbeat, OTA</p>
+              </a>
+              <a href="/admin/printellect/docs/printellect-user-api.md" class="block p-4 bg-zinc-800/50 border border-zinc-700/50 rounded-xl hover:border-indigo-500/30 transition group">
+                <div class="text-2xl mb-2">👤</div>
+                <h3 class="font-semibold text-sm group-hover:text-indigo-300 transition">User API</h3>
+                <p class="text-xs text-zinc-500 mt-1">Pairing, device control, and actions</p>
+              </a>
+              <a href="/admin/printellect/docs/printellect-admin-api.md" class="block p-4 bg-zinc-800/50 border border-zinc-700/50 rounded-xl hover:border-indigo-500/30 transition group">
+                <div class="text-2xl mb-2">🔑</div>
+                <h3 class="font-semibold text-sm group-hover:text-indigo-300 transition">Admin API</h3>
+                <p class="text-xs text-zinc-500 mt-1">Device registry, firmware releases, OTA push</p>
+              </a>
+              <a href="/admin/printellect/docs/printellect-ota-and-recovery.md" class="block p-4 bg-zinc-800/50 border border-zinc-700/50 rounded-xl hover:border-indigo-500/30 transition group">
+                <div class="text-2xl mb-2">🔄</div>
+                <h3 class="font-semibold text-sm group-hover:text-indigo-300 transition">OTA &amp; Recovery</h3>
+                <p class="text-xs text-zinc-500 mt-1">Update model, safety, and wired recovery</p>
+              </a>
+              <a href="/admin/printellect/docs/printellect-device-state-machine.md" class="block p-4 bg-zinc-800/50 border border-zinc-700/50 rounded-xl hover:border-indigo-500/30 transition group">
+                <div class="text-2xl mb-2">🔀</div>
+                <h3 class="font-semibold text-sm group-hover:text-indigo-300 transition">State Machine</h3>
+                <p class="text-xs text-zinc-500 mt-1">Boot → Wi-Fi → Provision → Run flow</p>
+              </a>
+              <a href="/admin/printellect/docs/printellect-local-qa.md" class="block p-4 bg-zinc-800/50 border border-zinc-700/50 rounded-xl hover:border-indigo-500/30 transition group">
+                <div class="text-2xl mb-2">🧪</div>
+                <h3 class="font-semibold text-sm group-hover:text-indigo-300 transition">Local QA</h3>
+                <p class="text-xs text-zinc-500 mt-1">Run the backend locally for testing</p>
+              </a>
+            </div>
+
+            <div class="mt-6 p-4 bg-zinc-800/30 border border-zinc-700/30 rounded-xl">
+              <p class="text-xs text-zinc-500">
+                <strong class="text-zinc-400">Auto-generated API docs</strong> are also available when the server is running:
+                <a href="/docs" class="text-indigo-400 hover:text-indigo-300">Swagger UI</a> ·
+                <a href="/openapi.json" class="text-indigo-400 hover:text-indigo-300">OpenAPI JSON</a>
+              </p>
+            </div>
+          </div>
+        {% endif %}
+      </main>
+    </div>
+  </div>
+</body>
+</html>

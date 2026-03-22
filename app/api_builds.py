@@ -319,12 +319,12 @@ def _notify_requester_shipping_status(req: Dict[str, Any], shipping: Dict[str, A
     }
     subtitle_map = {
         "QUOTED": "We prepared your shipping quote.",
-        "LABEL_PURCHASED": "Your tracking number is now available.",
-        "PRE_TRANSIT": "Your package is prepared for carrier pickup.",
-        "IN_TRANSIT": "Your package is moving through the carrier network.",
-        "OUT_FOR_DELIVERY": "Your package is out for delivery.",
-        "DELIVERED": "Your package was marked delivered.",
-        "EXCEPTION": "The carrier reported an issue with delivery.",
+        "LABEL_PURCHASED": "Your tracking number is now available. Track your package in the app.",
+        "PRE_TRANSIT": "Your package is prepared for carrier pickup. You can track it live in the app.",
+        "IN_TRANSIT": "Your package is on the move! Track it live in the app.",
+        "OUT_FOR_DELIVERY": "Your package is out for delivery today!",
+        "DELIVERED": "Your package was delivered.",
+        "EXCEPTION": "The carrier reported an issue with delivery. Check tracking details in the app.",
         "RETURNED": "The package is being returned.",
         "CANCELLED": "Shipping was cancelled for this request.",
     }
@@ -361,10 +361,13 @@ def _notify_requester_shipping_status(req: Dict[str, Any], shipping: Dict[str, A
 
     if should_send_push(email, "shipping", req["id"]):
         try:
+            push_body = f"{req.get('print_name') or 'Your request'}: {status_value.replace('_', ' ').title()}"
+            if status_value in ("IN_TRANSIT", "LABEL_PURCHASED", "PRE_TRANSIT"):
+                push_body += " \u2014 track live in the app"
             send_push_notification(
                 email=email,
                 title=title_map.get(status_value, "Shipping Update"),
-                body=f"{req.get('print_name') or 'Your request'}: {status_value.replace('_', ' ').title()}",
+                body=push_body,
                 url=f"/my/{rid}?token={req['access_token']}",
             )
         except Exception:

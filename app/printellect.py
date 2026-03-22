@@ -774,6 +774,147 @@ async def admin_ota_status_page(request: Request, admin=Depends(require_admin)):
     return templates.TemplateResponse("admin_printellect_ota_status.html", {"request": request, "admin": admin})
 
 
+# ---------------------------------------------------------------------------
+# Admin Docs Viewer — serves markdown docs from docs/ directory
+# ---------------------------------------------------------------------------
+
+_DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
+_ALLOWED_DOCS = {
+    "README.md",
+    "printellect-admin-api.md",
+    "printellect-device-api.md",
+    "printellect-device-state-machine.md",
+    "printellect-firmware-dev.md",
+    "printellect-flashing-guide.md",
+    "printellect-local-qa.md",
+    "printellect-ota-and-recovery.md",
+    "printellect-pico-api-programming-guide.md",
+    "printellect-pico-final-implementation-guide.md",
+    "printellect-pico-integration-handoff.md",
+    "printellect-user-api.md",
+    "setup-my-printellect-base.md",
+}
+
+
+@router.get("/admin/printellect/docs", response_class=HTMLResponse)
+async def admin_docs_index(request: Request, admin=Depends(require_admin)):
+    return templates.TemplateResponse(
+        "admin_printellect_docs.html",
+        {"request": request, "admin": admin, "doc_name": None, "doc_html": None, "doc_list": sorted(_ALLOWED_DOCS)},
+    )
+
+
+@router.get("/admin/printellect/docs/{doc_name}", response_class=HTMLResponse)
+async def admin_docs_view(request: Request, doc_name: str, admin=Depends(require_admin)):
+    # Validate against allowlist — no path traversal possible
+    if doc_name not in _ALLOWED_DOCS:
+        raise HTTPException(status_code=404, detail="Document not found")
+    doc_path = _DOCS_DIR / doc_name
+    if not doc_path.is_file():
+        raise HTTPException(status_code=404, detail="Document not found")
+    raw = doc_path.read_text(encoding="utf-8")
+    # Convert markdown to HTML (basic conversion without external deps)
+    doc_html = _md_to_html(raw)
+    return templates.TemplateResponse(
+        "admin_printellect_docs.html",
+        {"request": request, "admin": admin, "doc_name": doc_name, "doc_html": doc_html, "doc_list": sorted(_ALLOWED_DOCS)},
+    )
+
+
+def _md_to_html(md: str) -> str:
+    """Minimal markdown-to-HTML converter — no external dependencies."""
+    import html as _html
+
+    lines = md.split("\n")
+    out: list[str] = []
+    in_code = False
+    in_list = False
+    in_table = False
+    code_lang = ""
+
+    for line in lines:
+        # Fenced code blocks
+        if line.startswith("```"):
+            if in_code:
+                out.append("</code></pre>")
+                in_code = False
+            else:
+                code_lang = _html.escape(line[3:].strip())
+                cls = f' class="language-{code_lang}"' if code_lang else ""
+                out.append(f"<pre><code{cls}>")
+                in_code = True
+            continue
+        if in_code:
+            out.append(_html.escape(line))
+            continue
+
+        stripped = line.strip()
+
+        # Tables
+        if "|" in stripped and stripped.startswith("|"):
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            # Skip separator rows
+            if all(set(c) <= {"-", ":", " "} for c in cells):
+                continue
+            if not in_table:
+                out.append("<div class='overflow-x-auto'><table class='doc-table'>")
+                in_table = True
+            out.append("<tr>" + "".join(f"<td>{_inline(c)}</td>" for c in cells) + "</tr>")
+            continue
+        elif in_table:
+            out.append("</table></div>")
+            in_table = False
+
+        # Close list if not a list item
+        if in_list and not stripped.startswith("- ") and not stripped.startswith("* ") and stripped:
+            out.append("</ul>")
+            in_list = False
+
+        # Headings
+        if stripped.startswith("#"):
+            level = len(stripped) - len(stripped.lstrip("#"))
+            level = min(level, 6)
+            text = stripped[level:].strip()
+            slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+            out.append(f"<h{level} id=\"{slug}\">{_inline(text)}</h{level}>")
+        elif stripped.startswith("- ") or stripped.startswith("* "):
+            if not in_list:
+                out.append("<ul>")
+                in_list = True
+            out.append(f"<li>{_inline(stripped[2:])}</li>")
+        elif stripped.startswith("> "):
+            out.append(f"<blockquote>{_inline(stripped[2:])}</blockquote>")
+        elif stripped.startswith("---"):
+            out.append("<hr>")
+        elif stripped == "":
+            out.append("")
+        else:
+            out.append(f"<p>{_inline(stripped)}</p>")
+
+    if in_code:
+        out.append("</code></pre>")
+    if in_list:
+        out.append("</ul>")
+    if in_table:
+        out.append("</table></div>")
+    return "\n".join(out)
+
+
+def _inline(text: str) -> str:
+    """Convert inline markdown: bold, italic, code, links."""
+    import html as _html
+
+    # Inline code
+    text = re.sub(r"`([^`]+)`", lambda m: f"<code>{_html.escape(m.group(1))}</code>", text)
+    # Bold
+    text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
+    # Italic
+    text = re.sub(r"\*(.+?)\*", r"<em>\1</em>", text)
+    # Links
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2" class="doc-link">\1</a>', text)
+    return text
+
+
 @router.post("/api/printellect/pairing/start")
 async def pairing_start(account=Depends(_require_printellect_account)):
     session_id = str(uuid.uuid4())

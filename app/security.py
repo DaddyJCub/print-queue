@@ -190,7 +190,13 @@ RATE_LIMIT_CONFIG = {
     "/api/push/subscribe": (10, 60),  # 10 subscriptions per minute
     # Printellect provisioning/control API
     "/api/printellect/device/v1/provision": (30, 60),
+    "/api/printellect/device/v1/commands/": (120, 60),
+    "/api/printellect/device/v1/state": (120, 60),
     "/api/printellect/devices/": (120, 60),
+    "/api/printellect/pairing/claim": (30, 60),
+    "/api/printellect/admin/releases/upload": (10, 3600),
+    "/api/printellect/admin/releases/build": (10, 3600),
+    "/api/printellect/admin/devices": (30, 60),
 }
 
 

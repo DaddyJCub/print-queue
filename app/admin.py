@@ -1,4 +1,4 @@
-import os, uuid, hashlib, urllib.parse
+import os, secrets, uuid, hashlib, urllib.parse
 from datetime import datetime
 from typing import Optional, List
 
@@ -153,7 +153,7 @@ def admin_login(request: Request, next: Optional[str] = None, bad: Optional[str]
 def admin_login_post(password: str = Form(...), next: Optional[str] = Form(None)):
     if not ADMIN_PASSWORD:
         raise HTTPException(status_code=500, detail="ADMIN_PASSWORD is not set")
-    if password != ADMIN_PASSWORD:
+    if not secrets.compare_digest(password, ADMIN_PASSWORD):
         # Preserve the next parameter on failed login
         redirect_url = "/admin/login?bad=1"
         if next:
