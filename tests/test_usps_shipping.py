@@ -202,6 +202,22 @@ class TestUSPSHelpers:
         assert client.is_address_valid({"additionalInfo": {}}) is False
         assert client.is_address_valid({}) is False
 
+    def test_normalize_state_full_name(self):
+        from app.shipping_usps import _normalize_state
+        assert _normalize_state("Wisconsin") == "WI"
+        assert _normalize_state("  california  ") == "CA"
+        assert _normalize_state("NEW YORK") == "NY"
+        assert _normalize_state("TX") == "TX"
+        assert _normalize_state("wi") == "WI"
+        assert _normalize_state("") == ""
+
+    def test_normalize_zip_strips_plus4(self):
+        from app.shipping_usps import _normalize_zip
+        assert _normalize_zip("54601-6318") == "54601"
+        assert _normalize_zip("90210") == "90210"
+        assert _normalize_zip("  10001-1234  ") == "10001"
+        assert _normalize_zip("") == ""
+
 
 # ===========================================================================
 # 3. USPSClient init validation

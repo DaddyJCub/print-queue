@@ -13,11 +13,53 @@ Setup:
 import base64
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
+
+
+# ---------------------------------------------------------------------------
+# US state name → 2-letter abbreviation (USPS v3 API requires abbreviation)
+# ---------------------------------------------------------------------------
+
+_STATE_ABBREV: Dict[str, str] = {
+    "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR",
+    "california": "CA", "colorado": "CO", "connecticut": "CT", "delaware": "DE",
+    "district of columbia": "DC", "florida": "FL", "georgia": "GA", "hawaii": "HI",
+    "idaho": "ID", "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
+    "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD",
+    "massachusetts": "MA", "michigan": "MI", "minnesota": "MN", "mississippi": "MS",
+    "missouri": "MO", "montana": "MT", "nebraska": "NE", "nevada": "NV",
+    "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY",
+    "north carolina": "NC", "north dakota": "ND", "ohio": "OH", "oklahoma": "OK",
+    "oregon": "OR", "pennsylvania": "PA", "rhode island": "RI",
+    "south carolina": "SC", "south dakota": "SD", "tennessee": "TN", "texas": "TX",
+    "utah": "UT", "vermont": "VT", "virginia": "VA", "washington": "WA",
+    "west virginia": "WV", "wisconsin": "WI", "wyoming": "WY",
+    "american samoa": "AS", "guam": "GU", "marshall islands": "MH",
+    "northern mariana islands": "MP", "palau": "PW", "puerto rico": "PR",
+    "virgin islands": "VI",
+}
+
+
+def _normalize_state(state: str) -> str:
+    """Convert full state name to 2-letter USPS abbreviation."""
+    if not state:
+        return state
+    s = state.strip()
+    if len(s) <= 2:
+        return s.upper()
+    return _STATE_ABBREV.get(s.lower(), s)
+
+
+def _normalize_zip(zip_code: str) -> str:
+    """Strip ZIP+4 to 5-digit ZIP as required by USPS v3 API."""
+    if not zip_code:
+        return zip_code
+    return zip_code.strip().split("-")[0][:5]
 
 
 # ---------------------------------------------------------------------------
@@ -138,12 +180,12 @@ class USPSClient:
         """
         params: Dict[str, str] = {
             "streetAddress": street,
-            "state": state,
+            "state": _normalize_state(state),
         }
         if city:
             params["city"] = city
         if zip_code:
-            params["ZIPCode"] = zip_code
+            params["ZIPCode"] = _normalize_zip(zip_code)
         if secondary:
             params["secondaryAddress"] = secondary
         resp = self._request("GET", "/addresses/v3/address", params=params)
@@ -184,7 +226,7 @@ class USPSClient:
                 "PRIORITY_MAIL",
                 "USPS_GROUND_ADVANTAGE",
                 "PRIORITY_MAIL_EXPRESS",
-                "FIRST_CLASS_MAIL",
+                "FIRST-CLASS_PACKAGE_SERVICE",
             ],
             "priceType": "RETAIL",
         }
@@ -292,8 +334,8 @@ class USPSClient:
                 "streetAddress": to_address.get("street1", ""),
                 "secondaryAddress": to_address.get("street2", ""),
                 "city": to_address.get("city", ""),
-                "state": to_address.get("state", ""),
-                "ZIPCode": to_address.get("zip", ""),
+                "state": _normalize_state(to_address.get("state", "")),
+                "ZIPCode": _normalize_zip(to_address.get("zip", "")),
             },
             "fromAddress": {
                 "firstName": from_address.get("first_name", from_address.get("name", "").split()[0] if from_address.get("name") else ""),
@@ -301,8 +343,8 @@ class USPSClient:
                 "streetAddress": from_address.get("street1", ""),
                 "secondaryAddress": from_address.get("street2", ""),
                 "city": from_address.get("city", ""),
-                "state": from_address.get("state", ""),
-                "ZIPCode": from_address.get("zip", ""),
+                "state": _normalize_state(from_address.get("state", "")),
+                "ZIPCode": _normalize_zip(from_address.get("zip", "")),
             },
             "packageDescription": {
                 "mailClass": mail_class,
@@ -381,6 +423,7 @@ def _format_mail_class(mail_class: str) -> str:
         "PRIORITY_MAIL": "USPS Priority Mail",
         "PRIORITY_MAIL_EXPRESS": "USPS Priority Mail Express",
         "USPS_GROUND_ADVANTAGE": "USPS Ground Advantage",
+        "FIRST-CLASS_PACKAGE_SERVICE": "USPS First-Class Package",
         "FIRST_CLASS_MAIL": "USPS First-Class Mail",
         "PARCEL_SELECT": "USPS Parcel Select",
         "MEDIA_MAIL": "USPS Media Mail",

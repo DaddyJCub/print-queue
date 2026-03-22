@@ -366,15 +366,18 @@
                 <button type="submit" class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition py-2 text-sm font-medium">Fetch Live USPS Rates</button>
               </form>
 
-              {# Rate results as selectable cards #}
+              {# Rate results as selectable cards — click to auto-fill quote + label #}
               {% if shipping_rates %}
                 {% set latest = shipping_rates[0] %}
                 {% set rates = latest.rates if latest.rates else [] %}
                 {% if rates %}
-                  <div class="space-y-1.5 max-h-52 overflow-y-auto">
+                  <div class="space-y-1.5 max-h-52 overflow-y-auto" id="rate-cards">
                     {% for rate in rates[:12] %}
-                      <label class="flex items-center gap-3 text-xs border border-zinc-800 hover:border-zinc-600 rounded-lg px-3 py-2 cursor-pointer transition group">
-                        <input type="radio" name="_preview_rate" value="{{ rate.object_id or rate.rate_indicator or loop.index }}" class="shrink-0 accent-sky-500" />
+                      <div class="flex items-center gap-3 text-xs border border-zinc-800 hover:border-sky-600 rounded-lg px-3 py-2 cursor-pointer transition rate-card"
+                           data-amount="{{ rate.amount }}" data-rate-id="{{ rate.object_id or '' }}" data-mail-class="{{ rate.mail_class or '' }}"
+                           data-service="{{ rate.service_name or rate.mail_class or '' }}"
+                           onclick="selectRate(this)">
+                        <div class="w-4 h-4 rounded-full border-2 border-zinc-600 flex items-center justify-center shrink-0 rate-dot"></div>
                         <div class="flex-1 min-w-0">
                           <div class="text-zinc-200 font-medium">
                             {{ rate.provider or 'USPS' }}
@@ -385,9 +388,25 @@
                           {% endif %}
                         </div>
                         <span class="text-emerald-300 font-semibold text-sm">${{ rate.amount }}</span>
-                      </label>
+                      </div>
                     {% endfor %}
                   </div>
+                  <script>
+                  function selectRate(el) {
+                    document.querySelectorAll('.rate-card').forEach(c => {
+                      c.classList.remove('border-sky-500','bg-sky-950/30');
+                      c.querySelector('.rate-dot').innerHTML = '';
+                    });
+                    el.classList.add('border-sky-500','bg-sky-950/30');
+                    el.querySelector('.rate-dot').innerHTML = '<span class="w-2 h-2 rounded-full bg-sky-500"></span>';
+                    var q = document.getElementById('quote_amount_input');
+                    var r = document.getElementById('selected_rate_id_input');
+                    var m = document.getElementById('buy_mail_class');
+                    if (q) q.value = el.dataset.amount;
+                    if (r) r.value = el.dataset.rateId || '';
+                    if (m) m.value = el.dataset.mailClass || '';
+                  }
+                  </script>
                 {% else %}
                   <p class="text-xs text-zinc-500">No rates in the latest snapshot.</p>
                 {% endif %}
@@ -397,8 +416,8 @@
               <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/quote" class="mt-2 space-y-2 border-t border-zinc-800 pt-3">
                 <div class="text-xs text-zinc-500 uppercase tracking-wide">Set Shipping Quote</div>
                 <div class="grid grid-cols-2 gap-2">
-                  <input name="quote_amount" required placeholder="Amount ($)" value="{% if shipping and shipping.quote_amount_cents %}{{ '%.2f'|format((shipping.quote_amount_cents / 100.0)) }}{% endif %}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm" />
-                  <input name="selected_rate_id" placeholder="Rate ID (optional)" value="{{ shipping.selected_rate_id if shipping else '' }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+                  <input id="quote_amount_input" name="quote_amount" required placeholder="Amount ($)" value="{% if shipping and shipping.quote_amount_cents %}{{ '%.2f'|format((shipping.quote_amount_cents / 100.0)) }}{% endif %}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm" />
+                  <input id="selected_rate_id_input" name="selected_rate_id" placeholder="Rate ID (optional)" value="{{ shipping.selected_rate_id if shipping else '' }}" class="rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
                 </div>
                 <textarea name="quote_notes" rows="1" placeholder="Notes (optional)" class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs">{{ shipping.quote_notes if shipping else '' }}</textarea>
                 <button type="submit" class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition py-2 text-sm font-medium">Save Quote & Notify Requester</button>
@@ -465,11 +484,11 @@
 
               {# Buy label (Shippo/USPS) #}
               {% if not label_done %}
-                <details {% if shipping and shipping.selected_rate_id %}open{% endif %}>
+                <details {% if shipping and shipping.quote_amount_cents %}open{% endif %}>
                   <summary class="text-xs text-cyan-400 cursor-pointer hover:text-cyan-300 font-medium">Buy USPS Label</summary>
                   <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/buy-label" class="mt-2 space-y-2">
                     <input name="rate_id" placeholder="Rate ID (uses selected rate if empty)" value="{{ shipping.selected_rate_id if shipping else '' }}" class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
-                    <input name="mail_class" placeholder="Mail class (e.g. PRIORITY_MAIL)" class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
+                    <input id="buy_mail_class" name="mail_class" placeholder="Mail class (e.g. PRIORITY_MAIL)" value="{{ shipping.service.upper().replace(' ', '_') if shipping and shipping.service else '' }}" class="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs" />
                     <button type="submit" class="w-full rounded-lg bg-cyan-600 hover:bg-cyan-500 transition py-2 text-sm font-medium">Buy Label & Attach Tracking</button>
                   </form>
                 </details>
@@ -584,6 +603,12 @@
                 </details>
               {% endif %}
 
+              {# ── Action buttons ── #}
+              {% if shipping and shipping.tracking_number %}
+                <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/refresh-tracking">
+                  <button type="submit" class="w-full rounded-lg bg-sky-700 hover:bg-sky-600 transition py-2 text-sm font-medium">Refresh Tracking Now</button>
+                </form>
+              {% endif %}
               {% if transit_active and not transit_done %}
                 <form method="POST" action="/admin/request/{{ req['id'] }}/shipping/mark-delivered">
                   <button type="submit" class="w-full rounded-lg bg-emerald-700 hover:bg-emerald-600 transition py-2 text-sm font-medium">Mark Delivered (Manual Override)</button>

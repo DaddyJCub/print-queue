@@ -61,11 +61,12 @@
               <span class="text-white text-sm">{{ metadata.filament_type_display or metadata.filament_type }}</span>
             </div>
             {% endif %}
-            {% if metadata.filament_colors %}
+            {% if metadata.filament_colors_used or metadata.filament_colors %}
+            {% set display_colors = metadata.filament_colors_used if metadata.filament_colors_used else metadata.filament_colors %}
             <div class="flex justify-between items-center">
               <span class="text-zinc-400 text-sm">Colors</span>
               <div class="flex flex-wrap gap-1 justify-end">
-                {% for color in metadata.filament_colors %}
+                {% for color in display_colors %}
                   <span class="inline-block w-5 h-5 rounded-full border border-zinc-600" style="background-color: {{ color }}" title="{{ color }}"></span>
                 {% endfor %}
               </div>
@@ -183,7 +184,8 @@
             </div>
             <div>
               <label class="block text-xs font-medium text-zinc-400 mb-1">Colors</label>
-              <input type="text" name="colors" value="{% if metadata.filament_colors is iterable and metadata.filament_colors is not string %}{{ metadata.filament_colors | join(', ') }}{% else %}{{ metadata.filament_colors or '' }}{% endif %}" placeholder="e.g., Black, White"
+              {% set form_colors = metadata.filament_colors_used if metadata.filament_colors_used else metadata.filament_colors %}
+              <input type="text" name="colors" value="{% if form_colors is iterable and form_colors is not string %}{{ form_colors | join(', ') }}{% else %}{{ form_colors or '' }}{% endif %}" placeholder="e.g., Black, White"
                      class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
             </div>
             <div>

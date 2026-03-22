@@ -4109,6 +4109,108 @@ def admin_mark_shipping_delivered(
     return RedirectResponse(url=f"/admin/request/{rid}#shipping", status_code=303)
 
 
+@router.post("/admin/request/{rid}/shipping/refresh-tracking")
+def admin_refresh_tracking(
+    request: Request,
+    rid: str,
+    _=Depends(require_permission("manage_queue")),
+):
+    """Fetch latest USPS tracking data on demand and update the shipping record."""
+    conn = db()
+    req_row = conn.execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    req = dict(req_row)
+    shipping = dict(_upsert_shipping_record(conn, rid, req))
+    tracking_num = (shipping.get("tracking_number") or "").strip()
+    if not tracking_num:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No tracking number set")
+
+    if not _usps_configured():
+        conn.close()
+        raise HTTPException(status_code=400, detail="USPS API not configured")
+
+    try:
+        client = _usps_client()
+        tracking_data = client.get_tracking(tracking_num)
+    except Exception as exc:
+        conn.close()
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    status_category = tracking_data.get("statusCategory") or ""
+    new_internal_status = map_usps_tracking_status(status_category)
+    old_status = shipping.get("shipping_status", "")
+    est_delivery = tracking_data.get("expectedDeliveryDate") or tracking_data.get("estimatedDeliveryDate")
+
+    now = now_iso()
+    update_fields = "usps_last_polled_at = ?, updated_at = ?"
+    update_values: list = [now, now]
+
+    status_changed = new_internal_status != old_status
+    if status_changed:
+        update_fields += ", shipping_status = ?, tracking_status = ?"
+        update_values.extend([new_internal_status, new_internal_status])
+
+    if est_delivery:
+        update_fields += ", estimated_delivery_date = ?"
+        update_values.append(str(est_delivery))
+
+    if new_internal_status == "DELIVERED":
+        update_fields += ", delivered_at = COALESCE(delivered_at, ?)"
+        update_values.append(now)
+
+    # Build tracking detail for UI
+    tracking_detail: Dict[str, Any] = {
+        "statusCategory": status_category,
+        "status": tracking_data.get("status", ""),
+        "statusSummary": tracking_data.get("statusSummary", ""),
+        "estimatedDeliveryDate": est_delivery,
+    }
+    tracking_events_raw = tracking_data.get("trackingEvents") or []
+    if tracking_events_raw and isinstance(tracking_events_raw, list):
+        latest_event = tracking_events_raw[0]
+        if latest_event:
+            event_city = latest_event.get("eventCity", "")
+            event_state = latest_event.get("eventState", "")
+            event_zip = latest_event.get("eventZIPCode", "")
+            if event_city or event_state:
+                tracking_detail["lastLocation"] = f"{event_city}, {event_state} {event_zip}".strip()
+        tracking_detail["scanEvents"] = [
+            {
+                "date": e.get("eventDate", ""),
+                "time": e.get("eventTime", ""),
+                "city": e.get("eventCity", ""),
+                "state": e.get("eventState", ""),
+                "zip": e.get("eventZIPCode", ""),
+                "description": e.get("eventDescription", "") or e.get("event", ""),
+            }
+            for e in tracking_events_raw[:20]
+        ]
+
+    update_fields += ", last_provider_payload = ?"
+    update_values.append(json.dumps(tracking_detail))
+    update_values.append(rid)
+    conn.execute(
+        f"UPDATE request_shipping SET {update_fields} WHERE request_id = ?",
+        update_values,
+    )
+
+    if status_changed:
+        _insert_shipping_event(
+            conn, rid,
+            event_type="tracking_refresh",
+            shipping_status=new_internal_status,
+            message=f"Manual tracking refresh: {old_status} → {new_internal_status}",
+            payload=tracking_detail,
+        )
+
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url=f"/admin/request/{rid}#shipping", status_code=303)
+
+
 @router.post("/webhooks/shippo")
 @router.post("/webhooks/shippo/{path_token}")
 async def shippo_webhook(request: Request, path_token: Optional[str] = None):

@@ -3429,22 +3429,33 @@ def clear_print_match_suggestion(printer_code: str):
 def process_filament_metadata(metadata: Dict) -> Dict:
     """Process raw Moonraker filament fields into display-friendly formats.
 
-    Moonraker returns per-tool lists for multi-color prints:
-      filament_type: ["PLA", "PLA", "PETG"] or "PLA;PLA;PETG"
-      filament_colors: ["#FF0000", "#00FF00"]
-      filament_name: ["Generic PLA @System", "Generic PLA @System - 1{file.3mf}"]
-
-    This creates cleaned display versions alongside the raw data.
+    Moonraker returns per-tool arrays covering ALL AMS/tool slots, not just
+    the ones the file actually uses.  ``referenced_tools`` (e.g. [0] or
+    [0, 2, 5]) tells us which indices were referenced in the G-code.
+    We filter every per-tool array down to only the referenced indices
+    before deduplicating.
     """
     import re
 
-    # --- filament_type: deduplicate to e.g. "PLA" or "PLA, PETG" ---
+    # Which tool indices does the file actually use?
+    ref_tools = metadata.get("referenced_tools")  # e.g. [0] or [0, 2, 5]
+
+    def _pick_used(values):
+        """Return only the entries at referenced_tools indices."""
+        if not values or not isinstance(values, list):
+            return values
+        if ref_tools and isinstance(ref_tools, list):
+            return [values[i] for i in ref_tools if i < len(values)]
+        return values
+
+    # --- filament_type: filter to used tools, then deduplicate ---
     raw_type = metadata.get("filament_type")
     if raw_type:
         if isinstance(raw_type, list):
-            types = raw_type
+            types = _pick_used(raw_type)
         elif isinstance(raw_type, str) and ";" in raw_type:
-            types = [t.strip() for t in raw_type.split(";")]
+            all_types = [t.strip() for t in raw_type.split(";")]
+            types = _pick_used(all_types)
         else:
             types = [raw_type] if isinstance(raw_type, str) else []
         unique_types = list(dict.fromkeys(t for t in types if t))
@@ -3452,21 +3463,27 @@ def process_filament_metadata(metadata: Dict) -> Dict:
     else:
         metadata["filament_type_display"] = None
 
-    # --- filament_colors: ensure it's a flat list of hex strings ---
+    # --- filament_colors: filter to used tools, ensure flat hex list ---
     raw_colors = metadata.get("filament_colors")
     if raw_colors:
         if isinstance(raw_colors, list):
-            metadata["filament_colors"] = [c for c in raw_colors if isinstance(c, str)]
+            used_colors = _pick_used(raw_colors)
+            metadata["filament_colors_used"] = [c for c in used_colors if isinstance(c, str)]
         elif isinstance(raw_colors, str):
-            metadata["filament_colors"] = [c.strip() for c in raw_colors.split(",") if c.strip()]
+            metadata["filament_colors_used"] = [c.strip() for c in raw_colors.split(",") if c.strip()]
+        else:
+            metadata["filament_colors_used"] = []
+    else:
+        metadata["filament_colors_used"] = []
 
-    # --- filament_name: clean up slicer noise and deduplicate ---
+    # --- filament_name: filter to used tools, clean slicer noise, deduplicate ---
     raw_name = metadata.get("filament_name")
     if raw_name:
         if isinstance(raw_name, list):
-            names = raw_name
+            names = _pick_used(raw_name)
         elif isinstance(raw_name, str) and ";" in raw_name:
-            names = [n.strip() for n in raw_name.split(";")]
+            all_names = [n.strip() for n in raw_name.split(";")]
+            names = _pick_used(all_names)
         else:
             names = [raw_name] if isinstance(raw_name, str) else []
         cleaned = []
@@ -3639,12 +3656,12 @@ def send_unmatched_print_notification(unmatched: Dict, is_reminder: bool = False
             rows.append(("Est. Time", metadata["estimated_time_display"]))
         if metadata.get("filament_type_display") or metadata.get("filament_type"):
             rows.append(("Filament", metadata.get("filament_type_display") or metadata["filament_type"]))
-        if metadata.get("filament_colors"):
-            colors = metadata["filament_colors"]
-            if isinstance(colors, list):
-                rows.append(("Colors", ", ".join(colors)))
+        used_colors = metadata.get("filament_colors_used") or metadata.get("filament_colors")
+        if used_colors:
+            if isinstance(used_colors, list):
+                rows.append(("Colors", ", ".join(used_colors)))
             else:
-                rows.append(("Colors", colors))
+                rows.append(("Colors", used_colors))
         if metadata.get("current_layer") and metadata.get("total_layers"):
             rows.append(("Layers", f"{metadata['current_layer']} / {metadata['total_layers']}"))
 
