@@ -120,6 +120,35 @@ def resolve_account_id(email: str) -> str | None:
     return row["id"] if row else None
 
 
+async def _get_authenticated_account(request: Request) -> tuple[str | None, str | None]:
+    """
+    Resolve authenticated account ID + email for both auth systems.
+
+    Returns (account_id, email) or (None, None) if not authenticated.
+    """
+    from app.auth import get_current_account, get_current_user, ensure_account_for_user
+
+    account = await get_current_account(request)
+    if account:
+        return account.id, account.email
+
+    user = await get_current_user(request)
+    if not user:
+        return None, None
+
+    account_id = resolve_account_id(user.email)
+    if account_id:
+        return account_id, user.email
+
+    # Last resort for legacy sessions: create/link the unified Account record.
+    account = ensure_account_for_user(user)
+    if account:
+        return account.id, account.email or user.email
+
+    logger.warning("[CREDITS] Could not resolve account for legacy user", extra={"email": user.email})
+    return None, None
+
+
 # ---------------------------------------------------------------------------
 # Balance
 # ---------------------------------------------------------------------------
@@ -455,13 +484,11 @@ async def api_credit_store_checkout(request: Request, item_id: str,
                                      colors: str = Form(""),
                                      notes: str = Form("")):
     """Purchase a store item using credits instead of payment."""
-    from app.auth import get_current_user
-
     if not is_credits_enabled():
         return JSONResponse({"error": "Credits are not enabled"}, status_code=400)
 
-    user = await get_current_user(request)
-    if not user:
+    acct_id, _auth_email = await _get_authenticated_account(request)
+    if not acct_id:
         return JSONResponse({"error": "auth_required"}, status_code=401)
 
     conn = _db()
@@ -475,9 +502,6 @@ async def api_credit_store_checkout(request: Request, item_id: str,
     credit_price = get_credit_price_for_item(item)
     if not credit_price:
         return JSONResponse({"error": "This item cannot be purchased with credits"}, status_code=400)
-
-    # Resolve users.id → accounts.id (dual-table bridge)
-    acct_id = resolve_account_id(user.email) or user.id
 
     # Atomic spend
     try:
@@ -522,7 +546,7 @@ async def api_credit_store_checkout(request: Request, item_id: str,
             0,
             item.get("estimated_time_minutes"),
             item_id,
-            user.id,
+            acct_id,
         ))
         conn.commit()
         conn.close()
@@ -536,7 +560,7 @@ async def api_credit_store_checkout(request: Request, item_id: str,
             logger.error(f"[CREDITS] Auto-refund also failed: {re}")
         return JSONResponse({"error": f"Failed to create request: {e}"}, status_code=500)
 
-    logger.info(f"[CREDITS] Store purchase: {item['name']} by {user.id} for {credit_price} credits (request={rid})")
+    logger.info(f"[CREDITS] Store purchase: {item['name']} by {acct_id} for {credit_price} credits (request={rid})")
 
     return JSONResponse({
         "success": True,
@@ -564,19 +588,14 @@ async def api_credit_rush_checkout(
     special_notes: str = Form(""),
 ):
     """Submit a rush request using credits instead of payment."""
-    from app.auth import get_current_user
-
     if not is_credits_enabled():
         return JSONResponse({"error": "Credits are not enabled"}, status_code=400)
 
-    user = await get_current_user(request)
-    if not user:
+    acct_id, _auth_email = await _get_authenticated_account(request)
+    if not acct_id:
         return JSONResponse({"error": "auth_required"}, status_code=401)
 
     rush_cost = get_rush_credit_cost()
-
-    # Resolve users.id → accounts.id (dual-table bridge)
-    acct_id = resolve_account_id(user.email) or user.id
 
     try:
         tx = spend_credits(
@@ -616,12 +635,12 @@ async def api_credit_rush_checkout(
         access_token,
         1,  # Rush = high priority
         special_notes.strip() or None,
-        user.id,
+        acct_id,
     ))
     conn.commit()
     conn.close()
 
-    logger.info(f"[CREDITS] Rush purchase by {user.id} for {rush_cost} credits (request={rid})")
+    logger.info(f"[CREDITS] Rush purchase by {acct_id} for {rush_cost} credits (request={rid})")
 
     return JSONResponse({
         "success": True,
@@ -649,19 +668,14 @@ async def api_credit_request_checkout(
     special_notes: str = Form(""),
 ):
     """Submit a custom print request using credits."""
-    from app.auth import get_current_user
-
     if not is_credits_enabled():
         return JSONResponse({"error": "Credits are not enabled"}, status_code=400)
 
-    user = await get_current_user(request)
-    if not user:
+    acct_id, _auth_email = await _get_authenticated_account(request)
+    if not acct_id:
         return JSONResponse({"error": "auth_required"}, status_code=401)
 
     request_cost = get_request_credit_cost()
-
-    # Resolve users.id → accounts.id (dual-table bridge)
-    acct_id = resolve_account_id(user.email) or user.id
 
     try:
         tx = spend_credits(
@@ -700,12 +714,12 @@ async def api_credit_request_checkout(
         access_token,
         0,
         special_notes.strip() or None,
-        user.id,
+        acct_id,
     ))
     conn.commit()
     conn.close()
 
-    logger.info(f"[CREDITS] Request purchase by {user.id} for {request_cost} credits (request={rid})")
+    logger.info(f"[CREDITS] Request purchase by {acct_id} for {request_cost} credits (request={rid})")
 
     return JSONResponse({
         "success": True,

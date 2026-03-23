@@ -82,10 +82,22 @@
           <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
-        <h3 class="text-lg font-semibold mb-2 text-white">Dashboard Home</h3>
-        <p class="text-sm text-zinc-400 mb-4">Added a new dashboard home that gives users a quick overview of queue activity, printer status, and common actions.</p>
+        <h3 class="text-lg font-semibold mb-2 text-white">Dashboard Home + Release Hardening</h3>
+        <p class="text-sm text-zinc-400 mb-4">Introduced the dashboard-first user experience and hardened quote/checkout/account paths for production rollout.</p>
 
-        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🏠 Dashboard</h4>
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🚀 Highlights</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400 mt-1">•</span>
+            <span>Added a dashboard landing page at <code>/</code> with quick actions, active requests, queue insights, and printer status.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400 mt-1">•</span>
+            <span>Hardened admin quote and embedded checkout flows for unified account compatibility and cleaner rollout to production.</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">✨ Enhancements</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-emerald-400 mt-1">•</span>
@@ -103,13 +115,37 @@
             <span class="text-emerald-400 mt-1">•</span>
             <span>The request form now lives on its own page, with navigation and buttons updated to match.</span>
           </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400 mt-1">•</span>
+            <span>Added startup env toggles to run credit auto-grants and USPS poller on a single primary replica only.</span>
+          </li>
         </ul>
 
-        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🐞 Bug Fixes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400 mt-1">•</span>
+            <span>Fixed admin quote-setting to safely handle SQLite row objects and avoid sync/async auth misuse in audit logging.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400 mt-1">•</span>
+            <span>Fixed embedded Stripe checkouts to resolve the authenticated <code>accounts.id</code> for both legacy and unified sessions.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-emerald-400 mt-1">•</span>
+            <span>Fixed credit checkouts to resolve or create unified account mappings instead of using legacy user IDs.</span>
+          </li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes / Things to Know</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2">
             <span class="text-zinc-500 mt-1">•</span>
-            <span>This update introduces a more welcoming starting point while keeping the request flow easy to reach.</span>
+            <span>Dashboard rollout is controlled by the <code>dashboard_home</code> feature flag.</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-500 mt-1">•</span>
+            <span>For multi-replica deploys, set <code>ENABLE_CREDIT_GRANT_SCHEDULER</code> and <code>ENABLE_USPS_TRACKING_POLLER</code> to true on only one replica.</span>
           </li>
         </ul>
       </div>

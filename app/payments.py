@@ -45,7 +45,14 @@ from app.main import (
     verify_turnstile,
 )
 from app.models import AuditAction, AssignmentRole
-from app.auth import is_feature_enabled, log_audit, create_request_assignment, get_current_user
+from app.auth import (
+    is_feature_enabled,
+    log_audit,
+    create_request_assignment,
+    get_current_user,
+    get_current_account,
+    ensure_account_for_user,
+)
 
 logger = logging.getLogger("printellect.payments")
 
@@ -109,6 +116,42 @@ def is_stripe_configured() -> bool:
 def is_payments_enabled() -> bool:
     """Check if both Stripe is configured AND the feature flag is on."""
     return is_stripe_configured() and is_feature_enabled("store_payments")
+
+
+async def _get_authenticated_account_id(request: Request) -> Optional[str]:
+    """
+    Resolve the currently authenticated account ID for both auth systems.
+
+    Priority:
+    1) unified session cookie ("session") -> accounts.id
+    2) legacy user_session cookie -> map user email to accounts.id
+    """
+    account = await get_current_account(request)
+    if account:
+        return account.id
+
+    user = await get_current_user(request)
+    if not user:
+        return None
+
+    conn = db()
+    try:
+        row = conn.execute(
+            "SELECT id FROM accounts WHERE LOWER(email) = LOWER(?)",
+            (user.email.strip(),),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row:
+        return row["id"]
+
+    # Last resort for legacy sessions: create/link the unified Account record.
+    account = ensure_account_for_user(user)
+    if account:
+        return account.id
+
+    logger.warning("Could not resolve account for legacy user during checkout", extra={"email": user.email})
+    return None
 
 
 
@@ -1203,11 +1246,10 @@ async def api_store_checkout(
     if not item["price_cents"] or item["price_cents"] <= 0:
         return JSONResponse({"error": "Item has no price"}, status_code=400)
 
-    # Require authenticated user for payment
-    user = await get_current_user(request)
-    if not user:
+    # Require authenticated account (supports legacy + unified sessions)
+    account_id = await _get_authenticated_account_id(request)
+    if not account_id:
         return JSONResponse({"error": "auth_required"}, status_code=401)
-    account_id = user.id
 
     client_secret, result = create_store_item_checkout(
         item=dict(item),
@@ -1252,9 +1294,9 @@ async def api_rush_checkout(
     if not is_payments_enabled():
         return JSONResponse({"error": "Payments not enabled"}, status_code=400)
 
-    # Require authenticated user for payment
-    user = await get_current_user(request)
-    if not user:
+    # Require authenticated account (supports legacy + unified sessions)
+    account_id = await _get_authenticated_account_id(request)
+    if not account_id:
         return JSONResponse({"error": "auth_required"}, status_code=401)
 
     # Turnstile verification
@@ -1323,8 +1365,6 @@ async def api_rush_checkout(
         "ship_service_preference": ship_service_preference.strip(),
     }
 
-    account_id = user.id
-
     client_secret, result = create_rush_fee_checkout(
         rush_price_cents=rush_price_cents,
         requester_name=requester_name.strip(),
@@ -1351,9 +1391,9 @@ async def api_quote_checkout(
     if not is_payments_enabled():
         return JSONResponse({"error": "Payments not enabled"}, status_code=400)
 
-    # Require authenticated user for payment
-    user = await get_current_user(request)
-    if not user:
+    # Require authenticated account (supports legacy + unified sessions)
+    account_id = await _get_authenticated_account_id(request)
+    if not account_id:
         return JSONResponse({"error": "auth_required"}, status_code=401)
 
     conn = db()
@@ -1384,5 +1424,3 @@ async def api_quote_checkout(
         return JSONResponse({"error": result or "Checkout creation failed"}, status_code=500)
 
     return JSONResponse({"clientSecret": client_secret})
-
-

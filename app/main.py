@@ -44,7 +44,7 @@ APP_VERSION = "0.19.0"
 #   - 0.x.PATCH = Bug fixes only
 #
 # Changelog:
-# 0.19.0 - [FEATURE] Dashboard home: feature-flagged landing page with quick actions, active requests, printer status, activity feed, and announcements. Request form moves to /new-request. Per-user rollout via dashboard_home flag with email allow-list.
+# 0.19.0 - [FEATURE] Dashboard home rollout + release hardening: feature-flagged landing page at /, request form moved to /new-request, unified account handling fixes in quote/checkout flows, and multi-replica worker gating for credits/USPS poller.
 # 0.18.0 - [FEATURE] OIDC SSO via Authentik: discovery + authorization-code flow, account linking/unlinking, JWKS token validation, and auto-create on first sign-in
 # 0.17.0 - [FEATURE] Printellect production flow upgrades: /pair deep-link auto-claim + redirect, admin registry management (save/unclaim/delete), admin QR/device.json automation, OTA package-zip upload mode, expanded device control panel, finalized Pico provisioning contract docs
 # 0.16.1 - [FEATURE] Store commerce foundation: Stripe Checkout (items, rush fees, quotes, webhooks), credits/rewards ledger, and scheduled credit grants
@@ -264,6 +264,10 @@ OIDC_CLIENT_SECRET = os.getenv("OIDC_CLIENT_SECRET", "")
 OIDC_REDIRECT_URI = os.getenv("OIDC_REDIRECT_URI", "")
 OIDC_SCOPES = os.getenv("OIDC_SCOPES", "openid email profile")
 OIDC_DISPLAY_NAME = os.getenv("OIDC_DISPLAY_NAME", "Authentik")
+
+# Background workers (set false on non-primary replicas to avoid duplicate side effects)
+ENABLE_CREDIT_GRANT_SCHEDULER = os.getenv("ENABLE_CREDIT_GRANT_SCHEDULER", "true").strip().lower() in ("1", "true", "yes")
+ENABLE_USPS_TRACKING_POLLER = os.getenv("ENABLE_USPS_TRACKING_POLLER", "true").strip().lower() in ("1", "true", "yes")
 
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -2963,13 +2967,19 @@ def _startup():
     from app.trips import start_trip_reminder_scheduler
     start_trip_reminder_scheduler()
 
-    # Start credit auto-grant scheduler
-    from app.credits import start_credit_grant_scheduler
-    start_credit_grant_scheduler()
+    # Start credit auto-grant scheduler (primary replica only)
+    if ENABLE_CREDIT_GRANT_SCHEDULER:
+        from app.credits import start_credit_grant_scheduler
+        start_credit_grant_scheduler()
+    else:
+        logger.info("Credit auto-grant scheduler disabled via ENABLE_CREDIT_GRANT_SCHEDULER")
 
-    # Start USPS tracking poller
-    from app.shipping_poller import start_usps_tracking_poller
-    start_usps_tracking_poller()
+    # Start USPS tracking poller (primary replica only)
+    if ENABLE_USPS_TRACKING_POLLER:
+        from app.shipping_poller import start_usps_tracking_poller
+        start_usps_tracking_poller()
+    else:
+        logger.info("USPS tracking poller disabled via ENABLE_USPS_TRACKING_POLLER")
 
 # Mount auth routes
 from app.routes_auth import router as auth_router

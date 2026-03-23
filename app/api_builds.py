@@ -993,7 +993,7 @@ def admin_set_quote(
     rid: str,
     quote_amount: str = Form(...),
     quote_notes: Optional[str] = Form(None),
-    _=Depends(require_permission("manage_queue"))
+    admin=Depends(require_permission("manage_queue"))
 ):
     """Admin sets a price/quote on a request. Sends payment link to requester."""
     try:
@@ -1009,6 +1009,7 @@ def admin_set_quote(
     if not req:
         conn.close()
         raise HTTPException(status_code=404, detail="Not found")
+    req_dict = dict(req)
 
     now = now_iso()
     conn.execute(
@@ -1043,26 +1044,26 @@ def admin_set_quote(
         checkout_url, result = create_quote_checkout(
             request_id=rid,
             amount_cents=amount_cents,
-            request_dict=dict(req),
+            request_dict=req_dict,
         )
         if checkout_url:
             payment_link = checkout_url
 
     # Send notification email to requester with payment link
-    requester_email = (req["requester_email"] or "").strip()
+    requester_email = (req_dict.get("requester_email") or "").strip()
     if requester_email and payment_link:
         subject = f"[{APP_TITLE}] Quote for your print request ({rid[:8]})"
         text = (
             f"A quote has been set for your print request.\n\n"
             f"Amount: ${amount_dollars:.2f}\n"
-            f"Request: {req.get('print_name', rid[:8])}\n\n"
+            f"Request: {req_dict.get('print_name', rid[:8])}\n\n"
             f"Pay now: {payment_link}\n"
         )
         html = build_email_html(
             title="Quote for your print request",
             subtitle=f"${amount_dollars:.2f}",
             rows=[
-                ("Print", req.get("print_name") or rid[:8]),
+                ("Print", req_dict.get("print_name") or rid[:8]),
                 ("Amount", f"${amount_dollars:.2f}"),
                 ("Notes", quote_notes.strip() if quote_notes else "-"),
             ],
@@ -1073,12 +1074,11 @@ def admin_set_quote(
 
     from app.auth import log_audit
     from app.models import AuditAction
-    admin = get_current_admin(request)
     log_audit(
         action=AuditAction.QUOTE_SET,
         actor_type="admin",
-        actor_id=admin.get("id") if admin else None,
-        actor_name=admin.get("name") if admin else None,
+        actor_id=getattr(admin, "id", None),
+        actor_name=getattr(admin, "display_name", None) or getattr(admin, "username", None),
         target_type="request",
         target_id=rid,
         details={"amount_cents": amount_cents, "notes": quote_notes},
