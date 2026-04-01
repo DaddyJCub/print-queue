@@ -586,7 +586,7 @@ def test_printellect_pages_render(client):
 
     help_page = client.get("/printellect/help")
     assert help_page.status_code == 200
-    assert "OTA Firmware Updates" in help_page.text
+    assert "Help & Guides" in help_page.text
 
     releases_page = client.get("/admin/printellect/releases", cookies=_admin_cookie())
     assert releases_page.status_code == 200
