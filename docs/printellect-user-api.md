@@ -117,6 +117,13 @@ Response (`200`):
         "target_version": null,
         "progress": 0,
         "last_error": null
+      },
+      "last_command": {
+        "action": "test_lights",
+        "status": "completed",
+        "updated_at": "2026-04-01T12:00:00Z",
+        "error": null,
+        "result": { "effect": "pulse", "duration_ms": 1200, "hex": "#34C759" }
       }
     }
   ]
@@ -158,6 +165,7 @@ Response (`200`):
         "cmd_id": "uuid",
         "action": "play_perk",
         "payload": { "perk_id": "juggernog" },
+        "result": { "ok": true },
         "status": "completed",
         "created_at": "2026-03-22T10:25:00Z",
         "updated_at": "2026-03-22T10:25:05Z",
@@ -226,7 +234,9 @@ Auth: logged-in account session + feature flag + device ownership.
 | Set idle mode | `/actions/idle` | `{ "mode": "default" }` | `mode` required, non-empty |
 | Set brightness | `/actions/brightness` | `{ "level": 50 }` | `level` required, int 0-100 |
 | Set volume | `/actions/volume` | `{ "level": 15 }` | `level` required, int 0-30 |
-| Test lights | `/actions/test-lights` | `{ "pattern": "pulse", "duration_ms": 500 }` | Both required; `duration_ms` > 0 |
+| Set light color | `/actions/light-color` | `{ "color": "#0A84FF" }` or `{ "color": {"r":10,"g":132,"b":255} }` | Color required; server canonicalizes to RGB |
+| Set light effect | `/actions/light-effect` | `{ "effect": "pulse", "color": "#34C759", "speed_ms": 250 }` | `effect` required; allowed: `ambient`, `chase`, `off`, `pulse`, `rainbow`, `solid`, `strobe` |
+| Test lights | `/actions/test-lights` | `{ "effect": "pulse", "duration_ms": 1200, "speed_ms": 250, "color": "#34C759" }` | `effect` (or legacy `pattern`) + `duration_ms` required |
 | Test audio | `/actions/test-audio` | `{ "track_id": "..." }` | `track_id` required, non-empty |
 | Reboot | `/actions/reboot` | `{}` | — |
 | OTA update | `/actions/update` | `{ "version": "0.3.0" }` | `version` required, non-empty |

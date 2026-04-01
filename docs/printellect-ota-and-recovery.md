@@ -4,6 +4,7 @@
 
 ## OTA model
 - Backend stores app releases with `manifest_json` and `bundle_path`.
+- Device receives update commands via `/commands/stream` (or `/commands/next` fallback).
 - Device checks `/api/printellect/device/v1/releases/latest`.
 - Device downloads manifest-listed files from `/api/printellect/device/v1/releases/{version}/files/{path}`.
 - Device reports progress via `/api/printellect/device/v1/update/status`.
@@ -12,6 +13,7 @@
 ## Safety
 - Keep one previous app bundle for rollback.
 - Confirm healthy boot with `/api/printellect/device/v1/boot-ok`.
+- Enforce OTA target/version consistency: mismatch reports are rejected and status is marked `failed`.
 - Boot-failure counter and rollback trigger logic should call `rollback_to_previous()` and report `rollback` after 3 failed boots.
 
 ## Wired recovery (guaranteed path)

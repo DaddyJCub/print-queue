@@ -13,6 +13,7 @@ from lib.hardware import HardwareAdapter
 from lib.command_runner import CommandRunner
 from lib.ota_manager import OtaManager
 from lib.reset_controller import ResetController
+from lib.versioning import get_reported_versions
 
 
 STATE_BOOT = "BOOT"
@@ -37,8 +38,12 @@ def _restart():
 def _default_cfg():
     return {
         "api_base": "https://print.jcubhub.com",
+        "fw_version": "fw-1.0.0",
+        "app_version": "1.0.0",
         "heartbeat_interval_s": 20,
         "command_poll_interval_s": 1,
+        "command_stream_enabled": True,
+        "command_stream_timeout_s": 8,
         "provision_poll_interval_s": 3,
         "sta_connect_timeout_s": 10,
         "sta_connect_retries": 3,
@@ -47,12 +52,19 @@ def _default_cfg():
     }
 
 
-def _handle_reset_event(event, api=None):
+def _reported_versions(cfg):
+    state = read_json(APP_STATE_PATH, default={}) or {}
+    return get_reported_versions(cfg, state)
+
+
+def _handle_reset_event(event, api=None, fw_version=None, app_version=None):
+    fw = fw_version or "fw-0.0.0"
+    app = app_version or "app-0.0.0"
     if event == "wifi_reset":
         delete_file(WIFI_PATH)
         if api:
             try:
-                api.heartbeat("unknown", "unknown", reset_event="wifi_reset")
+                api.heartbeat(fw, app, reset_event="wifi_reset")
             except Exception:
                 pass
         _restart()
@@ -62,7 +74,7 @@ def _handle_reset_event(event, api=None):
         delete_file(TOKEN_PATH)
         if api:
             try:
-                api.heartbeat("unknown", "unknown", reset_event="factory_reset")
+                api.heartbeat(fw, app, reset_event="factory_reset")
             except Exception:
                 pass
         _restart()
@@ -107,12 +119,18 @@ def main():
     last_poll = 0
 
     while True:
+        fw_version, app_version = _reported_versions(cfg)
         reset_event = reset_ctl.poll()
         if reset_event:
             if reset_event == "soft_reset":
                 hw.reboot()
             else:
-                _handle_reset_event(reset_event, api=api if api.device_token else None)
+                _handle_reset_event(
+                    reset_event,
+                    api=api if api.device_token else None,
+                    fw_version=fw_version,
+                    app_version=app_version,
+                )
 
         hw.set_led_phase(reset_ctl.led_phase())
 
@@ -154,7 +172,7 @@ def main():
 
             token = read_json(TOKEN_PATH, default={}).get("device_token")
             if not token:
-                status, body = api.provision("fw-unknown", "app-unknown")
+                status, body = api.provision(fw_version, app_version)
                 if status == 200 and body and body.get("status") == "provisioned":
                     token = body.get("device_token")
                     write_json(TOKEN_PATH, {"device_token": token})
@@ -182,7 +200,7 @@ def main():
                 pass
 
             if now - last_heartbeat >= cfg["heartbeat_interval_s"]:
-                status, _ = api.heartbeat("fw-unknown", "app-unknown", rssi=wifi_mgr.rssi())
+                status, _ = api.heartbeat(fw_version, app_version, rssi=wifi_mgr.rssi())
                 if status == 401:
                     delete_file(TOKEN_PATH)
                     api.set_token(None)
@@ -198,7 +216,15 @@ def main():
                     pass
 
             if now - last_poll >= cfg["command_poll_interval_s"]:
-                status, body = api.next_command()
+                status = 204
+                body = None
+                if cfg.get("command_stream_enabled", True):
+                    status, body = api.command_stream(timeout_s=cfg.get("command_stream_timeout_s", 8))
+                    # Fallback to polling if stream endpoint is unavailable.
+                    if status in (404, 405, 500):
+                        status, body = api.next_command()
+                else:
+                    status, body = api.next_command()
                 if status == 401:
                     delete_file(TOKEN_PATH)
                     api.set_token(None)

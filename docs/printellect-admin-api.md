@@ -1,6 +1,6 @@
 # Printellect Admin API
 
-> See also: [Device API](printellect-device-api.md) · [User API](printellect-user-api.md) · [Docs Index](README.md)
+> See also: [Device API](printellect-device-api.md) · [User API](printellect-user-api.md) · [Device Control Roadmap](printellect-device-control-roadmap.md) · [Docs Index](README.md)
 
 All endpoints require admin authentication via `require_admin()` — admin session cookie or unified account with admin role.
 
@@ -414,6 +414,8 @@ Response (`200`):
       "device_id": "perkbase-001",
       "name": "Living Room Base",
       "owner_user_id": "user-uuid",
+      "fw_version": "fw-1.0.0",
+      "app_version": "0.2.0",
       "target_version": "0.2.0",
       "status": "downloading",
       "progress": 40,
@@ -425,6 +427,8 @@ Response (`200`):
 ```
 
 Ordered by `device_id`.
+
+`status = failed` may include version mismatch enforcement errors when the device-reported version differs from the OTA target.
 
 ---
 

@@ -110,6 +110,7 @@ Firmware rule:
 - `unclaimed`: sleep 2-5 seconds and retry.
 - `provisioned`: store token in `/token.json`, switch to bearer mode.
 - `403`: pause and require operator check (wrong label/config).
+- Always send concrete `fw_version` and `app_version` values (no `unknown` placeholders).
 
 ---
 
@@ -117,7 +118,7 @@ Firmware rule:
 
 `POST /heartbeat` (Bearer)
 
-All request fields are **optional**:
+All request fields are **optional**, but firmware should send concrete versions:
 ```json
 {
   "fw_version": "1.0.0",
@@ -166,6 +167,18 @@ Rate limit:
 
 Command state machine: `queued → delivered → executing → completed | failed`
 
+### 4.1b Stream command (hybrid low-latency)
+`GET /commands/stream?timeout_s=15` (Bearer)
+
+Long-poll variant of `GET /commands/next`:
+- waits up to `timeout_s` for queued work
+- returns `200` with the same command payload shape when available
+- returns `204` when timeout is reached or an inflight command already exists
+
+Firmware guidance:
+- Prefer `/commands/stream` for lower latency.
+- Fall back to `/commands/next` if stream endpoint is unavailable.
+
 ### 4.2 Command lifecycle updates
 `POST /commands/{cmd_id}/status` (Bearer)
 
@@ -182,10 +195,18 @@ Request:
 { "status": "failed", "error": "speaker init failed" }
 ```
 
+```json
+{
+  "status": "completed",
+  "result": { "effect": "pulse", "duration_ms": 1500, "hex": "#FF3B30" }
+}
+```
+
 | Field | Type | Required |
 |-------|------|----------|
 | `status` | string | Yes — one of `executing`, `completed`, `failed` |
 | `error` | string | Optional — included when `status` is `failed` |
+| `result` | object | Optional — structured execution details for diagnostics |
 
 Response:
 ```json
@@ -307,7 +328,10 @@ Response:
 { "ok": true }
 ```
 
-Error: `422` if `status` is not in the allowed set.
+Errors:
+- `422` if `status` is not in the allowed set.
+- `422` if `status=success` and no version can be resolved.
+- `409` if `status=success` reports a version that does not match the current OTA target version.
 
 ### 6.6 Boot success ack
 `POST /boot-ok` (Bearer)
@@ -323,6 +347,10 @@ Response:
 ```
 
 Sets update status to `success` with `progress: 100`.
+
+Errors:
+- `422` when OTA target exists but `version` is missing.
+- `409` when `version` does not match the current OTA target version for this device (backend marks update status as `failed`).
 
 ---
 
@@ -345,6 +373,8 @@ Sets update status to `success` with `progress: 100`.
 |----------|---------|---------|
 | Online window | `DEVICE_ONLINE_WINDOW_SECONDS` | 60 |
 | Min poll interval | `DEVICE_MIN_POLL_SECONDS` | 1.0 |
+| Stream max timeout | `DEVICE_STREAM_MAX_SECONDS` | 25 |
+| Stream poll step | `DEVICE_STREAM_POLL_STEP_SECONDS` | 0.25 |
 | Provision poll interval | `DEVICE_PROVISION_POLL_MS` | 1000 |
 | Max claim failures | `PRINTELLECT_MAX_CLAIM_FAILURES` | 8 |
 | Claim failure window | `PRINTELLECT_CLAIM_FAIL_WINDOW_S` | 300 |

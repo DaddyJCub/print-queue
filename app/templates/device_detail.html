@@ -304,31 +304,73 @@
       </button>
     </div>
     <div id="diag-tip" class="hidden text-xs text-zinc-400 bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3 py-2 mb-3">
-      Use these to test your device hardware. <strong>Light Test</strong> runs a temporary LED pattern; <strong>Test Audio</strong> plays a short sample track by ID.
+      Use these to test your device hardware with guided controls. Set an LED color/effect, run a timed light test, then check recent diagnostics results below for pass/fail details.
     </div>
     <div class="grid sm:grid-cols-2 gap-4">
-      <div class="space-y-2">
-        <p class="text-xs font-medium text-zinc-400">Light Test</p>
+      <div class="space-y-3">
+        <p class="text-xs font-medium text-zinc-400">Light Controls</p>
         <div class="grid grid-cols-2 gap-2">
           <div>
-            <label class="text-xs text-zinc-500 mb-1 block">Pattern</label>
-            <input id="lightsPattern" value="pulse" placeholder="e.g. pulse" class="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-sm focus:border-indigo-500 outline-none transition-colors">
+            <label class="text-xs text-zinc-500 mb-1 block">Color</label>
+            <div class="flex gap-2">
+              <input id="lightColorPicker" type="color" value="#FFFFFF" class="w-12 h-10 p-1 bg-zinc-900 border border-zinc-700 rounded-lg">
+              <input id="lightColorHex" value="#FFFFFF" placeholder="#RRGGBB" class="flex-1 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-sm font-mono uppercase focus:border-indigo-500 outline-none transition-colors">
+            </div>
           </div>
+          <div>
+            <label class="text-xs text-zinc-500 mb-1 block">Effect</label>
+            <select id="lightEffect" class="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-sm focus:border-indigo-500 outline-none transition-colors">
+              <option value="solid">Solid</option>
+              <option value="pulse" selected>Pulse</option>
+              <option value="rainbow">Rainbow</option>
+              <option value="strobe">Strobe</option>
+              <option value="ambient">Ambient</option>
+              <option value="chase">Chase</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          <button data-preset="#FF3B30" class="light-preset-btn px-2 py-1 rounded-lg text-[11px] bg-red-900/30 border border-red-700/40 text-red-300">Red</button>
+          <button data-preset="#34C759" class="light-preset-btn px-2 py-1 rounded-lg text-[11px] bg-emerald-900/30 border border-emerald-700/40 text-emerald-300">Green</button>
+          <button data-preset="#0A84FF" class="light-preset-btn px-2 py-1 rounded-lg text-[11px] bg-sky-900/30 border border-sky-700/40 text-sky-300">Blue</button>
+          <button data-preset="#FFD60A" class="light-preset-btn px-2 py-1 rounded-lg text-[11px] bg-amber-900/30 border border-amber-700/40 text-amber-300">Amber</button>
+          <button data-preset="#FFFFFF" class="light-preset-btn px-2 py-1 rounded-lg text-[11px] bg-zinc-800 border border-zinc-700 text-zinc-300">White</button>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="setLightColorBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">Set Color</button>
+          <button id="setLightEffectBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">Set Effect</button>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        <p class="text-xs font-medium text-zinc-400">Diagnostic Tests</p>
+        <div class="grid grid-cols-2 gap-2">
           <div>
             <label class="text-xs text-zinc-500 mb-1 block">Duration (ms)</label>
             <input id="lightsDuration" type="number" min="100" step="100" value="2000" class="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-sm focus:border-indigo-500 outline-none transition-colors">
           </div>
+          <div>
+            <label class="text-xs text-zinc-500 mb-1 block">Speed (ms)</label>
+            <input id="lightsSpeed" type="number" min="50" step="50" value="300" class="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-sm focus:border-indigo-500 outline-none transition-colors">
+          </div>
         </div>
         <button id="testLightsBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">Run Light Test</button>
-      </div>
-      <div class="space-y-2">
-        <p class="text-xs font-medium text-zinc-400">Audio Test</p>
         <div>
-          <label class="text-xs text-zinc-500 mb-1 block">Track ID</label>
+          <label class="text-xs text-zinc-500 mb-1 block">Audio Track ID</label>
           <input id="testTrack" value="juggernog" placeholder="track id" class="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-sm font-mono focus:border-indigo-500 outline-none transition-colors">
         </div>
         <button id="testAudioBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">Test Audio</button>
       </div>
+    </div>
+
+    <div class="mt-4 pt-3 border-t border-zinc-800 space-y-2">
+      <div class="flex items-center justify-between">
+        <p class="text-xs font-medium text-zinc-400">Recent Diagnostic Results</p>
+        <p class="text-[11px] text-zinc-600">Auto-refreshes with device status</p>
+      </div>
+      <div id="diagRemediation" class="hidden text-xs rounded-xl border px-3 py-2"></div>
+      <div id="diagResults" class="space-y-1.5"></div>
     </div>
   </section>
 
@@ -346,6 +388,11 @@
     </div>
     <div id="ota-tip" class="hidden text-xs text-zinc-400 bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3 py-2 mb-3">
       Sends an OTA update command to the device. Enter <code class="font-mono">latest</code> to use the current promoted release, or a specific version like <code class="font-mono">0.16.0</code>. The device will reboot after applying.
+      <div class="mt-2 flex items-center gap-2">
+        <a href="/admin/printellect/releases" class="text-amber-300 underline">OTA Rollout Guide</a>
+        <span class="text-zinc-600">•</span>
+        <a href="/admin/printellect/ota-status" class="text-amber-300 underline">Live OTA Status</a>
+      </div>
     </div>
     <div class="flex gap-2">
       <input id="updateVersion" value="latest" placeholder="latest or 0.x.y" class="device-action-control flex-1 px-3 py-2.5 bg-zinc-900 border border-zinc-700 rounded-xl text-sm font-mono focus:border-amber-500 outline-none transition-colors">
@@ -427,6 +474,101 @@ function perkLabel(perk) {
   return map[perk] || perk || '—';
 }
 
+function normalizeHexColor(raw) {
+  const text = (raw || '').trim().toUpperCase();
+  if (/^#[0-9A-F]{6}$/.test(text)) return text;
+  return null;
+}
+
+function hexToRgb(hex) {
+  return {
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16),
+  };
+}
+
+function rgbToHex(rgb) {
+  if (!rgb || typeof rgb !== 'object') return null;
+  const r = Number(rgb.r);
+  const g = Number(rgb.g);
+  const b = Number(rgb.b);
+  if (![r, g, b].every(v => Number.isInteger(v) && v >= 0 && v <= 255)) return null;
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`.toUpperCase();
+}
+
+function getLightColorHex() {
+  const hexInput = document.getElementById('lightColorHex');
+  const normalized = normalizeHexColor(hexInput.value);
+  if (normalized) {
+    hexInput.value = normalized;
+    document.getElementById('lightColorPicker').value = normalized;
+    return normalized;
+  }
+  showActionStatus(false, 'Color must be in #RRGGBB format');
+  return null;
+}
+
+function syncLightControlsFromState(state) {
+  const colorHex = rgbToHex(state.light_color);
+  if (colorHex) {
+    document.getElementById('lightColorHex').value = colorHex;
+    document.getElementById('lightColorPicker').value = colorHex;
+  }
+  if (typeof state.light_effect === 'string' && state.light_effect) {
+    const sel = document.getElementById('lightEffect');
+    const exists = Array.from(sel.options).some(o => o.value === state.light_effect);
+    if (exists) sel.value = state.light_effect;
+  }
+}
+
+function renderDiagnosticsResults(commands) {
+  const root = document.getElementById('diagResults');
+  const remediation = document.getElementById('diagRemediation');
+  const diagActions = new Set(['test_lights', 'test_audio', 'set_light_color', 'set_light_effect']);
+  const rows = (commands || []).filter(c => diagActions.has(c.action)).slice(0, 6);
+  if (!rows.length) {
+    root.innerHTML = '<p class="text-xs text-zinc-600">No diagnostic commands yet. Run a light or audio test to see results.</p>';
+    remediation.classList.add('hidden');
+    remediation.textContent = '';
+    return;
+  }
+
+  const latest = rows[0];
+  if (latest.status === 'failed') {
+    remediation.className = 'text-xs rounded-xl border px-3 py-2 border-red-500/40 bg-red-900/20 text-red-200';
+    remediation.classList.remove('hidden');
+    remediation.textContent = latest.error ? `Last failure: ${latest.error}. Check power, speaker/LED wiring, and device connectivity.` : 'Last failure reported by device. Check connectivity and retry diagnostics.';
+  } else if (!lastDevice?.online) {
+    remediation.className = 'text-xs rounded-xl border px-3 py-2 border-amber-500/40 bg-amber-900/20 text-amber-200';
+    remediation.classList.remove('hidden');
+    remediation.textContent = 'Device is offline. Reconnect power/Wi-Fi, wait for online status, then rerun diagnostics.';
+  } else {
+    remediation.classList.add('hidden');
+    remediation.textContent = '';
+  }
+
+  root.innerHTML = rows.map(cmd => {
+    const pass = cmd.status === 'completed';
+    const badge = pass
+      ? '<span class="text-[10px] px-2 py-0.5 rounded-full border border-emerald-700/40 bg-emerald-900/30 text-emerald-300">PASS</span>'
+      : cmd.status === 'failed'
+        ? '<span class="text-[10px] px-2 py-0.5 rounded-full border border-red-700/40 bg-red-900/30 text-red-300">FAIL</span>'
+        : '<span class="text-[10px] px-2 py-0.5 rounded-full border border-zinc-700 bg-zinc-800 text-zinc-300">PENDING</span>';
+    const result = cmd.result && Object.keys(cmd.result).length ? JSON.stringify(cmd.result) : '';
+    return `
+      <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+        <div class="flex items-center gap-2">
+          ${badge}
+          <span class="text-xs font-mono text-zinc-300">${cmd.action}</span>
+          <span class="ml-auto text-[11px] text-zinc-600">${relativeTime(cmd.updated_at || cmd.created_at)}</span>
+        </div>
+        ${cmd.error ? `<p class="text-xs text-red-300 mt-1">${cmd.error}</p>` : ''}
+        ${result ? `<p class="text-[11px] text-zinc-500 mt-1 font-mono break-all">${result}</p>` : ''}
+      </div>`;
+  }).join('');
+}
+
 function updateStatusCards(d) {
   const state = d.state || {};
 
@@ -505,6 +647,7 @@ function syncControlValues(state) {
       clearDirty('idle_mode');
     }
   }
+  syncLightControlsFromState(state);
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────────
@@ -543,6 +686,7 @@ async function loadDevice() {
     if (stateEl) stateEl.textContent = JSON.stringify(d.state || {}, null, 2);
     const cmdsEl = document.getElementById('commands');
     if (cmdsEl) cmdsEl.textContent = JSON.stringify(d.recent_commands || [], null, 2);
+    renderDiagnosticsResults(d.recent_commands || []);
 
     syncControlValues(d.state || {});
     setControlsEnabled(Boolean(d.online));
@@ -592,6 +736,23 @@ document.getElementById('brightnessRange').addEventListener('input', e => {
   markDirty('brightness', 5000);
 });
 document.getElementById('idleMode').addEventListener('change', () => markDirty('idle_mode', 10000));
+document.getElementById('lightColorPicker').addEventListener('input', e => {
+  document.getElementById('lightColorHex').value = String(e.target.value || '').toUpperCase();
+});
+document.getElementById('lightColorHex').addEventListener('change', e => {
+  const normalized = normalizeHexColor(e.target.value);
+  if (normalized) {
+    e.target.value = normalized;
+    document.getElementById('lightColorPicker').value = normalized;
+  }
+});
+document.querySelectorAll('.light-preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const hex = btn.getAttribute('data-preset');
+    document.getElementById('lightColorHex').value = hex;
+    document.getElementById('lightColorPicker').value = hex;
+  });
+});
 
 document.getElementById('playBtn').addEventListener('click', () => postAction('play', {perk: document.getElementById('perkSelect').value}));
 document.getElementById('stopBtn').addEventListener('click', () => postAction('stop', {}));
@@ -611,8 +772,30 @@ document.getElementById('idleBtn').addEventListener('click', () => {
   markDirty('idle_mode', 10000);
   postAction('idle', {mode: document.getElementById('idleMode').value});
 });
-document.getElementById('testLightsBtn').addEventListener('click', () =>
-  postAction('test-lights', {pattern: document.getElementById('lightsPattern').value.trim(), duration_ms: parseInt(document.getElementById('lightsDuration').value, 10)}));
+document.getElementById('setLightColorBtn').addEventListener('click', () => {
+  const hex = getLightColorHex();
+  if (!hex) return;
+  postAction('light-color', {color: hex});
+});
+document.getElementById('setLightEffectBtn').addEventListener('click', () => {
+  const hex = getLightColorHex();
+  if (!hex) return;
+  postAction('light-effect', {
+    effect: document.getElementById('lightEffect').value,
+    color: hex,
+    speed_ms: parseInt(document.getElementById('lightsSpeed').value, 10),
+  });
+});
+document.getElementById('testLightsBtn').addEventListener('click', () => {
+  const hex = getLightColorHex();
+  if (!hex) return;
+  postAction('test-lights', {
+    effect: document.getElementById('lightEffect').value,
+    duration_ms: parseInt(document.getElementById('lightsDuration').value, 10),
+    speed_ms: parseInt(document.getElementById('lightsSpeed').value, 10),
+    color: hex,
+  });
+});
 document.getElementById('testAudioBtn').addEventListener('click', () =>
   postAction('test-audio', {track_id: document.getElementById('testTrack').value.trim()}));
 

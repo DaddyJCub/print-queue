@@ -1,7 +1,11 @@
 {
   "api_base": "https://print.jcubhub.com",
+  "fw_version": "fw-1.0.0",
+  "app_version": "1.0.0",
   "heartbeat_interval_s": 20,
   "command_poll_interval_s": 1,
+  "command_stream_enabled": true,
+  "command_stream_timeout_s": 8,
   "provision_poll_interval_s": 3,
   "sta_connect_timeout_s": 10,
   "sta_connect_retries": 3,

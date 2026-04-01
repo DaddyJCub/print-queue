@@ -1,3 +1,4 @@
+import asyncio
 import json
 import io
 import logging
@@ -19,6 +20,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 
 from app.auth import get_current_account, get_current_admin, is_feature_enabled, require_account, require_admin
 from app.printellect_service import (
@@ -65,6 +67,8 @@ PROVISION_POLL_INTERVAL_MS = int(os.getenv("DEVICE_PROVISION_POLL_MS", "1000"))
 RELEASES_DIR = os.getenv("RELEASES_DIR", os.path.join("local_data", "releases"))
 DEVICE_SOURCE_DIR = os.getenv("DEVICE_SOURCE_DIR", os.path.join("device", "pico2w"))
 PAIRING_SESSION_MINUTES = int(os.getenv("PAIRING_SESSION_MINUTES", "10"))
+DEVICE_STREAM_MAX_SECONDS = int(os.getenv("DEVICE_STREAM_MAX_SECONDS", "25"))
+DEVICE_STREAM_POLL_STEP_SECONDS = max(0.05, float(os.getenv("DEVICE_STREAM_POLL_STEP_SECONDS", "0.25")))
 PRINTELLECT_FEATURE_KEY = os.getenv("PRINTELLECT_FEATURE_KEY", "printellect_device_control")
 PRINTELLECT_DEMO_OPEN_ACCESS = os.getenv(
     "PRINTELLECT_DEMO_OPEN_ACCESS",
@@ -78,6 +82,88 @@ _claim_failures: Dict[str, list[float]] = {}
 MAX_CLAIM_FAILURES = int(os.getenv("PRINTELLECT_MAX_CLAIM_FAILURES", "8"))
 CLAIM_FAIL_WINDOW_SECONDS = int(os.getenv("PRINTELLECT_CLAIM_FAIL_WINDOW_S", "300"))
 PRINTELLECT_PAIR_BASE_URL = os.getenv("PRINTELLECT_PAIR_BASE_URL", "https://print.jcubhub.com").rstrip("/")
+
+LIGHT_EFFECT_VALUES = {
+    "solid",
+    "pulse",
+    "rainbow",
+    "strobe",
+    "ambient",
+    "chase",
+    "off",
+}
+
+
+class LightColorActionBody(BaseModel):
+    color: Optional[Any] = Field(
+        default=None,
+        description="Hex (#RRGGBB) or RGB object ({r,g,b})",
+    )
+    r: Optional[int] = Field(default=None, ge=0, le=255)
+    g: Optional[int] = Field(default=None, ge=0, le=255)
+    b: Optional[int] = Field(default=None, ge=0, le=255)
+
+
+class LightEffectActionBody(BaseModel):
+    effect: str = Field(..., description="Effect name, e.g. pulse, rainbow, solid")
+    duration_ms: Optional[int] = Field(default=None, gt=0)
+    speed_ms: Optional[int] = Field(default=None, ge=50, le=10000)
+    color: Optional[Any] = Field(
+        default=None,
+        description="Optional effect color as #RRGGBB or {r,g,b}",
+    )
+    r: Optional[int] = Field(default=None, ge=0, le=255)
+    g: Optional[int] = Field(default=None, ge=0, le=255)
+    b: Optional[int] = Field(default=None, ge=0, le=255)
+
+
+class TestLightsActionBody(BaseModel):
+    pattern: Optional[str] = None
+    effect: Optional[str] = None
+    duration_ms: int = Field(..., gt=0)
+    speed_ms: Optional[int] = Field(default=None, ge=50, le=10000)
+    color: Optional[Any] = Field(
+        default=None,
+        description="Optional test color as #RRGGBB or {r,g,b}",
+    )
+    r: Optional[int] = Field(default=None, ge=0, le=255)
+    g: Optional[int] = Field(default=None, ge=0, le=255)
+    b: Optional[int] = Field(default=None, ge=0, le=255)
+
+
+class DeviceCommandStatusBody(BaseModel):
+    status: str = Field(..., description="executing | completed | failed")
+    error: Optional[str] = Field(default=None, description="Failure message when status=failed")
+    result: Optional[Dict[str, Any]] = Field(default=None, description="Optional command execution details")
+
+
+class DeviceUpdateStatusBody(BaseModel):
+    status: str = Field(..., description="idle | available | downloading | applying | success | rollback | failed")
+    progress: Optional[int] = Field(default=0, ge=0, le=100)
+    version: Optional[str] = Field(default=None, description="Reported app version for this update status")
+    target_version: Optional[str] = Field(default=None, description="Alias of version")
+    error: Optional[str] = Field(default=None, description="Failure detail")
+
+
+class DeviceBootOkBody(BaseModel):
+    version: Optional[str] = Field(default=None, description="Booted app version")
+
+
+class ApiOkResponse(BaseModel):
+    ok: bool = True
+
+
+class ActionEnqueueResponse(ApiOkResponse):
+    cmd_id: str
+    action: str
+    payload: Dict[str, Any]
+
+
+class DeviceCommandResponse(BaseModel):
+    cmd_id: str
+    action: str
+    payload: Dict[str, Any]
+    created_at: str
 
 
 def db() -> sqlite3.Connection:
@@ -110,6 +196,40 @@ def _parse_iso(value: Optional[str]) -> Optional[datetime]:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except Exception:
         return None
+
+
+def _normalize_version_text(value: Any) -> Optional[str]:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _mark_update_version_mismatch(
+    conn: sqlite3.Connection,
+    *,
+    device_id: str,
+    expected_version: str,
+    reported_version: Optional[str],
+    source: str,
+) -> str:
+    msg = (
+        "version mismatch (%s): expected=%s reported=%s"
+        % (source, expected_version, reported_version or "missing")
+    )
+    ts = now_iso()
+    conn.execute(
+        """
+        INSERT INTO device_update_status (device_id, target_version, status, progress, last_error, updated_at)
+        VALUES (?, ?, 'failed', 100, ?, ?)
+        ON CONFLICT(device_id) DO UPDATE SET
+            target_version = excluded.target_version,
+            status = 'failed',
+            progress = 100,
+            last_error = excluded.last_error,
+            updated_at = excluded.updated_at
+        """,
+        (device_id, expected_version, msg, ts),
+    )
+    return msg
 
 
 def _claim_hash(claim_code: str) -> str:
@@ -199,6 +319,55 @@ def _safe_release_join(base: Path, rel_path: str) -> Path:
     if base_resolved == candidate or base_resolved in candidate.parents:
         return candidate
     raise HTTPException(status_code=400, detail="Invalid release path")
+
+
+def _rgb_to_hex(rgb: Dict[str, int]) -> str:
+    return "#{:02X}{:02X}{:02X}".format(rgb["r"], rgb["g"], rgb["b"])
+
+
+def _parse_rgb_obj(value: Any, field_name: str = "color") -> Dict[str, int]:
+    if not isinstance(value, dict):
+        raise HTTPException(status_code=422, detail=f"{field_name} must be #RRGGBB or object with r,g,b")
+    rgb: Dict[str, int] = {}
+    for key in ("r", "g", "b"):
+        channel = value.get(key)
+        if not isinstance(channel, int) or channel < 0 or channel > 255:
+            raise HTTPException(status_code=422, detail=f"{field_name}.{key} must be integer 0-255")
+        rgb[key] = channel
+    return rgb
+
+
+def _parse_hex_color(value: str, field_name: str = "color") -> Dict[str, int]:
+    text = value.strip()
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", text):
+        raise HTTPException(status_code=422, detail=f"{field_name} must be #RRGGBB")
+    return {
+        "r": int(text[1:3], 16),
+        "g": int(text[3:5], 16),
+        "b": int(text[5:7], 16),
+    }
+
+
+def _normalize_rgb_from_payload(
+    payload: Dict[str, Any],
+    *,
+    required: bool,
+    field_name: str = "color",
+) -> Optional[Dict[str, int]]:
+    color = payload.get(field_name)
+    if color is None and all(ch in payload for ch in ("r", "g", "b")):
+        color = {"r": payload.get("r"), "g": payload.get("g"), "b": payload.get("b")}
+
+    if color is None:
+        if required:
+            raise HTTPException(status_code=422, detail=f"{field_name} is required")
+        return None
+
+    if isinstance(color, str):
+        return _parse_hex_color(color, field_name=field_name)
+    if isinstance(color, dict):
+        return _parse_rgb_obj(color, field_name=field_name)
+    raise HTTPException(status_code=422, detail=f"{field_name} must be #RRGGBB or object with r,g,b")
 
 
 def _audit(
@@ -307,6 +476,7 @@ def init_printellect_tables(cur: sqlite3.Cursor) -> None:
             device_id TEXT NOT NULL,
             action TEXT NOT NULL,
             payload_json TEXT,
+            result_json TEXT,
             status TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
@@ -376,6 +546,11 @@ def ensure_printellect_migrations(cur: sqlite3.Cursor) -> None:
         if "last_provisioned_at" not in cols:
             cur.execute("ALTER TABLE devices ADD COLUMN last_provisioned_at TEXT")
 
+    cur.execute("PRAGMA table_info(commands)")
+    command_cols = {row[1] for row in cur.fetchall()}
+    if command_cols and "result_json" not in command_cols:
+        cur.execute("ALTER TABLE commands ADD COLUMN result_json TEXT")
+
 
 def _get_device_for_owner(conn: sqlite3.Connection, device_id: str, owner_id: str) -> sqlite3.Row:
     row = conn.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,)).fetchone()
@@ -436,19 +611,64 @@ def _validate_action_payload(action: str, payload: Dict[str, Any]) -> Dict[str, 
         return {"level": level}
 
     if action == "test_lights":
-        pattern = payload.get("pattern")
+        pattern = payload.get("effect") or payload.get("pattern")
         duration_ms = payload.get("duration_ms")
         if not isinstance(pattern, str) or not pattern.strip():
-            raise HTTPException(status_code=422, detail="pattern is required")
+            raise HTTPException(status_code=422, detail="pattern or effect is required")
         if not isinstance(duration_ms, int) or duration_ms <= 0:
             raise HTTPException(status_code=422, detail="duration_ms must be a positive integer")
-        return {"pattern": pattern.strip(), "duration_ms": duration_ms}
+        cleaned: Dict[str, Any] = {
+            "pattern": pattern.strip(),
+            "effect": pattern.strip(),
+            "duration_ms": duration_ms,
+        }
+        speed_ms = payload.get("speed_ms")
+        if speed_ms is not None:
+            if not isinstance(speed_ms, int) or speed_ms < 50 or speed_ms > 10000:
+                raise HTTPException(status_code=422, detail="speed_ms must be integer 50-10000")
+            cleaned["speed_ms"] = speed_ms
+        color = _normalize_rgb_from_payload(payload, required=False, field_name="color")
+        if color is not None:
+            cleaned["color"] = color
+            cleaned["hex"] = _rgb_to_hex(color)
+        return cleaned
 
     if action == "test_audio":
         track_id = payload.get("track_id")
         if not isinstance(track_id, str) or not track_id.strip():
             raise HTTPException(status_code=422, detail="track_id is required")
         return {"track_id": track_id.strip()}
+
+    if action == "set_light_color":
+        color = _normalize_rgb_from_payload(payload, required=True, field_name="color")
+        return {"color": color, "hex": _rgb_to_hex(color)}
+
+    if action == "set_light_effect":
+        effect = payload.get("effect")
+        if not isinstance(effect, str) or not effect.strip():
+            raise HTTPException(status_code=422, detail="effect is required")
+        effect_clean = effect.strip().lower()
+        if effect_clean not in LIGHT_EFFECT_VALUES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"effect must be one of: {', '.join(sorted(LIGHT_EFFECT_VALUES))}",
+            )
+        cleaned = {"effect": effect_clean}
+        duration_ms = payload.get("duration_ms")
+        if duration_ms is not None:
+            if not isinstance(duration_ms, int) or duration_ms <= 0:
+                raise HTTPException(status_code=422, detail="duration_ms must be a positive integer")
+            cleaned["duration_ms"] = duration_ms
+        speed_ms = payload.get("speed_ms")
+        if speed_ms is not None:
+            if not isinstance(speed_ms, int) or speed_ms < 50 or speed_ms > 10000:
+                raise HTTPException(status_code=422, detail="speed_ms must be integer 50-10000")
+            cleaned["speed_ms"] = speed_ms
+        color = _normalize_rgb_from_payload(payload, required=False, field_name="color")
+        if color is not None:
+            cleaned["color"] = color
+            cleaned["hex"] = _rgb_to_hex(color)
+        return cleaned
 
     if action == "ota_apply":
         version = payload.get("version")
@@ -483,26 +703,27 @@ def notify_device_shipping_status(requester_email: str, shipping_status: str):
     if not led_status:
         return  # No LED notification for this status
 
+    conn = None
     try:
-        conn = db()
-        # Find the Printellect account for this email
+        conn = sqlite3.connect(os.getenv("DB_PATH", "/data/app.db"), timeout=1)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout = 1000")
+        # Resolve account from canonical accounts table.
         acct = conn.execute(
-            "SELECT id FROM printellect_accounts WHERE email = ?",
+            "SELECT id FROM accounts WHERE LOWER(email) = LOWER(?)",
             (requester_email,),
         ).fetchone()
         if not acct:
             conn.close()
             return
 
-        # Find all online devices for this account
+        # Queue notifications for all claimed devices owned by the account.
         devices = conn.execute(
-            "SELECT * FROM printellect_devices WHERE owner_id = ?",
+            "SELECT * FROM devices WHERE owner_user_id = ?",
             (acct["id"],),
         ).fetchall()
 
         for device in devices:
-            if not _is_online(device["last_seen_at"]):
-                continue
             try:
                 _enqueue_command(
                     conn,
@@ -516,9 +737,12 @@ def notify_device_shipping_status(requester_email: str, shipping_status: str):
                 pass  # Device might have gone offline
 
         conn.commit()
-        conn.close()
     except Exception:
-        pass  # Don't let device notification failures break shipping flow
+        # Don't let device notification failures break shipping flow.
+        logger.debug("shipping device notification skipped due to error", exc_info=True)
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def _enqueue_command(
@@ -547,8 +771,8 @@ def _enqueue_command(
     conn.execute(
         """
         INSERT INTO commands
-            (cmd_id, device_id, action, payload_json, status, created_at, updated_at, requested_by_user_id)
-        VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)
+            (cmd_id, device_id, action, payload_json, result_json, status, created_at, updated_at, requested_by_user_id)
+        VALUES (?, ?, ?, ?, NULL, 'queued', ?, ?, ?)
         """,
         (cmd_id, device_row["device_id"], action, _json_dumps(payload), ts, ts, requested_by_user_id),
     )
@@ -791,6 +1015,7 @@ _ALLOWED_DOCS = {
     "printellect-pico-api-programming-guide.md",
     "printellect-pico-final-implementation-guide.md",
     "printellect-pico-integration-handoff.md",
+    "printellect-device-control-roadmap.md",
     "printellect-user-api.md",
     "setup-my-printellect-base.md",
 }
@@ -1063,10 +1288,28 @@ async def list_devices(account=Depends(_require_printellect_account)):
         """,
         (account.id,),
     ).fetchall()
-    conn.close()
 
     devices = []
     for row in rows:
+        last_command_row = conn.execute(
+            """
+            SELECT action, status, updated_at, error, result_json
+            FROM commands
+            WHERE device_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (row["device_id"],),
+        ).fetchone()
+        last_command = None
+        if last_command_row:
+            last_command = {
+                "action": last_command_row["action"],
+                "status": last_command_row["status"],
+                "updated_at": last_command_row["updated_at"],
+                "error": last_command_row["error"],
+                "result": _json_loads(last_command_row["result_json"], {}) if "result_json" in last_command_row.keys() else {},
+            }
         devices.append(
             {
                 "device_id": row["device_id"],
@@ -1083,9 +1326,11 @@ async def list_devices(account=Depends(_require_printellect_account)):
                     "progress": row["progress"] if row["progress"] is not None else 0,
                     "last_error": row["last_error"],
                 },
+                "last_command": last_command,
             }
         )
 
+    conn.close()
     return JSONResponse({"ok": True, "devices": devices})
 
 
@@ -1126,6 +1371,7 @@ async def device_detail(device_id: str, account=Depends(_require_printellect_acc
                         "cmd_id": r["cmd_id"],
                         "action": r["action"],
                         "payload": _json_loads(r["payload_json"], {}),
+                        "result": _json_loads(r["result_json"], {}) if "result_json" in r.keys() else {},
                         "status": r["status"],
                         "created_at": r["created_at"],
                         "updated_at": r["updated_at"],
@@ -1150,7 +1396,7 @@ async def rename_device(device_id: str, request: Request, account=Depends(_requi
         raise HTTPException(status_code=422, detail="Name cannot be empty")
     conn = db()
     _get_device_for_owner(conn, device_id, account.id)  # ownership check
-    conn.execute("UPDATE printellect_devices SET name = ? WHERE device_id = ?", (name, device_id))
+    conn.execute("UPDATE devices SET name = ? WHERE device_id = ?", (name, device_id))
     conn.commit()
     conn.close()
     return JSONResponse({"ok": True, "name": name})
@@ -1162,7 +1408,7 @@ async def _enqueue_user_action(
     action: str,
     request: Optional[Request] = None,
     payload: Optional[Dict[str, Any]] = None,
-) -> JSONResponse:
+) -> ActionEnqueueResponse:
     body = payload if payload is not None else {}
     if request is not None:
         try:
@@ -1178,50 +1424,87 @@ async def _enqueue_user_action(
     conn.commit()
     conn.close()
 
-    return JSONResponse({"ok": True, "cmd_id": cmd_id, "action": action, "payload": payload_clean})
+    return ActionEnqueueResponse(ok=True, cmd_id=cmd_id, action=action, payload=payload_clean)
 
 
-@router.post("/api/printellect/devices/{device_id}/actions/play")
+@router.post("/api/printellect/devices/{device_id}/actions/play", response_model=ActionEnqueueResponse)
 async def action_play(device_id: str, request: Request, account=Depends(_require_printellect_account)):
     return await _enqueue_user_action(device_id, account, "play_perk", request=request)
 
 
-@router.post("/api/printellect/devices/{device_id}/actions/stop")
+@router.post("/api/printellect/devices/{device_id}/actions/stop", response_model=ActionEnqueueResponse)
 async def action_stop(device_id: str, account=Depends(_require_printellect_account)):
     return await _enqueue_user_action(device_id, account, "stop_audio", payload={})
 
 
-@router.post("/api/printellect/devices/{device_id}/actions/idle")
+@router.post("/api/printellect/devices/{device_id}/actions/idle", response_model=ActionEnqueueResponse)
 async def action_idle(device_id: str, request: Request, account=Depends(_require_printellect_account)):
     return await _enqueue_user_action(device_id, account, "set_idle", request=request)
 
 
-@router.post("/api/printellect/devices/{device_id}/actions/brightness")
+@router.post("/api/printellect/devices/{device_id}/actions/brightness", response_model=ActionEnqueueResponse)
 async def action_brightness(device_id: str, request: Request, account=Depends(_require_printellect_account)):
     return await _enqueue_user_action(device_id, account, "set_brightness", request=request)
 
 
-@router.post("/api/printellect/devices/{device_id}/actions/volume")
+@router.post("/api/printellect/devices/{device_id}/actions/volume", response_model=ActionEnqueueResponse)
 async def action_volume(device_id: str, request: Request, account=Depends(_require_printellect_account)):
     return await _enqueue_user_action(device_id, account, "set_volume", request=request)
 
 
-@router.post("/api/printellect/devices/{device_id}/actions/test-lights")
-async def action_test_lights(device_id: str, request: Request, account=Depends(_require_printellect_account)):
-    return await _enqueue_user_action(device_id, account, "test_lights", request=request)
+@router.post("/api/printellect/devices/{device_id}/actions/light-color", response_model=ActionEnqueueResponse)
+async def action_light_color(
+    device_id: str,
+    body: LightColorActionBody,
+    account=Depends(_require_printellect_account),
+):
+    return await _enqueue_user_action(
+        device_id,
+        account,
+        "set_light_color",
+        payload=body.model_dump(exclude_none=True),
+    )
 
 
-@router.post("/api/printellect/devices/{device_id}/actions/test-audio")
+@router.post("/api/printellect/devices/{device_id}/actions/light-effect", response_model=ActionEnqueueResponse)
+async def action_light_effect(
+    device_id: str,
+    body: LightEffectActionBody,
+    account=Depends(_require_printellect_account),
+):
+    return await _enqueue_user_action(
+        device_id,
+        account,
+        "set_light_effect",
+        payload=body.model_dump(exclude_none=True),
+    )
+
+
+@router.post("/api/printellect/devices/{device_id}/actions/test-lights", response_model=ActionEnqueueResponse)
+async def action_test_lights(
+    device_id: str,
+    body: TestLightsActionBody,
+    account=Depends(_require_printellect_account),
+):
+    return await _enqueue_user_action(
+        device_id,
+        account,
+        "test_lights",
+        payload=body.model_dump(exclude_none=True),
+    )
+
+
+@router.post("/api/printellect/devices/{device_id}/actions/test-audio", response_model=ActionEnqueueResponse)
 async def action_test_audio(device_id: str, request: Request, account=Depends(_require_printellect_account)):
     return await _enqueue_user_action(device_id, account, "test_audio", request=request)
 
 
-@router.post("/api/printellect/devices/{device_id}/actions/reboot")
+@router.post("/api/printellect/devices/{device_id}/actions/reboot", response_model=ActionEnqueueResponse)
 async def action_reboot(device_id: str, account=Depends(_require_printellect_account)):
     return await _enqueue_user_action(device_id, account, "reboot", payload={})
 
 
-@router.post("/api/printellect/devices/{device_id}/actions/update")
+@router.post("/api/printellect/devices/{device_id}/actions/update", response_model=ActionEnqueueResponse)
 async def action_update(device_id: str, request: Request, account=Depends(_require_printellect_account)):
     return await _enqueue_user_action(device_id, account, "ota_apply", request=request)
 
@@ -1241,6 +1524,7 @@ async def device_debug_contract():
             "timing_defaults": {
                 "provision_poll_interval_ms": PROVISION_POLL_INTERVAL_MS,
                 "min_command_poll_interval_ms": int(DEVICE_MIN_POLL_SECONDS * 1000),
+                "stream_max_timeout_s": DEVICE_STREAM_MAX_SECONDS,
                 "recommended_heartbeat_interval_ms": 15000,
             },
             "actions_supported": [
@@ -1249,6 +1533,8 @@ async def device_debug_contract():
                 "set_idle",
                 "set_brightness",
                 "set_volume",
+                "set_light_color",
+                "set_light_effect",
                 "test_lights",
                 "test_audio",
                 "reboot",
@@ -1268,6 +1554,7 @@ async def device_debug_contract():
                 {"method": "POST", "path": "/api/printellect/device/v1/provision", "auth": "claim_code"},
                 {"method": "POST", "path": "/api/printellect/device/v1/heartbeat", "auth": "bearer"},
                 {"method": "GET", "path": "/api/printellect/device/v1/commands/next", "auth": "bearer"},
+                {"method": "GET", "path": "/api/printellect/device/v1/commands/stream", "auth": "bearer"},
                 {"method": "POST", "path": "/api/printellect/device/v1/commands/{cmd_id}/status", "auth": "bearer"},
                 {"method": "POST", "path": "/api/printellect/device/v1/state", "auth": "bearer"},
                 {"method": "GET", "path": "/api/printellect/device/v1/releases/latest", "auth": "bearer"},
@@ -1369,8 +1656,8 @@ async def device_heartbeat(request: Request, device=Depends(_device_from_bearer)
     except Exception:
         payload = {}
 
-    fw_version = payload.get("fw_version")
-    app_version = payload.get("app_version")
+    fw_version = _normalize_version_text(payload.get("fw_version"))
+    app_version = _normalize_version_text(payload.get("app_version"))
     rssi = payload.get("rssi")
     if rssi is not None:
         try:
@@ -1387,6 +1674,32 @@ async def device_heartbeat(request: Request, device=Depends(_device_from_bearer)
         """,
         (now_iso(), fw_version, app_version, rssi, device["device_id"]),
     )
+
+    # Guard against silent drift after an OTA was marked successful.
+    if app_version:
+        expected_row = conn.execute(
+            "SELECT target_version, status FROM device_update_status WHERE device_id = ?",
+            (device["device_id"],),
+        ).fetchone()
+        expected = _normalize_version_text(expected_row["target_version"]) if expected_row else None
+        current_status = (expected_row["status"] or "").strip().lower() if expected_row else ""
+        if expected and current_status == "success" and app_version != expected:
+            mismatch = _mark_update_version_mismatch(
+                conn,
+                device_id=device["device_id"],
+                expected_version=expected,
+                reported_version=app_version,
+                source="heartbeat",
+            )
+            _audit(
+                conn,
+                action="printellect_update_version_mismatch",
+                actor_type="device",
+                actor_id=device["device_id"],
+                target_type="device",
+                target_id=device["device_id"],
+                details={"source": "heartbeat", "expected": expected, "reported": app_version, "error": mismatch},
+            )
 
     reset_event = payload.get("reset_event")
     if reset_event:
@@ -1405,7 +1718,11 @@ async def device_heartbeat(request: Request, device=Depends(_device_from_bearer)
     return JSONResponse({"ok": True})
 
 
-@router.get("/api/printellect/device/v1/commands/next")
+@router.get(
+    "/api/printellect/device/v1/commands/next",
+    response_model=DeviceCommandResponse,
+    responses={204: {"description": "No command available"}},
+)
 async def device_next_command(device=Depends(_device_from_bearer)):
     device_id = device["device_id"]
     now_mono = time.monotonic()
@@ -1417,25 +1734,44 @@ async def device_next_command(device=Depends(_device_from_bearer)):
         _last_poll_at[device_id] = now_mono
 
     conn = db()
+    status, row = _claim_next_queued_command(conn, device_id)
+    if status != "delivered" or row is None:
+        conn.close()
+        return Response(status_code=204)
+    conn.commit()
+    conn.close()
+    return _command_row_response(row)
 
+
+def _command_row_response(row: sqlite3.Row) -> DeviceCommandResponse:
+    return DeviceCommandResponse(
+        cmd_id=row["cmd_id"],
+        action=row["action"],
+        payload=_json_loads(row["payload_json"], {}),
+        created_at=row["created_at"],
+    )
+
+
+def _claim_next_queued_command(conn: sqlite3.Connection, device_id: str) -> tuple[str, Optional[sqlite3.Row]]:
     inflight = conn.execute(
         "SELECT cmd_id FROM commands WHERE device_id = ? AND status IN ('delivered','executing') ORDER BY created_at LIMIT 1",
         (device_id,),
     ).fetchone()
     if inflight:
-        conn.close()
-        return Response(status_code=204)
+        return "inflight", None
 
     row = conn.execute(
         "SELECT * FROM commands WHERE device_id = ? AND status = 'queued' ORDER BY created_at ASC LIMIT 1",
         (device_id,),
     ).fetchone()
     if not row:
-        conn.close()
-        return Response(status_code=204)
+        return "empty", None
 
     ts = now_iso()
-    conn.execute("UPDATE commands SET status = 'delivered', delivered_at = ?, updated_at = ? WHERE cmd_id = ?", (ts, ts, row["cmd_id"]))
+    conn.execute(
+        "UPDATE commands SET status = 'delivered', delivered_at = ?, updated_at = ? WHERE cmd_id = ?",
+        (ts, ts, row["cmd_id"]),
+    )
     _audit(
         conn,
         action="printellect_command_delivered",
@@ -1445,30 +1781,43 @@ async def device_next_command(device=Depends(_device_from_bearer)):
         target_id=row["cmd_id"],
         details={"action": row["action"]},
     )
-    conn.commit()
-    conn.close()
-
-    return JSONResponse(
-        {
-            "cmd_id": row["cmd_id"],
-            "action": row["action"],
-            "payload": _json_loads(row["payload_json"], {}),
-            "created_at": row["created_at"],
-        }
-    )
+    return "delivered", row
 
 
-@router.post("/api/printellect/device/v1/commands/{cmd_id}/status")
-async def device_command_status(cmd_id: str, request: Request, device=Depends(_device_from_bearer)):
-    try:
-        payload = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+@router.get(
+    "/api/printellect/device/v1/commands/stream",
+    response_model=DeviceCommandResponse,
+    responses={204: {"description": "No command available"}},
+)
+async def device_command_stream(timeout_s: int = 15, device=Depends(_device_from_bearer)):
+    timeout_s = max(1, min(int(timeout_s), DEVICE_STREAM_MAX_SECONDS))
+    device_id = device["device_id"]
+    deadline = time.monotonic() + timeout_s
 
-    status = (payload.get("status") or "").strip().lower()
-    error = payload.get("error")
+    while True:
+        conn = db()
+        status, row = _claim_next_queued_command(conn, device_id)
+        if status == "delivered" and row is not None:
+            conn.commit()
+            conn.close()
+            return _command_row_response(row)
+        conn.close()
+        if status == "inflight":
+            return Response(status_code=204)
+        if time.monotonic() >= deadline:
+            return Response(status_code=204, headers={"Retry-After": "1"})
+        await asyncio.sleep(DEVICE_STREAM_POLL_STEP_SECONDS)
+
+
+@router.post("/api/printellect/device/v1/commands/{cmd_id}/status", response_model=ApiOkResponse)
+async def device_command_status(cmd_id: str, body: DeviceCommandStatusBody, device=Depends(_device_from_bearer)):
+    status = (body.status or "").strip().lower()
+    error = body.error
+    result = body.result
     if status not in {"executing", "completed", "failed"}:
         raise HTTPException(status_code=422, detail="status must be executing|completed|failed")
+    if result is not None and not isinstance(result, dict):
+        raise HTTPException(status_code=422, detail="result must be an object")
 
     conn = db()
     row = conn.execute("SELECT * FROM commands WHERE cmd_id = ? AND device_id = ?", (cmd_id, device["device_id"])).fetchone()
@@ -1479,18 +1828,18 @@ async def device_command_status(cmd_id: str, request: Request, device=Depends(_d
     ts = now_iso()
     if status == "executing":
         conn.execute(
-            "UPDATE commands SET status = 'executing', executing_at = COALESCE(executing_at, ?), updated_at = ? WHERE cmd_id = ?",
-            (ts, ts, cmd_id),
+            "UPDATE commands SET status = 'executing', executing_at = COALESCE(executing_at, ?), updated_at = ?, result_json = COALESCE(?, result_json) WHERE cmd_id = ?",
+            (ts, ts, _json_dumps(result) if result is not None else None, cmd_id),
         )
     elif status == "completed":
         conn.execute(
-            "UPDATE commands SET status = 'completed', completed_at = ?, updated_at = ?, error = NULL WHERE cmd_id = ?",
-            (ts, ts, cmd_id),
+            "UPDATE commands SET status = 'completed', completed_at = ?, updated_at = ?, error = NULL, result_json = COALESCE(?, result_json) WHERE cmd_id = ?",
+            (ts, ts, _json_dumps(result) if result is not None else None, cmd_id),
         )
     else:
         conn.execute(
-            "UPDATE commands SET status = 'failed', completed_at = ?, updated_at = ?, error = ? WHERE cmd_id = ?",
-            (ts, ts, str(error) if error else "unknown", cmd_id),
+            "UPDATE commands SET status = 'failed', completed_at = ?, updated_at = ?, error = ?, result_json = COALESCE(?, result_json) WHERE cmd_id = ?",
+            (ts, ts, str(error) if error else "unknown", _json_dumps(result) if result is not None else None, cmd_id),
         )
 
     _audit(
@@ -1500,11 +1849,11 @@ async def device_command_status(cmd_id: str, request: Request, device=Depends(_d
         actor_id=device["device_id"],
         target_type="command",
         target_id=cmd_id,
-        details={"status": status, "error": error},
+        details={"status": status, "error": error, "result": result},
     )
     conn.commit()
     conn.close()
-    return JSONResponse({"ok": True})
+    return ApiOkResponse(ok=True)
 
 
 @router.post("/api/printellect/device/v1/state")
@@ -1599,27 +1948,55 @@ async def device_release_file(version: str, file_path: str, device=Depends(_devi
     return FileResponse(str(file_on_disk), media_type=media_type, filename=file_on_disk.name)
 
 
-@router.post("/api/printellect/device/v1/update/status")
-async def device_update_status(request: Request, device=Depends(_device_from_bearer)):
-    try:
-        payload = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON payload")
-
-    status = (payload.get("status") or "").strip().lower()
-    target_version = (payload.get("version") or payload.get("target_version") or "").strip() or None
-    progress = payload.get("progress")
-    last_error = payload.get("error")
+@router.post("/api/printellect/device/v1/update/status", response_model=ApiOkResponse)
+async def device_update_status(body: DeviceUpdateStatusBody, device=Depends(_device_from_bearer)):
+    status = _normalize_version_text(body.status)
+    status = (status or "").lower()
+    target_version = _normalize_version_text(body.version or body.target_version)
+    progress = body.progress if isinstance(body.progress, int) else 0
+    last_error = body.error
 
     valid = {"idle", "available", "downloading", "applying", "success", "rollback", "failed"}
     if status not in valid:
         raise HTTPException(status_code=422, detail="Invalid update status")
 
-    if not isinstance(progress, int):
-        progress = 0
     progress = max(0, min(100, progress))
 
     conn = db()
+    current_row = conn.execute(
+        "SELECT target_version FROM device_update_status WHERE device_id = ?",
+        (device["device_id"],),
+    ).fetchone()
+    expected_version = _normalize_version_text(current_row["target_version"]) if current_row else None
+
+    if status == "success" and not (target_version or expected_version):
+        conn.close()
+        raise HTTPException(status_code=422, detail="version is required when status=success")
+
+    if status == "success" and expected_version:
+        reported = target_version or expected_version
+        if reported != expected_version:
+            mismatch = _mark_update_version_mismatch(
+                conn,
+                device_id=device["device_id"],
+                expected_version=expected_version,
+                reported_version=reported,
+                source="update_status",
+            )
+            _audit(
+                conn,
+                action="printellect_update_version_mismatch",
+                actor_type="device",
+                actor_id=device["device_id"],
+                target_type="device",
+                target_id=device["device_id"],
+                details={"source": "update_status", "expected": expected_version, "reported": reported, "error": mismatch},
+            )
+            conn.commit()
+            conn.close()
+            raise HTTPException(status_code=409, detail=mismatch)
+        target_version = reported
+
     conn.execute(
         """
         INSERT INTO device_update_status (device_id, target_version, status, progress, last_error, updated_at)
@@ -1634,6 +2011,12 @@ async def device_update_status(request: Request, device=Depends(_device_from_bea
         (device["device_id"], target_version, status, progress, str(last_error) if last_error else None, now_iso()),
     )
 
+    if status == "success" and target_version:
+        conn.execute(
+            "UPDATE devices SET app_version = COALESCE(?, app_version) WHERE device_id = ?",
+            (target_version, device["device_id"]),
+        )
+
     _audit(
         conn,
         action="printellect_update_status",
@@ -1645,19 +2028,45 @@ async def device_update_status(request: Request, device=Depends(_device_from_bea
     )
     conn.commit()
     conn.close()
-    return JSONResponse({"ok": True})
+    return ApiOkResponse(ok=True)
 
 
-@router.post("/api/printellect/device/v1/boot-ok")
-async def device_boot_ok(request: Request, device=Depends(_device_from_bearer)):
-    try:
-        payload = await request.json()
-    except Exception:
-        payload = {}
-
-    version = (payload.get("version") or "").strip() or None
+@router.post("/api/printellect/device/v1/boot-ok", response_model=ApiOkResponse)
+async def device_boot_ok(body: DeviceBootOkBody, device=Depends(_device_from_bearer)):
+    version = _normalize_version_text(body.version)
 
     conn = db()
+    status_row = conn.execute(
+        "SELECT target_version FROM device_update_status WHERE device_id = ?",
+        (device["device_id"],),
+    ).fetchone()
+    expected = _normalize_version_text(status_row["target_version"]) if status_row else None
+
+    if expected and not version:
+        conn.close()
+        raise HTTPException(status_code=422, detail="version is required when update target exists")
+
+    if expected and version and version != expected:
+        mismatch = _mark_update_version_mismatch(
+            conn,
+            device_id=device["device_id"],
+            expected_version=expected,
+            reported_version=version,
+            source="boot_ok",
+        )
+        _audit(
+            conn,
+            action="printellect_update_version_mismatch",
+            actor_type="device",
+            actor_id=device["device_id"],
+            target_type="device",
+            target_id=device["device_id"],
+            details={"source": "boot_ok", "expected": expected, "reported": version, "error": mismatch},
+        )
+        conn.commit()
+        conn.close()
+        raise HTTPException(status_code=409, detail=mismatch)
+
     if version:
         conn.execute(
             """
@@ -1672,6 +2081,10 @@ async def device_boot_ok(request: Request, device=Depends(_device_from_bearer)):
             """,
             (device["device_id"], version, now_iso()),
         )
+        conn.execute(
+            "UPDATE devices SET app_version = COALESCE(?, app_version) WHERE device_id = ?",
+            (version, device["device_id"]),
+        )
 
     _audit(
         conn,
@@ -1684,7 +2097,7 @@ async def device_boot_ok(request: Request, device=Depends(_device_from_bearer)):
     )
     conn.commit()
     conn.close()
-    return JSONResponse({"ok": True})
+    return ApiOkResponse(ok=True)
 
 
 @router.post("/api/printellect/admin/devices")
@@ -2380,7 +2793,17 @@ async def admin_update_status(admin=Depends(require_admin)):
     conn = db()
     rows = conn.execute(
         """
-        SELECT d.device_id, d.name, d.owner_user_id, dus.target_version, dus.status, dus.progress, dus.last_error, dus.updated_at
+        SELECT
+            d.device_id,
+            d.name,
+            d.owner_user_id,
+            d.fw_version,
+            d.app_version,
+            dus.target_version,
+            dus.status,
+            dus.progress,
+            dus.last_error,
+            dus.updated_at
         FROM devices d
         LEFT JOIN device_update_status dus ON dus.device_id = d.device_id
         ORDER BY d.device_id
@@ -2396,6 +2819,8 @@ async def admin_update_status(admin=Depends(require_admin)):
                     "device_id": row["device_id"],
                     "name": row["name"],
                     "owner_user_id": row["owner_user_id"],
+                    "fw_version": row["fw_version"],
+                    "app_version": row["app_version"],
                     "target_version": row["target_version"],
                     "status": row["status"] or "idle",
                     "progress": row["progress"] if row["progress"] is not None else 0,

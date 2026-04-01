@@ -88,10 +88,12 @@ class ApiClient:
     def next_command(self):
         return self._get_json("/api/printellect/device/v1/commands/next", use_bearer=True)
 
-    def command_status(self, cmd_id, status, error=None):
+    def command_status(self, cmd_id, status, error=None, result=None):
         payload = {"status": status}
         if error:
             payload["error"] = error
+        if result is not None:
+            payload["result"] = result
         return self._post_json("/api/printellect/device/v1/commands/%s/status" % cmd_id, payload, use_bearer=True)
 
     def state_update(self, state):
@@ -118,3 +120,12 @@ class ApiClient:
     def release_file(self, version, file_path):
         safe = str(file_path).lstrip("/")
         return self._get_bytes("/api/printellect/device/v1/releases/%s/files/%s" % (version, safe), use_bearer=True)
+
+    def command_stream(self, timeout_s=10):
+        try:
+            timeout_s = int(timeout_s)
+        except Exception:
+            timeout_s = 10
+        if timeout_s < 1:
+            timeout_s = 1
+        return self._get_json("/api/printellect/device/v1/commands/stream?timeout_s=%s" % timeout_s, use_bearer=True)

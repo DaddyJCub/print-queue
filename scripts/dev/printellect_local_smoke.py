@@ -179,12 +179,51 @@ def main():
 
         done = client.post(
             "/api/printellect/device/v1/commands/%s/status" % cmd_id,
-            json={"status": "completed"},
+            json={"status": "completed", "result": {"perk": "juggernog", "ok": True}},
             headers=auth_headers,
         )
         if done.status_code != 200:
             fail("completed status failed: %s %s" % (done.status_code, done.text))
         print("OK: command lifecycle")
+
+        # 7) enqueue structured light controls + diagnostics result
+        light_color = client.post(
+            "/api/printellect/devices/%s/actions/light-color" % device_id,
+            json={"color": "#0A84FF"},
+        )
+        if light_color.status_code != 200:
+            fail("enqueue light-color failed: %s %s" % (light_color.status_code, light_color.text))
+        light_color_cmd = light_color.json()["cmd_id"]
+
+        nxt = client.get("/api/printellect/device/v1/commands/next", headers=auth_headers)
+        if nxt.status_code != 200 or nxt.json().get("cmd_id") != light_color_cmd:
+            fail("next command for light-color failed: %s %s" % (nxt.status_code, nxt.text))
+        fin = client.post(
+            "/api/printellect/device/v1/commands/%s/status" % light_color_cmd,
+            json={"status": "completed", "result": {"light_color": {"r": 10, "g": 132, "b": 255}, "hex": "#0A84FF"}},
+            headers=auth_headers,
+        )
+        if fin.status_code != 200:
+            fail("light-color completion failed: %s %s" % (fin.status_code, fin.text))
+
+        test_lights = client.post(
+            "/api/printellect/devices/%s/actions/test-lights" % device_id,
+            json={"effect": "pulse", "duration_ms": 1200, "speed_ms": 250, "color": "#34C759"},
+        )
+        if test_lights.status_code != 200:
+            fail("enqueue test-lights failed: %s %s" % (test_lights.status_code, test_lights.text))
+        test_cmd = test_lights.json()["cmd_id"]
+        nxt = client.get("/api/printellect/device/v1/commands/next", headers=auth_headers)
+        if nxt.status_code != 200 or nxt.json().get("cmd_id") != test_cmd:
+            fail("next command for test-lights failed: %s %s" % (nxt.status_code, nxt.text))
+        fin = client.post(
+            "/api/printellect/device/v1/commands/%s/status" % test_cmd,
+            json={"status": "completed", "result": {"effect": "pulse", "duration_ms": 1200, "hex": "#34C759"}},
+            headers=auth_headers,
+        )
+        if fin.status_code != 200:
+            fail("test-lights completion failed: %s %s" % (fin.status_code, fin.text))
+        print("OK: structured light controls + diagnostics")
 
         detail = client.get("/api/printellect/devices/%s" % device_id)
         if detail.status_code != 200:

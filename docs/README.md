@@ -33,6 +33,7 @@ Auto-generated docs (when server is running):
 | [Pico API Programming Guide](printellect-pico-api-programming-guide.md) | Complete firmware implementation spec (14 sections) |
 | [Pico Integration Handoff](printellect-pico-integration-handoff.md) | Firmware engineer handoff contract |
 | [Pico Final Implementation Guide](printellect-pico-final-implementation-guide.md) | v0.17.0+ rollout notes and manufacturing contract |
+| [Device Control Roadmap](printellect-device-control-roadmap.md) | Multi-phase implementation checklist and acceptance gates |
 
 ## Local development
 

@@ -10,6 +10,8 @@
 
 Do not ship with `/wifi.json` or `/token.json`.
 
+Set `fw_version` and `app_version` in `config.json` so heartbeat/provision calls report concrete versions.
+
 ## First boot behavior
 
 - If `/wifi.json` is missing, Pico starts AP setup mode:
@@ -21,7 +23,7 @@ Do not ship with `/wifi.json` or `/token.json`.
 ## Runtime loops
 
 - Heartbeat every configured interval.
-- Command poll every configured interval.
+- Command stream long-poll with fallback to command poll.
 - Posts state and command status transitions.
 - On bearer `401`, deletes `/token.json` and re-provisions.
 

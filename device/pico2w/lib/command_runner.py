@@ -22,30 +22,49 @@ class CommandRunner:
         self.api.command_status(cmd_id, "executing")
 
         try:
+            result = {}
             if action == "play_perk":
                 self.hw.play_perk(payload.get("perk_id"))
+                result = {"perk_id": payload.get("perk_id")}
             elif action == "stop_audio":
                 self.hw.stop_audio()
+                result = {"stopped": True}
             elif action == "set_idle":
                 self.hw.set_idle(payload.get("mode", "default"))
+                result = {"idle_mode": payload.get("mode", "default")}
             elif action == "set_brightness":
-                self.hw.set_brightness(int(payload.get("level", 0)))
+                result = self.hw.set_brightness(int(payload.get("level", 0))) or {}
             elif action == "set_volume":
-                self.hw.set_volume(int(payload.get("level", 0)))
+                result = self.hw.set_volume(int(payload.get("level", 0))) or {}
+            elif action == "set_light_color":
+                result = self.hw.set_light_color(payload.get("color") or {}) or {}
+            elif action == "set_light_effect":
+                result = self.hw.set_light_effect(
+                    payload.get("effect"),
+                    speed_ms=payload.get("speed_ms"),
+                    duration_ms=payload.get("duration_ms"),
+                    color=payload.get("color"),
+                ) or {}
             elif action == "test_lights":
-                self.hw.test_lights(payload.get("pattern"), int(payload.get("duration_ms", 0)))
+                result = self.hw.test_lights(
+                    payload.get("effect") or payload.get("pattern"),
+                    int(payload.get("duration_ms", 0)),
+                    color=payload.get("color"),
+                    speed_ms=payload.get("speed_ms"),
+                ) or {}
             elif action == "test_audio":
-                self.hw.test_audio(payload.get("track_id"))
+                result = self.hw.test_audio(payload.get("track_id")) or {}
             elif action == "notify_shipping":
-                self.hw.notify_shipping(payload.get("status", "in_transit"))
+                result = self.hw.notify_shipping(payload.get("status", "in_transit")) or {}
             elif action == "reboot":
                 self.hw.reboot()
+                result = {"rebooting": True}
             elif action == "ota_apply":
                 if not self.ota_manager:
                     raise Exception("ota manager not configured")
                 version = payload.get("version", "latest")
                 self.ota_manager.apply_update(version)
-                self.api.command_status(cmd_id, "completed")
+                self.api.command_status(cmd_id, "completed", result={"ota_version": version, "rebooting": True})
                 append_ring(self.app_state_path, cmd_id)
                 self.hw.reboot()
                 return
@@ -53,7 +72,7 @@ class CommandRunner:
                 raise Exception("unsupported action: %s" % action)
 
             self.api.state_update(self.hw.get_state())
-            self.api.command_status(cmd_id, "completed")
+            self.api.command_status(cmd_id, "completed", result=result)
             append_ring(self.app_state_path, cmd_id)
         except Exception as exc:
-            self.api.command_status(cmd_id, "failed", error=str(exc))
+            self.api.command_status(cmd_id, "failed", error=str(exc), result={"exception": str(exc)})

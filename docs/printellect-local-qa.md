@@ -23,6 +23,13 @@ Expected ending line:
 PASS: Printellect local smoke test completed
 ```
 
+Smoke coverage includes:
+- claim + provision + heartbeat
+- command lifecycle (`play_perk`)
+- structured light controls (`light-color`, `test-lights`)
+- command `result` payload persistence path
+- OTA status updates + boot confirmation path (matching version accepted)
+
 ## 2.1) Enable feature flag access for your test user
 
 Printellect user routes are gated by feature flag `printellect_device_control`.

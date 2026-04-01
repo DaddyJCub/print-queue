@@ -16,6 +16,15 @@
       <p class="text-sm text-zinc-300 mt-1">Live view of firmware update progress across all devices. Auto-refreshes every 5 seconds.</p>
     </div>
 
+    <div class="mb-4 rounded-2xl border border-amber-700/35 bg-amber-950/10 p-4 text-sm">
+      <p class="font-semibold text-amber-300">OTA workflow in UI</p>
+      <p class="text-zinc-300 mt-1">
+        Build/upload and promote releases in
+        <a href="/admin/printellect/releases" class="text-amber-200 underline">Releases</a>,
+        push OTA, then verify each device here reaches <strong>success</strong> with the expected target version.
+      </p>
+    </div>
+
     <!-- Summary Bar -->
     <div id="summary" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
       <div class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 text-center">
@@ -118,6 +127,8 @@
               <div class="md:col-span-3">
                 <div class="font-semibold">${htmlEscape(d.name || d.device_id)}</div>
                 <div class="text-xs text-zinc-500 font-mono">${htmlEscape(d.device_id)}</div>
+                <div class="text-[11px] text-zinc-600 font-mono mt-1">app: ${htmlEscape(d.app_version || '—')}</div>
+                <div class="text-[11px] text-zinc-700 font-mono">fw: ${htmlEscape(d.fw_version || '—')}</div>
               </div>
               <div class="md:col-span-2">
                 ${statusBadge(d.status)}

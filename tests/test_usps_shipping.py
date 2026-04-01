@@ -831,3 +831,45 @@ class TestPrintellectDeviceNotification:
                 assert "invalid" in result.lower() or "status" in result.lower()
         except (ValueError, Exception):
             pass  # Expected for invalid status
+
+    def test_notify_device_shipping_status_queues_command_for_owned_device(self, client):
+        try:
+            from app.printellect import notify_device_shipping_status
+        except ImportError:
+            pytest.skip("printellect module not available")
+
+        now = "2026-01-01T00:00:00Z"
+        account_id = str(uuid.uuid4())
+        device_id = "perkbase-ship-01"
+
+        conn = get_test_db()
+        conn.execute(
+            """
+            INSERT INTO accounts (id, email, name, role, status, created_at, updated_at)
+            VALUES (?, ?, ?, 'user', 'active', ?, ?)
+            """,
+            (account_id, "notify-owner@example.com", "Notify Owner", now, now),
+        )
+        conn.execute(
+            """
+            INSERT INTO devices (device_id, name, owner_user_id, claim_code_hash, created_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (device_id, "Ship Device", account_id, "sha256:test", now, now),
+        )
+        conn.commit()
+        conn.close()
+
+        notify_device_shipping_status("notify-owner@example.com", "OUT_FOR_DELIVERY")
+
+        conn = get_test_db()
+        cmd = conn.execute(
+            "SELECT action, payload_json, status FROM commands WHERE device_id = ? ORDER BY created_at DESC LIMIT 1",
+            (device_id,),
+        ).fetchone()
+        conn.close()
+
+        assert cmd is not None
+        assert cmd["action"] == "notify_shipping"
+        payload = json.loads(cmd["payload_json"] or "{}")
+        assert payload["status"] == "out_for_delivery"

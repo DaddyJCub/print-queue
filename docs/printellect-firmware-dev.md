@@ -103,6 +103,7 @@ Firmware updates are protected by a multi-layer safety system:
 2. **Staged rollout** — files download to `/next`, then rotate: `/current → /prev`, `/next → /current`.
 3. **Boot guard** — tracks boot failures. After 3 consecutive failed boots, auto-rolls back to `/prev`.
 4. **Boot confirmation** — device calls `POST /boot-ok` after successful startup to confirm the update.
+5. **Version consistency check** — backend rejects mismatched boot/update success versions (`409`) and marks OTA as failed.
 5. **Progress reporting** — device reports download/apply progress to the server in real-time.
 6. **Admin monitoring** — OTA status dashboard at `/admin/printellect/ota-status` shows per-device progress.
 
@@ -128,6 +129,8 @@ If an OTA update bricks a device, [wired recovery](printellect-flashing-guide.md
 
 - **State machine**: `main.py` runs a loop: `BOOT → TRY_STA_CONNECT → START_AP_SETUP → BACKEND_PROVISION_OR_RUN → NORMAL_RUN`.
 - **All API calls** go through `lib/api_client.py` which handles bearer auth and base URL config.
+- Firmware reports versions from `/config.json` (`fw_version`, `app_version`) and OTA runtime state (`pending_version`/`last_good_version`).
+- **Hybrid command delivery**: firmware prefers `/commands/stream` long-poll and falls back to `/commands/next` if stream is unavailable.
 - **Reset button** is handled by `lib/reset_controller.py`: 10s hold = Wi-Fi reset, 20s hold = factory reset, triple press = soft reboot.
 - **OTA manager** (`lib/ota_manager.py`) handles the full download → stage → rotate → boot-guard → rollback cycle.
 - **Setup portal** (`lib/setup_portal.py`) serves a local web page on `192.168.4.1` for Wi-Fi config + claim code validation.
