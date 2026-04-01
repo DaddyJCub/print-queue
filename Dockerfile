@@ -6,6 +6,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY device ./device
+COPY docs ./docs
 
 ENV DB_PATH=/data/app.db
 ENV UPLOAD_DIR=/uploads

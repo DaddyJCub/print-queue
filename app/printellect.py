@@ -2607,7 +2607,14 @@ async def admin_build_from_source(request: Request, admin=Depends(require_admin)
 
     source_dir = Path(DEVICE_SOURCE_DIR)
     if not source_dir.is_dir():
-        raise HTTPException(status_code=500, detail=f"Device source directory not found: {DEVICE_SOURCE_DIR}")
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Device source directory not found: {DEVICE_SOURCE_DIR}. "
+                "Container/image is likely missing the device source tree; "
+                "set DEVICE_SOURCE_DIR correctly or use Upload Release zip."
+            ),
+        )
 
     # Auto-increment version
     conn = db()
