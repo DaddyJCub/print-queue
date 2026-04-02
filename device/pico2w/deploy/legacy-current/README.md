@@ -59,6 +59,12 @@ Optional `config.json` fields:
 - `button_active_low` (default `true`)
 - `button_debounce_ms` (default `250`)
 - `perk_buttons` (button pin to perk mapping)
+- `command_stream_enabled` (default `false`)
+- `command_stream_timeout_s` (default `8`, runtime-capped to `1` second)
+- `telemetry_enabled` (default `true`)
+- `telemetry_temp_enabled` (default `true`)
+- `telemetry_vsys_adc_pin` (optional ADC pin index for VSYS telemetry)
+- `telemetry_vsys_divider_ratio` (default `3.0`)
 
 For your legacy working hardware map, use:
 - [config.from-backup.json](config.from-backup.json) -> copy to Pico as `/config.json`
@@ -68,6 +74,14 @@ This applies:
 - DFPlayer `UART0` (`TX=GP0`, `RX=GP1`, `BUSY=GP6`)
 - Perk buttons `GP14`, `GP16`, `GP17`, `GP18`
 - No dedicated reset GPIO (`reset_pin: null`)
+
+## Included diagnostics functionality
+
+- `self_test` command returns structured hardware/storage checks.
+- `identify_device` command runs a short strobe + audio cue to locate a unit physically.
+- `speaker_validate` command performs a focused speaker/driver validation pass.
+- `button_snapshot` command captures live button pin state + press counters.
+- OTA status updates include structured `result` payloads (preflight, verify, rollback cause).
 
 ## Preserve setup before flashing UF2
 

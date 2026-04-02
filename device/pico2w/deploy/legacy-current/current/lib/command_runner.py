@@ -69,6 +69,20 @@ class CommandRunner:
                 ) or {}
             elif action == "test_audio":
                 result = self.hw.test_audio(payload.get("track_id")) or {}
+            elif action == "speaker_validate":
+                result = self.hw.speaker_validate(
+                    track_id=payload.get("track_id"),
+                    duration_ms=payload.get("duration_ms", 900),
+                ) or {}
+            elif action == "self_test":
+                result = self.hw.self_test(quick=bool(payload.get("quick", True))) or {}
+            elif action == "identify_device":
+                result = self.hw.identify_device(
+                    duration_ms=payload.get("duration_ms", 2000),
+                    color=payload.get("color"),
+                ) or {}
+            elif action == "button_snapshot":
+                result = self.hw.button_snapshot() or {}
             elif action == "notify_shipping":
                 result = self.hw.notify_shipping(payload.get("status", "in_transit")) or {}
             elif action == "reboot":

@@ -232,7 +232,12 @@ Request:
   "fw_version": "1.0.0",
   "app_version": "1.0.0",
   "rssi": -58,
-  "reset_event": "wifi_reset"
+  "reset_event": "wifi_reset",
+  "telemetry": {
+    "uptime_ms": 123456,
+    "internal_temp_c": 41.6,
+    "mem_free_bytes": 84432
+  }
 }
 ```
 
@@ -304,8 +309,15 @@ Server action -> Pico hardware call mapping:
 - `set_idle` -> `set_idle(mode)`
 - `set_brightness` -> `set_brightness(level)`
 - `set_volume` -> `set_volume(level)`
+- `set_light_color` -> `set_light_color(color)`
+- `set_light_effect` -> `set_light_effect(effect, speed_ms?, duration_ms?, color?)`
 - `test_lights` -> `test_lights(pattern, duration_ms)`
 - `test_audio` -> `test_audio(track_id)`
+- `speaker_validate` -> `speaker_validate(track_id?, duration_ms?)`
+- `self_test` -> `self_test(quick=true|false)`
+- `identify_device` -> `identify_device(duration_ms?, color?)`
+- `button_snapshot` -> `button_snapshot()`
+- `notify_shipping` -> `notify_shipping(status)`
 - `reboot` -> `reboot()`
 - `ota_apply` -> OTA manager apply + reboot
 
@@ -410,23 +422,37 @@ Directory model:
 
 Apply flow:
 1. Resolve release manifest (`latest` or explicit version).
-2. Download each file from `/releases/{version}/files/{path}`.
-3. Verify `sha256` for each file.
-4. Write staged files to `/next`.
-5. Rotate directories:
+2. Run OTA preflight:
+   - write test (filesystem writable)
+   - free-space estimate
+   - required paths from `manifest.safety.required_paths`
+3. Download each file from `/releases/{version}/files/{path}`.
+4. Verify `sha256` for each file.
+5. Write staged files to `/next`.
+6. Verify staged layout and entrypoint.
+7. Rotate directories:
    - remove `/prev`
    - move `/current` -> `/prev`
    - move `/next` -> `/current`
-6. Set `pending_version` in `/app_state.json`.
-7. Reboot (command runner path for `ota_apply`).
+8. Run legacy layout migration hooks (`/main.py` shim + `/current/lib/__init__.py`).
+9. Run post-apply verification and set `pending_version`.
+10. Reboot (command runner path for `ota_apply`).
 
 Boot guard:
 - On boot, if `pending_version` exists:
   - increment `boot_fail_count`.
   - if `boot_fail_count >= 3`, rollback (`/prev` -> `/current`), clear pending.
 - On successful normal run/cloud contact:
+  - rerun runtime verification (entrypoint + required paths)
   - call `/boot-ok` with version.
   - clear `pending_version`, reset fail count, set `last_good_version`.
+
+Update status diagnostics:
+- `POST /update/status` accepts `result` object for structured OTA telemetry:
+  - preflight checks
+  - staged verify checks
+  - rollback reason
+  - post-boot verify details
 
 ## 12) Error Handling and Backoff
 

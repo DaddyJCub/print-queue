@@ -75,7 +75,7 @@ class ApiClient:
         }
         return self._post_json("/api/printellect/device/v1/provision", payload, use_bearer=False)
 
-    def heartbeat(self, fw_version, app_version, rssi=None, reset_event=None):
+    def heartbeat(self, fw_version, app_version, rssi=None, reset_event=None, telemetry=None):
         payload = {
             "fw_version": fw_version,
             "app_version": app_version,
@@ -83,6 +83,8 @@ class ApiClient:
         }
         if reset_event:
             payload["reset_event"] = reset_event
+        if telemetry is not None:
+            payload["telemetry"] = telemetry
         return self._post_json("/api/printellect/device/v1/heartbeat", payload, use_bearer=True)
 
     def next_command(self):
@@ -99,12 +101,14 @@ class ApiClient:
     def state_update(self, state):
         return self._post_json("/api/printellect/device/v1/state", state, use_bearer=True)
 
-    def update_status(self, status, progress=0, version=None, error=None):
+    def update_status(self, status, progress=0, version=None, error=None, result=None):
         payload = {"status": status, "progress": progress}
         if version:
             payload["version"] = version
         if error:
             payload["error"] = error
+        if result is not None:
+            payload["result"] = result
         return self._post_json("/api/printellect/device/v1/update/status", payload, use_bearer=True)
 
     def boot_ok(self, version):

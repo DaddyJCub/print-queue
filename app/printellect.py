@@ -131,6 +131,11 @@ class TestLightsActionBody(BaseModel):
     b: Optional[int] = Field(default=None, ge=0, le=255)
 
 
+class SpeakerValidateActionBody(BaseModel):
+    track_id: Optional[str] = Field(default=None, description="Optional track id to validate speaker playback")
+    duration_ms: Optional[int] = Field(default=None, ge=200, le=5000)
+
+
 class DeviceCommandStatusBody(BaseModel):
     status: str = Field(..., description="executing | completed | failed")
     error: Optional[str] = Field(default=None, description="Failure message when status=failed")
@@ -143,6 +148,7 @@ class DeviceUpdateStatusBody(BaseModel):
     version: Optional[str] = Field(default=None, description="Reported app version for this update status")
     target_version: Optional[str] = Field(default=None, description="Alias of version")
     error: Optional[str] = Field(default=None, description="Failure detail")
+    result: Optional[Dict[str, Any]] = Field(default=None, description="Optional structured update diagnostics")
 
 
 class DeviceBootOkBody(BaseModel):
@@ -216,18 +222,25 @@ def _mark_update_version_mismatch(
         % (source, expected_version, reported_version or "missing")
     )
     ts = now_iso()
+    mismatch_result = {
+        "source": source,
+        "expected_version": expected_version,
+        "reported_version": reported_version,
+        "kind": "version_mismatch",
+    }
     conn.execute(
         """
-        INSERT INTO device_update_status (device_id, target_version, status, progress, last_error, updated_at)
-        VALUES (?, ?, 'failed', 100, ?, ?)
+        INSERT INTO device_update_status (device_id, target_version, status, progress, last_error, last_result_json, updated_at)
+        VALUES (?, ?, 'failed', 100, ?, ?, ?)
         ON CONFLICT(device_id) DO UPDATE SET
             target_version = excluded.target_version,
             status = 'failed',
             progress = 100,
             last_error = excluded.last_error,
+            last_result_json = excluded.last_result_json,
             updated_at = excluded.updated_at
         """,
-        (device_id, expected_version, msg, ts),
+        (device_id, expected_version, msg, _json_dumps(mismatch_result), ts),
     )
     return msg
 
@@ -311,6 +324,30 @@ def _is_online(last_seen_at: Optional[str]) -> bool:
     if not ts:
         return False
     return (datetime.now(ts.tzinfo) - ts) <= timedelta(seconds=ONLINE_WINDOW_SECONDS)
+
+
+def _heartbeat_warnings(heartbeat: Dict[str, Any]) -> list[Dict[str, Any]]:
+    warnings: list[Dict[str, Any]] = []
+    telemetry = heartbeat.get("telemetry") if isinstance(heartbeat, dict) else None
+    if not isinstance(telemetry, dict):
+        return warnings
+
+    temp = telemetry.get("internal_temp_c")
+    if isinstance(temp, (int, float)) and temp >= 70:
+        warnings.append({"code": "temp_high", "level": "warn", "message": f"High internal temp ({temp:.1f}C)"})
+
+    vsys = telemetry.get("vsys_v")
+    if isinstance(vsys, (int, float)):
+        if vsys < 4.60:
+            warnings.append({"code": "voltage_low", "level": "warn", "message": f"Low VSYS ({vsys:.2f}V)"})
+        elif vsys > 5.40:
+            warnings.append({"code": "voltage_high", "level": "warn", "message": f"High VSYS ({vsys:.2f}V)"})
+
+    mem_free = telemetry.get("mem_free_bytes")
+    if isinstance(mem_free, int) and mem_free < 20_000:
+        warnings.append({"code": "mem_low", "level": "warn", "message": f"Low free memory ({mem_free} bytes)"})
+
+    return warnings
 
 
 def _safe_release_join(base: Path, rel_path: str) -> Path:
@@ -439,6 +476,7 @@ def init_printellect_tables(cur: sqlite3.Cursor) -> None:
             fw_version TEXT,
             app_version TEXT,
             rssi INTEGER,
+            heartbeat_json TEXT,
             notes TEXT
         )
         """
@@ -521,6 +559,7 @@ def init_printellect_tables(cur: sqlite3.Cursor) -> None:
             status TEXT NOT NULL,
             progress INTEGER NOT NULL DEFAULT 0,
             last_error TEXT,
+            last_result_json TEXT,
             updated_at TEXT NOT NULL,
             FOREIGN KEY(device_id) REFERENCES devices(device_id)
         )
@@ -545,11 +584,18 @@ def ensure_printellect_migrations(cur: sqlite3.Cursor) -> None:
             cur.execute("ALTER TABLE devices ADD COLUMN claimed_at TEXT")
         if "last_provisioned_at" not in cols:
             cur.execute("ALTER TABLE devices ADD COLUMN last_provisioned_at TEXT")
+        if "heartbeat_json" not in cols:
+            cur.execute("ALTER TABLE devices ADD COLUMN heartbeat_json TEXT")
 
     cur.execute("PRAGMA table_info(commands)")
     command_cols = {row[1] for row in cur.fetchall()}
     if command_cols and "result_json" not in command_cols:
         cur.execute("ALTER TABLE commands ADD COLUMN result_json TEXT")
+
+    cur.execute("PRAGMA table_info(device_update_status)")
+    update_cols = {row[1] for row in cur.fetchall()}
+    if update_cols and "last_result_json" not in update_cols:
+        cur.execute("ALTER TABLE device_update_status ADD COLUMN last_result_json TEXT")
 
 
 def _get_device_for_owner(conn: sqlite3.Connection, device_id: str, owner_id: str) -> sqlite3.Row:
@@ -562,6 +608,7 @@ def _get_device_for_owner(conn: sqlite3.Connection, device_id: str, owner_id: st
 
 
 def _admin_device_payload(row: sqlite3.Row) -> Dict[str, Any]:
+    heartbeat = _json_loads(row["heartbeat_json"], {}) if "heartbeat_json" in row.keys() else {}
     return {
         "device_id": row["device_id"],
         "name": row["name"],
@@ -574,6 +621,8 @@ def _admin_device_payload(row: sqlite3.Row) -> Dict[str, Any]:
         "fw_version": row["fw_version"],
         "app_version": row["app_version"],
         "rssi": row["rssi"],
+        "heartbeat": heartbeat,
+        "telemetry_warnings": _heartbeat_warnings(heartbeat),
         "notes": row["notes"] if "notes" in row.keys() else None,
         "state": _json_loads(row["state_json"], {}) if "state_json" in row.keys() else {},
         "update": {
@@ -581,6 +630,7 @@ def _admin_device_payload(row: sqlite3.Row) -> Dict[str, Any]:
             "target_version": row["target_version"] if "target_version" in row.keys() else None,
             "progress": row["progress"] if ("progress" in row.keys() and row["progress"] is not None) else 0,
             "last_error": row["last_error"] if "last_error" in row.keys() else None,
+            "result": _json_loads(row["last_result_json"], {}) if "last_result_json" in row.keys() else {},
         },
     }
 
@@ -638,6 +688,42 @@ def _validate_action_payload(action: str, payload: Dict[str, Any]) -> Dict[str, 
         if not isinstance(track_id, str) or not track_id.strip():
             raise HTTPException(status_code=422, detail="track_id is required")
         return {"track_id": track_id.strip()}
+
+    if action == "speaker_validate":
+        cleaned: Dict[str, Any] = {}
+        track_id = payload.get("track_id")
+        if track_id is not None:
+            if not isinstance(track_id, str) or not track_id.strip():
+                raise HTTPException(status_code=422, detail="track_id must be a non-empty string")
+            cleaned["track_id"] = track_id.strip()
+        duration_ms = payload.get("duration_ms")
+        if duration_ms is not None:
+            if not isinstance(duration_ms, int) or duration_ms < 200 or duration_ms > 5000:
+                raise HTTPException(status_code=422, detail="duration_ms must be integer 200-5000")
+            cleaned["duration_ms"] = duration_ms
+        return cleaned
+
+    if action == "self_test":
+        quick = payload.get("quick", True)
+        if not isinstance(quick, bool):
+            raise HTTPException(status_code=422, detail="quick must be boolean")
+        return {"quick": quick}
+
+    if action == "button_snapshot":
+        return {}
+
+    if action == "identify_device":
+        cleaned: Dict[str, Any] = {}
+        duration_ms = payload.get("duration_ms")
+        if duration_ms is not None:
+            if not isinstance(duration_ms, int) or duration_ms < 200 or duration_ms > 15000:
+                raise HTTPException(status_code=422, detail="duration_ms must be integer 200-15000")
+            cleaned["duration_ms"] = duration_ms
+        color = _normalize_rgb_from_payload(payload, required=False, field_name="color")
+        if color is not None:
+            cleaned["color"] = color
+            cleaned["hex"] = _rgb_to_hex(color)
+        return cleaned
 
     if action == "set_light_color":
         color = _normalize_rgb_from_payload(payload, required=True, field_name="color")
@@ -840,6 +926,67 @@ def _build_manifest_file_list(extracted_dir: Path, exclude_paths: Optional[set[s
             }
         )
     return files
+
+
+def _default_required_release_paths(entrypoint: str = "main.py", available_files: Optional[set[str]] = None) -> list[str]:
+    ep = str(entrypoint or "main.py").strip().lstrip("/") or "main.py"
+    required = [ep]
+    core = [
+        "lib/api_client.py",
+        "lib/command_runner.py",
+        "lib/hardware.py",
+        "lib/ota_manager.py",
+        "lib/__init__.py",
+    ]
+    if available_files:
+        for path in core:
+            if path in available_files:
+                required.append(path)
+    # Keep deterministic ordering without duplicates.
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in required:
+        key = item.strip().lstrip("/")
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
+
+
+def _ensure_release_safety_manifest(manifest_json: Dict[str, Any], extracted_files: list[Dict[str, Any]]) -> None:
+    files_set = {str(f.get("path") or "").strip().lstrip("/") for f in extracted_files}
+    files_set.discard("")
+
+    entrypoint = str(manifest_json.get("entrypoint") or "main.py").strip().lstrip("/") or "main.py"
+    if entrypoint not in files_set:
+        raise HTTPException(status_code=422, detail=f"entrypoint missing from bundle: {entrypoint}")
+
+    safety = manifest_json.get("safety")
+    if not isinstance(safety, dict):
+        safety = {}
+
+    required_paths = safety.get("required_paths")
+    if not isinstance(required_paths, list) or not required_paths:
+        required_paths = _default_required_release_paths(entrypoint=entrypoint, available_files=files_set)
+    normalized_required: list[str] = []
+    for raw in required_paths:
+        rel = str(raw or "").strip().lstrip("/")
+        if rel:
+            normalized_required.append(rel)
+    if not normalized_required:
+        normalized_required = _default_required_release_paths(entrypoint=entrypoint, available_files=files_set)
+
+    missing = [rel for rel in normalized_required if rel not in files_set]
+    if missing:
+        raise HTTPException(status_code=422, detail=f"bundle missing required files: {', '.join(missing)}")
+
+    safety["schema_version"] = int(safety.get("schema_version") or 1)
+    safety["entrypoint"] = entrypoint
+    safety["required_paths"] = normalized_required
+    safety["generated_at"] = now_iso()
+    safety["supports_layouts"] = safety.get("supports_layouts") or ["legacy-current", "current-rooted"]
+    manifest_json["safety"] = safety
 
 
 def _resolve_release_row(conn: sqlite3.Connection, version: str) -> sqlite3.Row:
@@ -1279,7 +1426,7 @@ async def list_devices(account=Depends(_require_printellect_account)):
     conn = db()
     rows = conn.execute(
         """
-        SELECT d.*, ds.state_json, us.status as update_status, us.target_version, us.progress, us.last_error
+        SELECT d.*, ds.state_json, us.status as update_status, us.target_version, us.progress, us.last_error, us.last_result_json
         FROM devices d
         LEFT JOIN device_state ds ON ds.device_id = d.device_id
         LEFT JOIN device_update_status us ON us.device_id = d.device_id
@@ -1310,6 +1457,7 @@ async def list_devices(account=Depends(_require_printellect_account)):
                 "error": last_command_row["error"],
                 "result": _json_loads(last_command_row["result_json"], {}) if "result_json" in last_command_row.keys() else {},
             }
+        heartbeat = _json_loads(row["heartbeat_json"], {}) if "heartbeat_json" in row.keys() else {}
         devices.append(
             {
                 "device_id": row["device_id"],
@@ -1319,12 +1467,15 @@ async def list_devices(account=Depends(_require_printellect_account)):
                 "fw_version": row["fw_version"],
                 "app_version": row["app_version"],
                 "rssi": row["rssi"],
+                "heartbeat": heartbeat,
+                "telemetry_warnings": _heartbeat_warnings(heartbeat),
                 "state": _json_loads(row["state_json"], {}),
                 "update_status": {
                     "status": row["update_status"] or "idle",
                     "target_version": row["target_version"],
                     "progress": row["progress"] if row["progress"] is not None else 0,
                     "last_error": row["last_error"],
+                    "result": _json_loads(row["last_result_json"], {}),
                 },
                 "last_command": last_command,
             }
@@ -1345,6 +1496,7 @@ async def device_detail(device_id: str, account=Depends(_require_printellect_acc
         (device_id,),
     ).fetchall()
     conn.close()
+    heartbeat = _json_loads(drow["heartbeat_json"] if "heartbeat_json" in drow.keys() else None, {})
 
     return JSONResponse(
         {
@@ -1357,6 +1509,8 @@ async def device_detail(device_id: str, account=Depends(_require_printellect_acc
                 "fw_version": drow["fw_version"],
                 "app_version": drow["app_version"],
                 "rssi": drow["rssi"],
+                "heartbeat": heartbeat,
+                "telemetry_warnings": _heartbeat_warnings(heartbeat),
                 "state": _json_loads(state_row["state_json"] if state_row else None, {}),
                 "state_updated_at": state_row["updated_at"] if state_row else None,
                 "update_status": {
@@ -1364,6 +1518,7 @@ async def device_detail(device_id: str, account=Depends(_require_printellect_acc
                     "target_version": update_row["target_version"] if update_row else None,
                     "progress": update_row["progress"] if update_row else 0,
                     "last_error": update_row["last_error"] if update_row else None,
+                    "result": _json_loads(update_row["last_result_json"], {}) if update_row else {},
                     "updated_at": update_row["updated_at"] if update_row else None,
                 },
                 "recent_commands": [
@@ -1381,6 +1536,136 @@ async def device_detail(device_id: str, account=Depends(_require_printellect_acc
                 ],
             },
         }
+    )
+
+
+@router.get("/api/printellect/devices/{device_id}/support-bundle")
+async def device_support_bundle(device_id: str, account=Depends(_require_printellect_account)):
+    conn = db()
+    drow = _get_device_for_owner(conn, device_id, account.id)
+    state_row = conn.execute("SELECT state_json, updated_at FROM device_state WHERE device_id = ?", (device_id,)).fetchone()
+    update_row = conn.execute("SELECT * FROM device_update_status WHERE device_id = ?", (device_id,)).fetchone()
+    commands = conn.execute(
+        "SELECT * FROM commands WHERE device_id = ? ORDER BY created_at DESC LIMIT 100",
+        (device_id,),
+    ).fetchall()
+    token_rows = conn.execute(
+        "SELECT id, created_at, revoked_at, last_used_at FROM device_tokens WHERE device_id = ? ORDER BY created_at DESC LIMIT 10",
+        (device_id,),
+    ).fetchall()
+    conn.close()
+
+    payload = {
+        "generated_at": now_iso(),
+        "device": {
+            "device_id": drow["device_id"],
+            "name": drow["name"],
+            "last_seen_at": drow["last_seen_at"],
+            "online": _is_online(drow["last_seen_at"]),
+            "fw_version": drow["fw_version"],
+            "app_version": drow["app_version"],
+            "rssi": drow["rssi"],
+            "heartbeat": _json_loads(drow["heartbeat_json"] if "heartbeat_json" in drow.keys() else None, {}),
+            "notes": drow["notes"] if "notes" in drow.keys() else None,
+        },
+        "state": {
+            "updated_at": state_row["updated_at"] if state_row else None,
+            "raw": _json_loads(state_row["state_json"] if state_row else None, {}),
+        },
+        "update_status": {
+            "status": update_row["status"] if update_row else "idle",
+            "target_version": update_row["target_version"] if update_row else None,
+            "progress": update_row["progress"] if update_row else 0,
+            "last_error": update_row["last_error"] if update_row else None,
+            "result": _json_loads(update_row["last_result_json"], {}) if update_row else {},
+            "updated_at": update_row["updated_at"] if update_row else None,
+        },
+        "recent_commands": [
+            {
+                "cmd_id": r["cmd_id"],
+                "action": r["action"],
+                "status": r["status"],
+                "payload": _json_loads(r["payload_json"], {}),
+                "result": _json_loads(r["result_json"], {}),
+                "error": r["error"],
+                "created_at": r["created_at"],
+                "updated_at": r["updated_at"],
+            }
+            for r in commands
+        ],
+        "tokens": [dict(r) for r in token_rows],
+    }
+    payload["device"]["telemetry_warnings"] = _heartbeat_warnings(payload["device"]["heartbeat"])
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("summary.json", _json_dumps(payload))
+        zf.writestr("state.json", _json_dumps(payload["state"]))
+        zf.writestr("commands.json", _json_dumps(payload["recent_commands"]))
+    filename = f"printellect-support-{device_id}-{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}.zip"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/api/printellect/admin/devices/{device_id}/support-bundle")
+async def admin_device_support_bundle(device_id: str, admin=Depends(require_admin)):
+    del admin
+    conn = db()
+    drow = conn.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,)).fetchone()
+    if not drow:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Device not found")
+    state_row = conn.execute("SELECT state_json, updated_at FROM device_state WHERE device_id = ?", (device_id,)).fetchone()
+    update_row = conn.execute("SELECT * FROM device_update_status WHERE device_id = ?", (device_id,)).fetchone()
+    commands = conn.execute(
+        "SELECT * FROM commands WHERE device_id = ? ORDER BY created_at DESC LIMIT 100",
+        (device_id,),
+    ).fetchall()
+    conn.close()
+
+    payload = {
+        "generated_at": now_iso(),
+        "device": dict(drow),
+        "state": {
+            "updated_at": state_row["updated_at"] if state_row else None,
+            "raw": _json_loads(state_row["state_json"] if state_row else None, {}),
+        },
+        "update_status": {
+            "status": update_row["status"] if update_row else "idle",
+            "target_version": update_row["target_version"] if update_row else None,
+            "progress": update_row["progress"] if update_row else 0,
+            "last_error": update_row["last_error"] if update_row else None,
+            "result": _json_loads(update_row["last_result_json"], {}) if update_row else {},
+            "updated_at": update_row["updated_at"] if update_row else None,
+        },
+        "recent_commands": [
+            {
+                "cmd_id": r["cmd_id"],
+                "action": r["action"],
+                "status": r["status"],
+                "payload": _json_loads(r["payload_json"], {}),
+                "result": _json_loads(r["result_json"], {}),
+                "error": r["error"],
+                "created_at": r["created_at"],
+                "updated_at": r["updated_at"],
+            }
+            for r in commands
+        ],
+    }
+    heartbeat = _json_loads(drow["heartbeat_json"] if "heartbeat_json" in drow.keys() else None, {})
+    payload["device"]["heartbeat"] = heartbeat
+    payload["device"]["telemetry_warnings"] = _heartbeat_warnings(heartbeat)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("summary.json", _json_dumps(payload))
+    filename = f"printellect-support-{device_id}-{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}.zip"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -1499,6 +1784,35 @@ async def action_test_audio(device_id: str, request: Request, account=Depends(_r
     return await _enqueue_user_action(device_id, account, "test_audio", request=request)
 
 
+@router.post("/api/printellect/devices/{device_id}/actions/speaker-validate", response_model=ActionEnqueueResponse)
+async def action_speaker_validate(
+    device_id: str,
+    body: SpeakerValidateActionBody,
+    account=Depends(_require_printellect_account),
+):
+    return await _enqueue_user_action(
+        device_id,
+        account,
+        "speaker_validate",
+        payload=body.model_dump(exclude_none=True),
+    )
+
+
+@router.post("/api/printellect/devices/{device_id}/actions/self-test", response_model=ActionEnqueueResponse)
+async def action_self_test(device_id: str, request: Request, account=Depends(_require_printellect_account)):
+    return await _enqueue_user_action(device_id, account, "self_test", request=request)
+
+
+@router.post("/api/printellect/devices/{device_id}/actions/identify", response_model=ActionEnqueueResponse)
+async def action_identify(device_id: str, request: Request, account=Depends(_require_printellect_account)):
+    return await _enqueue_user_action(device_id, account, "identify_device", request=request)
+
+
+@router.post("/api/printellect/devices/{device_id}/actions/button-snapshot", response_model=ActionEnqueueResponse)
+async def action_button_snapshot(device_id: str, account=Depends(_require_printellect_account)):
+    return await _enqueue_user_action(device_id, account, "button_snapshot", payload={})
+
+
 @router.post("/api/printellect/devices/{device_id}/actions/reboot", response_model=ActionEnqueueResponse)
 async def action_reboot(device_id: str, account=Depends(_require_printellect_account)):
     return await _enqueue_user_action(device_id, account, "reboot", payload={})
@@ -1537,6 +1851,10 @@ async def device_debug_contract():
                 "set_light_effect",
                 "test_lights",
                 "test_audio",
+                "speaker_validate",
+                "self_test",
+                "identify_device",
+                "button_snapshot",
                 "reboot",
                 "ota_apply",
             ],
@@ -1664,15 +1982,35 @@ async def device_heartbeat(request: Request, device=Depends(_device_from_bearer)
             rssi = int(rssi)
         except Exception:
             rssi = None
+    telemetry = payload.get("telemetry")
+    if telemetry is not None and not isinstance(telemetry, dict):
+        telemetry = None
+    reset_event = payload.get("reset_event")
+    ts = now_iso()
+    heartbeat_record: Dict[str, Any] = {
+        "received_at": ts,
+        "fw_version": fw_version,
+        "app_version": app_version,
+        "rssi": rssi,
+    }
+    if reset_event:
+        heartbeat_record["reset_event"] = str(reset_event)
+    if telemetry is not None:
+        heartbeat_record["telemetry"] = telemetry
 
     conn = db()
     conn.execute(
         """
         UPDATE devices
-        SET last_seen_at = ?, fw_version = COALESCE(?, fw_version), app_version = COALESCE(?, app_version), rssi = COALESCE(?, rssi)
+        SET
+            last_seen_at = ?,
+            fw_version = COALESCE(?, fw_version),
+            app_version = COALESCE(?, app_version),
+            rssi = COALESCE(?, rssi),
+            heartbeat_json = ?
         WHERE device_id = ?
         """,
-        (now_iso(), fw_version, app_version, rssi, device["device_id"]),
+        (ts, fw_version, app_version, rssi, _json_dumps(heartbeat_record), device["device_id"]),
     )
 
     # Guard against silent drift after an OTA was marked successful.
@@ -1701,7 +2039,6 @@ async def device_heartbeat(request: Request, device=Depends(_device_from_bearer)
                 details={"source": "heartbeat", "expected": expected, "reported": app_version, "error": mismatch},
             )
 
-    reset_event = payload.get("reset_event")
     if reset_event:
         _audit(
             conn,
@@ -1955,10 +2292,13 @@ async def device_update_status(body: DeviceUpdateStatusBody, device=Depends(_dev
     target_version = _normalize_version_text(body.version or body.target_version)
     progress = body.progress if isinstance(body.progress, int) else 0
     last_error = body.error
+    result = body.result
 
     valid = {"idle", "available", "downloading", "applying", "success", "rollback", "failed"}
     if status not in valid:
         raise HTTPException(status_code=422, detail="Invalid update status")
+    if result is not None and not isinstance(result, dict):
+        raise HTTPException(status_code=422, detail="result must be an object")
 
     progress = max(0, min(100, progress))
 
@@ -1999,16 +2339,25 @@ async def device_update_status(body: DeviceUpdateStatusBody, device=Depends(_dev
 
     conn.execute(
         """
-        INSERT INTO device_update_status (device_id, target_version, status, progress, last_error, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO device_update_status (device_id, target_version, status, progress, last_error, last_result_json, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(device_id) DO UPDATE SET
             target_version = excluded.target_version,
             status = excluded.status,
             progress = excluded.progress,
             last_error = excluded.last_error,
+            last_result_json = COALESCE(excluded.last_result_json, device_update_status.last_result_json),
             updated_at = excluded.updated_at
         """,
-        (device["device_id"], target_version, status, progress, str(last_error) if last_error else None, now_iso()),
+        (
+            device["device_id"],
+            target_version,
+            status,
+            progress,
+            str(last_error) if last_error else None,
+            _json_dumps(result) if result is not None else None,
+            now_iso(),
+        ),
     )
 
     if status == "success" and target_version:
@@ -2024,7 +2373,13 @@ async def device_update_status(body: DeviceUpdateStatusBody, device=Depends(_dev
         actor_id=device["device_id"],
         target_type="device",
         target_id=device["device_id"],
-        details={"status": status, "target_version": target_version, "progress": progress, "error": last_error},
+        details={
+            "status": status,
+            "target_version": target_version,
+            "progress": progress,
+            "error": last_error,
+            "result": result,
+        },
     )
     conn.commit()
     conn.close()
@@ -2070,13 +2425,14 @@ async def device_boot_ok(body: DeviceBootOkBody, device=Depends(_device_from_bea
     if version:
         conn.execute(
             """
-            INSERT INTO device_update_status (device_id, target_version, status, progress, last_error, updated_at)
-            VALUES (?, ?, 'success', 100, NULL, ?)
+            INSERT INTO device_update_status (device_id, target_version, status, progress, last_error, last_result_json, updated_at)
+            VALUES (?, ?, 'success', 100, NULL, NULL, ?)
             ON CONFLICT(device_id) DO UPDATE SET
                 target_version = excluded.target_version,
                 status = 'success',
                 progress = 100,
                 last_error = NULL,
+                last_result_json = NULL,
                 updated_at = excluded.updated_at
             """,
             (device["device_id"], version, now_iso()),
@@ -2193,7 +2549,7 @@ async def admin_rotate_claim_code(device_id: str, admin=Depends(require_admin)):
 def _fetch_admin_device_row(conn: sqlite3.Connection, device_id: str) -> sqlite3.Row:
     row = conn.execute(
         """
-        SELECT d.*, ds.state_json, us.status as update_status, us.target_version, us.progress, us.last_error
+        SELECT d.*, ds.state_json, us.status as update_status, us.target_version, us.progress, us.last_error, us.last_result_json
         FROM devices d
         LEFT JOIN device_state ds ON ds.device_id = d.device_id
         LEFT JOIN device_update_status us ON us.device_id = d.device_id
@@ -2343,7 +2699,7 @@ async def admin_list_devices(admin=Depends(require_admin)):
     conn = db()
     rows = conn.execute(
         """
-        SELECT d.*, ds.state_json, us.status as update_status, us.target_version, us.progress, us.last_error
+        SELECT d.*, ds.state_json, us.status as update_status, us.target_version, us.progress, us.last_error, us.last_result_json
         FROM devices d
         LEFT JOIN device_state ds ON ds.device_id = d.device_id
         LEFT JOIN device_update_status us ON us.device_id = d.device_id
@@ -2436,6 +2792,7 @@ def _finalize_release(
             "bundle_sha256": bundle_sha256,
             "mode": mode,
             "file_count": len(manifest_json.get("files") or []),
+            "safety": manifest_json.get("safety") or {},
         }
     )
 
@@ -2543,6 +2900,7 @@ async def admin_upload_release(
             )
         manifest_json["files"] = normalized
 
+    _ensure_release_safety_manifest(manifest_json, extracted_files)
     paths["manifest"].write_text(_json_dumps(manifest_json), encoding="utf-8")
 
     return _finalize_release(
@@ -2664,6 +3022,7 @@ async def admin_build_from_source(request: Request, admin=Depends(require_admin)
         "bundle_size": len(bundle_bytes),
         "files": extracted_files,
     }
+    _ensure_release_safety_manifest(manifest_json, extracted_files)
     paths["manifest"].write_text(_json_dumps(manifest_json), encoding="utf-8")
 
     return _finalize_release(
@@ -2709,7 +3068,12 @@ async def admin_delete_release(version: str, admin=Depends(require_admin)):
 
 @router.post("/api/printellect/admin/releases/{version}/push")
 async def admin_push_release(version: str, request: Request, admin=Depends(require_admin)):
-    """Push an OTA update command to all claimed devices (or a filtered subset)."""
+    """Push an OTA update command to devices.
+
+    Modes:
+    - all (default): all claimed devices (or filtered subset)
+    - canary: a small online subset (default 1) before broad rollout
+    """
     try:
         payload = await request.json()
     except Exception:
@@ -2720,6 +3084,23 @@ async def admin_push_release(version: str, request: Request, admin=Depends(requi
 
     # Optionally filter by device_ids
     device_ids = payload.get("device_ids") or []
+    mode = str(payload.get("mode") or "all").strip().lower()
+    if mode not in {"all", "canary"}:
+        conn.close()
+        raise HTTPException(status_code=422, detail="mode must be all or canary")
+    limit = payload.get("limit")
+    if limit is None:
+        limit = 1 if mode == "canary" else 0
+    try:
+        limit = int(limit)
+    except Exception:
+        conn.close()
+        raise HTTPException(status_code=422, detail="limit must be an integer")
+    if limit < 0 or limit > 1000:
+        conn.close()
+        raise HTTPException(status_code=422, detail="limit must be between 0 and 1000")
+    online_only = bool(payload.get("online_only", mode == "canary"))
+
     if device_ids:
         placeholders = ",".join("?" for _ in device_ids)
         rows = conn.execute(
@@ -2729,10 +3110,20 @@ async def admin_push_release(version: str, request: Request, admin=Depends(requi
     else:
         rows = conn.execute("SELECT * FROM devices WHERE owner_user_id IS NOT NULL").fetchall()
 
+    selected_rows = list(rows)
+    if online_only:
+        selected_rows = [r for r in selected_rows if _is_online(r["last_seen_at"])]
+    if mode == "canary":
+        canary_limit = limit or 1
+        selected_rows = selected_rows[:canary_limit]
+    elif limit > 0:
+        selected_rows = selected_rows[:limit]
+
     actor_id = getattr(admin, "id", None) or "admin"
     pushed = 0
+    pushed_device_ids: list[str] = []
     ts = now_iso()
-    for device_row in rows:
+    for device_row in selected_rows:
         _enqueue_command(
             conn,
             device_row,
@@ -2744,18 +3135,20 @@ async def admin_push_release(version: str, request: Request, admin=Depends(requi
         # Upsert device_update_status
         conn.execute(
             """
-            INSERT INTO device_update_status (device_id, target_version, status, progress, last_error, updated_at)
-            VALUES (?, ?, 'available', 0, NULL, ?)
+            INSERT INTO device_update_status (device_id, target_version, status, progress, last_error, last_result_json, updated_at)
+            VALUES (?, ?, 'available', 0, NULL, NULL, ?)
             ON CONFLICT(device_id) DO UPDATE SET
                 target_version = excluded.target_version,
                 status = 'available',
                 progress = 0,
                 last_error = NULL,
+                last_result_json = NULL,
                 updated_at = excluded.updated_at
             """,
             (device_row["device_id"], version, ts),
         )
         pushed += 1
+        pushed_device_ids.append(device_row["device_id"])
 
     _audit(
         conn,
@@ -2764,12 +3157,27 @@ async def admin_push_release(version: str, request: Request, admin=Depends(requi
         actor_id=actor_id,
         target_type="release",
         target_id=version,
-        details={"devices_pushed": pushed},
+        details={
+            "devices_pushed": pushed,
+            "mode": mode,
+            "online_only": online_only,
+            "limit": limit,
+            "device_ids": pushed_device_ids,
+        },
     )
     conn.commit()
     conn.close()
 
-    return JSONResponse({"ok": True, "version": version, "devices_pushed": pushed})
+    return JSONResponse(
+        {
+            "ok": True,
+            "version": version,
+            "mode": mode,
+            "online_only": online_only,
+            "devices_pushed": pushed,
+            "device_ids": pushed_device_ids,
+        }
+    )
 
 
 @router.get("/api/printellect/admin/releases")
@@ -2810,6 +3218,7 @@ async def admin_update_status(admin=Depends(require_admin)):
             dus.status,
             dus.progress,
             dus.last_error,
+            dus.last_result_json,
             dus.updated_at
         FROM devices d
         LEFT JOIN device_update_status dus ON dus.device_id = d.device_id
@@ -2832,6 +3241,7 @@ async def admin_update_status(admin=Depends(require_admin)):
                     "status": row["status"] or "idle",
                     "progress": row["progress"] if row["progress"] is not None else 0,
                     "last_error": row["last_error"],
+                    "result": _json_loads(row["last_result_json"], {}),
                     "updated_at": row["updated_at"],
                 }
                 for row in rows

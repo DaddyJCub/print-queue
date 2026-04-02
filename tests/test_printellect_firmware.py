@@ -1,4 +1,5 @@
 import sys
+import time
 from pathlib import Path
 
 
@@ -47,6 +48,27 @@ def test_hardware_adapter_tracks_light_color_and_effect():
     state = hw.get_state()
     assert state["light_color"] == {"r": 52, "g": 199, "b": 89}
     assert state["light_effect"] == "pulse"
+
+
+def test_hardware_adapter_effects_animate_and_expire():
+    hw = HardwareAdapter()
+    hw.set_brightness(100)
+    hw.set_light_color({"r": 255, "g": 255, "b": 255})
+    hw.set_light_effect("strobe", speed_ms=40, duration_ms=180)
+
+    seen = set()
+    for _ in range(8):
+        hw.update()
+        seen.add(hw._last_np_rgb)
+        time.sleep(0.03)
+
+    assert (0, 0, 0) in seen
+    assert any(rgb != (0, 0, 0) for rgb in seen)
+
+    # Duration should auto-expire to off.
+    time.sleep(0.20)
+    hw.update()
+    assert hw.get_state()["light_effect"] == "off"
 
 
 def test_reported_versions_prioritize_pending_and_last_good():
@@ -122,3 +144,75 @@ def test_command_runner_reports_failure_result(monkeypatch):
     assert api.status_calls[-1]["status"] == "failed"
     assert "unsupported action" in (api.status_calls[-1]["error"] or "")
     assert "exception" in (api.status_calls[-1]["result"] or {})
+
+
+def test_command_runner_self_test_and_identify(monkeypatch):
+    monkeypatch.setattr(command_runner_module, "in_ring", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(command_runner_module, "append_ring", lambda *_args, **_kwargs: None)
+
+    hw = HardwareAdapter()
+    api = FakeApi()
+    runner = CommandRunner(hw, api, "/tmp/app_state_test.json")
+
+    runner.execute(
+        {
+            "cmd_id": "cmd-self-test",
+            "action": "self_test",
+            "payload": {"quick": True},
+        }
+    )
+    assert api.status_calls[-1]["status"] == "completed"
+    assert isinstance(api.status_calls[-1]["result"], dict)
+    assert "ok" in api.status_calls[-1]["result"]
+
+    runner.execute(
+        {
+            "cmd_id": "cmd-identify",
+            "action": "identify_device",
+            "payload": {"duration_ms": 800, "color": {"r": 255, "g": 214, "b": 10}},
+        }
+    )
+    assert api.status_calls[-1]["status"] == "completed"
+    assert api.status_calls[-1]["result"]["identify"] is True
+
+    runner.execute(
+        {
+            "cmd_id": "cmd-speaker-validate",
+            "action": "speaker_validate",
+            "payload": {"track_id": "juggernog", "duration_ms": 600},
+        }
+    )
+    assert api.status_calls[-1]["status"] == "completed"
+    assert isinstance(api.status_calls[-1]["result"], dict)
+    assert "audio_driver" in api.status_calls[-1]["result"]
+
+    runner.execute(
+        {
+            "cmd_id": "cmd-button-snapshot",
+            "action": "button_snapshot",
+            "payload": {},
+        }
+    )
+    assert api.status_calls[-1]["status"] == "completed"
+    assert "bindings" in (api.status_calls[-1]["result"] or {})
+
+
+def test_hardware_button_snapshot_and_runtime_telemetry():
+    hw = HardwareAdapter()
+    snap = hw.button_snapshot()
+    assert isinstance(snap, dict)
+    assert isinstance(snap.get("bindings"), list)
+    assert "debounce_ms" in snap
+
+    telemetry = hw.runtime_telemetry()
+    assert isinstance(telemetry, dict)
+    assert "uptime_ms" in telemetry
+    assert "button_count" in telemetry
+
+
+def test_hardware_speaker_validate_returns_structured_result():
+    hw = HardwareAdapter()
+    result = hw.speaker_validate(track_id="juggernog", duration_ms=500)
+    assert isinstance(result, dict)
+    assert "audio_driver" in result
+    assert "ok" in result

@@ -27,9 +27,10 @@
       <ol class="mt-3 space-y-2 text-sm text-zinc-300">
         <li><span class="font-semibold text-zinc-100">1.</span> Build or upload a release with the exact target version.</li>
         <li><span class="font-semibold text-zinc-100">2.</span> Promote that release so <code class="font-mono text-amber-200">latest</code> resolves to it.</li>
-        <li><span class="font-semibold text-zinc-100">3.</span> Click <strong>Push to All</strong> (or push from a device page) to enqueue OTA apply.</li>
-        <li><span class="font-semibold text-zinc-100">4.</span> Monitor status in OTA Status and confirm devices reach <strong>success</strong>.</li>
-        <li><span class="font-semibold text-zinc-100">5.</span> If a device reports <strong>failed</strong>, check <code class="font-mono text-amber-200">last_error</code> and remediate before retrying.</li>
+        <li><span class="font-semibold text-zinc-100">3.</span> Click <strong>Canary (1)</strong> first to validate one online device.</li>
+        <li><span class="font-semibold text-zinc-100">4.</span> If canary succeeds, click <strong>Push to All</strong> (or push from a device page).</li>
+        <li><span class="font-semibold text-zinc-100">5.</span> Monitor OTA Status and confirm devices reach <strong>success</strong>.</li>
+        <li><span class="font-semibold text-zinc-100">6.</span> If a device reports <strong>failed</strong>, inspect <code class="font-mono text-amber-200">last_error</code>/<code class="font-mono text-amber-200">result</code> before retrying.</li>
       </ol>
     </div>
 
@@ -123,7 +124,8 @@
             <div class="md:col-span-4 flex items-center justify-end gap-1.5 flex-wrap">
               <button data-promote="${htmlEscape(r.version)}" class="rounded-md border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-2 py-1 text-xs">Promote</button>
               ${r.is_current
-                ? `<button data-push="${htmlEscape(r.version)}" class="rounded-md border border-indigo-700 bg-indigo-900/60 hover:bg-indigo-800 px-2 py-1 text-xs text-indigo-200">Push to All</button>`
+                ? `<button data-canary="${htmlEscape(r.version)}" class="rounded-md border border-amber-700 bg-amber-900/40 hover:bg-amber-800 px-2 py-1 text-xs text-amber-200">Canary (1)</button>
+                   <button data-push="${htmlEscape(r.version)}" class="rounded-md border border-indigo-700 bg-indigo-900/60 hover:bg-indigo-800 px-2 py-1 text-xs text-indigo-200">Push to All</button>`
                 : `<button data-delete="${htmlEscape(r.version)}" class="rounded-md border border-red-800/60 bg-zinc-900 hover:bg-red-950 px-2 py-1 text-xs text-red-400">Delete</button>`
               }
             </div>
@@ -172,7 +174,7 @@
           const resp = await fetch(`/api/printellect/admin/releases/${version}/push`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({}),
+            body: JSON.stringify({ mode: 'all' }),
           });
           const data = await resp.json();
           document.getElementById('output').textContent = JSON.stringify(data, null, 2);
@@ -182,6 +184,33 @@
             const toast = document.createElement('div');
             toast.className = 'fixed top-4 right-4 z-50 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium shadow-lg';
             toast.innerHTML = `Pushed to ${data.devices_pushed} device(s). <a href="/admin/printellect/ota-status" class="underline ml-1">View OTA Status →</a>`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 6000);
+          }
+        });
+      }
+
+      // Canary buttons
+      for (const btn of root.querySelectorAll('button[data-canary]')) {
+        btn.addEventListener('click', async () => {
+          const version = btn.getAttribute('data-canary');
+          if (!confirm(`Push canary OTA v${version} to 1 online device?`)) return;
+          btn.disabled = true;
+          btn.textContent = 'Queuing…';
+          const resp = await fetch(`/api/printellect/admin/releases/${version}/push`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ mode: 'canary', limit: 1, online_only: true }),
+          });
+          const data = await resp.json();
+          document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+          btn.disabled = false;
+          btn.textContent = 'Canary (1)';
+          if (data.ok) {
+            const list = (data.device_ids || []).join(', ') || 'none (no online devices)';
+            const toast = document.createElement('div');
+            toast.className = 'fixed top-4 right-4 z-50 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium shadow-lg';
+            toast.textContent = `Canary queued: ${list}`;
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 6000);
           }

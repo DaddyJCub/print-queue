@@ -151,6 +151,15 @@ Response (`200`):
     "fw_version": "1.0.0",
     "app_version": "1.0.0",
     "rssi": -55,
+    "heartbeat": {
+      "received_at": "2026-03-22T10:30:00Z",
+      "telemetry": {
+        "uptime_ms": 123456,
+        "internal_temp_c": 42.3,
+        "mem_free_bytes": 84320
+      }
+    },
+    "telemetry_warnings": [],
     "state": { "playing": false, "volume": 15 },
     "state_updated_at": "2026-03-22T10:29:50Z",
     "update_status": {
@@ -238,5 +247,23 @@ Auth: logged-in account session + feature flag + device ownership.
 | Set light effect | `/actions/light-effect` | `{ "effect": "pulse", "color": "#34C759", "speed_ms": 250 }` | `effect` required; allowed: `ambient`, `chase`, `off`, `pulse`, `rainbow`, `solid`, `strobe` |
 | Test lights | `/actions/test-lights` | `{ "effect": "pulse", "duration_ms": 1200, "speed_ms": 250, "color": "#34C759" }` | `effect` (or legacy `pattern`) + `duration_ms` required |
 | Test audio | `/actions/test-audio` | `{ "track_id": "..." }` | `track_id` required, non-empty |
+| Speaker validate | `/actions/speaker-validate` | `{ "track_id": "juggernog", "duration_ms": 900 }` | `track_id` optional non-empty string; `duration_ms` optional int 200-5000 |
+| Run self-test | `/actions/self-test` | `{ "quick": true }` | `quick` optional boolean |
+| Identify device | `/actions/identify` | `{ "duration_ms": 1200, "color": "#FFD60A" }` | `duration_ms` optional 200-15000; color optional |
+| Button snapshot | `/actions/button-snapshot` | `{}` | No payload |
 | Reboot | `/actions/reboot` | `{}` | — |
 | OTA update | `/actions/update` | `{ "version": "0.3.0" }` | `version` required, non-empty |
+
+---
+
+## Support Bundle Download
+
+### Owner bundle
+`GET /api/printellect/devices/{device_id}/support-bundle`
+
+Downloads a ZIP containing:
+- `summary.json`
+- `state.json`
+- `commands.json`
+
+Use this bundle for troubleshooting OTA failures, diagnostics regressions, and command lifecycle issues.

@@ -837,6 +837,50 @@ def test_push_release_to_devices(client):
     assert device_statuses["perkbase-push-1"]["status"] == "available"
 
 
+def test_push_release_canary_mode_targets_one_online_device(client):
+    d1, _ = _create_claimed_online_device(
+        client,
+        device_id="perkbase-canary-1",
+        owner_email="canary1@example.com",
+    )
+    d2, _ = _create_claimed_online_device(
+        client,
+        device_id="perkbase-canary-2",
+        owner_email="canary2@example.com",
+    )
+    del d1, d2
+
+    with tempfile.TemporaryDirectory() as td:
+        package_path = Path(td) / "firmware.zip"
+        with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("main.py", "print('canary test')\n")
+            zf.writestr("lib/__init__.py", "# lib package\n")
+            zf.writestr("lib/api_client.py", "pass\n")
+            zf.writestr("lib/command_runner.py", "pass\n")
+            zf.writestr("lib/hardware.py", "pass\n")
+            zf.writestr("lib/ota_manager.py", "pass\n")
+        with package_path.open("rb") as fh:
+            upload = client.post(
+                "/api/printellect/admin/releases/upload",
+                data={"version": "99.2.1-canary", "channel": "stable"},
+                files={"package": ("firmware.zip", fh, "application/zip")},
+                cookies=_admin_cookie(),
+            )
+    assert upload.status_code == 200
+
+    push = client.post(
+        "/api/printellect/admin/releases/99.2.1-canary/push",
+        json={"mode": "canary", "limit": 1, "online_only": True},
+        cookies=_admin_cookie(),
+    )
+    assert push.status_code == 200
+    body = push.json()
+    assert body["ok"] is True
+    assert body["mode"] == "canary"
+    assert body["devices_pushed"] == 1
+    assert len(body["device_ids"]) == 1
+
+
 # ────────────────────── OTA Status Page ──────────────────────
 
 
@@ -958,6 +1002,69 @@ def test_update_status_success_rejects_mismatched_version(client):
     assert "version mismatch" in (row["last_error"] or "")
 
 
+def test_update_status_persists_structured_result(client):
+    device, token = _create_claimed_online_device(
+        client,
+        device_id="perkbase-ota-result-1",
+        owner_email="ota-result@example.com",
+    )
+    auth = {"Authorization": f"Bearer {token}"}
+
+    status = client.post(
+        "/api/printellect/device/v1/update/status",
+        json={
+            "status": "failed",
+            "version": "12.0.0",
+            "progress": 42,
+            "error": "preflight failed",
+            "result": {"stage": "preflight", "checks": {"free_space_ok": False}},
+        },
+        headers=auth,
+    )
+    assert status.status_code == 200
+
+    detail = client.get(f"/api/printellect/devices/{device['device_id']}")
+    assert detail.status_code == 200
+    update = detail.json()["device"]["update_status"]
+    assert update["status"] == "failed"
+    assert update["result"]["stage"] == "preflight"
+    assert update["result"]["checks"]["free_space_ok"] is False
+
+
+def test_heartbeat_telemetry_is_visible_in_device_detail(client):
+    device, token = _create_claimed_online_device(
+        client,
+        device_id="perkbase-telemetry-1",
+        owner_email="telemetry-owner@example.com",
+    )
+    auth = {"Authorization": f"Bearer {token}"}
+
+    hb = client.post(
+        "/api/printellect/device/v1/heartbeat",
+        json={
+            "fw_version": "1.0.0-test",
+            "app_version": "1.0.0-test",
+            "rssi": -57,
+            "telemetry": {
+                "uptime_ms": 123456,
+                "internal_temp_c": 71.2,
+                "vsys_v": 4.52,
+                "mem_free_bytes": 18000,
+            },
+        },
+        headers=auth,
+    )
+    assert hb.status_code == 200
+
+    detail = client.get(f"/api/printellect/devices/{device['device_id']}")
+    assert detail.status_code == 200
+    d = detail.json()["device"]
+    assert d["heartbeat"]["telemetry"]["uptime_ms"] == 123456
+    codes = {w["code"] for w in d.get("telemetry_warnings") or []}
+    assert "temp_high" in codes
+    assert "voltage_low" in codes
+    assert "mem_low" in codes
+
 def test_light_color_and_effect_actions_queue_structured_payloads(client):
     device, token = _create_claimed_online_device(
         client,
@@ -991,6 +1098,40 @@ def test_light_color_and_effect_actions_queue_structured_payloads(client):
     assert effect_cmd.status_code == 200
     assert effect_cmd.json()["payload"]["effect"] == "pulse"
     assert effect_cmd.json()["payload"]["color"] == {"r": 52, "g": 199, "b": 89}
+
+    self_test_cmd = client.post(
+        f"/api/printellect/devices/{device['device_id']}/actions/self-test",
+        json={"quick": True},
+    )
+    assert self_test_cmd.status_code == 200
+    assert self_test_cmd.json()["action"] == "self_test"
+    assert self_test_cmd.json()["payload"]["quick"] is True
+
+    identify_cmd = client.post(
+        f"/api/printellect/devices/{device['device_id']}/actions/identify",
+        json={"duration_ms": 1200, "color": "#FFD60A"},
+    )
+    assert identify_cmd.status_code == 200
+    assert identify_cmd.json()["action"] == "identify_device"
+    assert identify_cmd.json()["payload"]["duration_ms"] == 1200
+    assert identify_cmd.json()["payload"]["color"] == {"r": 255, "g": 214, "b": 10}
+
+    speaker_validate = client.post(
+        f"/api/printellect/devices/{device['device_id']}/actions/speaker-validate",
+        json={"track_id": "juggernog", "duration_ms": 900},
+    )
+    assert speaker_validate.status_code == 200
+    assert speaker_validate.json()["action"] == "speaker_validate"
+    assert speaker_validate.json()["payload"]["track_id"] == "juggernog"
+    assert speaker_validate.json()["payload"]["duration_ms"] == 900
+
+    button_snapshot = client.post(
+        f"/api/printellect/devices/{device['device_id']}/actions/button-snapshot",
+        json={},
+    )
+    assert button_snapshot.status_code == 200
+    assert button_snapshot.json()["action"] == "button_snapshot"
+    assert button_snapshot.json()["payload"] == {}
 
 
 def test_test_lights_and_command_result_visible_in_detail_and_list(client):
@@ -1055,6 +1196,25 @@ def test_command_stream_returns_queued_command(client):
     assert empty.status_code == 204
 
 
+def test_device_support_bundle_download(client):
+    device, _ = _create_claimed_online_device(
+        client,
+        device_id="perkbase-bundle-1",
+        owner_email="bundle-owner@example.com",
+    )
+    resp = client.get(f"/api/printellect/devices/{device['device_id']}/support-bundle")
+    assert resp.status_code == 200
+    assert "application/zip" in (resp.headers.get("content-type") or "")
+    assert "attachment;" in (resp.headers.get("content-disposition") or "").lower()
+    with tempfile.TemporaryDirectory() as td:
+        zpath = Path(td) / "support.zip"
+        zpath.write_bytes(resp.content)
+        with zipfile.ZipFile(zpath, "r") as zf:
+            assert "summary.json" in zf.namelist()
+            summary = json.loads(zf.read("summary.json").decode("utf-8"))
+    assert summary["device"]["device_id"] == device["device_id"]
+
+
 def test_rename_device_updates_devices_table(client):
     device, _ = _create_claimed_online_device(
         client,
@@ -1083,6 +1243,11 @@ def test_openapi_contains_new_printellect_light_and_stream_contracts(client):
 
     assert "/api/printellect/devices/{device_id}/actions/light-color" in paths
     assert "/api/printellect/devices/{device_id}/actions/light-effect" in paths
+    assert "/api/printellect/devices/{device_id}/actions/self-test" in paths
+    assert "/api/printellect/devices/{device_id}/actions/identify" in paths
+    assert "/api/printellect/devices/{device_id}/actions/speaker-validate" in paths
+    assert "/api/printellect/devices/{device_id}/actions/button-snapshot" in paths
+    assert "/api/printellect/devices/{device_id}/support-bundle" in paths
     assert "/api/printellect/device/v1/commands/stream" in paths
     assert "/api/printellect/device/v1/update/status" in paths
     assert "/api/printellect/device/v1/boot-ok" in paths
@@ -1108,3 +1273,6 @@ def test_device_detail_page_shows_enhanced_diagnostics_controls(client):
     assert "lightColorPicker" in resp.text
     assert "setLightEffectBtn" in resp.text
     assert "diagResults" in resp.text
+    assert "speakerValidateBtn" in resp.text
+    assert "buttonSnapshotBtn" in resp.text
+    assert "buttonDiagList" in resp.text

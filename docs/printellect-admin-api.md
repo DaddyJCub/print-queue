@@ -104,7 +104,8 @@ Response (`200`):
         "status": "idle",
         "target_version": null,
         "progress": 0,
-        "last_error": null
+        "last_error": null,
+        "result": {}
       }
     }
   ]
@@ -169,6 +170,15 @@ The old claim code is invalidated immediately. The new claim code is returned on
 Errors: `404` not found.
 
 Audit: `printellect_claim_code_rotated`
+
+---
+
+### Download device support bundle
+`GET /api/printellect/admin/devices/{device_id}/support-bundle`
+
+Returns `application/zip` with structured troubleshooting artifacts (`summary.json`, command/state snapshots).
+
+Use this when OTA or diagnostics fail and you need reproducible evidence without direct device shell access.
 
 ---
 
@@ -248,7 +258,13 @@ Response (`200`):
   "channel": "stable",
   "bundle_sha256": "hex-digest",
   "mode": "build",
-  "file_count": 10
+  "file_count": 10,
+  "safety": {
+    "schema_version": 1,
+    "entrypoint": "main.py",
+    "required_paths": ["main.py", "lib/api_client.py"],
+    "supports_layouts": ["legacy-current", "current-rooted"]
+  }
 }
 ```
 
@@ -276,6 +292,10 @@ Form fields:
 | `notes` | string | — | Release notes |
 
 Response: same shape as build endpoint with `mode: "package"` or `"manifest_bundle"`.
+
+Safety metadata:
+- Server ensures `manifest.safety` exists and validates `required_paths` against bundle contents.
+- Firmware uses this metadata during OTA preflight and post-apply verification.
 
 Errors: `422` on invalid input (missing files, empty bundle, bad JSON, hash mismatch).
 
@@ -355,20 +375,28 @@ Enqueues `ota_apply` commands to devices. Devices receive the update via their n
 
 ```json
 {
-  "device_ids": ["perkbase-001", "perkbase-002"]
+  "mode": "canary",
+  "limit": 1,
+  "online_only": true
 }
 ```
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
 | `device_ids` | array of strings | All claimed devices | Optional — filter to specific devices |
+| `mode` | string | `"all"` | `"all"` or `"canary"` |
+| `limit` | integer | `0` (`all`) / `1` (`canary`) | Max devices to enqueue |
+| `online_only` | boolean | `false` (`all`) / `true` (`canary`) | Restrict selection to currently online devices |
 
 Response (`200`):
 ```json
 {
   "ok": true,
   "version": "0.2.0",
-  "devices_pushed": 5
+  "mode": "canary",
+  "online_only": true,
+  "devices_pushed": 1,
+  "device_ids": ["perkbase-001"]
 }
 ```
 
@@ -420,6 +448,7 @@ Response (`200`):
       "status": "downloading",
       "progress": 40,
       "last_error": null,
+      "result": { "stage": "preflight", "checks": { "required_paths_ok": true } },
       "updated_at": "2026-03-22T10:35:00Z"
     }
   ]

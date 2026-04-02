@@ -50,8 +50,12 @@ def _default_cfg():
         "app_version": "1.0.0",
         "heartbeat_interval_s": 20,
         "command_poll_interval_s": 1,
-        "command_stream_enabled": True,
+        "command_stream_enabled": False,
         "command_stream_timeout_s": 8,
+        "telemetry_enabled": True,
+        "telemetry_temp_enabled": True,
+        "telemetry_vsys_adc_pin": None,
+        "telemetry_vsys_divider_ratio": 3.0,
         "provision_poll_interval_s": 3,
         "sta_connect_timeout_s": 10,
         "sta_connect_retries": 3,
@@ -120,6 +124,10 @@ def main():
         api.set_token(token_json["device_token"])
 
     ota_mgr = OtaManager(api, APP_STATE_PATH)
+    try:
+        ota_mgr.ensure_layout_compatibility()
+    except Exception:
+        pass
     try:
         ota_mgr.boot_guard()
     except Exception:
@@ -225,7 +233,18 @@ def main():
                 pass
 
             if now - last_heartbeat >= cfg["heartbeat_interval_s"]:
-                status, _ = api.heartbeat(fw_version, app_version, rssi=wifi_mgr.rssi())
+                telemetry = None
+                if cfg.get("telemetry_enabled", True):
+                    try:
+                        telemetry = hw.runtime_telemetry(
+                            vsys_adc_pin=cfg.get("telemetry_vsys_adc_pin"),
+                            vsys_divider_ratio=cfg.get("telemetry_vsys_divider_ratio", 3.0),
+                        )
+                        if not cfg.get("telemetry_temp_enabled", True):
+                            telemetry.pop("internal_temp_c", None)
+                    except Exception:
+                        telemetry = None
+                status, _ = api.heartbeat(fw_version, app_version, rssi=wifi_mgr.rssi(), telemetry=telemetry)
                 if status == 401:
                     delete_file(TOKEN_PATH)
                     api.set_token(None)
@@ -243,9 +262,23 @@ def main():
             if now - last_poll >= cfg["command_poll_interval_s"]:
                 status = 204
                 body = None
-                stream_enabled = cfg.get("command_stream_enabled", True) and hasattr(api, "command_stream")
+                stream_enabled = cfg.get("command_stream_enabled", False) and hasattr(api, "command_stream")
+                # Avoid command-stream long-poll stalls while animated effects are active.
                 if stream_enabled:
-                    status, body = api.command_stream(timeout_s=cfg.get("command_stream_timeout_s", 8))
+                    active_effect = str((hw.get_state() or {}).get("light_effect") or "").strip().lower()
+                    if active_effect in {"pulse", "strobe", "chase", "rainbow"}:
+                        stream_enabled = False
+                if stream_enabled:
+                    timeout_s = cfg.get("command_stream_timeout_s", 8)
+                    try:
+                        timeout_s = float(timeout_s)
+                    except Exception:
+                        timeout_s = 1.0
+                    if timeout_s < 1.0:
+                        timeout_s = 1.0
+                    if timeout_s > 1.0:
+                        timeout_s = 1.0
+                    status, body = api.command_stream(timeout_s=timeout_s)
                     # Fallback to polling if stream endpoint is unavailable.
                     if status in (404, 405, 500):
                         status, body = api.next_command()
@@ -259,6 +292,12 @@ def main():
                 if status == 200 and body:
                     cmd_runner.execute(body)
                 last_poll = now
+
+            # Keep LED effect animations moving between command polls.
+            try:
+                hw.update()
+            except Exception:
+                pass
 
             time.sleep(0.05)
             continue

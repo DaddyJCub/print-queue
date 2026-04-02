@@ -1,10 +1,16 @@
 import time
+import os
+try:
+    import gc
+except Exception:
+    gc = None
 
 try:
-    from machine import Pin, PWM
+    from machine import Pin, PWM, ADC
 except Exception:
     Pin = None
     PWM = None
+    ADC = None
 
 try:
     import neopixel  # type: ignore
@@ -71,6 +77,10 @@ class HardwareAdapter:
         self._phase_tick = _ticks_ms()
         self._phase_on = False
         self._last_np_rgb = (0, 0, 0)
+        self._effect_speed_ms = 300
+        self._effect_duration_ms = None
+        self._effect_expires_at_ms = None
+        self._last_effect_tick = _ticks_ms()
         self._init_neopixel()
 
         self._speaker_pwm = None
@@ -89,6 +99,10 @@ class HardwareAdapter:
         self._button_bindings = []
         self._button_debounce_ms = self._coerce_int(self._cfg_get("button_debounce_ms"), 250)
         self._last_button_event_ms = 0
+        self._boot_ms = _ticks_ms()
+        self._button_press_seq = 0
+        self._button_press_counts = {}
+        self._last_button_event = None
         self._init_buttons()
 
         self._set_status_led(False)
@@ -139,19 +153,36 @@ class HardwareAdapter:
         return {"light_color": rgb, "hex": self._rgb_to_hex(rgb)}
 
     def set_light_effect(self, effect, speed_ms=None, duration_ms=None, color=None):
-        if not effect:
-            effect = "ambient"
-        self.light_effect = str(effect).strip().lower()
+        self.light_effect = self._normalize_effect(effect)
         result = {"light_effect": self.light_effect}
         if speed_ms is not None:
-            result["speed_ms"] = int(speed_ms)
+            self._effect_speed_ms = self._coerce_effect_speed(speed_ms)
+            result["speed_ms"] = self._effect_speed_ms
+        else:
+            result["speed_ms"] = self._effect_speed_ms
         if duration_ms is not None:
-            result["duration_ms"] = int(duration_ms)
+            duration = self._coerce_duration_ms(duration_ms)
+            if duration > 0:
+                self._effect_duration_ms = duration
+                self._effect_expires_at_ms = _ticks_ms() + duration
+                result["duration_ms"] = duration
+            else:
+                self._effect_duration_ms = None
+                self._effect_expires_at_ms = None
+                result["duration_ms"] = 0
         if color is not None:
             rgb = self._normalize_rgb(color)
             self.light_color = rgb
             result["light_color"] = rgb
             result["hex"] = self._rgb_to_hex(rgb)
+        else:
+            result["hex"] = self._rgb_to_hex(self.light_color)
+
+        if self.light_effect in {"off", "none"}:
+            self._effect_duration_ms = None
+            self._effect_expires_at_ms = None
+
+        self._last_effect_tick = _ticks_ms()
         self._apply_light_output()
         return result
 
@@ -204,6 +235,174 @@ class HardwareAdapter:
             "audio_driver": self._audio_driver,
         }
 
+    def speaker_validate(self, track_id=None, duration_ms=900):
+        try:
+            duration_ms = int(duration_ms)
+        except Exception:
+            duration_ms = 900
+        if duration_ms < 200:
+            duration_ms = 200
+        if duration_ms > 5000:
+            duration_ms = 5000
+
+        track = str(track_id or "juggernog").strip() or "juggernog"
+        result = {
+            "ok": False,
+            "track_id": track,
+            "duration_ms": duration_ms,
+            "audio_driver": self._audio_driver,
+            "volume": self.volume,
+        }
+
+        if self._audio_driver == "dfplayer" and self._dfplayer:
+            track_number = self._resolve_dfplayer_track(track)
+            self._dfplayer.set_volume(self.volume)
+            self._dfplayer.play_track(track_number)
+            _sleep_ms(min(duration_ms, 1200))
+            busy = False
+            try:
+                busy = bool(self._dfplayer.is_busy())
+            except Exception:
+                busy = False
+            self._dfplayer.stop()
+            self._speaker_active = False
+            result.update(
+                {
+                    "ok": True,
+                    "driver": "dfplayer",
+                    "track_number": track_number,
+                    "busy_detected": busy,
+                }
+            )
+            return result
+
+        if self._speaker_pwm:
+            key = track.lower()
+            freq = self._track_freq_map.get(key, self._speaker_default_freq)
+            if freq < 80:
+                freq = 80
+            self._start_audio(track, transient_ms=min(duration_ms, 1200))
+            self._stop_audio()
+            result.update(
+                {
+                    "ok": True,
+                    "driver": "pwm",
+                    "freq_hz": int(freq),
+                    "duty_u16": self._volume_to_duty(),
+                }
+            )
+            return result
+
+        result["error"] = "speaker driver unavailable"
+        return result
+
+    def identify_device(self, duration_ms=2000, color=None):
+        try:
+            duration_ms = int(duration_ms)
+        except Exception:
+            duration_ms = 2000
+        if duration_ms < 200:
+            duration_ms = 200
+        if duration_ms > 15000:
+            duration_ms = 15000
+        if color is None:
+            color = {"r": 255, "g": 191, "b": 0}
+
+        effect_result = self.set_light_effect(
+            "strobe",
+            speed_ms=120,
+            duration_ms=duration_ms,
+            color=color,
+        )
+        self._start_audio("juggernog", transient_ms=min(duration_ms, 1200))
+        return {
+            "identify": True,
+            "duration_ms": duration_ms,
+            "light_effect": effect_result.get("light_effect"),
+            "light_color": effect_result.get("light_color", dict(self.light_color)),
+            "audio_driver": self._audio_driver,
+        }
+
+    def self_test(self, quick=True):
+        checks = {
+            "status_led_present": bool(self._status_led),
+            "neopixel_present": bool(self._np),
+            "neopixel_count": int(self._np_count or 0),
+            "audio_driver": self._audio_driver,
+            "speaker_present": bool(self._speaker_pwm or self._dfplayer),
+            "button_count": len(self._button_bindings),
+            "button_map": [
+                {"pin_num": b.get("pin_num"), "perk_id": b.get("perk_id")}
+                for b in self._button_bindings
+            ],
+            "storage_paths": {
+                "/current": self._path_exists("/current"),
+                "/current/main.py": self._path_exists("/current/main.py"),
+                "/current/lib": self._path_exists("/current/lib"),
+            },
+            "light_state": {
+                "effect": self.light_effect,
+                "color": dict(self.light_color),
+                "brightness": self.brightness,
+            },
+        }
+        if not quick:
+            # Active test pattern for quick visual confirmation.
+            self.test_lights("strobe", duration_ms=600, color={"r": 255, "g": 255, "b": 255}, speed_ms=120)
+
+        failures = []
+        if checks["button_count"] < 1:
+            failures.append("no_buttons_detected")
+        if not checks["storage_paths"]["/current/main.py"]:
+            failures.append("missing_current_main")
+        if not checks["storage_paths"]["/current/lib"]:
+            failures.append("missing_current_lib")
+
+        return {
+            "ok": len(failures) == 0,
+            "quick": bool(quick),
+            "failures": failures,
+            "checks": checks,
+        }
+
+    def button_snapshot(self):
+        diag = self._button_diag_payload(include_pressed=True)
+        diag["snapshot"] = True
+        return diag
+
+    def runtime_telemetry(self, vsys_adc_pin=None, vsys_divider_ratio=3.0):
+        telemetry = {
+            "uptime_ms": max(0, _ticks_diff(_ticks_ms(), self._boot_ms)),
+            "audio_driver": self._audio_driver,
+            "button_press_seq": self._button_press_seq,
+            "button_count": len(self._button_bindings),
+        }
+        if gc:
+            try:
+                telemetry["mem_free_bytes"] = int(gc.mem_free())
+                telemetry["mem_alloc_bytes"] = int(gc.mem_alloc())
+            except Exception:
+                pass
+        if ADC:
+            try:
+                temp_raw = ADC(4).read_u16()
+                temp_v = (temp_raw * 3.3) / 65535.0
+                telemetry["internal_temp_c"] = round(27.0 - ((temp_v - 0.706) / 0.001721), 2)
+            except Exception:
+                pass
+            if vsys_adc_pin is not None:
+                try:
+                    pin = int(vsys_adc_pin)
+                    ratio = float(vsys_divider_ratio)
+                    if ratio <= 0:
+                        ratio = 3.0
+                    raw = ADC(pin).read_u16()
+                    voltage = ((raw * 3.3) / 65535.0) * ratio
+                    telemetry["vsys_v"] = round(voltage, 3)
+                except Exception:
+                    pass
+        return telemetry
+
     def reboot(self):
         try:
             import machine
@@ -223,6 +422,12 @@ class HardwareAdapter:
             "light_color": self.light_color,
             "light_effect": self.light_effect,
             "last_light_test": self.last_light_test,
+            "audio": {
+                "driver": self._audio_driver,
+                "speaker_active": bool(self._speaker_active),
+                "volume": self.volume,
+            },
+            "button_diag": self._button_diag_payload(include_pressed=True),
         }
 
     def notify_shipping(self, status):
@@ -241,6 +446,10 @@ class HardwareAdapter:
             "light_effect": self.light_effect,
             "light_color": self.light_color,
         }
+
+    def update(self):
+        """Advance animated light effects."""
+        self._apply_light_output(now_ms=_ticks_ms())
 
     def set_led_phase(self, phase):
         phase = str(phase or "idle")
@@ -285,6 +494,15 @@ class HardwareAdapter:
                     continue
                 self._last_button_event_ms = now_ms
                 perk_id = binding.get("perk_id")
+                pin_num = binding.get("pin_num")
+                self._button_press_seq += 1
+                self._button_press_counts[perk_id] = int(self._button_press_counts.get(perk_id, 0)) + 1
+                self._last_button_event = {
+                    "seq": self._button_press_seq,
+                    "pin_num": pin_num,
+                    "perk_id": perk_id,
+                    "at_ticks_ms": now_ms,
+                }
                 self.play_perk(perk_id)
                 binding["was_pressed"] = pressed
                 return {"action": "play_perk", "perk_id": perk_id}
@@ -327,6 +545,40 @@ class HardwareAdapter:
                 val = 255
             out[key] = val
         return out
+
+    def _normalize_effect(self, effect):
+        effect = str(effect or "ambient").strip().lower()
+        aliases = {
+            "none": "off",
+            "disabled": "off",
+            "default": "ambient",
+            "static": "solid",
+            "breathe": "pulse",
+            "breathing": "pulse",
+            "blink": "strobe",
+            "theater": "chase",
+            "spectrum": "rainbow",
+        }
+        effect = aliases.get(effect, effect)
+        if effect not in {"off", "ambient", "solid", "pulse", "strobe", "chase", "rainbow"}:
+            return "ambient"
+        return effect
+
+    def _coerce_effect_speed(self, value):
+        speed = self._coerce_int(value, self._effect_speed_ms)
+        if speed < 40:
+            speed = 40
+        if speed > 5000:
+            speed = 5000
+        return speed
+
+    def _coerce_duration_ms(self, value):
+        duration = self._coerce_int(value, 0)
+        if duration < 0:
+            return 0
+        if duration > 600000:
+            return 600000
+        return duration
 
     def _rgb_to_hex(self, rgb):
         return "#{:02X}{:02X}{:02X}".format(rgb["r"], rgb["g"], rgb["b"])
@@ -577,6 +829,25 @@ class HardwareAdapter:
         active_low = bool(binding.get("active_low", True))
         return (raw == 0) if active_low else (raw == 1)
 
+    def _button_diag_payload(self, include_pressed=False):
+        now_ms = _ticks_ms()
+        bindings = []
+        for b in self._button_bindings:
+            entry = {"pin_num": b.get("pin_num"), "perk_id": b.get("perk_id")}
+            if include_pressed:
+                entry["pressed"] = bool(self._button_pressed(b))
+            bindings.append(entry)
+        last_event = dict(self._last_button_event) if isinstance(self._last_button_event, dict) else None
+        if last_event and isinstance(last_event.get("at_ticks_ms"), int):
+            last_event["age_ms"] = max(0, _ticks_diff(now_ms, int(last_event["at_ticks_ms"])))
+        return {
+            "debounce_ms": self._button_debounce_ms,
+            "press_seq": self._button_press_seq,
+            "last_event": last_event,
+            "press_counts": dict(self._button_press_counts),
+            "bindings": bindings,
+        }
+
     def _init_buttons(self):
         if not Pin:
             return
@@ -651,6 +922,8 @@ class HardwareAdapter:
                     "was_pressed": False,
                 }
             )
+            if perk_id not in self._button_press_counts:
+                self._button_press_counts[perk_id] = 0
 
     def _set_status_led(self, on):
         if not self._status_led:
@@ -675,9 +948,118 @@ class HardwareAdapter:
         except Exception:
             pass
 
-    def _apply_light_output(self):
-        effect = str(self.light_effect or "ambient").lower()
-        if effect in {"off", "none"}:
+    def _write_light_chase(self, head_idx, rgb):
+        if not self._np or self._np_count <= 0:
+            # Fallback when no NeoPixel strip is present.
+            if head_idx % 2 == 0:
+                self._write_light_rgb(rgb)
+            else:
+                self._write_light_rgb((0, 0, 0))
+            return
+        try:
+            tail_rgb = (max(0, rgb[0] // 5), max(0, rgb[1] // 5), max(0, rgb[2] // 5))
+            for idx in range(self._np_count):
+                self._np[idx] = (0, 0, 0)
+            self._np[head_idx % self._np_count] = rgb
+            self._np[(head_idx - 1) % self._np_count] = tail_rgb
+            self._np.write()
+            self._last_np_rgb = rgb
+        except Exception:
+            pass
+
+    def _wheel(self, pos):
+        pos = int(pos) % 256
+        if pos < 85:
+            return (255 - pos * 3, pos * 3, 0)
+        if pos < 170:
+            pos -= 85
+            return (0, 255 - pos * 3, pos * 3)
+        pos -= 170
+        return (pos * 3, 0, 255 - pos * 3)
+
+    def _scale_tuple(self, rgb):
+        scale = self.brightness / 100.0
+        if scale < 0:
+            scale = 0
+        if scale > 1:
+            scale = 1
+        return (
+            int(rgb[0] * scale),
+            int(rgb[1] * scale),
+            int(rgb[2] * scale),
+        )
+
+    def _write_light_rainbow(self, offset):
+        if not self._np or self._np_count <= 0:
+            # Graceful fallback when no strip exists.
+            self._write_light_rgb(self._scaled_rgb(self.light_color))
+            return
+        try:
+            for idx in range(self._np_count):
+                color = self._wheel((idx * 256 // self._np_count) + offset)
+                self._np[idx] = self._scale_tuple(color)
+            self._np.write()
+            self._last_np_rgb = self._np[0]
+        except Exception:
+            pass
+
+    def _apply_light_output(self, now_ms=None):
+        if now_ms is None:
+            now_ms = _ticks_ms()
+
+        if self._effect_expires_at_ms is not None and _ticks_diff(now_ms, self._effect_expires_at_ms) >= 0:
+            self.light_effect = "off"
+            self._effect_expires_at_ms = None
+            self._effect_duration_ms = None
+
+        effect = self._normalize_effect(self.light_effect)
+        speed_ms = self._coerce_effect_speed(self._effect_speed_ms)
+        base_rgb = self._scaled_rgb(self.light_color)
+
+        if effect == "off":
             self._write_light_rgb((0, 0, 0))
             return
-        self._write_light_rgb(self._scaled_rgb(self.light_color))
+
+        if effect in {"solid", "ambient"}:
+            if effect == "ambient":
+                base_rgb = (base_rgb[0] // 2, base_rgb[1] // 2, base_rgb[2] // 2)
+            self._write_light_rgb(base_rgb)
+            return
+
+        if effect == "strobe":
+            slot = now_ms // speed_ms
+            self._write_light_rgb(base_rgb if (slot % 2 == 0) else (0, 0, 0))
+            return
+
+        if effect == "pulse":
+            period_ms = speed_ms * 2
+            phase = (now_ms % period_ms) / float(period_ms)
+            ramp = 1.0 - abs((phase * 2.0) - 1.0)  # 0..1 triangle
+            level = 0.15 + (0.85 * ramp)
+            rgb = (
+                int(base_rgb[0] * level),
+                int(base_rgb[1] * level),
+                int(base_rgb[2] * level),
+            )
+            self._write_light_rgb(rgb)
+            return
+
+        if effect == "chase":
+            head = now_ms // speed_ms
+            self._write_light_chase(head, base_rgb)
+            return
+
+        if effect == "rainbow":
+            offset = now_ms // max(20, speed_ms // 4)
+            self._write_light_rainbow(offset)
+            return
+
+        # Defensive fallback.
+        self._write_light_rgb(base_rgb)
+
+    def _path_exists(self, path):
+        try:
+            os.stat(path)
+            return True
+        except Exception:
+            return False

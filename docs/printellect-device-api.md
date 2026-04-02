@@ -124,7 +124,13 @@ All request fields are **optional**, but firmware should send concrete versions:
   "fw_version": "1.0.0",
   "app_version": "1.0.0",
   "rssi": -55,
-  "reset_event": "wifi_reset"
+  "reset_event": "wifi_reset",
+  "telemetry": {
+    "uptime_ms": 123456,
+    "internal_temp_c": 41.8,
+    "vsys_v": 4.97,
+    "mem_free_bytes": 81200
+  }
 }
 ```
 
@@ -134,6 +140,7 @@ All request fields are **optional**, but firmware should send concrete versions:
 | `app_version` | string | Will not overwrite existing value with null |
 | `rssi` | int or string | Coerced to int; Wi-Fi signal strength |
 | `reset_event` | string | Logged if present (e.g. `wifi_reset`, `factory_reset`) |
+| `telemetry` | object | Optional runtime diagnostics persisted with heartbeat (uptime/memory/temp/voltage/etc.) |
 
 Response:
 ```json
@@ -312,7 +319,13 @@ Request:
 {
   "status": "downloading",
   "progress": 40,
-  "version": "0.3.0"
+  "version": "0.3.0",
+  "result": {
+    "stage": "preflight",
+    "checks": {
+      "required_paths_ok": true
+    }
+  }
 }
 ```
 
@@ -322,6 +335,7 @@ Request:
 | `progress` | int | No | 0-100, clamped to range, default 0 |
 | `version` | string | No | Alternative field name: `target_version` (both accepted) |
 | `error` | string | No | Stored as text when status is `failed` or `rollback` |
+| `result` | object | No | Structured OTA diagnostics (preflight/post-verify details, rollback cause, etc.) |
 
 Response:
 ```json
@@ -332,6 +346,10 @@ Errors:
 - `422` if `status` is not in the allowed set.
 - `422` if `status=success` and no version can be resolved.
 - `409` if `status=success` reports a version that does not match the current OTA target version.
+
+Release manifest note:
+- `manifest.safety.required_paths` is used by firmware preflight/post-verify checks.
+- Include `manifest.safety.supports_layouts` for compatibility documentation (`legacy-current`, `current-rooted`).
 
 ### 6.6 Boot success ack
 `POST /boot-ok` (Bearer)

@@ -33,6 +33,10 @@ Optional local control/audio settings:
 - `button_active_low` (default `true`).
 - `button_debounce_ms` (default `250`).
 - `perk_buttons` (list of button pin to perk mapping).
+- `telemetry_enabled` (default `true`).
+- `telemetry_temp_enabled` (default `true`).
+- `telemetry_vsys_adc_pin` (optional ADC pin index for VSYS telemetry).
+- `telemetry_vsys_divider_ratio` (default `3.0`, used with `telemetry_vsys_adc_pin`).
 
 Legacy prototype defaults now supported out of the box:
 - NeoPixel on `GP15`
@@ -56,10 +60,12 @@ Legacy config compatibility keys are also recognized:
 ## Runtime loops
 
 - Heartbeat every configured interval.
-- Command stream long-poll with fallback to command poll.
+- Command polling every configured interval (stream mode is optional and disabled by default for smoother local animations).
 - Posts state and command status transitions.
 - On bearer `401`, deletes `/token.json` and re-provisions.
 - Boot/connect/provision states flash status LEDs for visual diagnostics.
+- OTA includes preflight + post-apply verification and reports structured diagnostics in update status `result`.
+- Diagnostics commands include `self_test`, `identify_device`, `speaker_validate`, and `button_snapshot`.
 
 ## Reset button mapping
 

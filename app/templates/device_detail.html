@@ -192,9 +192,12 @@
   <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
     <div class="flex items-center justify-between mb-3">
       <h2 class="font-semibold">Device Status</h2>
-      <span class="text-xs text-zinc-600">Auto-refreshes every 3s</span>
+      <div class="flex items-center gap-2">
+        <a href="/api/printellect/devices/{{ device_id }}/support-bundle" class="text-xs px-2 py-1 rounded-md border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-300">Download Support Bundle</a>
+        <span class="text-xs text-zinc-600">Auto-refreshes every 3s</span>
+      </div>
     </div>
-    <div id="statusGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div id="statusGrid" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
       <div class="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-3">
         <p class="text-xs text-zinc-500 mb-1">State</p>
         <p id="stat-state" class="font-semibold text-sm capitalize">—</p>
@@ -210,6 +213,18 @@
       <div class="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-3">
         <p class="text-xs text-zinc-500 mb-1">Last Seen</p>
         <p id="stat-lastseen" class="font-semibold text-sm">—</p>
+      </div>
+      <div id="card-temp" class="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-3">
+        <p class="text-xs text-zinc-500 mb-1">Temp</p>
+        <p id="stat-temp" class="font-semibold text-sm">—</p>
+      </div>
+      <div id="card-vsys" class="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-3">
+        <p class="text-xs text-zinc-500 mb-1">VSYS</p>
+        <p id="stat-vsys" class="font-semibold text-sm">—</p>
+      </div>
+      <div id="card-mem" class="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-3">
+        <p class="text-xs text-zinc-500 mb-1">Free Mem</p>
+        <p id="stat-memfree" class="font-semibold text-sm">—</p>
       </div>
     </div>
 
@@ -356,11 +371,19 @@
           </div>
         </div>
         <button id="testLightsBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">Run Light Test</button>
+        <div class="grid grid-cols-3 gap-2">
+          <button id="identifyBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">Identify Device</button>
+          <button id="selfTestBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">Run Self-Test</button>
+          <button id="buttonSnapshotBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">Button Snapshot</button>
+        </div>
         <div>
           <label class="text-xs text-zinc-500 mb-1 block">Audio Track ID</label>
           <input id="testTrack" value="juggernog" placeholder="track id" class="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-sm font-mono focus:border-indigo-500 outline-none transition-colors">
         </div>
-        <button id="testAudioBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">Test Audio</button>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="testAudioBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">Test Audio</button>
+          <button id="speakerValidateBtn" class="device-action-control w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm font-medium transition-colors">Speaker Validate</button>
+        </div>
       </div>
     </div>
 
@@ -371,6 +394,14 @@
       </div>
       <div id="diagRemediation" class="hidden text-xs rounded-xl border px-3 py-2"></div>
       <div id="diagResults" class="space-y-1.5"></div>
+    </div>
+    <div class="mt-4 pt-3 border-t border-zinc-800 space-y-2">
+      <div class="flex items-center justify-between">
+        <p class="text-xs font-medium text-zinc-400">Button Diagnostics</p>
+        <p class="text-[11px] text-zinc-600">Live from device state</p>
+      </div>
+      <div id="buttonDiagMeta" class="text-xs text-zinc-500"></div>
+      <div id="buttonDiagList" class="grid sm:grid-cols-2 gap-2"></div>
     </div>
   </section>
 
@@ -393,6 +424,15 @@
         <span class="text-zinc-600">•</span>
         <a href="/admin/printellect/ota-status" class="text-amber-300 underline">Live OTA Status</a>
       </div>
+    </div>
+    <div class="mb-3 rounded-xl border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
+      <p class="font-semibold text-amber-300">OTA Checklist</p>
+      <ol class="mt-1 space-y-1 text-zinc-300">
+        <li>1. Confirm target release is promoted (or set exact version below).</li>
+        <li>2. Apply update and wait for device to reboot (usually 15-90s).</li>
+        <li>3. Verify this page shows new app version and OTA status becomes <strong>success</strong>.</li>
+        <li>4. If status becomes <strong>failed</strong>, download support bundle and inspect diagnostics result/error.</li>
+      </ol>
     </div>
     <div class="flex gap-2">
       <input id="updateVersion" value="latest" placeholder="latest or 0.x.y" class="device-action-control flex-1 px-3 py-2.5 bg-zinc-900 border border-zinc-700 rounded-xl text-sm font-mono focus:border-amber-500 outline-none transition-colors">
@@ -474,6 +514,26 @@ function perkLabel(perk) {
   return map[perk] || perk || '—';
 }
 
+function formatBytes(bytes) {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function setWarnCard(cardId, warn) {
+  const el = document.getElementById(cardId);
+  if (!el) return;
+  el.classList.remove('border-red-500/60', 'bg-red-900/20', 'border-amber-500/60', 'bg-amber-900/20');
+  if (!warn) return;
+  const level = String(warn.level || '').toLowerCase();
+  if (level === 'error') {
+    el.classList.add('border-red-500/60', 'bg-red-900/20');
+  } else {
+    el.classList.add('border-amber-500/60', 'bg-amber-900/20');
+  }
+}
+
 function normalizeHexColor(raw) {
   const text = (raw || '').trim().toUpperCase();
   if (/^#[0-9A-F]{6}$/.test(text)) return text;
@@ -525,7 +585,16 @@ function syncLightControlsFromState(state) {
 function renderDiagnosticsResults(commands) {
   const root = document.getElementById('diagResults');
   const remediation = document.getElementById('diagRemediation');
-  const diagActions = new Set(['test_lights', 'test_audio', 'set_light_color', 'set_light_effect']);
+  const diagActions = new Set([
+    'test_lights',
+    'test_audio',
+    'speaker_validate',
+    'set_light_color',
+    'set_light_effect',
+    'self_test',
+    'identify_device',
+    'button_snapshot',
+  ]);
   const rows = (commands || []).filter(c => diagActions.has(c.action)).slice(0, 6);
   if (!rows.length) {
     root.innerHTML = '<p class="text-xs text-zinc-600">No diagnostic commands yet. Run a light or audio test to see results.</p>';
@@ -569,6 +638,69 @@ function renderDiagnosticsResults(commands) {
   }).join('');
 }
 
+function renderButtonDiagnostics(state, stateUpdatedAt) {
+  const root = document.getElementById('buttonDiagList');
+  const meta = document.getElementById('buttonDiagMeta');
+  const diag = state?.button_diag || {};
+  const bindings = Array.isArray(diag.bindings) ? diag.bindings : [];
+  const counts = (diag.press_counts && typeof diag.press_counts === 'object') ? diag.press_counts : {};
+  const lastEvent = (diag.last_event && typeof diag.last_event === 'object') ? diag.last_event : null;
+
+  const parts = [];
+  if (typeof diag.debounce_ms === 'number') parts.push(`Debounce: ${diag.debounce_ms}ms`);
+  if (typeof diag.press_seq === 'number') parts.push(`Press seq: ${diag.press_seq}`);
+  if (lastEvent) {
+    const perk = lastEvent.perk_id || 'unknown';
+    const pin = lastEvent.pin_num != null ? `GP${lastEvent.pin_num}` : 'pin ?';
+    const when = stateUpdatedAt ? relativeTime(stateUpdatedAt) : 'recent';
+    parts.push(`Last press: ${perk} (${pin}) • ${when}`);
+  }
+  meta.textContent = parts.join(' • ') || 'No button telemetry reported yet.';
+
+  if (!bindings.length) {
+    root.innerHTML = '<p class="text-xs text-zinc-600">No button bindings available.</p>';
+    return;
+  }
+
+  root.innerHTML = bindings.map(b => {
+    const perk = b.perk_id || 'unknown';
+    const pin = b.pin_num != null ? `GP${b.pin_num}` : 'pin ?';
+    const count = Number(counts[perk] || 0);
+    const pressed = b.pressed === true;
+    return `
+      <div class="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-xs">
+        <div class="flex items-center gap-2">
+          <span class="font-mono text-zinc-300">${pin}</span>
+          <span class="text-zinc-500">→</span>
+          <span class="text-zinc-200">${perk}</span>
+          <span class="ml-auto px-2 py-0.5 rounded-full border ${pressed ? 'border-emerald-700/40 bg-emerald-900/30 text-emerald-300' : 'border-zinc-700 bg-zinc-800 text-zinc-400'}">${pressed ? 'pressed' : 'idle'}</span>
+        </div>
+        <p class="mt-1 text-zinc-500">Press count: <span class="text-zinc-300">${count}</span></p>
+      </div>`;
+  }).join('');
+}
+
+function renderHeartbeatTelemetry(d) {
+  const heartbeat = d?.heartbeat || {};
+  const telemetry = heartbeat?.telemetry || {};
+  const warnings = Array.isArray(d?.telemetry_warnings) ? d.telemetry_warnings : [];
+  const warningMap = Object.fromEntries(warnings.map(w => [w.code, w]));
+
+  const temp = telemetry.internal_temp_c;
+  const vsys = telemetry.vsys_v;
+  const memFree = telemetry.mem_free_bytes;
+
+  document.getElementById('stat-temp').textContent =
+    (typeof temp === 'number' && Number.isFinite(temp)) ? `${temp.toFixed(1)} C` : '—';
+  document.getElementById('stat-vsys').textContent =
+    (typeof vsys === 'number' && Number.isFinite(vsys)) ? `${vsys.toFixed(2)} V` : '—';
+  document.getElementById('stat-memfree').textContent = formatBytes(memFree);
+
+  setWarnCard('card-temp', warningMap.temp_high);
+  setWarnCard('card-vsys', warningMap.voltage_low || warningMap.voltage_high);
+  setWarnCard('card-mem', warningMap.mem_low);
+}
+
 function updateStatusCards(d) {
   const state = d.state || {};
 
@@ -593,6 +725,7 @@ function updateStatusCards(d) {
   document.getElementById('stat-playing').textContent = state.playing ? perkLabel(state.playing) : '—';
   document.getElementById('stat-volume').textContent = state.volume != null ? `${state.volume} / 30` : '—';
   document.getElementById('stat-lastseen').textContent = relativeTime(d.last_seen_at);
+  renderHeartbeatTelemetry(d);
 
   // FW version for OTA section
   const fwEl = document.getElementById('currentFW');
@@ -687,6 +820,7 @@ async function loadDevice() {
     const cmdsEl = document.getElementById('commands');
     if (cmdsEl) cmdsEl.textContent = JSON.stringify(d.recent_commands || [], null, 2);
     renderDiagnosticsResults(d.recent_commands || []);
+    renderButtonDiagnostics(d.state || {}, d.state_updated_at);
 
     syncControlValues(d.state || {});
     setControlsEnabled(Boolean(d.online));
@@ -798,6 +932,23 @@ document.getElementById('testLightsBtn').addEventListener('click', () => {
 });
 document.getElementById('testAudioBtn').addEventListener('click', () =>
   postAction('test-audio', {track_id: document.getElementById('testTrack').value.trim()}));
+document.getElementById('speakerValidateBtn').addEventListener('click', () =>
+  postAction('speaker-validate', {
+    track_id: document.getElementById('testTrack').value.trim() || undefined,
+    duration_ms: parseInt(document.getElementById('lightsDuration').value, 10),
+  }));
+document.getElementById('identifyBtn').addEventListener('click', () => {
+  const hex = getLightColorHex();
+  if (!hex) return;
+  postAction('identify', {
+    color: hex,
+    duration_ms: parseInt(document.getElementById('lightsDuration').value, 10),
+  });
+});
+document.getElementById('selfTestBtn').addEventListener('click', () =>
+  postAction('self-test', {quick: true}));
+document.getElementById('buttonSnapshotBtn').addEventListener('click', () =>
+  postAction('button-snapshot', {}));
 
 {% if is_admin %}
 document.getElementById('updateBtn')?.addEventListener('click', async () => {
