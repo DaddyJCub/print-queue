@@ -10,6 +10,7 @@ from lib.command_runner import CommandRunner  # noqa: E402
 from lib.hardware import HardwareAdapter  # noqa: E402
 from lib.versioning import get_reported_versions  # noqa: E402
 import lib.command_runner as command_runner_module  # noqa: E402
+import main as firmware_main  # noqa: E402
 
 
 class FakeApi:
@@ -72,6 +73,11 @@ def test_reported_versions_fall_back_to_config_then_defaults():
     fw_default, app_default = get_reported_versions({}, {})
     assert fw_default == "fw-0.0.0"
     assert app_default == "app-0.0.0"
+
+
+def test_firmware_main_exports_legacy_run_entrypoint():
+    assert hasattr(firmware_main, "run")
+    assert callable(firmware_main.run)
 
 
 def test_command_runner_reports_result_for_light_color(monkeypatch):

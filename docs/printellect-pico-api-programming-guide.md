@@ -384,6 +384,19 @@ LED phase labels:
 - `commit` (>= commit threshold)
 
 Hardware adapter must map these symbolic phases to real LED output.
+Current implementation:
+- Uses onboard status LED (`status_led_pin`, default `"LED"`).
+- Optional WS2812 output when `neopixel_pin` is configured.
+- Supports configurable reset pin (`reset_pin`, default `15`).
+- Supports local perk buttons via `perk_buttons` mapping in `/config.json`.
+- Supports speaker/buzzer PWM output via `speaker_pin` + `speaker_track_freqs`.
+- Startup/network cues:
+  - boot: blue pulse
+  - Wi-Fi connect attempt: amber pulse
+  - Wi-Fi connect success: green pulse
+  - Wi-Fi connect failure: red pulse
+  - AP mode: purple pulse
+  - provisioning poll: cyan pulse
 
 ## 11) OTA Flow and Rollback
 

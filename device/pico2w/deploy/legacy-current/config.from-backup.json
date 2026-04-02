@@ -32,15 +32,6 @@
     "quick_revive": 3,
     "double_tap": 4
   },
-  "speaker_pin": null,
-  "speaker_default_freq": 880,
-  "speaker_test_duration_ms": 600,
-  "speaker_track_freqs": {
-    "juggernog": 440,
-    "speed_cola": 494,
-    "double_tap": 523,
-    "quick_revive": 587
-  },
   "button_active_low": true,
   "button_debounce_ms": 250,
   "perk_buttons": [
