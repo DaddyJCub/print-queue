@@ -316,11 +316,14 @@ def clear_app_caches():
     """Clear in-memory caches before/after each test so direct DB writes are visible."""
     from app.main import invalidate_settings_cache
     from app.auth import invalidate_feature_flag_cache as auth_ff_clear
+    from app.security import _rate_limit_storage
     invalidate_settings_cache()
     auth_ff_clear()
+    _rate_limit_storage.clear()
     yield
     invalidate_settings_cache()
     auth_ff_clear()
+    _rate_limit_storage.clear()
 
 
 # ─────────────────────────── ASSERTION HELPERS ───────────────────────────

@@ -1,5 +1,5 @@
 import asyncio
-import os, uuid, hashlib, secrets, urllib.parse
+import os, re, uuid, hashlib, secrets, urllib.parse
 from typing import Optional, Dict, Any, List
 
 from fastapi import APIRouter, Request, Form, UploadFile, File, HTTPException
@@ -52,6 +52,40 @@ from app.main import (
 from app.demo_data import get_demo_all_printers_status
 
 router = APIRouter()
+
+# ─────────────────── Anti-spam helpers ───────────────────
+
+_HTML_TAG_RE = re.compile(r"<\s*/?\s*[a-z][a-z0-9]*\b[^>]*>", re.IGNORECASE)
+_CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]")
+
+
+def _spam_score(name: str, email: str, notes: Optional[str]) -> int:
+    """Return a heuristic spam score.  >= 3 is blocked."""
+    score = 0
+    text = f"{name} {notes or ''}"
+
+    # HTML tags in free-text fields are a strong spam signal
+    if _HTML_TAG_RE.search(text):
+        score += 3
+
+    # Random-looking name: many consonant clusters / no vowels
+    name_lower = name.strip().lower()
+    if name_lower and len(name_lower) > 4:
+        vowel_ratio = sum(1 for c in name_lower if c in "aeiou") / len(name_lower)
+        if vowel_ratio < 0.15:
+            score += 2
+
+    # Email local part looks auto-generated (10+ lowercase-only alphanumeric)
+    local = email.split("@")[0] if "@" in email else email
+    if re.fullmatch(r"[a-z]{10,}", local):
+        score += 1
+
+    return score
+
+
+def _strip_html(text: str) -> str:
+    """Remove HTML tags from user-submitted text."""
+    return _HTML_TAG_RE.sub("", text)
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -235,11 +269,24 @@ async def submit(
     rush_request: Optional[str] = Form(None),
     rush_payment_confirmed: Optional[str] = Form(None),
     turnstile_token: Optional[str] = Form(None, alias="cf-turnstile-response"),
+    website_url: Optional[str] = Form(None),  # Honeypot field — should always be empty
     upload: List[UploadFile] = File(default=[]),
 ):
     # Log submission attempt for debugging
     client_ip = request.client.host if request.client else "unknown"
     logger.info(f"[SUBMIT] New request from {requester_email} ({client_ip}), print_name: {print_name}")
+
+    # ── Anti-bot: honeypot check ──
+    if website_url:
+        logger.warning(f"[SUBMIT] Honeypot triggered by {requester_email} from {client_ip}")
+        # Return success-looking page so bot doesn't retry
+        return RedirectResponse(url="/submitted?msg=ok", status_code=303)
+
+    # ── Anti-spam: detect obvious spam content ──
+    spam_score = _spam_score(requester_name, requester_email, notes)
+    if spam_score >= 3:
+        logger.warning(f"[SUBMIT] Spam detected (score={spam_score}) from {requester_email} ({client_ip}): name={requester_name!r}")
+        return RedirectResponse(url="/submitted?msg=ok", status_code=303)
     
     # Get current logged-in user if any (for account linking)
     # Prefer legacy User, fall back to unified Account (mirrors home route)
@@ -313,8 +360,7 @@ async def submit(
             ok = await verify_turnstile(turnstile_token or "", client_ip)
         except Exception as e:
             logger.error(f"[SUBMIT] Turnstile verification exception: {e}", exc_info=True)
-            # Allow submission on error to avoid blocking users
-            ok = True
+            ok = False
     
     if not ok:
         logger.warning(f"[SUBMIT] Turnstile failed for {requester_email} from {client_ip}")
@@ -443,6 +489,11 @@ async def submit(
 
     conn = db()
     try:
+        # Sanitize free-text fields
+        clean_name = _strip_html(requester_name.strip())
+        clean_notes = _strip_html(notes.strip()) if notes else None
+        clean_print_name = _strip_html(print_name.strip()) if print_name else None
+
         conn.execute(
             """INSERT INTO requests
                (id, created_at, updated_at, requester_name, requester_email, print_name, printer, material, colors, link_url, notes, status, special_notes, priority, admin_notes, access_token, account_id, fulfillment_method)
@@ -451,14 +502,14 @@ async def submit(
                 rid,
                 created,
                 created,
-                requester_name.strip(),
+                clean_name,
                 requester_email.strip(),
-                print_name.strip() if print_name else None,
+                clean_print_name,
                 printer,
                 material,
                 colors.strip(),
                 link_url.strip() if link_url else None,
-                notes,
+                clean_notes,
                 "NEW",
                 None,  # special_notes deprecated - use messages instead
                 priority,

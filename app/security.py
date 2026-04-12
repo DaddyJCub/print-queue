@@ -182,6 +182,7 @@ _rate_limit_lock = threading.Lock()
 # Rate limit configuration
 RATE_LIMIT_CONFIG = {
     # Path pattern -> (requests, window_seconds)
+    "/submit": (5, 300),              # 5 submissions per 5 minutes
     "/admin/login": (5, 60),          # 5 attempts per minute
     "/auth/login": (10, 60),          # 10 attempts per minute
     "/auth/register": (3, 60),        # 3 registrations per minute

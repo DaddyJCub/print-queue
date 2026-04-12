@@ -7195,16 +7195,13 @@ async def verify_turnstile(token: str, remoteip: Optional[str] = None) -> bool:
             return success
     except httpx.TimeoutException:
         logger.error(f"Turnstile verification timed out for IP: {remoteip}")
-        # On timeout, allow submission to avoid blocking users (fail open)
-        return True
+        return False
     except httpx.HTTPStatusError as e:
         logger.error(f"Turnstile HTTP error {e.response.status_code}: {e.response.text}")
-        # On HTTP error, allow submission to avoid blocking users
-        return True
+        return False
     except Exception as e:
         logger.error(f"Turnstile verification error: {e}", exc_info=True)
-        # On unexpected error, allow submission to avoid blocking users
-        return True
+        return False
 
 
 # ------------------------

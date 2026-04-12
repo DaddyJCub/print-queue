@@ -392,6 +392,12 @@
       class="space-y-5 bg-gradient-to-b from-zinc-900/80 to-zinc-900/40 border border-zinc-700/50 rounded-2xl p-5 sm:p-6 shadow-xl"
       data-loading="Submitting...">
   
+  <!-- Anti-bot honeypot — hidden from real users, bots auto-fill it -->
+  <div style="position:absolute;left:-9999px;top:-9999px;" aria-hidden="true" tabindex="-1">
+    <label for="website_url">Website</label>
+    <input type="text" name="website_url" id="website_url" autocomplete="off" tabindex="-1" value="">
+  </div>
+
   <!-- Section: Your Info -->
   <div class="pb-4 border-b border-zinc-800">
     <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
