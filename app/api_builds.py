@@ -3021,8 +3021,8 @@ def admin_assign_account_to_request(
     # Create assignment
     assigned_by = getattr(admin, "id", None) if hasattr(admin, "id") else None
     create_request_assignment(
-        request_id=rid,
-        account_id=account.id,
+        rid,
+        account.id,
         role=assignment_role,
         assigned_by_account_id=assigned_by,
         notes=notes
