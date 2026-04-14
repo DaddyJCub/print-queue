@@ -155,14 +155,28 @@
                      class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
             </div>
             <div>
+              <label class="block text-xs font-medium text-zinc-400 mb-1">Link Account (optional)</label>
+              <input type="hidden" name="account_id" id="selected_account_id" value="" />
+              <div class="relative">
+                <input type="text" id="account_search" placeholder="Search by name or email…" autocomplete="off"
+                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
+                <div id="account_results" class="absolute z-20 w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl max-h-48 overflow-y-auto hidden"></div>
+              </div>
+              <div id="selected_account_badge" class="hidden mt-2 flex items-center gap-2 bg-zinc-800/60 border border-zinc-700 rounded-lg px-3 py-2">
+                <span class="text-sm text-white" id="selected_account_label"></span>
+                <button type="button" onclick="clearSelectedAccount()" class="ml-auto text-zinc-400 hover:text-red-400 text-xs">✕ Remove</button>
+              </div>
+            </div>
+            <div>
               <label class="block text-xs font-medium text-zinc-400 mb-1">Requester Name *</label>
-              <input type="text" name="requester_name" placeholder="Who is this print for?" required
+              <input type="text" name="requester_name" id="requester_name" placeholder="Who is this print for?" required
                      class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
             </div>
             <div>
               <label class="block text-xs font-medium text-zinc-400 mb-1">Requester Email</label>
-              <input type="email" name="requester_email" placeholder="Optional — for notifications"
+              <input type="email" name="requester_email" id="requester_email" placeholder="Required for notifications"
                      class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
+              <p class="text-xs text-zinc-500 mt-1">Needed for progress &amp; completion notifications</p>
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
@@ -281,5 +295,65 @@
       </div>
     </div>
   </div>
+
+  <script>
+    // Account search for linking
+    let searchTimeout = null;
+    const searchInput = document.getElementById('account_search');
+    const resultsDiv = document.getElementById('account_results');
+    const hiddenId = document.getElementById('selected_account_id');
+    const badge = document.getElementById('selected_account_badge');
+    const badgeLabel = document.getElementById('selected_account_label');
+    const nameInput = document.getElementById('requester_name');
+    const emailInput = document.getElementById('requester_email');
+
+    if (searchInput) {
+      searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        const q = this.value.trim();
+        if (q.length < 2) { resultsDiv.classList.add('hidden'); return; }
+        searchTimeout = setTimeout(() => {
+          fetch('/api/admin/accounts/search?q=' + encodeURIComponent(q) + '&limit=8')
+            .then(r => r.json())
+            .then(data => {
+              if (!data.accounts || !data.accounts.length) {
+                resultsDiv.innerHTML = '<div class="px-3 py-2 text-xs text-zinc-500">No accounts found</div>';
+              } else {
+                resultsDiv.innerHTML = data.accounts.map(a =>
+                  `<button type="button" class="w-full text-left px-3 py-2 hover:bg-zinc-700 transition text-sm" onclick="selectAccount('${a.id}', '${a.name.replace(/'/g, "\\'") }', '${a.email.replace(/'/g, "\\'")}')">`
+                  + `<span class="text-white">${a.name}</span> <span class="text-zinc-400 text-xs">${a.email}</span></button>`
+                ).join('');
+              }
+              resultsDiv.classList.remove('hidden');
+            });
+        }, 250);
+      });
+
+      document.addEventListener('click', function(e) {
+        if (!searchInput.contains(e.target) && !resultsDiv.contains(e.target)) {
+          resultsDiv.classList.add('hidden');
+        }
+      });
+    }
+
+    function selectAccount(id, name, email) {
+      hiddenId.value = id;
+      badgeLabel.textContent = name + ' (' + email + ')';
+      badge.classList.remove('hidden');
+      searchInput.value = '';
+      searchInput.classList.add('hidden');
+      resultsDiv.classList.add('hidden');
+      // Auto-fill requester fields
+      if (nameInput && !nameInput.value) nameInput.value = name;
+      if (emailInput && !emailInput.value) emailInput.value = email;
+    }
+
+    function clearSelectedAccount() {
+      hiddenId.value = '';
+      badge.classList.add('hidden');
+      searchInput.classList.remove('hidden');
+      searchInput.focus();
+    }
+  </script>
 </body>
 </html>

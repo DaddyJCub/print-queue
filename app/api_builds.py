@@ -1115,6 +1115,12 @@ def admin_update_request_account(
 
     conn.execute("UPDATE requests SET account_id = ?, updated_at = ? WHERE id = ?", 
                  (account_id, now_iso(), rid))
+    # Backfill requester email/name from the linked account so notifications work
+    if account_id and account:
+        if not req["requester_email"] and account.email:
+            conn.execute("UPDATE requests SET requester_email = ? WHERE id = ?", (account.email, rid))
+        if not req["requester_name"] and account.name:
+            conn.execute("UPDATE requests SET requester_name = ? WHERE id = ?", (account.name, rid))
     conn.execute(
         "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
         (str(uuid.uuid4()), rid, now_iso(), req["status"], req["status"], 
@@ -3325,6 +3331,7 @@ def admin_unmatched_create_request(
     print_name: str = Form(...),
     requester_name: str = Form(...),
     requester_email: str = Form(""),
+    account_id: str = Form(""),
     printer: str = Form(...),
     material: str = Form("PLA"),
     colors: str = Form(""),
@@ -3372,6 +3379,19 @@ def admin_unmatched_create_request(
         "UPDATE requests SET total_builds = 1, active_build_id = ? WHERE id = ?",
         (build_id, rid)
     )
+    # Link account if provided — also backfill requester name/email
+    if account_id and account_id.strip():
+        account_id = account_id.strip()
+        from app.auth import get_account_by_id
+        linked_account = get_account_by_id(account_id)
+        if linked_account:
+            if not requester_email and linked_account.email:
+                requester_email = linked_account.email
+                conn.execute("UPDATE requests SET requester_email = ? WHERE id = ?", (requester_email, rid))
+            if not requester_name and linked_account.name:
+                conn.execute("UPDATE requests SET requester_name = ? WHERE id = ?", (linked_account.name, rid))
+        conn.execute("UPDATE requests SET account_id = ? WHERE id = ?", (account_id, rid))
+        create_request_assignment(conn, rid, account_id, AssignmentRole.REQUESTER)
     conn.commit()
     conn.close()
 
