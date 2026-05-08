@@ -128,6 +128,9 @@ class BufferHandler(logging.Handler):
 # Configure logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 LOG_FILE = os.getenv("LOG_FILE", "/data/printellect.log")
+LOG_ROTATE = os.getenv("LOG_ROTATE", "true").strip().lower() in ("1", "true", "yes")
+LOG_MAX_BYTES = int(os.getenv("LOG_MAX_BYTES", str(20 * 1024 * 1024)))
+LOG_BACKUP_COUNT = int(os.getenv("LOG_BACKUP_COUNT", "5"))
 
 # Create formatters
 log_format = logging.Formatter(
@@ -160,17 +163,23 @@ root_logger.addHandler(buffer_handler)
 # File handler (optional, only if writable)
 try:
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-    # Avoid rotation to prevent file rename conflicts on Windows + reload workers
+    max_bytes = max(0, LOG_MAX_BYTES) if LOG_ROTATE else 0
+    backup_count = max(0, LOG_BACKUP_COUNT) if LOG_ROTATE else 0
     file_handler = RotatingFileHandler(
         LOG_FILE,
-        maxBytes=0,  # 0 disables rotation
-        backupCount=0,
+        maxBytes=max_bytes,
+        backupCount=backup_count,
         delay=True,
     )
     file_handler.setFormatter(log_format)
     file_handler.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
     root_logger.addHandler(file_handler)
-    logger.info(f"File logging enabled: {LOG_FILE}")
+    if max_bytes > 0 and backup_count > 0:
+        logger.info(
+            f"File logging enabled: {LOG_FILE} (rotation: {max_bytes} bytes, backups: {backup_count})"
+        )
+    else:
+        logger.warning(f"File logging enabled without rotation: {LOG_FILE}")
 except Exception as e:
     logger.warning(f"Could not enable file logging: {e}")
 
