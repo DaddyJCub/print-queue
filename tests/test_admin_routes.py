@@ -340,6 +340,56 @@ class TestAdminShipping:
         assert row["carrier"] == "USPS"
         assert row["label_url"] == "https://example.com/label.png"
 
+    def test_admin_queue_hides_delivered_shipping_from_print_complete(self, admin_client):
+        delivered_req = create_test_request(
+            status="DONE",
+            fulfillment_method="shipping",
+            with_shipping=True,
+            print_name="Delivered Queue Hide",
+        )
+        open_req = create_test_request(
+            status="DONE",
+            fulfillment_method="shipping",
+            with_shipping=True,
+            print_name="Open Queue Stay",
+        )
+
+        now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        conn = get_test_db()
+        conn.execute(
+            """UPDATE request_shipping
+               SET shipping_status = 'DELIVERED', tracking_status = 'DELIVERED', delivered_at = ?, updated_at = ?
+               WHERE request_id = ?""",
+            (now, now, delivered_req["request_id"]),
+        )
+        conn.execute(
+            """UPDATE request_shipping
+               SET shipping_status = 'IN_TRANSIT', tracking_status = 'IN_TRANSIT', updated_at = ?
+               WHERE request_id = ?""",
+            (now, open_req["request_id"]),
+        )
+        conn.commit()
+        conn.close()
+
+        response = admin_client.get("/admin")
+        assert response.status_code == 200
+
+        html = response.text
+        done_start = html.find('id="done-section"')
+        assert done_start != -1
+        done_end = html.find("<!-- EMPTY STATE -->", done_start)
+        if done_end == -1:
+            done_end = len(html)
+        done_html = html[done_start:done_end]
+
+        assert "Open Queue Stay" in done_html
+        assert "Delivered Queue Hide" not in done_html
+
+        closed_start = html.find("Recently Closed")
+        assert closed_start != -1
+        closed_html = html[closed_start:]
+        assert "Delivered Queue Hide" in closed_html
+
 
 class TestAdminSettings:
     """Tests for admin settings pages."""

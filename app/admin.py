@@ -243,7 +243,15 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
     printing_raw = _fetch_requests_by_status(["PRINTING", "IN_PROGRESS"], include_eta_fields=True)
     # BLOCKED requests need attention (failed builds)
     blocked = _fetch_requests_by_status("BLOCKED")
-    done = _fetch_requests_by_status("DONE")
+    done_all = _fetch_requests_by_status("DONE")
+    # Shipping requests that are already delivered should be treated as closed.
+    done = [
+        r for r in done_all
+        if not (
+            (r["fulfillment_method"] or "pickup") == "shipping"
+            and (r["shipping_status"] or "").upper() == "DELIVERED"
+        )
+    ]
     
     # Enrich printing requests with smart ETA
     # Pre-fetch all active builds for PRINTING/IN_PROGRESS requests in a
@@ -337,7 +345,16 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
                   (SELECT rs.shipping_status FROM request_shipping rs WHERE rs.request_id = r.id) as shipping_status,
                   r.requires_design, r.designer_admin_id, r.design_completed_at
            FROM requests r
-           WHERE r.status IN (?, ?, ?) 
+           WHERE r.status IN (?, ?, ?)
+              OR (
+                  r.status = 'DONE'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM request_shipping rs2
+                      WHERE rs2.request_id = r.id
+                        AND UPPER(COALESCE(rs2.shipping_status, '')) = 'DELIVERED'
+                  )
+              )
            ORDER BY r.updated_at DESC 
            LIMIT 30""",
         ("PICKED_UP", "REJECTED", "CANCELLED")
