@@ -15,7 +15,8 @@ from app.main import (
     PRINTERS,
     MATERIALS,
     ALLOWED_EXTS,
-    MAX_UPLOAD_MB,
+    AUTH_MAX_UPLOAD_MB,
+    get_upload_limit_mb_for_user,
     UPLOAD_DIR,
     parse_3d_file_metadata,
     safe_json_dumps,
@@ -52,6 +53,15 @@ from app.main import (
 from app.demo_data import get_demo_all_printers_status
 
 router = APIRouter()
+
+
+def _format_upload_limit_error(filename: str, user, limit_mb: int) -> str:
+    if not user and AUTH_MAX_UPLOAD_MB > limit_mb:
+        return (
+            f"File '{filename}' too large for guest uploads (max {limit_mb}MB). "
+            f"Sign in to upload up to {AUTH_MAX_UPLOAD_MB}MB."
+        )
+    return f"File '{filename}' too large. Max size is {limit_mb}MB."
 
 # ─────────────────── Anti-spam helpers ───────────────────
 
@@ -297,6 +307,8 @@ async def submit(
     except Exception as e:
         logger.warning(f"[SUBMIT] Error getting user session: {e}")
         user = None
+
+    upload_limit_mb = get_upload_limit_mb_for_user(user)
     
     form_state = {
         "requester_name": requester_name,
@@ -406,7 +418,7 @@ async def submit(
 
             # Save files to disk first (they'll be linked to the request by the webhook)
             uploaded_file_ids = []
-            max_bytes = MAX_UPLOAD_MB * 1024 * 1024
+            max_bytes = upload_limit_mb * 1024 * 1024
             if has_file:
                 conn_files = db()
                 for file in valid_files:
@@ -417,7 +429,7 @@ async def submit(
                     data = await file.read()
                     if len(data) > max_bytes:
                         conn_files.close()
-                        return render_form(request, f"File '{file.filename}' too large. Max size is {MAX_UPLOAD_MB}MB.", form_state)
+                        return render_form(request, _format_upload_limit_error(file.filename, user, upload_limit_mb), form_state)
                     stored = f"{uuid.uuid4()}{ext}"
                     out_path = os.path.join(UPLOAD_DIR, stored)
                     sha = hashlib.sha256(data).hexdigest()
@@ -583,7 +595,7 @@ async def submit(
     conn.commit()
 
     uploaded_names = []
-    max_bytes = MAX_UPLOAD_MB * 1024 * 1024
+    max_bytes = upload_limit_mb * 1024 * 1024
 
     if has_file:
         for file in valid_files:
@@ -603,7 +615,7 @@ async def submit(
             if len(data) > max_bytes:
                 logger.warning(f"[SUBMIT] Rejected file {file.filename} - too large ({len(data)} bytes)")
                 conn.close()
-                return render_form(request, f"File '{file.filename}' too large. Max size is {MAX_UPLOAD_MB}MB.", form_state)
+                return render_form(request, _format_upload_limit_error(file.filename, user, upload_limit_mb), form_state)
 
             stored = f"{uuid.uuid4()}{ext}"
             out_path = os.path.join(UPLOAD_DIR, stored)

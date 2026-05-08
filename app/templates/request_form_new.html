@@ -358,7 +358,7 @@
     </button>
   </div>
   <div class="px-4 py-2 bg-red-950/50 text-xs text-red-300/70 border-t border-red-800/50">
-    💡 Tip: Check your file is under 200MB and try again. If the problem persists, <a href="/feedback?type=bug" class="underline hover:text-red-200">report a bug</a>.
+    💡 Tip: Keep uploads under {{ active_upload_mb }}MB{% if not user and auth_upload_mb > active_upload_mb %} as a guest (sign in for up to {{ auth_upload_mb }}MB){% endif %} and try again. If the problem persists, <a href="/feedback?type=bug" class="underline hover:text-red-200">report a bug</a>.
   </div>
 </div>
 {% endif %}
@@ -653,7 +653,7 @@
           </svg>
         </div>
         <p class="text-zinc-400 text-sm">Drag & drop or <span class="text-indigo-400">browse</span></p>
-        <p class="text-xs text-zinc-500 mt-1">STL, 3MF, OBJ, GCODE • Max 200MB</p>
+        <p class="text-xs text-zinc-500 mt-1">STL, 3MF, OBJ, GCODE • Max {{ active_upload_mb }}MB{% if not user and auth_upload_mb > active_upload_mb %} (sign in: {{ auth_upload_mb }}MB){% endif %}</p>
       </div>
       <div id="file-preview" class="hidden">
         <div id="file-list" class="space-y-2 text-left"></div>
@@ -1049,7 +1049,9 @@
 {% block scripts %}
 <script>
   // File upload handlers
-  const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
+  const ACTIVE_UPLOAD_MB = {{ active_upload_mb|int }};
+  const AUTH_UPLOAD_MB = {{ auth_upload_mb|int }};
+  const MAX_FILE_SIZE = ACTIVE_UPLOAD_MB * 1024 * 1024;
   const ALLOWED_EXTENSIONS = ['.stl', '.3mf', '.obj', '.gcode', '.step', '.stp', '.fpp', '.zip'];
   const FILE_ICONS = {
     '.stl': '🧊', '.3mf': '📦', '.obj': '🎲', '.gcode': '📜',
@@ -1153,7 +1155,11 @@
     }
     
     if (totalSize > MAX_FILE_SIZE) {
-      errors.push(`Total file size (${(totalSize / 1024 / 1024).toFixed(1)} MB) exceeds 200 MB limit.`);
+      let limitText = `${ACTIVE_UPLOAD_MB} MB`;
+      if (!HAS_USER_SESSION && AUTH_UPLOAD_MB > ACTIVE_UPLOAD_MB) {
+        limitText = `${ACTIVE_UPLOAD_MB} MB for guest uploads. Sign in for up to ${AUTH_UPLOAD_MB} MB`;
+      }
+      errors.push(`Total file size (${(totalSize / 1024 / 1024).toFixed(1)} MB) exceeds the ${limitText} limit.`);
     }
     
     if (errors.length > 0) {

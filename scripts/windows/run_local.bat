@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableDelayedExpansion
 REM Local Development Script for Print Queue App
 REM Run this script from anywhere inside the repo checkout.
 REM
@@ -65,6 +66,19 @@ if /i "%DEMO_FLAG%"=="demo" (
     set DB_PATH=%CD%\local_data\demo.db
 )
 
+REM Load optional .env.local overrides for local development
+if exist ".env.local" (
+    echo Loading .env.local overrides...
+    for /f "usebackq delims=" %%L in (".env.local") do (
+        set "LINE=%%L"
+        if not "!LINE!"=="" if not "!LINE:~0,1!"=="#" (
+            for /f "tokens=1* delims==" %%A in ("!LINE!") do (
+                set "%%A=%%B"
+            )
+        )
+    )
+)
+
 echo.
 echo ========================================
 echo   Environment Configuration:
@@ -73,6 +87,9 @@ echo   REPO_ROOT:      %CD%
 echo   DB_PATH:        %DB_PATH%
 echo   UPLOAD_DIR:     %UPLOAD_DIR%
 echo   BASE_URL:       %BASE_URL%
+if not "%UNAUTH_MAX_UPLOAD_MB%"=="" echo   UNAUTH_MAX_UPLOAD_MB: %UNAUTH_MAX_UPLOAD_MB%
+if not "%AUTH_MAX_UPLOAD_MB%"=="" echo   AUTH_MAX_UPLOAD_MB:   %AUTH_MAX_UPLOAD_MB%
+if not "%MAX_UPLOAD_MB%"=="" echo   MAX_UPLOAD_MB (legacy): %MAX_UPLOAD_MB%
 echo   ADMIN_PASSWORD: admin
 if /i "%DEMO_FLAG%"=="demo" echo   DEMO_MODE:      true (fake data enabled)
 echo.

@@ -75,6 +75,32 @@ if ($Demo) {
     $env:DB_PATH = "$PWD\local_data\demo.db"
 }
 
+# Load optional .env.local overrides for local development
+$envFile = Join-Path $RepoRoot ".env.local"
+if (Test-Path $envFile) {
+    Write-Host "Loading .env.local overrides..." -ForegroundColor Yellow
+    foreach ($rawLine in Get-Content $envFile) {
+        $line = $rawLine.Trim()
+        if (-not $line -or $line.StartsWith("#")) {
+            continue
+        }
+
+        $eqIdx = $line.IndexOf("=")
+        if ($eqIdx -lt 1) {
+            continue
+        }
+
+        $key = $line.Substring(0, $eqIdx).Trim()
+        $value = $line.Substring($eqIdx + 1).Trim()
+
+        if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+
+        Set-Item -Path "Env:$key" -Value $value
+    }
+}
+
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Environment Configuration:" -ForegroundColor Cyan
@@ -83,6 +109,15 @@ Write-Host "  Repo Root:    $RepoRoot" -ForegroundColor Gray
 Write-Host "  DB_PATH:      $env:DB_PATH" -ForegroundColor Gray
 Write-Host "  UPLOAD_DIR:   $env:UPLOAD_DIR" -ForegroundColor Gray
 Write-Host "  BASE_URL:     $env:BASE_URL" -ForegroundColor Gray
+if ($env:UNAUTH_MAX_UPLOAD_MB) {
+    Write-Host "  UNAUTH_MAX_UPLOAD_MB: $env:UNAUTH_MAX_UPLOAD_MB" -ForegroundColor Gray
+}
+if ($env:AUTH_MAX_UPLOAD_MB) {
+    Write-Host "  AUTH_MAX_UPLOAD_MB:   $env:AUTH_MAX_UPLOAD_MB" -ForegroundColor Gray
+}
+if ($env:MAX_UPLOAD_MB) {
+    Write-Host "  MAX_UPLOAD_MB (legacy): $env:MAX_UPLOAD_MB" -ForegroundColor Gray
+}
 Write-Host "  ADMIN_PASSWORD: admin" -ForegroundColor Gray
 if ($Demo) {
     Write-Host "  DEMO_MODE:    true (fake data enabled)" -ForegroundColor Yellow

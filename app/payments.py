@@ -35,7 +35,7 @@ from app.main import (
     send_push_notification_to_admins,
     parse_email_list,
     UPLOAD_DIR,
-    MAX_UPLOAD_MB,
+    AUTH_MAX_UPLOAD_MB,
     ALLOWED_EXTS,
     safe_ext,
     parse_3d_file_metadata,
@@ -1314,7 +1314,7 @@ async def api_rush_checkout(
 
     # Save uploaded files (without request_id — linked later by webhook)
     uploaded_file_ids = []
-    max_bytes = MAX_UPLOAD_MB * 1024 * 1024
+    max_bytes = AUTH_MAX_UPLOAD_MB * 1024 * 1024
     valid_files = [f for f in upload if f.filename and f.size and f.size > 0]
     if valid_files:
         conn = db()
@@ -1326,7 +1326,7 @@ async def api_rush_checkout(
             data = await file.read()
             if len(data) > max_bytes:
                 conn.close()
-                return JSONResponse({"error": f"File '{file.filename}' too large."}, status_code=400)
+                return JSONResponse({"error": f"File '{file.filename}' too large. Max size is {AUTH_MAX_UPLOAD_MB}MB."}, status_code=400)
             stored = f"{uuid.uuid4()}{ext}"
             out_path = os.path.join(UPLOAD_DIR, stored)
             sha = hashlib.sha256(data).hexdigest()

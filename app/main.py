@@ -242,6 +242,13 @@ TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY", "")
 
 ALLOWED_EXTS = set([e.strip().lower() for e in os.getenv("ALLOWED_EXTS", ".stl,.3mf,.obj,.gcode,.step,.stp,.fpp,.zip").split(",") if e.strip()])
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "200"))
+UNAUTH_MAX_UPLOAD_MB = int(os.getenv("UNAUTH_MAX_UPLOAD_MB", str(MAX_UPLOAD_MB)))
+AUTH_MAX_UPLOAD_MB = int(os.getenv("AUTH_MAX_UPLOAD_MB", str(MAX_UPLOAD_MB)))
+
+
+def get_upload_limit_mb_for_user(user) -> int:
+    """Return upload size limit in MB based on authenticated session state."""
+    return AUTH_MAX_UPLOAD_MB if user else UNAUTH_MAX_UPLOAD_MB
 
 SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
@@ -8096,6 +8103,8 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any], us
             "colors": user.preferred_colors or "",
             **form  # Allow explicit form values to override
         }
+
+    active_upload_mb = get_upload_limit_mb_for_user(user)
     
     # Check if user accounts feature is enabled
     user_accounts_enabled = is_feature_enabled("user_accounts")
@@ -8183,6 +8192,9 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any], us
         "printer_status": printer_status,
         "fun_stats": fun_stats,
         "recent_prints": recent_prints,
+        "active_upload_mb": active_upload_mb,
+        "auth_upload_mb": AUTH_MAX_UPLOAD_MB,
+        "unauth_upload_mb": UNAUTH_MAX_UPLOAD_MB,
         "payments_enabled": is_payments_enabled(),
         "credits_enabled": _is_credits_on(),
         "credits_per_rush": _credits_rush_cost(),
