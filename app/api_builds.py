@@ -12,7 +12,7 @@ from app.main import (
     db,
     require_admin,
     ALLOWED_EXTS,
-    MAX_UPLOAD_MB,
+    AUTH_MAX_UPLOAD_MB,
     UPLOAD_DIR,
     PRINTERS,
     MATERIALS,
@@ -124,6 +124,235 @@ SHIPPO_USPS_FLAT_RATE_TEMPLATES: Dict[str, str] = {
     "USPS_MediumFlatRateBox2": "USPS Medium Flat Rate Box 2",
     "USPS_LargeFlatRateBox": "USPS Large Flat Rate Box",
 }
+
+ADMIN_CHUNK_UPLOAD_DIR = os.path.join(UPLOAD_DIR, ".admin_chunk_uploads")
+# Keep chunk requests safely under Cloudflare Free's 100MB request cap.
+ADMIN_UPLOAD_CHUNK_BYTES = int(os.getenv("ADMIN_UPLOAD_CHUNK_BYTES", str(25 * 1024 * 1024)))
+ADMIN_UPLOAD_CHUNK_BYTES = min(max(1 * 1024 * 1024, ADMIN_UPLOAD_CHUNK_BYTES), 95 * 1024 * 1024)
+
+
+def _chunk_upload_paths(upload_id: str) -> tuple[str, str]:
+    try:
+        upload_id = str(uuid.UUID(upload_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid upload session ID")
+    os.makedirs(ADMIN_CHUNK_UPLOAD_DIR, exist_ok=True)
+    return (
+        os.path.join(ADMIN_CHUNK_UPLOAD_DIR, f"{upload_id}.json"),
+        os.path.join(ADMIN_CHUNK_UPLOAD_DIR, f"{upload_id}.part"),
+    )
+
+
+def _save_chunk_manifest(upload_id: str, manifest: Dict[str, Any]) -> None:
+    manifest_path, _ = _chunk_upload_paths(upload_id)
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f)
+
+
+def _load_chunk_manifest(upload_id: str) -> Dict[str, Any]:
+    manifest_path, _ = _chunk_upload_paths(upload_id)
+    if not os.path.exists(manifest_path):
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _cleanup_chunk_upload(upload_id: str) -> None:
+    manifest_path, part_path = _chunk_upload_paths(upload_id)
+    for path in (manifest_path, part_path):
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
+
+
+@router.post("/admin/request/{rid}/add-file-chunked/init")
+async def admin_add_file_chunked_init(
+    request: Request,
+    rid: str,
+    payload: Dict[str, Any],
+    _=Depends(require_admin),
+):
+    conn = db()
+    req = conn.execute("SELECT id FROM requests WHERE id = ?", (rid,)).fetchone()
+    conn.close()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    original_filename = (payload.get("filename") or "").strip()
+    size_bytes = int(payload.get("size_bytes") or 0)
+
+    if not original_filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
+    if size_bytes <= 0:
+        raise HTTPException(status_code=400, detail="Invalid file size")
+
+    total_chunks = max(1, (size_bytes + ADMIN_UPLOAD_CHUNK_BYTES - 1) // ADMIN_UPLOAD_CHUNK_BYTES)
+
+    ext = safe_ext(original_filename)
+    if ext not in ALLOWED_EXTS:
+        raise HTTPException(status_code=400, detail=f"File '{original_filename}' not allowed")
+
+    max_bytes = AUTH_MAX_UPLOAD_MB * 1024 * 1024
+    if size_bytes > max_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File '{original_filename}' too large (max {AUTH_MAX_UPLOAD_MB}MB)",
+        )
+
+    upload_id = str(uuid.uuid4())
+    manifest = {
+        "rid": rid,
+        "filename": original_filename,
+        "ext": ext,
+        "size_bytes": size_bytes,
+        "total_chunks": total_chunks,
+        "received_chunks": [],
+        "bytes_received": 0,
+        "created_at": now_iso(),
+    }
+    _save_chunk_manifest(upload_id, manifest)
+
+    _, part_path = _chunk_upload_paths(upload_id)
+    with open(part_path, "wb"):
+        pass
+
+    return JSONResponse({
+        "ok": True,
+        "upload_id": upload_id,
+        "chunk_size_bytes": ADMIN_UPLOAD_CHUNK_BYTES,
+        "total_chunks": total_chunks,
+        "max_upload_mb": AUTH_MAX_UPLOAD_MB,
+    })
+
+
+@router.post("/admin/request/{rid}/add-file-chunked/chunk")
+async def admin_add_file_chunked_chunk(
+    request: Request,
+    rid: str,
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    chunk: UploadFile = File(...),
+    _=Depends(require_admin),
+):
+    manifest = _load_chunk_manifest(upload_id)
+    if manifest.get("rid") != rid:
+        raise HTTPException(status_code=400, detail="Upload session does not match request")
+
+    total_chunks = int(manifest.get("total_chunks") or 0)
+    received_chunks = [int(i) for i in manifest.get("received_chunks", [])]
+
+    if chunk_index < 0 or chunk_index >= total_chunks:
+        raise HTTPException(status_code=400, detail="Invalid chunk index")
+
+    expected_next = len(received_chunks)
+    if chunk_index in received_chunks:
+        return JSONResponse({"ok": True, "already_received": True, "chunk_index": chunk_index})
+    if chunk_index != expected_next:
+        raise HTTPException(status_code=409, detail=f"Expected chunk {expected_next}, got {chunk_index}")
+
+    data = await chunk.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty chunk")
+    if len(data) > ADMIN_UPLOAD_CHUNK_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Chunk too large (max {ADMIN_UPLOAD_CHUNK_BYTES // (1024 * 1024)}MB)",
+        )
+
+    _, part_path = _chunk_upload_paths(upload_id)
+    with open(part_path, "ab") as f:
+        f.write(data)
+
+    manifest["received_chunks"] = received_chunks + [chunk_index]
+    manifest["bytes_received"] = int(manifest.get("bytes_received") or 0) + len(data)
+    _save_chunk_manifest(upload_id, manifest)
+
+    return JSONResponse({
+        "ok": True,
+        "chunk_index": chunk_index,
+        "received_chunks": len(manifest["received_chunks"]),
+        "total_chunks": total_chunks,
+    })
+
+
+@router.post("/admin/request/{rid}/add-file-chunked/complete")
+async def admin_add_file_chunked_complete(
+    request: Request,
+    rid: str,
+    upload_id: str = Form(...),
+    _=Depends(require_admin),
+):
+    manifest = _load_chunk_manifest(upload_id)
+    if manifest.get("rid") != rid:
+        raise HTTPException(status_code=400, detail="Upload session does not match request")
+
+    total_chunks = int(manifest.get("total_chunks") or 0)
+    received_chunks = [int(i) for i in manifest.get("received_chunks", [])]
+    if len(received_chunks) != total_chunks:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Upload incomplete ({len(received_chunks)}/{total_chunks} chunks received)",
+        )
+
+    _, part_path = _chunk_upload_paths(upload_id)
+    if not os.path.exists(part_path):
+        raise HTTPException(status_code=404, detail="Uploaded data not found")
+
+    size_bytes = os.path.getsize(part_path)
+    max_bytes = AUTH_MAX_UPLOAD_MB * 1024 * 1024
+    original_filename = manifest.get("filename") or "uploaded-file"
+    ext = manifest.get("ext") or safe_ext(original_filename)
+    if size_bytes > max_bytes:
+        _cleanup_chunk_upload(upload_id)
+        raise HTTPException(status_code=400, detail=f"File '{original_filename}' too large (max {AUTH_MAX_UPLOAD_MB}MB)")
+
+    stored = f"{uuid.uuid4()}{ext}"
+    out_path = os.path.join(UPLOAD_DIR, stored)
+    os.replace(part_path, out_path)
+
+    sha = hashlib.sha256()
+    with open(out_path, "rb") as f:
+        for chunk_bytes in iter(lambda: f.read(1024 * 1024), b""):
+            if not chunk_bytes:
+                break
+            sha.update(chunk_bytes)
+    sha_hex = sha.hexdigest()
+
+    file_metadata = await asyncio.get_event_loop().run_in_executor(None, parse_3d_file_metadata, out_path, original_filename)
+    file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
+
+    conn = db()
+    req = conn.execute("SELECT status FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        _cleanup_chunk_upload(upload_id)
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    conn.execute(
+        """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (str(uuid.uuid4()), rid, now_iso(), original_filename, stored, size_bytes, sha_hex, file_metadata_json)
+    )
+
+    comment = f"Admin added file: {original_filename}"
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now_iso(), req["status"], req["status"], comment)
+    )
+    conn.execute("UPDATE requests SET updated_at = ? WHERE id = ?", (now_iso(), rid))
+    conn.commit()
+    conn.close()
+
+    _cleanup_chunk_upload(upload_id)
+
+    return JSONResponse({
+        "ok": True,
+        "filename": original_filename,
+        "size_bytes": size_bytes,
+    })
 
 
 def _shipping_tracking_url(carrier: Optional[str], tracking_number: Optional[str]) -> Optional[str]:
@@ -1210,7 +1439,7 @@ async def admin_add_file(
         conn.close()
         raise HTTPException(status_code=404, detail="Not found")
 
-    max_bytes = MAX_UPLOAD_MB * 1024 * 1024
+    max_bytes = AUTH_MAX_UPLOAD_MB * 1024 * 1024
     files_added = []
     errors = []
 
@@ -1225,7 +1454,7 @@ async def admin_add_file(
 
         data = await file.read()
         if len(data) > max_bytes:
-            errors.append(f"{file.filename}: File too large (max {MAX_UPLOAD_MB}MB)")
+            errors.append(f"{file.filename}: File too large (max {AUTH_MAX_UPLOAD_MB}MB)")
             continue
 
         stored = f"{uuid.uuid4()}{ext}"
@@ -2966,7 +3195,7 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         "printers": PRINTERS,
         "materials": MATERIALS,
         "allowed_exts": ", ".join(sorted(ALLOWED_EXTS)),
-        "max_upload_mb": MAX_UPLOAD_MB,
+        "max_upload_mb": AUTH_MAX_UPLOAD_MB,
         "camera_url": camera_url,
         "moonraker_available": moonraker_available,
         "now": datetime.now().timestamp(),  # For cache-busting

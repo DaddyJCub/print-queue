@@ -10,6 +10,7 @@ import uuid
 import logging
 import asyncio
 import threading
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request, Form, HTTPException
@@ -86,6 +87,48 @@ def _get_setting(key, default=None):
 def _get_bool_setting(key, default=False):
     from app.main import get_bool_setting
     return get_bool_setting(key, default)
+
+
+def _parse_uploaded_file_ids_json(raw: str) -> list[str]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        raise ValueError("Invalid uploaded file list")
+    if not isinstance(parsed, list):
+        raise ValueError("Invalid uploaded file list")
+
+    out: list[str] = []
+    seen = set()
+    for item in parsed:
+        if not isinstance(item, str):
+            raise ValueError("Invalid uploaded file list")
+        try:
+            fid = str(uuid.UUID(item))
+        except Exception:
+            raise ValueError("Invalid uploaded file ID")
+        if fid in seen:
+            continue
+        seen.add(fid)
+        out.append(fid)
+    return out
+
+
+def _validate_unclaimed_uploaded_file_ids(file_ids: list[str]) -> bool:
+    if not file_ids:
+        return True
+    conn = _db()
+    try:
+        placeholders = ",".join(["?"] * len(file_ids))
+        rows = conn.execute(
+            f"SELECT id FROM files WHERE (request_id IS NULL OR request_id = '') AND id IN ({placeholders})",
+            tuple(file_ids),
+        ).fetchall()
+        found = {row["id"] for row in rows}
+        return all(fid in found for fid in file_ids)
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -586,6 +629,7 @@ async def api_credit_rush_checkout(
     link_url: str = Form(""),
     notes: str = Form(""),
     special_notes: str = Form(""),
+    uploaded_file_ids_json: str = Form(""),
 ):
     """Submit a rush request using credits instead of payment."""
     if not is_credits_enabled():
@@ -594,6 +638,13 @@ async def api_credit_rush_checkout(
     acct_id, _auth_email = await _get_authenticated_account(request)
     if not acct_id:
         return JSONResponse({"error": "auth_required"}, status_code=401)
+
+    try:
+        uploaded_file_ids = _parse_uploaded_file_ids_json(uploaded_file_ids_json)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if uploaded_file_ids and not _validate_unclaimed_uploaded_file_ids(uploaded_file_ids):
+        return JSONResponse({"error": "Some uploaded files were not found. Please re-upload and try again."}, status_code=400)
 
     rush_cost = get_rush_credit_cost()
 
@@ -637,6 +688,12 @@ async def api_credit_rush_checkout(
         special_notes.strip() or None,
         acct_id,
     ))
+    if uploaded_file_ids:
+        placeholders = ",".join(["?"] * len(uploaded_file_ids))
+        conn.execute(
+            f"UPDATE files SET request_id = ? WHERE (request_id IS NULL OR request_id = '') AND id IN ({placeholders})",
+            (rid, *uploaded_file_ids),
+        )
     conn.commit()
     conn.close()
 
@@ -666,6 +723,7 @@ async def api_credit_request_checkout(
     link_url: str = Form(""),
     notes: str = Form(""),
     special_notes: str = Form(""),
+    uploaded_file_ids_json: str = Form(""),
 ):
     """Submit a custom print request using credits."""
     if not is_credits_enabled():
@@ -674,6 +732,13 @@ async def api_credit_request_checkout(
     acct_id, _auth_email = await _get_authenticated_account(request)
     if not acct_id:
         return JSONResponse({"error": "auth_required"}, status_code=401)
+
+    try:
+        uploaded_file_ids = _parse_uploaded_file_ids_json(uploaded_file_ids_json)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if uploaded_file_ids and not _validate_unclaimed_uploaded_file_ids(uploaded_file_ids):
+        return JSONResponse({"error": "Some uploaded files were not found. Please re-upload and try again."}, status_code=400)
 
     request_cost = get_request_credit_cost()
 
@@ -716,6 +781,12 @@ async def api_credit_request_checkout(
         special_notes.strip() or None,
         acct_id,
     ))
+    if uploaded_file_ids:
+        placeholders = ",".join(["?"] * len(uploaded_file_ids))
+        conn.execute(
+            f"UPDATE files SET request_id = ? WHERE (request_id IS NULL OR request_id = '') AND id IN ({placeholders})",
+            (rid, *uploaded_file_ids),
+        )
     conn.commit()
     conn.close()
 

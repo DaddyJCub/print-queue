@@ -69,6 +69,48 @@ def _log_ctx(payment_id: Optional[str] = None, payment_type: Optional[str] = Non
     return f"[{' '.join(parts)}]" if parts else "[payments]"
 
 
+def _parse_uploaded_file_ids_json(raw: Optional[str]) -> List[str]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        raise ValueError("Invalid uploaded file list")
+    if not isinstance(parsed, list):
+        raise ValueError("Invalid uploaded file list")
+
+    out: List[str] = []
+    seen = set()
+    for item in parsed:
+        if not isinstance(item, str):
+            raise ValueError("Invalid uploaded file list")
+        try:
+            fid = str(uuid.UUID(item))
+        except Exception:
+            raise ValueError("Invalid uploaded file ID")
+        if fid in seen:
+            continue
+        seen.add(fid)
+        out.append(fid)
+    return out
+
+
+def _validate_unclaimed_uploaded_file_ids(file_ids: List[str]) -> bool:
+    if not file_ids:
+        return True
+    conn = db()
+    try:
+        placeholders = ",".join(["?"] * len(file_ids))
+        rows = conn.execute(
+            f"SELECT id FROM files WHERE (request_id IS NULL OR request_id = '') AND id IN ({placeholders})",
+            tuple(file_ids),
+        ).fetchall()
+        found = {row["id"] for row in rows}
+        return all(fid in found for fid in file_ids)
+    finally:
+        conn.close()
+
+
 def _stripe_secret_key() -> str:
     """Get Stripe secret key from DB setting or env var."""
     return (get_setting("stripe_secret_key", "").strip() or os.getenv("STRIPE_SECRET_KEY", "").strip())
@@ -894,7 +936,7 @@ def _fulfill_rush_fee_payment(conn, payment, now: str):
     if file_ids:
         for fid in file_ids:
             conn.execute(
-                "UPDATE files SET request_id = ? WHERE id = ? AND request_id IS NULL",
+                "UPDATE files SET request_id = ? WHERE id = ? AND (request_id IS NULL OR request_id = '')",
                 (rid, fid),
             )
 
@@ -1287,6 +1329,7 @@ async def api_rush_checkout(
     ship_postal_code: str = Form(""),
     ship_country: str = Form("US"),
     ship_service_preference: str = Form(""),
+    uploaded_file_ids_json: Optional[str] = Form(None),
     turnstile_token: Optional[str] = Form(None, alias="cf-turnstile-response"),
     upload: List[UploadFile] = File(default=[]),
 ):
@@ -1312,8 +1355,15 @@ async def api_rush_checkout(
     if rush_price_cents <= 0:
         return JSONResponse({"error": "Invalid rush price"}, status_code=400)
 
+    try:
+        preuploaded_file_ids = _parse_uploaded_file_ids_json(uploaded_file_ids_json)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if preuploaded_file_ids and not _validate_unclaimed_uploaded_file_ids(preuploaded_file_ids):
+        return JSONResponse({"error": "Some uploaded files were not found. Please re-upload and try again."}, status_code=400)
+
     # Save uploaded files (without request_id — linked later by webhook)
-    uploaded_file_ids = []
+    uploaded_file_ids = list(preuploaded_file_ids)
     max_bytes = AUTH_MAX_UPLOAD_MB * 1024 * 1024
     valid_files = [f for f in upload if f.filename and f.size and f.size > 0]
     if valid_files:
@@ -1336,9 +1386,9 @@ async def api_rush_checkout(
             file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
             fid = str(uuid.uuid4())
             conn.execute(
-                """INSERT INTO files (id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (fid, now_iso(), file.filename, stored, len(data), sha, file_metadata_json),
+                """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (fid, "", now_iso(), file.filename, stored, len(data), sha, file_metadata_json),
             )
             uploaded_file_ids.append(fid)
         conn.commit()

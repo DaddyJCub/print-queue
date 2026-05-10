@@ -397,6 +397,7 @@
     <label for="website_url">Website</label>
     <input type="text" name="website_url" id="website_url" autocomplete="off" tabindex="-1" value="">
   </div>
+  <input type="hidden" name="uploaded_file_ids_json" id="uploaded-file-ids-json" value="" />
 
   <!-- Section: Your Info -->
   <div class="pb-4 border-b border-zinc-800">
@@ -843,7 +844,7 @@
   let doingEmbeddedCheckout = false;
   window._rushEmbeddedCheckoutActive = false;
 
-  form.addEventListener('submit', function(e) {
+  form.addEventListener('submit', async function(e) {
     // Only intercept when rush is checked AND payments are enabled
     if (!rushCheckbox.checked) return; // Let normal submission proceed
 
@@ -855,7 +856,17 @@
 
       // Show confirmation modal before spending credits
       const rushCost = {{ credits_per_rush if credits_per_rush is defined else 1 }};
-      openConfirmModal('credit-rush', {}, function() {
+      openConfirmModal('credit-rush', {}, async function() {
+        try {
+          if (window.ensureChunkUploadedFiles) {
+            await window.ensureChunkUploadedFiles(form);
+          }
+        } catch (err) {
+          if (window.showToast) showToast(err.message || 'Upload preparation failed.', 'error', 5000);
+          else alert(err.message || 'Upload preparation failed.');
+          return;
+        }
+
         if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('opacity-75', 'cursor-wait'); }
         if (submitText) submitText.textContent = 'Processing...';
         if (submitSpinner) submitSpinner.classList.remove('hidden');
@@ -895,6 +906,16 @@
 
     e.preventDefault();
     if (!form.checkValidity()) { form.reportValidity(); return; }
+
+    try {
+      if (window.ensureChunkUploadedFiles) {
+        await window.ensureChunkUploadedFiles(form);
+      }
+    } catch (err) {
+      if (window.showToast) showToast(err.message || 'Upload preparation failed.', 'error', 5000);
+      else alert(err.message || 'Upload preparation failed.');
+      return;
+    }
 
     doingEmbeddedCheckout = true;
     window._rushEmbeddedCheckoutActive = true;
@@ -978,6 +999,16 @@
   const reqCost = {{ credits_per_request if credits_per_request is defined else 1 }};
 
   async function doCreditRequest() {
+    try {
+      if (window.ensureChunkUploadedFiles) {
+        await window.ensureChunkUploadedFiles(form);
+      }
+    } catch (err) {
+      if (window.showToast) showToast(err.message || 'Upload preparation failed.', 'error', 5000);
+      else alert(err.message || 'Upload preparation failed.');
+      return;
+    }
+
     btn.disabled = true;
     btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Processing...';
 
@@ -1059,6 +1090,143 @@
   };
   const REQUEST_DRAFT_KEY = 'printellect_request_draft_v1';
   const HAS_USER_SESSION = {{ "true" if user else "false" }};
+  const CHUNK_UPLOAD_FALLBACK_BYTES = 25 * 1024 * 1024;
+  let chunkUploadCacheKey = null;
+  let chunkUploadCachedIds = [];
+
+  function resetUploadedFileCache() {
+    chunkUploadCacheKey = null;
+    chunkUploadCachedIds = [];
+    const hidden = document.getElementById('uploaded-file-ids-json');
+    if (hidden) hidden.value = '';
+  }
+
+  function fileSelectionKey(files) {
+    return files.map(f => `${f.name}:${f.size}:${f.lastModified}`).join('|');
+  }
+
+  async function parseChunkUploadError(resp) {
+    try {
+      const data = await resp.json();
+      if (typeof data.detail === 'string' && data.detail) return data.detail;
+      if (typeof data.error === 'string' && data.error) return data.error;
+    } catch (e) {
+      // Fall through to generic text.
+    }
+    return `${resp.status} ${resp.statusText}`;
+  }
+
+  window.ensureChunkUploadedFiles = async function(formEl) {
+    const fileInput = document.getElementById('file-input');
+    const hidden = document.getElementById('uploaded-file-ids-json');
+    if (!fileInput || !hidden) return [];
+
+    const files = Array.from(fileInput.files || []);
+    if (files.length === 0) {
+      if (!hidden.value) return [];
+      try {
+        const parsed = JSON.parse(hidden.value);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        hidden.value = '';
+        return [];
+      }
+    }
+
+    const key = fileSelectionKey(files);
+    if (key === chunkUploadCacheKey && chunkUploadCachedIds.length === files.length) {
+      hidden.value = JSON.stringify(chunkUploadCachedIds);
+      return chunkUploadCachedIds;
+    }
+
+    const progressWrap = document.getElementById('upload-progress-wrap');
+    const progressBar = document.getElementById('upload-progress-bar');
+    const progressLabel = document.getElementById('upload-progress-label');
+    const progressBytes = document.getElementById('upload-progress-bytes');
+
+    const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+    let uploadedBytes = 0;
+    const uploadedIds = [];
+
+    if (progressWrap) progressWrap.classList.remove('hidden');
+    if (progressBar) progressBar.style.width = '0%';
+    if (progressLabel) progressLabel.textContent = 'Preparing uploads...';
+    if (progressBytes) progressBytes.textContent = `0 / ${formatFileSize(totalBytes)}`;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (progressLabel) progressLabel.textContent = `Preparing ${file.name} (${i + 1}/${files.length})...`;
+
+      const initResp = await fetch('/submit/upload-chunked/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: file.name,
+          size_bytes: file.size,
+        }),
+      });
+      if (!initResp.ok) {
+        throw new Error(await parseChunkUploadError(initResp));
+      }
+
+      const initData = await initResp.json();
+      const uploadId = initData.upload_id;
+      const chunkSize = Math.max(1, Number(initData.chunk_size_bytes) || CHUNK_UPLOAD_FALLBACK_BYTES);
+      const totalChunks = Math.max(1, Number(initData.total_chunks) || Math.ceil(file.size / chunkSize));
+
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        const start = chunkIndex * chunkSize;
+        const end = Math.min(file.size, start + chunkSize);
+        const blob = file.slice(start, end);
+
+        const fd = new FormData();
+        fd.append('upload_id', uploadId);
+        fd.append('chunk_index', String(chunkIndex));
+        fd.append('chunk', blob, file.name);
+
+        const chunkResp = await fetch('/submit/upload-chunked/chunk', {
+          method: 'POST',
+          body: fd,
+        });
+        if (!chunkResp.ok) {
+          throw new Error(await parseChunkUploadError(chunkResp));
+        }
+
+        uploadedBytes += blob.size;
+        const pct = totalBytes > 0 ? Math.floor((uploadedBytes / totalBytes) * 100) : 100;
+        if (progressBar) progressBar.style.width = `${pct}%`;
+        if (progressLabel) progressLabel.textContent = `Uploading ${file.name} (${i + 1}/${files.length}) - ${pct}%`;
+        if (progressBytes) progressBytes.textContent = `${formatFileSize(uploadedBytes)} / ${formatFileSize(totalBytes)}`;
+      }
+
+      const completeFd = new FormData();
+      completeFd.append('upload_id', uploadId);
+
+      const completeResp = await fetch('/submit/upload-chunked/complete', {
+        method: 'POST',
+        body: completeFd,
+      });
+      if (!completeResp.ok) {
+        throw new Error(await parseChunkUploadError(completeResp));
+      }
+      const completeData = await completeResp.json();
+      if (!completeData.file_id) {
+        throw new Error('Upload failed: missing file reference');
+      }
+      uploadedIds.push(completeData.file_id);
+    }
+
+    hidden.value = JSON.stringify(uploadedIds);
+    chunkUploadCacheKey = key;
+    chunkUploadCachedIds = uploadedIds.slice();
+    fileInput.value = '';
+
+    if (progressBar) progressBar.style.width = '100%';
+    if (progressLabel) progressLabel.textContent = 'Upload prepared';
+    if (progressBytes) progressBytes.textContent = `${formatFileSize(totalBytes)} / ${formatFileSize(totalBytes)}`;
+
+    return uploadedIds;
+  };
 
   function toggleShippingFields() {
     const selected = document.querySelector('input[name="fulfillment_method"]:checked')?.value || 'pickup';
@@ -1126,6 +1294,7 @@
     if (files.length > 0) {
       const validFiles = validateFiles(files);
       if (validFiles) {
+        resetUploadedFileCache();
         document.getElementById('file-input').files = files;
         showFilePreview(files);
       }
@@ -1135,8 +1304,10 @@
     if (input.files.length > 0) {
       const validFiles = validateFiles(input.files);
       if (validFiles) {
+        resetUploadedFileCache();
         showFilePreview(input.files);
       } else {
+        resetUploadedFileCache();
         input.value = '';
       }
     }
@@ -1200,6 +1371,7 @@
   
   function clearFile(e) {
     e.stopPropagation();
+    resetUploadedFileCache();
     document.getElementById('file-input').value = '';
     document.getElementById('drop-zone-content').classList.remove('hidden');
     document.getElementById('file-preview').classList.add('hidden');
@@ -1322,7 +1494,7 @@
   }
 
   // Form submission with loading state + upload progress (XHR for non-rush routes)
-  document.getElementById('request-form')?.addEventListener('submit', function(e) {
+  document.getElementById('request-form')?.addEventListener('submit', async function(e) {
     // Skip: embedded checkout handles its own submission
     if (window._rushEmbeddedCheckoutActive) return;
 
@@ -1351,6 +1523,15 @@
 
     e.preventDefault();
 
+    try {
+      if (window.ensureChunkUploadedFiles) {
+        await window.ensureChunkUploadedFiles(this);
+      }
+    } catch (err) {
+      showToastLocal(err.message || 'Upload preparation failed. Please try again.', true);
+      return;
+    }
+
     const btn = document.getElementById('submit-btn');
     const text = document.getElementById('submit-text');
     const spinner = document.getElementById('submit-spinner');
@@ -1364,15 +1545,19 @@
 
     btn.disabled = true;
     btn.classList.add('opacity-75', 'cursor-wait');
-    text.textContent = 'Uploading…';
     spinner.classList.remove('hidden');
 
     const fileInput = document.getElementById('file-input');
+    const hiddenUploadIds = document.getElementById('uploaded-file-ids-json');
     const hasFiles = fileInput && fileInput.files && fileInput.files.length > 0;
+    const hasPreparedUploads = hiddenUploadIds && hiddenUploadIds.value && hiddenUploadIds.value.trim().length > 0;
 
-    // Only show progress bar if there are files to upload
-    if (hasFiles) {
+    text.textContent = hasFiles ? 'Uploading…' : 'Submitting…';
+
+    // Show progress while uploading or while request is being finalized after chunk upload.
+    if (hasFiles || hasPreparedUploads) {
       progressWrap.classList.remove('hidden');
+      if (!hasFiles && progressLabel) progressLabel.textContent = 'Submitting request...';
     }
 
     const xhr = new XMLHttpRequest();
