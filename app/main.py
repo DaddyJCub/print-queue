@@ -2283,6 +2283,15 @@ def start_build(build_id: str, printer: str, comment: Optional[str] = None) -> D
     if already_printing:
         conn.close()
         return {"success": False, "error": f"Build {already_printing['build_number']} is already printing for this request. Complete or fail it first."}
+
+    # Block starting if this printer is already actively printing another build.
+    printer_busy = conn.execute(
+        "SELECT id, request_id FROM builds WHERE printer = ? AND status = 'PRINTING' AND id != ? LIMIT 1",
+        (printer, build_id),
+    ).fetchone()
+    if printer_busy:
+        conn.close()
+        return {"success": False, "error": f"Printer {printer} is already printing another build."}
     
     now = now_iso()
     old_status = build["status"]
@@ -3350,15 +3359,24 @@ def find_matching_requests_for_file(printer_file: str, printer_code: str) -> Lis
     
     conn = db()
     
-    # Get all QUEUED/APPROVED requests AND IN_PROGRESS requests that have READY builds
-    # IN_PROGRESS means some builds are done but others are still pending
+    # Get all QUEUED/APPROVED requests AND IN_PROGRESS requests that have READY
+    # builds and no other PRINTING build already running for that request.
     requests = conn.execute("""
         SELECT DISTINCT r.id, r.print_name, r.printer, r.priority, r.created_at, r.requester_name,
                r.status, r.material
         FROM requests r
         LEFT JOIN builds b ON r.id = b.request_id
         WHERE r.status IN ('QUEUED', 'APPROVED')
-           OR (r.status = 'IN_PROGRESS' AND b.status = 'READY')
+           OR (
+                r.status = 'IN_PROGRESS'
+                AND b.status = 'READY'
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM builds pb
+                    WHERE pb.request_id = r.id
+                      AND pb.status = 'PRINTING'
+                )
+           )
         ORDER BY 
             CASE WHEN r.printer = ? THEN 0 ELSE 1 END,  -- This printer first
             COALESCE(r.priority, 999),                   -- Then by priority
@@ -3882,6 +3900,7 @@ def format_eta_display(eta_dt: Optional[datetime]) -> str:
     # Convert UTC to US Central time (CST = UTC-6, CDT = UTC-5)
     # Use a fixed-offset approach that handles DST correctly
     from datetime import timezone as _tz
+    central_tz = None
     try:
         from zoneinfo import ZoneInfo
         central_tz = ZoneInfo("America/Chicago")
@@ -3889,14 +3908,16 @@ def format_eta_display(eta_dt: Optional[datetime]) -> str:
         central_eta = utc_eta.astimezone(central_tz)
         # Determine label: CDT or CST
         tz_label = central_eta.strftime("%Z")  # "CST" or "CDT"
-    except ImportError:
-        # Fallback: assume CST (UTC-6) if zoneinfo not available
+    except Exception:
+        # Fallback when zoneinfo/tzdata is unavailable.
         central_eta = eta_dt - __import__('datetime').timedelta(hours=6)
         tz_label = "CST"
     
     # Compare in Central time
     utc_now = datetime.utcnow()
     try:
+        if central_tz is None:
+            raise ValueError("Central timezone unavailable")
         central_now = utc_now.replace(tzinfo=_tz.utc).astimezone(central_tz)
         # Make naive for comparison
         central_eta_naive = central_eta.replace(tzinfo=None)
@@ -5909,6 +5930,54 @@ class MoonrakerAPI:
         }
 
 
+def _should_auto_complete_poll_result(
+    is_printing: bool,
+    is_complete: bool,
+    percent_complete: Optional[int],
+    printer_api: Any,
+    started_at: Optional[str] = None,
+    extended_status: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Determine whether polling should auto-complete a print request/build.
+
+    Primary rule: complete when printer reports complete, or when it is no
+    longer printing and progress reached 100%.
+
+    Moonraker fallback: some jobs return to standby with non-zero print duration
+    without reporting 100%; treat that as complete unless the status message
+    indicates cancel/error.
+    """
+    if is_complete:
+        return True
+
+    if (not is_printing) and (percent_complete == 100):
+        return True
+
+    # Moonraker can move to standby after completion without reporting 100%.
+    if isinstance(printer_api, MoonrakerAPI) and (not is_printing):
+        ext = extended_status or {}
+        state = str(ext.get("state") or "").strip().lower()
+        message = str(ext.get("message") or "").strip().lower()
+        try:
+            print_duration = float(ext.get("print_duration") or 0)
+        except Exception:
+            print_duration = 0
+
+        cancelled_markers = ("cancel", "abort", "error", "fail")
+        is_cancelled = state in ("cancelled", "canceled", "error") or any(marker in message for marker in cancelled_markers)
+
+        if is_cancelled:
+            return False
+
+        if state in ("complete", "completed"):
+            return True
+
+        if state == "standby" and print_duration > 0 and started_at:
+            return True
+
+    return False
+
+
 def get_printer_api(printer_code: str):
     """Get printer API instance for a printer (ADVENTURER_4 or AD5X).
     
@@ -6272,6 +6341,22 @@ async def poll_printer_status_worker():
                 machine_status = status_info.get("MachineStatus", "?") if status_info else "?"
                 print(f"[POLL] {effective_printer}: status={machine_status}, printing={is_printing}, complete={is_complete}, progress={percent_complete}%")
                 
+                extended_auto_complete_status = None
+                if isinstance(printer_api, MoonrakerAPI) and (not is_printing) and (not is_complete) and (percent_complete != 100):
+                    try:
+                        extended_auto_complete_status = await printer_api.get_extended_status()
+                    except Exception:
+                        extended_auto_complete_status = None
+
+                should_complete = _should_auto_complete_poll_result(
+                    is_printing=is_printing,
+                    is_complete=is_complete,
+                    percent_complete=percent_complete,
+                    printer_api=printer_api,
+                    started_at=req.get("printing_started_at"),
+                    extended_status=extended_auto_complete_status,
+                )
+
                 # Add to debug log
                 add_poll_debug_log({
                     "type": "poll_check",
@@ -6282,7 +6367,7 @@ async def poll_printer_status_worker():
                     "is_printing": is_printing,
                     "is_complete": is_complete,
                     "percent_complete": percent_complete,
-                    "should_complete": is_complete or ((not is_printing) and (percent_complete == 100)),
+                    "should_complete": should_complete,
                     "message": f"Status: {machine_status}, Progress: {percent_complete}%"
                 })
 
@@ -6488,9 +6573,6 @@ async def poll_printer_status_worker():
                             "request_id": rid[:8],
                             "message": "PRINTING notification email sent"
                         })
-
-                # Auto-complete if printer reports complete OR (not printing AND at 100%)
-                should_complete = is_complete or ((not is_printing) and (percent_complete == 100))
 
                 if should_complete:
                     print(f"[PRINTER] {req['printer']} complete ({percent_complete}%), auto-updating {rid[:8]} to DONE")
