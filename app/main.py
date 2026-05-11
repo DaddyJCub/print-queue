@@ -8182,7 +8182,7 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any], us
     except:
         pass
     
-    return templates.TemplateResponse("request_form_new.html", {
+    response = templates.TemplateResponse("request_form_new.html", {
         "request": request,
         "turnstile_site_key": TURNSTILE_SITE_KEY,
         "printers": PRINTERS,
@@ -8210,6 +8210,10 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any], us
         "credits_per_request": _credits_request_cost(),
         "user_credits": _user_credit_balance(user),
     }, status_code=400 if error else 200)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 # Mount additional routers

@@ -2559,7 +2559,7 @@
       const statusEl = document.getElementById('admin-add-file-status');
       if (!form || !input || !button || !statusEl) return;
 
-      const FALLBACK_CHUNK_SIZE = 25 * 1024 * 1024;
+      const FALLBACK_CHUNK_SIZE = 8 * 1024 * 1024;
 
       function showStatus(message, kind) {
         statusEl.textContent = message;

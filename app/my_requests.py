@@ -1,9 +1,9 @@
 import os, json, uuid, hashlib, secrets
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Request, Form, UploadFile, File, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 
 from app.main import (
     templates,
@@ -13,7 +13,9 @@ from app.main import (
     APP_TITLE,
     BASE_URL,
     ALLOWED_EXTS,
+    AUTH_MAX_UPLOAD_MB,
     UPLOAD_DIR,
+    safe_ext,
     parse_3d_file_metadata,
     safe_json_dumps,
     now_iso,
@@ -34,6 +36,281 @@ from app.auth import get_current_user, get_current_admin
 from app.oidc import is_oidc_enabled, get_oidc_config
 
 router = APIRouter()
+
+MY_REQUEST_CHUNK_UPLOAD_DIR = os.path.join(UPLOAD_DIR, ".my_request_chunk_uploads")
+MY_REQUEST_UPLOAD_CHUNK_BYTES = int(os.getenv("MY_REQUEST_UPLOAD_CHUNK_BYTES", str(8 * 1024 * 1024)))
+MY_REQUEST_UPLOAD_CHUNK_BYTES = min(max(1 * 1024 * 1024, MY_REQUEST_UPLOAD_CHUNK_BYTES), 20 * 1024 * 1024)
+
+
+def _my_chunk_upload_paths(upload_id: str) -> tuple[str, str]:
+    try:
+        upload_id = str(uuid.UUID(upload_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid upload session ID")
+    os.makedirs(MY_REQUEST_CHUNK_UPLOAD_DIR, exist_ok=True)
+    return (
+        os.path.join(MY_REQUEST_CHUNK_UPLOAD_DIR, f"{upload_id}.json"),
+        os.path.join(MY_REQUEST_CHUNK_UPLOAD_DIR, f"{upload_id}.part"),
+    )
+
+
+def _save_my_chunk_manifest(upload_id: str, manifest: Dict[str, Any]) -> None:
+    manifest_path, _ = _my_chunk_upload_paths(upload_id)
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f)
+
+
+def _load_my_chunk_manifest(upload_id: str) -> Dict[str, Any]:
+    manifest_path, _ = _my_chunk_upload_paths(upload_id)
+    if not os.path.exists(manifest_path):
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _cleanup_my_chunk_upload(upload_id: str) -> None:
+    manifest_path, part_path = _my_chunk_upload_paths(upload_id)
+    for path in (manifest_path, part_path):
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
+
+
+def _parse_uploaded_file_ids_json(raw: Optional[str]) -> List[str]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        raise ValueError("Invalid uploaded file list")
+    if not isinstance(parsed, list):
+        raise ValueError("Invalid uploaded file list")
+
+    out: List[str] = []
+    seen = set()
+    for item in parsed:
+        if not isinstance(item, str):
+            raise ValueError("Invalid uploaded file list")
+        try:
+            fid = str(uuid.UUID(item))
+        except Exception:
+            raise ValueError("Invalid uploaded file ID")
+        if fid in seen:
+            continue
+        seen.add(fid)
+        out.append(fid)
+    return out
+
+
+def _select_unclaimed_files(conn, file_ids: List[str]):
+    if not file_ids:
+        return []
+    placeholders = ",".join(["?"] * len(file_ids))
+    return conn.execute(
+        f"SELECT id, original_filename FROM files WHERE (request_id IS NULL OR request_id = '') AND id IN ({placeholders})",
+        tuple(file_ids),
+    ).fetchall()
+
+
+def _requester_request_for_token(conn, rid: str, token: str):
+    req = conn.execute("SELECT access_token, status FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req or req["access_token"] != token:
+        raise HTTPException(status_code=403, detail="Invalid access")
+    return req
+
+
+@router.post("/my/{rid}/upload-chunked/init")
+async def requester_upload_chunked_init(
+    request: Request,
+    rid: str,
+    token: str,
+    payload: Dict[str, Any],
+):
+    conn = db()
+    try:
+        req = _requester_request_for_token(conn, rid, token)
+    finally:
+        conn.close()
+
+    if req["status"] not in ["NEW", "NEEDS_INFO"]:
+        raise HTTPException(status_code=400, detail="Cannot upload files in current status")
+
+    original_filename = (payload.get("filename") or "").strip()
+    size_bytes = int(payload.get("size_bytes") or 0)
+    if not original_filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
+    if size_bytes <= 0:
+        raise HTTPException(status_code=400, detail="Invalid file size")
+
+    ext = os.path.splitext(original_filename)[1].lower()
+    if ext not in ALLOWED_EXTS:
+        raise HTTPException(status_code=400, detail=f"File '{original_filename}' not allowed")
+
+    max_bytes = AUTH_MAX_UPLOAD_MB * 1024 * 1024
+    if size_bytes > max_bytes:
+        raise HTTPException(status_code=400, detail=f"File '{original_filename}' too large. Max size is {AUTH_MAX_UPLOAD_MB}MB")
+
+    total_chunks = max(1, (size_bytes + MY_REQUEST_UPLOAD_CHUNK_BYTES - 1) // MY_REQUEST_UPLOAD_CHUNK_BYTES)
+    upload_id = str(uuid.uuid4())
+    manifest = {
+        "rid": rid,
+        "filename": original_filename,
+        "ext": ext,
+        "size_bytes": size_bytes,
+        "total_chunks": total_chunks,
+        "received_chunks": [],
+        "bytes_received": 0,
+        "created_at": now_iso(),
+    }
+    _save_my_chunk_manifest(upload_id, manifest)
+
+    _, part_path = _my_chunk_upload_paths(upload_id)
+    with open(part_path, "wb"):
+        pass
+
+    return JSONResponse({
+        "ok": True,
+        "upload_id": upload_id,
+        "chunk_size_bytes": MY_REQUEST_UPLOAD_CHUNK_BYTES,
+        "total_chunks": total_chunks,
+        "max_upload_mb": AUTH_MAX_UPLOAD_MB,
+    })
+
+
+@router.post("/my/{rid}/upload-chunked/chunk")
+async def requester_upload_chunked_chunk(
+    request: Request,
+    rid: str,
+    token: str,
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    chunk: UploadFile = File(...),
+):
+    conn = db()
+    try:
+        req = _requester_request_for_token(conn, rid, token)
+    finally:
+        conn.close()
+
+    if req["status"] not in ["NEW", "NEEDS_INFO"]:
+        raise HTTPException(status_code=400, detail="Cannot upload files in current status")
+
+    manifest = _load_my_chunk_manifest(upload_id)
+    if manifest.get("rid") != rid:
+        raise HTTPException(status_code=400, detail="Upload session does not match request")
+
+    total_chunks = int(manifest.get("total_chunks") or 0)
+    received_chunks = [int(i) for i in manifest.get("received_chunks", [])]
+    if chunk_index < 0 or chunk_index >= total_chunks:
+        raise HTTPException(status_code=400, detail="Invalid chunk index")
+
+    expected_next = len(received_chunks)
+    if chunk_index in received_chunks:
+        return JSONResponse({"ok": True, "already_received": True, "chunk_index": chunk_index})
+    if chunk_index != expected_next:
+        raise HTTPException(status_code=409, detail=f"Expected chunk {expected_next}, got {chunk_index}")
+
+    data = await chunk.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty chunk")
+    if len(data) > MY_REQUEST_UPLOAD_CHUNK_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Chunk too large (max {MY_REQUEST_UPLOAD_CHUNK_BYTES // (1024 * 1024)}MB)",
+        )
+
+    _, part_path = _my_chunk_upload_paths(upload_id)
+    with open(part_path, "ab") as f:
+        f.write(data)
+
+    manifest["received_chunks"] = received_chunks + [chunk_index]
+    manifest["bytes_received"] = int(manifest.get("bytes_received") or 0) + len(data)
+    _save_my_chunk_manifest(upload_id, manifest)
+
+    return JSONResponse({
+        "ok": True,
+        "chunk_index": chunk_index,
+        "received_chunks": len(manifest["received_chunks"]),
+        "total_chunks": total_chunks,
+    })
+
+
+@router.post("/my/{rid}/upload-chunked/complete")
+async def requester_upload_chunked_complete(
+    request: Request,
+    rid: str,
+    token: str,
+    upload_id: str = Form(...),
+):
+    conn = db()
+    try:
+        req = _requester_request_for_token(conn, rid, token)
+    finally:
+        conn.close()
+
+    if req["status"] not in ["NEW", "NEEDS_INFO"]:
+        raise HTTPException(status_code=400, detail="Cannot upload files in current status")
+
+    manifest = _load_my_chunk_manifest(upload_id)
+    if manifest.get("rid") != rid:
+        raise HTTPException(status_code=400, detail="Upload session does not match request")
+
+    total_chunks = int(manifest.get("total_chunks") or 0)
+    received_chunks = [int(i) for i in manifest.get("received_chunks", [])]
+    if len(received_chunks) != total_chunks:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Upload incomplete ({len(received_chunks)}/{total_chunks} chunks received)",
+        )
+
+    _, part_path = _my_chunk_upload_paths(upload_id)
+    if not os.path.exists(part_path):
+        raise HTTPException(status_code=404, detail="Uploaded data not found")
+
+    size_bytes = os.path.getsize(part_path)
+    max_bytes = AUTH_MAX_UPLOAD_MB * 1024 * 1024
+    original_filename = manifest.get("filename") or "uploaded-file"
+    ext = manifest.get("ext") or os.path.splitext(original_filename)[1].lower()
+    if size_bytes > max_bytes:
+        _cleanup_my_chunk_upload(upload_id)
+        raise HTTPException(status_code=400, detail=f"File '{original_filename}' too large. Max size is {AUTH_MAX_UPLOAD_MB}MB")
+
+    stored = f"{uuid.uuid4()}{ext}"
+    out_path = os.path.join(UPLOAD_DIR, stored)
+    os.replace(part_path, out_path)
+
+    sha = hashlib.sha256()
+    with open(out_path, "rb") as f:
+        for chunk_bytes in iter(lambda: f.read(1024 * 1024), b""):
+            if not chunk_bytes:
+                break
+            sha.update(chunk_bytes)
+    sha_hex = sha.hexdigest()
+
+    file_metadata = parse_3d_file_metadata(out_path, original_filename)
+    file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
+
+    file_id = str(uuid.uuid4())
+    conn = db()
+    conn.execute(
+        """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (file_id, "", now_iso(), original_filename, stored, size_bytes, sha_hex, file_metadata_json),
+    )
+    conn.commit()
+    conn.close()
+
+    _cleanup_my_chunk_upload(upload_id)
+
+    return JSONResponse({
+        "ok": True,
+        "file_id": file_id,
+        "filename": original_filename,
+        "size_bytes": size_bytes,
+    })
 
 # ─────────────────────────── REQUESTER PORTAL ───────────────────────────
 
@@ -243,7 +520,7 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
         if is_payments_enabled():
             payments_enabled = True
 
-    return templates.TemplateResponse("my_request.html", {
+    response = templates.TemplateResponse("my_request.html", {
         "request": request,
         "req": req,
         "files": files,
@@ -273,6 +550,10 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
         "quote_paid_at": req_dict.get("quote_paid_at"),
         "pickup_location": get_setting("pickup_location", ""),
     })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @router.post("/my/{rid}/reply")
@@ -334,38 +615,62 @@ def requester_reply(request: Request, rid: str, token: str, message: str = Form(
 
 
 @router.post("/my/{rid}/upload")
-async def requester_upload(request: Request, rid: str, token: str, files: List[UploadFile] = File(...)):
+async def requester_upload(
+    request: Request,
+    rid: str,
+    token: str,
+    uploaded_file_ids_json: Optional[str] = Form(None),
+    files: List[UploadFile] = File(default=[]),
+):
     """Requester uploads additional files"""
     conn = db()
-    req = conn.execute("SELECT access_token, status FROM requests WHERE id = ?", (rid,)).fetchone()
-    
-    if not req or req["access_token"] != token:
+    try:
+        req = _requester_request_for_token(conn, rid, token)
+    except Exception:
         conn.close()
-        raise HTTPException(status_code=403, detail="Invalid access")
+        raise
     
     if req["status"] not in ["NEW", "NEEDS_INFO"]:
         conn.close()
         raise HTTPException(status_code=400, detail="Cannot upload files in current status")
+
+    try:
+        preuploaded_file_ids = _parse_uploaded_file_ids_json(uploaded_file_ids_json)
+    except ValueError as e:
+        conn.close()
+        raise HTTPException(status_code=400, detail=str(e))
+
+    preuploaded_names: List[str] = []
+    if preuploaded_file_ids:
+        pre_rows = _select_unclaimed_files(conn, preuploaded_file_ids)
+        if len(pre_rows) != len(preuploaded_file_ids):
+            conn.close()
+            raise HTTPException(status_code=400, detail="Some uploaded files were not found. Please re-upload and try again.")
+        name_by_id = {row["id"]: row["original_filename"] for row in pre_rows}
+        preuploaded_names = [name_by_id[fid] for fid in preuploaded_file_ids if fid in name_by_id]
     
     created = now_iso()
-    uploaded_names = []
+    uploaded_names = list(preuploaded_names)
+    max_bytes = AUTH_MAX_UPLOAD_MB * 1024 * 1024
     
     for upload in files:
         if not upload.filename:
             continue
             
-        ext = os.path.splitext(upload.filename)[1].lower()
+        ext = safe_ext(upload.filename)
         if ext not in ALLOWED_EXTS:
             continue
         
         content = await upload.read()
+        if len(content) > max_bytes:
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"File '{upload.filename}' too large. Max size is {AUTH_MAX_UPLOAD_MB}MB")
         sha256 = hashlib.sha256(content).hexdigest()
-        stored_name = f"{sha256}{ext}"
+        stored_name = f"{uuid.uuid4()}{ext}"
         
         # Save file
-        uploads_dir = os.path.join(os.path.dirname(__file__), "static", "uploads")
-        os.makedirs(uploads_dir, exist_ok=True)
-        path = os.path.join(uploads_dir, stored_name)
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        path = os.path.join(UPLOAD_DIR, stored_name)
         with open(path, "wb") as f:
             f.write(content)
         
@@ -380,6 +685,13 @@ async def requester_upload(request: Request, rid: str, token: str, files: List[U
             (file_id, rid, created, upload.filename, stored_name, len(content), sha256, file_metadata_json)
         )
         uploaded_names.append(upload.filename)
+
+    if preuploaded_file_ids:
+        placeholders = ",".join(["?"] * len(preuploaded_file_ids))
+        conn.execute(
+            f"UPDATE files SET request_id = ? WHERE (request_id IS NULL OR request_id = '') AND id IN ({placeholders})",
+            (rid, *preuploaded_file_ids),
+        )
     
     if uploaded_names:
         # Add a message about the upload

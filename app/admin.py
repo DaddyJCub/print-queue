@@ -1,10 +1,10 @@
-import os, secrets, uuid, hashlib, urllib.parse
+import os, secrets, uuid, hashlib, urllib.parse, json
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 import httpx
 from fastapi import APIRouter, Request, Form, Depends, HTTPException, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Response, JSONResponse
 
 from app.main import (
     templates,
@@ -23,6 +23,7 @@ from app.main import (
     APP_VERSION,
     ADMIN_PASSWORD,
     BASE_URL,
+    AUTH_MAX_UPLOAD_MB,
     PRINTERS,
     MATERIALS,
     format_eta_display,
@@ -47,6 +48,89 @@ from app.auth import get_all_admins, log_audit, AuditAction
 from app.demo_data import DEMO_MODE, get_demo_status, reset_demo_data
 
 router = APIRouter()
+
+STORE_ITEM_CHUNK_UPLOAD_DIR = os.path.join(UPLOAD_DIR, ".store_item_chunk_uploads")
+STORE_ITEM_UPLOAD_CHUNK_BYTES = int(os.getenv("STORE_ITEM_UPLOAD_CHUNK_BYTES", str(8 * 1024 * 1024)))
+STORE_ITEM_UPLOAD_CHUNK_BYTES = min(max(1 * 1024 * 1024, STORE_ITEM_UPLOAD_CHUNK_BYTES), 20 * 1024 * 1024)
+
+
+def _store_item_chunk_paths(upload_id: str) -> tuple[str, str]:
+    try:
+        upload_id = str(uuid.UUID(upload_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid upload session ID")
+    os.makedirs(STORE_ITEM_CHUNK_UPLOAD_DIR, exist_ok=True)
+    return (
+        os.path.join(STORE_ITEM_CHUNK_UPLOAD_DIR, f"{upload_id}.json"),
+        os.path.join(STORE_ITEM_CHUNK_UPLOAD_DIR, f"{upload_id}.part"),
+    )
+
+
+def _save_store_item_chunk_manifest(upload_id: str, manifest: Dict[str, Any]) -> None:
+    manifest_path, _ = _store_item_chunk_paths(upload_id)
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f)
+
+
+def _load_store_item_chunk_manifest(upload_id: str) -> Dict[str, Any]:
+    manifest_path, _ = _store_item_chunk_paths(upload_id)
+    if not os.path.exists(manifest_path):
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _cleanup_store_item_chunk_upload(upload_id: str) -> None:
+    manifest_path, part_path = _store_item_chunk_paths(upload_id)
+    for path in (manifest_path, part_path):
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
+
+
+PRINTER_CHUNK_UPLOAD_DIR = os.path.join(UPLOAD_DIR, ".printer_chunk_uploads")
+PRINTER_UPLOAD_CHUNK_BYTES = int(os.getenv("PRINTER_UPLOAD_CHUNK_BYTES", str(8 * 1024 * 1024)))
+PRINTER_UPLOAD_CHUNK_BYTES = min(max(1 * 1024 * 1024, PRINTER_UPLOAD_CHUNK_BYTES), 20 * 1024 * 1024)
+
+
+def _printer_chunk_paths(upload_id: str) -> tuple[str, str]:
+    try:
+        upload_id = str(uuid.UUID(upload_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid upload session ID")
+    os.makedirs(PRINTER_CHUNK_UPLOAD_DIR, exist_ok=True)
+    return (
+        os.path.join(PRINTER_CHUNK_UPLOAD_DIR, f"{upload_id}.json"),
+        os.path.join(PRINTER_CHUNK_UPLOAD_DIR, f"{upload_id}.part"),
+    )
+
+
+def _save_printer_chunk_manifest(upload_id: str, manifest: Dict[str, Any]) -> None:
+    manifest_path, _ = _printer_chunk_paths(upload_id)
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f)
+
+
+def _load_printer_chunk_manifest(upload_id: str) -> Dict[str, Any]:
+    manifest_path, _ = _printer_chunk_paths(upload_id)
+    if not os.path.exists(manifest_path):
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _cleanup_printer_chunk_upload(upload_id: str) -> None:
+    manifest_path, part_path = _printer_chunk_paths(upload_id)
+    for path in (manifest_path, part_path):
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
 
 @router.get("/admin/feedback", response_class=HTMLResponse)
 def admin_feedback_list(request: Request, status: Optional[str] = None, type: Optional[str] = None, _=Depends(require_admin)):
@@ -1550,6 +1634,183 @@ def admin_store_item_delete(request: Request, item_id: str, _=Depends(require_ad
     return RedirectResponse(url="/admin/store?deleted=1", status_code=303)
 
 
+@router.post("/admin/store/item/{item_id}/upload-chunked/init")
+async def admin_store_item_upload_chunked_init(
+    request: Request,
+    item_id: str,
+    payload: Dict[str, Any],
+    _=Depends(require_admin),
+):
+    conn = db()
+    item = conn.execute("SELECT id FROM store_items WHERE id = ?", (item_id,)).fetchone()
+    conn.close()
+    if not item:
+        raise HTTPException(status_code=404, detail="Store item not found")
+
+    original_filename = (payload.get("filename") or "").strip()
+    size_bytes = int(payload.get("size_bytes") or 0)
+    if not original_filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
+    if size_bytes <= 0:
+        raise HTTPException(status_code=400, detail="Invalid file size")
+
+    ext = safe_ext(original_filename)
+    if ext.lower() not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"File '{original_filename}' not allowed")
+
+    max_bytes = AUTH_MAX_UPLOAD_MB * 1024 * 1024
+    if size_bytes > max_bytes:
+        raise HTTPException(status_code=400, detail=f"File '{original_filename}' too large (max {AUTH_MAX_UPLOAD_MB}MB)")
+
+    total_chunks = max(1, (size_bytes + STORE_ITEM_UPLOAD_CHUNK_BYTES - 1) // STORE_ITEM_UPLOAD_CHUNK_BYTES)
+    upload_id = str(uuid.uuid4())
+    manifest = {
+        "item_id": item_id,
+        "filename": original_filename,
+        "ext": ext,
+        "size_bytes": size_bytes,
+        "total_chunks": total_chunks,
+        "received_chunks": [],
+        "bytes_received": 0,
+        "created_at": now_iso(),
+    }
+    _save_store_item_chunk_manifest(upload_id, manifest)
+
+    _, part_path = _store_item_chunk_paths(upload_id)
+    with open(part_path, "wb"):
+        pass
+
+    return JSONResponse({
+        "ok": True,
+        "upload_id": upload_id,
+        "chunk_size_bytes": STORE_ITEM_UPLOAD_CHUNK_BYTES,
+        "total_chunks": total_chunks,
+        "max_upload_mb": AUTH_MAX_UPLOAD_MB,
+    })
+
+
+@router.post("/admin/store/item/{item_id}/upload-chunked/chunk")
+async def admin_store_item_upload_chunked_chunk(
+    request: Request,
+    item_id: str,
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    chunk: UploadFile = File(...),
+    _=Depends(require_admin),
+):
+    manifest = _load_store_item_chunk_manifest(upload_id)
+    if manifest.get("item_id") != item_id:
+        raise HTTPException(status_code=400, detail="Upload session does not match store item")
+
+    total_chunks = int(manifest.get("total_chunks") or 0)
+    received_chunks = [int(i) for i in manifest.get("received_chunks", [])]
+
+    if chunk_index < 0 or chunk_index >= total_chunks:
+        raise HTTPException(status_code=400, detail="Invalid chunk index")
+
+    expected_next = len(received_chunks)
+    if chunk_index in received_chunks:
+        return JSONResponse({"ok": True, "already_received": True, "chunk_index": chunk_index})
+    if chunk_index != expected_next:
+        raise HTTPException(status_code=409, detail=f"Expected chunk {expected_next}, got {chunk_index}")
+
+    data = await chunk.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty chunk")
+    if len(data) > STORE_ITEM_UPLOAD_CHUNK_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Chunk too large (max {STORE_ITEM_UPLOAD_CHUNK_BYTES // (1024 * 1024)}MB)",
+        )
+
+    _, part_path = _store_item_chunk_paths(upload_id)
+    with open(part_path, "ab") as f:
+        f.write(data)
+
+    manifest["received_chunks"] = received_chunks + [chunk_index]
+    manifest["bytes_received"] = int(manifest.get("bytes_received") or 0) + len(data)
+    _save_store_item_chunk_manifest(upload_id, manifest)
+
+    return JSONResponse({
+        "ok": True,
+        "chunk_index": chunk_index,
+        "received_chunks": len(manifest["received_chunks"]),
+        "total_chunks": total_chunks,
+    })
+
+
+@router.post("/admin/store/item/{item_id}/upload-chunked/complete")
+async def admin_store_item_upload_chunked_complete(
+    request: Request,
+    item_id: str,
+    upload_id: str = Form(...),
+    _=Depends(require_admin),
+):
+    manifest = _load_store_item_chunk_manifest(upload_id)
+    if manifest.get("item_id") != item_id:
+        raise HTTPException(status_code=400, detail="Upload session does not match store item")
+
+    total_chunks = int(manifest.get("total_chunks") or 0)
+    received_chunks = [int(i) for i in manifest.get("received_chunks", [])]
+    if len(received_chunks) != total_chunks:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Upload incomplete ({len(received_chunks)}/{total_chunks} chunks received)",
+        )
+
+    _, part_path = _store_item_chunk_paths(upload_id)
+    if not os.path.exists(part_path):
+        raise HTTPException(status_code=404, detail="Uploaded data not found")
+
+    size_bytes = os.path.getsize(part_path)
+    max_bytes = AUTH_MAX_UPLOAD_MB * 1024 * 1024
+    original_filename = manifest.get("filename") or "uploaded-file"
+    ext = manifest.get("ext") or safe_ext(original_filename)
+    if size_bytes > max_bytes:
+        _cleanup_store_item_chunk_upload(upload_id)
+        raise HTTPException(status_code=400, detail=f"File '{original_filename}' too large (max {AUTH_MAX_UPLOAD_MB}MB)")
+
+    sha = hashlib.sha256()
+    with open(part_path, "rb") as f:
+        for chunk_bytes in iter(lambda: f.read(1024 * 1024), b""):
+            if not chunk_bytes:
+                break
+            sha.update(chunk_bytes)
+    sha_hex = sha.hexdigest()
+
+    stored_name = f"store_{sha_hex}{ext}"
+    final_path = os.path.join(UPLOAD_DIR, stored_name)
+    if os.path.exists(final_path):
+        try:
+            os.remove(part_path)
+        except Exception:
+            pass
+    else:
+        os.replace(part_path, final_path)
+
+    conn = db()
+    item = conn.execute("SELECT id FROM store_items WHERE id = ?", (item_id,)).fetchone()
+    if not item:
+        conn.close()
+        _cleanup_store_item_chunk_upload(upload_id)
+        raise HTTPException(status_code=404, detail="Store item not found")
+
+    conn.execute(
+        "INSERT INTO store_item_files (id, store_item_id, created_at, original_filename, stored_filename, size_bytes, sha256) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), item_id, now_iso(), original_filename, stored_name, size_bytes, sha_hex),
+    )
+    conn.commit()
+    conn.close()
+
+    _cleanup_store_item_chunk_upload(upload_id)
+
+    return JSONResponse({
+        "ok": True,
+        "filename": original_filename,
+        "size_bytes": size_bytes,
+    })
+
+
 @router.post("/admin/store/item/{item_id}/upload")
 async def admin_store_item_upload(
     request: Request, 
@@ -1734,6 +1995,153 @@ async def moonraker_list_files(printer_code: str, _=Depends(require_admin)):
     if files is None:
         raise HTTPException(status_code=502, detail="Failed to fetch file list from Moonraker")
     return {"files": files}
+
+
+@router.post("/api/admin/printer/{printer_code}/upload-chunked/init")
+async def moonraker_upload_chunked_init(
+    printer_code: str,
+    payload: Dict[str, Any],
+    _=Depends(require_admin),
+):
+    _require_moonraker(printer_code)
+
+    filename = (payload.get("filename") or "").strip()
+    size_bytes = int(payload.get("size_bytes") or 0)
+    if not filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
+    if size_bytes <= 0:
+        raise HTTPException(status_code=400, detail="Invalid file size")
+    if not filename.lower().endswith((".gcode", ".g")):
+        raise HTTPException(status_code=400, detail="Only .gcode files can be uploaded to the printer")
+
+    max_bytes = 500 * 1024 * 1024
+    if size_bytes > max_bytes:
+        raise HTTPException(status_code=400, detail="File too large (max 500MB)")
+
+    total_chunks = max(1, (size_bytes + PRINTER_UPLOAD_CHUNK_BYTES - 1) // PRINTER_UPLOAD_CHUNK_BYTES)
+    upload_id = str(uuid.uuid4())
+    manifest = {
+        "printer_code": printer_code,
+        "filename": filename,
+        "size_bytes": size_bytes,
+        "total_chunks": total_chunks,
+        "received_chunks": [],
+        "bytes_received": 0,
+        "created_at": now_iso(),
+    }
+    _save_printer_chunk_manifest(upload_id, manifest)
+
+    _, part_path = _printer_chunk_paths(upload_id)
+    with open(part_path, "wb"):
+        pass
+
+    return JSONResponse({
+        "ok": True,
+        "upload_id": upload_id,
+        "chunk_size_bytes": PRINTER_UPLOAD_CHUNK_BYTES,
+        "total_chunks": total_chunks,
+    })
+
+
+@router.post("/api/admin/printer/{printer_code}/upload-chunked/chunk")
+async def moonraker_upload_chunked_chunk(
+    printer_code: str,
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    chunk: UploadFile = File(...),
+    _=Depends(require_admin),
+):
+    _require_moonraker(printer_code)
+
+    manifest = _load_printer_chunk_manifest(upload_id)
+    if manifest.get("printer_code") != printer_code:
+        raise HTTPException(status_code=400, detail="Upload session does not match printer")
+
+    total_chunks = int(manifest.get("total_chunks") or 0)
+    received_chunks = [int(i) for i in manifest.get("received_chunks", [])]
+    if chunk_index < 0 or chunk_index >= total_chunks:
+        raise HTTPException(status_code=400, detail="Invalid chunk index")
+
+    expected_next = len(received_chunks)
+    if chunk_index in received_chunks:
+        return JSONResponse({"ok": True, "already_received": True, "chunk_index": chunk_index})
+    if chunk_index != expected_next:
+        raise HTTPException(status_code=409, detail=f"Expected chunk {expected_next}, got {chunk_index}")
+
+    data = await chunk.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty chunk")
+    if len(data) > PRINTER_UPLOAD_CHUNK_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Chunk too large (max {PRINTER_UPLOAD_CHUNK_BYTES // (1024 * 1024)}MB)",
+        )
+
+    _, part_path = _printer_chunk_paths(upload_id)
+    with open(part_path, "ab") as f:
+        f.write(data)
+
+    manifest["received_chunks"] = received_chunks + [chunk_index]
+    manifest["bytes_received"] = int(manifest.get("bytes_received") or 0) + len(data)
+    _save_printer_chunk_manifest(upload_id, manifest)
+
+    return JSONResponse({
+        "ok": True,
+        "chunk_index": chunk_index,
+        "received_chunks": len(manifest["received_chunks"]),
+        "total_chunks": total_chunks,
+    })
+
+
+@router.post("/api/admin/printer/{printer_code}/upload-chunked/complete")
+async def moonraker_upload_chunked_complete(
+    printer_code: str,
+    upload_id: str = Form(...),
+    admin=Depends(require_admin),
+):
+    api = _require_moonraker(printer_code)
+
+    manifest = _load_printer_chunk_manifest(upload_id)
+    if manifest.get("printer_code") != printer_code:
+        raise HTTPException(status_code=400, detail="Upload session does not match printer")
+
+    total_chunks = int(manifest.get("total_chunks") or 0)
+    received_chunks = [int(i) for i in manifest.get("received_chunks", [])]
+    if len(received_chunks) != total_chunks:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Upload incomplete ({len(received_chunks)}/{total_chunks} chunks received)",
+        )
+
+    _, part_path = _printer_chunk_paths(upload_id)
+    if not os.path.exists(part_path):
+        raise HTTPException(status_code=404, detail="Uploaded data not found")
+
+    size_bytes = os.path.getsize(part_path)
+    if size_bytes > 500 * 1024 * 1024:
+        _cleanup_printer_chunk_upload(upload_id)
+        raise HTTPException(status_code=400, detail="File too large (max 500MB)")
+
+    filename = manifest.get("filename") or "upload.gcode"
+    with open(part_path, "rb") as f:
+        file_data = f.read()
+
+    result = await api.upload_file(filename, file_data)
+    _cleanup_printer_chunk_upload(upload_id)
+    if not result:
+        raise HTTPException(status_code=502, detail="Failed to upload file to Moonraker")
+
+    log_audit(
+        action=AuditAction.PRINTER_FILE_UPLOADED,
+        actor_type="admin",
+        actor_id=getattr(admin, 'id', None),
+        actor_name=getattr(admin, 'display_name', None) or getattr(admin, 'username', 'admin'),
+        target_type="printer",
+        target_id=printer_code,
+        details={"filename": filename, "size_bytes": len(file_data), "chunked": True},
+    )
+
+    return {"success": True, "filename": filename, "size": len(file_data)}
 
 
 @router.post("/api/admin/printer/{printer_code}/upload")

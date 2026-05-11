@@ -1264,13 +1264,35 @@
             <div id="multi-file-list" class="hidden space-y-2 text-left"></div>
           </div>
           <input id="multi-file-input" type="file" name="files" multiple accept=".stl,.obj,.3mf,.gcode,.step,.stp,.fpp,.zip" class="hidden" onchange="handleMultiSelect(this)" />
+          <input id="my-uploaded-file-ids-json" type="hidden" name="uploaded_file_ids_json" value="" />
+          <p id="my-upload-status" class="hidden text-xs text-zinc-400"></p>
           <button type="submit" id="multi-upload-btn" class="hidden rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
             Upload <span id="file-count">0</span> File(s)
           </button>
         </form>
         
         <script>
+          const MY_CHUNK_FALLBACK_BYTES = 8 * 1024 * 1024;
           let selectedFiles = [];
+
+          async function myUploadErrorMessage(resp) {
+            try {
+              const data = await resp.json();
+              if (typeof data.detail === 'string' && data.detail) return data.detail;
+              if (typeof data.error === 'string' && data.error) return data.error;
+            } catch (e) {
+              // Fall back to status text below.
+            }
+            return `${resp.status} ${resp.statusText}`;
+          }
+
+          function setMyUploadStatus(message, kind = 'info') {
+            const status = document.getElementById('my-upload-status');
+            if (!status) return;
+            status.classList.remove('hidden', 'text-zinc-400', 'text-red-400', 'text-emerald-400');
+            status.classList.add(kind === 'error' ? 'text-red-400' : kind === 'success' ? 'text-emerald-400' : 'text-zinc-400');
+            status.textContent = message;
+          }
           function handleMultiDragOver(e) {
             e.preventDefault();
             document.getElementById('multi-drop-zone').classList.add('border-emerald-500', 'bg-emerald-500/10');
@@ -1331,6 +1353,87 @@
             selectedFiles.forEach(f => dt.items.add(f));
             document.getElementById('multi-file-input').files = dt.files;
           }
+
+          (function setupMyChunkedUploads() {
+            const form = document.getElementById('multi-upload-form');
+            const input = document.getElementById('multi-file-input');
+            const button = document.getElementById('multi-upload-btn');
+            const hidden = document.getElementById('my-uploaded-file-ids-json');
+            const accessToken = {{ token|tojson }};
+            if (!form || !input || !button || !hidden) return;
+
+            form.addEventListener('submit', async function(e) {
+              if (!selectedFiles || selectedFiles.length === 0) return;
+
+              e.preventDefault();
+              button.disabled = true;
+              button.classList.add('opacity-60', 'cursor-not-allowed');
+
+              try {
+                const uploadedIds = [];
+                const totalFiles = selectedFiles.length;
+
+                for (let i = 0; i < selectedFiles.length; i++) {
+                  const file = selectedFiles[i];
+                  setMyUploadStatus(`Preparing ${file.name} (${i + 1}/${totalFiles})...`, 'info');
+
+                  const initResp = await fetch(`/my/{{ req.id }}/upload-chunked/init?token=${encodeURIComponent(accessToken)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: file.name, size_bytes: file.size }),
+                  });
+                  if (!initResp.ok) throw new Error(await myUploadErrorMessage(initResp));
+
+                  const initData = await initResp.json();
+                  const uploadId = initData.upload_id;
+                  const chunkSize = Math.max(1, Number(initData.chunk_size_bytes) || MY_CHUNK_FALLBACK_BYTES);
+                  const totalChunks = Math.max(1, Number(initData.total_chunks) || Math.ceil(file.size / chunkSize));
+
+                  for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+                    const start = chunkIndex * chunkSize;
+                    const end = Math.min(file.size, start + chunkSize);
+                    const blob = file.slice(start, end);
+
+                    const fd = new FormData();
+                    fd.append('upload_id', uploadId);
+                    fd.append('chunk_index', String(chunkIndex));
+                    fd.append('chunk', blob, file.name);
+
+                    const chunkResp = await fetch(`/my/{{ req.id }}/upload-chunked/chunk?token=${encodeURIComponent(accessToken)}`, {
+                      method: 'POST',
+                      body: fd,
+                    });
+                    if (!chunkResp.ok) throw new Error(await myUploadErrorMessage(chunkResp));
+
+                    const pct = Math.floor(((chunkIndex + 1) / totalChunks) * 100);
+                    setMyUploadStatus(`Uploading ${file.name} (${i + 1}/${totalFiles}) - ${pct}%`, 'info');
+                  }
+
+                  const completeFd = new FormData();
+                  completeFd.append('upload_id', uploadId);
+                  const completeResp = await fetch(`/my/{{ req.id }}/upload-chunked/complete?token=${encodeURIComponent(accessToken)}`, {
+                    method: 'POST',
+                    body: completeFd,
+                  });
+                  if (!completeResp.ok) throw new Error(await myUploadErrorMessage(completeResp));
+                  const completeData = await completeResp.json();
+                  if (!completeData.file_id) throw new Error('Upload failed: missing file reference');
+                  uploadedIds.push(completeData.file_id);
+                }
+
+                hidden.value = JSON.stringify(uploadedIds);
+                selectedFiles = [];
+                updateFileList();
+                input.value = '';
+                setMyUploadStatus('Upload complete. Finalizing request update...', 'success');
+                HTMLFormElement.prototype.submit.call(form);
+              } catch (err) {
+                setMyUploadStatus(err.message || 'Upload failed.', 'error');
+                button.disabled = false;
+                button.classList.remove('opacity-60', 'cursor-not-allowed');
+              }
+            });
+          })();
         </script>
       </div>
     {% endif %}

@@ -54,9 +54,9 @@ from app.demo_data import get_demo_all_printers_status
 
 router = APIRouter()
 PUBLIC_CHUNK_UPLOAD_DIR = os.path.join(UPLOAD_DIR, ".public_chunk_uploads")
-# Keep each request safely below Cloudflare Free's 100MB upload cap.
-PUBLIC_UPLOAD_CHUNK_BYTES = int(os.getenv("PUBLIC_UPLOAD_CHUNK_BYTES", str(25 * 1024 * 1024)))
-PUBLIC_UPLOAD_CHUNK_BYTES = min(max(1 * 1024 * 1024, PUBLIC_UPLOAD_CHUNK_BYTES), 95 * 1024 * 1024)
+# Keep chunk requests small enough for stricter edge/proxy limits.
+PUBLIC_UPLOAD_CHUNK_BYTES = int(os.getenv("PUBLIC_UPLOAD_CHUNK_BYTES", str(8 * 1024 * 1024)))
+PUBLIC_UPLOAD_CHUNK_BYTES = min(max(1 * 1024 * 1024, PUBLIC_UPLOAD_CHUNK_BYTES), 20 * 1024 * 1024)
 
 
 def _format_upload_limit_error(filename: str, user, limit_mb: int) -> str:

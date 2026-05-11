@@ -917,6 +917,7 @@
       }
       
       async function uploadToMoonraker() {
+        const CHUNK_FALLBACK_BYTES = 8 * 1024 * 1024;
         const printerCode = document.getElementById('upload-printer-code').value;
         const fileInput = document.getElementById('upload-file-input');
         const statusEl = document.getElementById('upload-status');
@@ -929,16 +930,58 @@
         }
         
         const file = fileInput.files[0];
-        statusEl.textContent = `Uploading ${file.name}...`;
+        statusEl.textContent = `Preparing ${file.name}...`;
         statusEl.className = 'text-xs text-indigo-300 mt-2';
         
         try {
-          const formData = new FormData();
-          formData.append('file', file);
-          
-          const resp = await fetch(`/api/admin/printer/${printerCode}/upload`, {
+          const initResp = await fetch(`/api/admin/printer/${printerCode}/upload-chunked/init`, {
             method: 'POST',
-            body: formData,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: file.name, size_bytes: file.size }),
+          });
+          if (!initResp.ok) {
+            const initErr = await initResp.json();
+            statusEl.textContent = `Upload failed: ${initErr.detail || 'Unknown error'}`;
+            statusEl.className = 'text-xs text-red-400 mt-2';
+            return;
+          }
+
+          const initData = await initResp.json();
+          const uploadId = initData.upload_id;
+          const chunkSize = Math.max(1, Number(initData.chunk_size_bytes) || CHUNK_FALLBACK_BYTES);
+          const totalChunks = Math.max(1, Number(initData.total_chunks) || Math.ceil(file.size / chunkSize));
+
+          for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+            const start = chunkIndex * chunkSize;
+            const end = Math.min(file.size, start + chunkSize);
+            const blob = file.slice(start, end);
+
+            const fd = new FormData();
+            fd.append('upload_id', uploadId);
+            fd.append('chunk_index', String(chunkIndex));
+            fd.append('chunk', blob, file.name);
+
+            const chunkResp = await fetch(`/api/admin/printer/${printerCode}/upload-chunked/chunk`, {
+              method: 'POST',
+              body: fd,
+            });
+            if (!chunkResp.ok) {
+              const chunkErr = await chunkResp.json();
+              statusEl.textContent = `Upload failed: ${chunkErr.detail || 'Unknown error'}`;
+              statusEl.className = 'text-xs text-red-400 mt-2';
+              return;
+            }
+
+            const pct = Math.floor(((chunkIndex + 1) / totalChunks) * 100);
+            statusEl.textContent = `Uploading ${file.name}... ${pct}%`;
+            statusEl.className = 'text-xs text-indigo-300 mt-2';
+          }
+
+          const completeFd = new FormData();
+          completeFd.append('upload_id', uploadId);
+          const resp = await fetch(`/api/admin/printer/${printerCode}/upload-chunked/complete`, {
+            method: 'POST',
+            body: completeFd,
           });
           
           const data = await resp.json();

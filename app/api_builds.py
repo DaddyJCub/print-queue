@@ -126,9 +126,9 @@ SHIPPO_USPS_FLAT_RATE_TEMPLATES: Dict[str, str] = {
 }
 
 ADMIN_CHUNK_UPLOAD_DIR = os.path.join(UPLOAD_DIR, ".admin_chunk_uploads")
-# Keep chunk requests safely under Cloudflare Free's 100MB request cap.
-ADMIN_UPLOAD_CHUNK_BYTES = int(os.getenv("ADMIN_UPLOAD_CHUNK_BYTES", str(25 * 1024 * 1024)))
-ADMIN_UPLOAD_CHUNK_BYTES = min(max(1 * 1024 * 1024, ADMIN_UPLOAD_CHUNK_BYTES), 95 * 1024 * 1024)
+# Keep chunk requests small enough for stricter edge/proxy limits.
+ADMIN_UPLOAD_CHUNK_BYTES = int(os.getenv("ADMIN_UPLOAD_CHUNK_BYTES", str(8 * 1024 * 1024)))
+ADMIN_UPLOAD_CHUNK_BYTES = min(max(1 * 1024 * 1024, ADMIN_UPLOAD_CHUNK_BYTES), 20 * 1024 * 1024)
 
 
 def _chunk_upload_paths(upload_id: str) -> tuple[str, str]:
@@ -3169,7 +3169,7 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
     from app.payments import is_payments_enabled as _is_payments_enabled
     _payments_enabled = _is_payments_enabled()
 
-    return templates.TemplateResponse("admin_request.html", {
+    response = templates.TemplateResponse("admin_request.html", {
         "request": request,
         "req": req,
         "files": enriched_files,
@@ -3214,6 +3214,10 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         "quote_set_at": req_dict.get("quote_set_at"),
         "quote_paid_at": req_dict.get("quote_paid_at"),
     })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 # ─────────────────────────── REQUEST ASSIGNMENTS ───────────────────────────

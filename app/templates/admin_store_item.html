@@ -180,13 +180,10 @@
             <p class="text-zinc-500 text-sm mb-4">No files uploaded yet</p>
           {% endif %}
           
-          <form method="POST" action="/admin/store/item/{{ item.id }}/upload" enctype="multipart/form-data" class="pt-4 border-t border-zinc-800">
-            <input type="file" name="files" multiple accept=".stl,.obj,.3mf,.gcode,.step,.stp,.fpp,.zip"
-                   class="w-full rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-600 file:text-white file:font-semibold file:cursor-pointer" />
-            <p class="text-xs text-zinc-500 mt-1">STL, OBJ, 3MF, GCODE, STEP, FPP</p>
-            <button type="submit" class="mt-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-2 text-sm font-semibold">
-              Upload Files
-            </button>
+          <form id="store-item-upload-form" data-item-id="{{ item.id }}" method="POST" action="/admin/store/item/{{ item.id }}/upload" enctype="multipart/form-data" class="pt-4 border-t border-zinc-800">
+            <input id="store-item-upload-input" type="file" name="files" multiple accept=".stl,.obj,.3mf,.gcode,.step,.stp,.fpp,.zip" required class="text-sm text-zinc-300 file:mr-3 file:px-3 file:py-1.5 file:rounded file:border file:border-zinc-700 file:bg-zinc-800 file:text-zinc-200">
+            <button id="store-item-upload-btn" class="px-3 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-sm">Upload file(s)</button>
+            <p id="store-item-upload-status" class="hidden text-xs text-zinc-400"></p>
           </form>
         </div>
       </div>
@@ -256,6 +253,96 @@
   </div>
   
   <script>
+    (function setupStoreItemChunkedUploads() {
+      const CHUNK_FALLBACK_BYTES = 8 * 1024 * 1024;
+      const form = document.getElementById('store-item-upload-form');
+      const input = document.getElementById('store-item-upload-input');
+      const button = document.getElementById('store-item-upload-btn');
+      const status = document.getElementById('store-item-upload-status');
+      if (!form || !input || !button || !status) return;
+
+      function setStatus(message, kind = 'info') {
+        status.classList.remove('hidden', 'text-zinc-400', 'text-red-400', 'text-emerald-400');
+        status.classList.add(kind === 'error' ? 'text-red-400' : kind === 'success' ? 'text-emerald-400' : 'text-zinc-400');
+        status.textContent = message;
+      }
+
+      async function responseError(resp) {
+        try {
+          const data = await resp.json();
+          if (typeof data.detail === 'string' && data.detail) return data.detail;
+          if (typeof data.error === 'string' && data.error) return data.error;
+        } catch (e) {
+          // Ignore parse errors and use status text.
+        }
+        return `${resp.status} ${resp.statusText}`;
+      }
+
+      form.addEventListener('submit', async function(e) {
+        const files = Array.from(input.files || []);
+        if (!files.length) return;
+
+        e.preventDefault();
+        button.disabled = true;
+        button.classList.add('opacity-60', 'cursor-not-allowed');
+
+        const itemId = form.dataset.itemId;
+        try {
+          for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
+            const file = files[fileIndex];
+            setStatus(`Preparing ${file.name} (${fileIndex + 1}/${files.length})...`, 'info');
+
+            const initResp = await fetch(`/admin/store/item/${encodeURIComponent(itemId)}/upload-chunked/init`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: file.name, size_bytes: file.size }),
+            });
+            if (!initResp.ok) throw new Error(await responseError(initResp));
+
+            const initData = await initResp.json();
+            const uploadId = initData.upload_id;
+            const chunkSize = Math.max(1, Number(initData.chunk_size_bytes) || CHUNK_FALLBACK_BYTES);
+            const totalChunks = Math.max(1, Number(initData.total_chunks) || Math.ceil(file.size / chunkSize));
+
+            for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+              const start = chunkIndex * chunkSize;
+              const end = Math.min(file.size, start + chunkSize);
+              const blob = file.slice(start, end);
+
+              const fd = new FormData();
+              fd.append('upload_id', uploadId);
+              fd.append('chunk_index', String(chunkIndex));
+              fd.append('chunk', blob, file.name);
+
+              const chunkResp = await fetch(`/admin/store/item/${encodeURIComponent(itemId)}/upload-chunked/chunk`, {
+                method: 'POST',
+                body: fd,
+              });
+              if (!chunkResp.ok) throw new Error(await responseError(chunkResp));
+
+              const pct = Math.floor(((chunkIndex + 1) / totalChunks) * 100);
+              setStatus(`Uploading ${file.name} (${fileIndex + 1}/${files.length}) - ${pct}%`, 'info');
+            }
+
+            const completeFd = new FormData();
+            completeFd.append('upload_id', uploadId);
+            const completeResp = await fetch(`/admin/store/item/${encodeURIComponent(itemId)}/upload-chunked/complete`, {
+              method: 'POST',
+              body: completeFd,
+            });
+            if (!completeResp.ok) throw new Error(await responseError(completeResp));
+          }
+
+          setStatus('Upload complete. Refreshing files...', 'success');
+          window.location.reload();
+        } catch (err) {
+          setStatus(err.message || 'Upload failed.', 'error');
+          button.disabled = false;
+          button.classList.remove('opacity-60', 'cursor-not-allowed');
+        }
+      });
+    })();
+
     function confirmDelete() {
       const modal = document.getElementById('delete-modal');
       modal.classList.remove('hidden');
