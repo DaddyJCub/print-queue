@@ -198,8 +198,7 @@
             </div>
             <div>
               <label class="block text-xs font-medium text-zinc-400 mb-1">Colors</label>
-              {% set form_colors = metadata.filament_colors_used if metadata.filament_colors_used else metadata.filament_colors %}
-              <input type="text" name="colors" value="{% if form_colors is iterable and form_colors is not string %}{{ form_colors | join(', ') }}{% else %}{{ form_colors or '' }}{% endif %}" placeholder="e.g., Black, White"
+              <input type="text" name="colors" value="{{ guessed_color or '' }}" placeholder="e.g., Black"
                      class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
             </div>
             <div>

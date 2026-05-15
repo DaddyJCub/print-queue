@@ -99,6 +99,41 @@ from app.shipping_usps import USPSClient, map_usps_tracking_status, usps_trackin
 
 router = APIRouter()
 
+
+def _extract_primary_color(value: Any, preferred_indices: Optional[List[int]] = None) -> str:
+    """Return the first non-empty color token from list/string input."""
+    if isinstance(value, list):
+        if preferred_indices:
+            for idx in preferred_indices:
+                if isinstance(idx, int) and 0 <= idx < len(value):
+                    item = value[idx]
+                    if isinstance(item, str) and item.strip():
+                        return item.strip()
+        for item in value:
+            if isinstance(item, str) and item.strip():
+                return item.strip()
+        return ""
+    if isinstance(value, str):
+        normalized = value.replace(";", ",")
+        for token in normalized.split(","):
+            token = token.strip()
+            if token:
+                return token
+    return ""
+
+
+def _guess_unmatched_primary_color(metadata: Dict[str, Any]) -> str:
+    """Prefer filtered/used colors, then fall back to raw filament colors."""
+    if not isinstance(metadata, dict):
+        return ""
+    referenced_tools = metadata.get("referenced_tools")
+    if not isinstance(referenced_tools, list):
+        referenced_tools = []
+    return (
+        _extract_primary_color(metadata.get("filament_colors_used"))
+        or _extract_primary_color(metadata.get("filament_colors"), preferred_indices=referenced_tools)
+    )
+
 SHIPPING_STATUSES = {
     "REQUESTED",
     "ADDRESS_VALIDATED",
@@ -3505,7 +3540,7 @@ async def admin_unmatched_detail(request: Request, unmatched_id: str, _=Depends(
 
     metadata = unmatched.get("printer_metadata") or {}
     # Ensure display-friendly filament fields exist (backward compat for old records)
-    if metadata and not metadata.get("filament_type_display"):
+    if metadata and (not metadata.get("filament_type_display") or "filament_colors_used" not in metadata):
         process_filament_metadata(metadata)
     printer_code = unmatched["printer_code"]
 
@@ -3537,6 +3572,8 @@ async def admin_unmatched_detail(request: Request, unmatched_id: str, _=Depends(
                 guessed_material = code
                 break
 
+    guessed_color = _guess_unmatched_primary_color(metadata)
+
     # Get live printer status
     printer_status = await fetch_printer_status_with_cache(printer_code, timeout=3.0)
 
@@ -3551,6 +3588,7 @@ async def admin_unmatched_detail(request: Request, unmatched_id: str, _=Depends(
         "printers": PRINTERS,
         "materials": MATERIALS,
         "guessed_material": guessed_material,
+        "guessed_color": guessed_color,
         "printer_status": printer_status or {},
         "camera_url": camera_url,
         "version": APP_VERSION,
@@ -3577,6 +3615,18 @@ def admin_unmatched_create_request(
         raise HTTPException(status_code=404, detail="Unmatched print not found")
     if unmatched["status"] != "ACTIVE":
         raise HTTPException(status_code=400, detail="This unmatched print has already been resolved")
+
+    # Unknown-print create flow should carry a single representative color.
+    metadata = unmatched.get("printer_metadata") or {}
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except Exception:
+            metadata = {}
+    if metadata and (not metadata.get("filament_type_display") or "filament_colors_used" not in metadata):
+        process_filament_metadata(metadata)
+
+    colors = _extract_primary_color(colors) or _guess_unmatched_primary_color(metadata)
 
     now = now_iso()
     rid = str(uuid.uuid4())
