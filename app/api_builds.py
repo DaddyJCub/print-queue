@@ -3269,10 +3269,14 @@ def admin_assign_account_to_request(
     """Assign an account to a request"""
     # Check request exists
     conn = db()
-    req = conn.execute("SELECT id FROM requests WHERE id = ?", (rid,)).fetchone()
+    req = conn.execute(
+        "SELECT id, account_id, requester_name, requester_email FROM requests WHERE id = ?",
+        (rid,),
+    ).fetchone()
     conn.close()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+    req = dict(req)
     
     # Find account by email
     from app.auth import get_account_by_email
@@ -3301,6 +3305,36 @@ def admin_assign_account_to_request(
         assigned_by_account_id=assigned_by,
         notes=notes
     )
+
+    # Requester notifications depend on the request-level requester identity.
+    # When assigning requester role, backfill missing request identity fields.
+    if assignment_role == AssignmentRole.REQUESTER:
+        update_fields = []
+        params = []
+
+        if req.get("account_id") != account.id:
+            update_fields.append("account_id = ?")
+            params.append(account.id)
+
+        if not (req.get("requester_email") or "").strip() and account.email:
+            update_fields.append("requester_email = ?")
+            params.append(account.email)
+
+        if not (req.get("requester_name") or "").strip() and account.name:
+            update_fields.append("requester_name = ?")
+            params.append(account.name)
+
+        if update_fields:
+            conn = db()
+            update_fields.append("updated_at = ?")
+            params.append(now_iso())
+            params.append(rid)
+            conn.execute(
+                f"UPDATE requests SET {', '.join(update_fields)} WHERE id = ?",
+                params,
+            )
+            conn.commit()
+            conn.close()
     
     return RedirectResponse(url=f"/admin/request/{rid}#assignees", status_code=303)
 

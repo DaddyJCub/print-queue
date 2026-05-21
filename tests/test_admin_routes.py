@@ -153,6 +153,69 @@ class TestAdminStatusTransitions:
         assert response.status_code in (200, 303)
 
 
+class TestAdminAssignments:
+    """Tests for request assignment behavior."""
+
+    def test_requester_assignment_backfills_identity_for_notifications(self, admin_client, monkeypatch):
+        req = create_test_request(status="NEW", requester_name="", requester_email="")
+        rid = req["request_id"]
+
+        account_id = "11111111-1111-1111-1111-111111111111"
+        account_email = "unknown-assignee@example.com"
+        account_name = "Unknown Owner"
+        now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+        conn = get_test_db()
+        conn.execute(
+            """
+            INSERT INTO accounts (id, email, name, role, status, created_at, updated_at)
+            VALUES (?, ?, ?, 'user', 'active', ?, ?)
+            """,
+            (account_id, account_email, account_name, now, now),
+        )
+        conn.commit()
+        conn.close()
+
+        sent_emails = []
+
+        from app import api_builds
+
+        def _capture_send_email(recipients, subject, text, html):
+            sent_emails.append({
+                "recipients": recipients,
+                "subject": subject,
+            })
+
+        monkeypatch.setattr(api_builds, "send_email", _capture_send_email)
+
+        assign_response = admin_client.post(
+            f"/admin/request/{rid}/assign",
+            data={"account_email": account_email, "role": "requester"},
+            follow_redirects=False,
+        )
+        assert assign_response.status_code in (200, 303)
+
+        conn = get_test_db()
+        row = conn.execute(
+            "SELECT account_id, requester_email, requester_name FROM requests WHERE id = ?",
+            (rid,),
+        ).fetchone()
+        conn.close()
+
+        assert row is not None
+        assert row["account_id"] == account_id
+        assert row["requester_email"] == account_email
+        assert row["requester_name"] == account_name
+
+        status_response = admin_client.post(
+            f"/admin/request/{rid}/status",
+            data={"to_status": "APPROVED"},
+            follow_redirects=False,
+        )
+        assert status_response.status_code in (200, 303)
+        assert any(account_email in (item["recipients"] or []) for item in sent_emails)
+
+
 class TestAdminShipping:
     """Tests for admin shipping endpoints."""
 
