@@ -16,10 +16,13 @@
     {% include 'admin_nav.html' %}
     
     <!-- Page Header - Compact -->
-    <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
-      <h1 class="text-2xl font-bold">Queue</h1>
+    <div class="mb-5 flex items-start justify-between flex-wrap gap-3">
+      <div>
+        <h1 class="text-2xl font-bold">Queue Dashboard</h1>
+        <p class="text-xs text-zinc-400 mt-1">Live workflow view for triage, print starts, and handoff status.</p>
+      </div>
       {% if current_admin_can_manage_designs and design_enabled %}
-      <div class="flex items-center gap-1 bg-zinc-900/50 rounded-lg p-0.5 border border-zinc-800">
+      <div class="flex items-center gap-1 bg-zinc-900/60 rounded-xl p-1 border border-zinc-800 shadow-sm shadow-black/30">
         <button type="button" class="design-filter-btn px-3 py-1.5 rounded-md text-xs font-medium transition"
                 data-filter="all">All</button>
         <button type="button" class="design-filter-btn px-3 py-1.5 rounded-md text-xs font-medium transition"

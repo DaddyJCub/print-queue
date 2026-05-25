@@ -18,6 +18,19 @@
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
   <meta name="view-transition" content="same-origin" />
 
+  <script>
+    // Apply UI experience mode early to avoid flash on page load.
+    (function() {
+      try {
+        if (localStorage.getItem('ui_experience_mode') === 'new') {
+          document.documentElement.classList.add('ui-exp-new');
+        }
+      } catch (e) {
+        // Ignore storage errors and keep default experience.
+      }
+    })();
+  </script>
+
   <!-- Production Tailwind CSS (tree-shaken, minified) — replaces Play CDN -->
   <link rel="preload" href="/static/css/tailwind.css" as="style" />
   <link rel="stylesheet" href="/static/css/tailwind.css" />
@@ -57,6 +70,11 @@
     .nav-item { color: #71717a; transition: color 0.15s; }
     .nav-item.active { color: #818cf8; }
     .nav-item:active { transform: scale(0.92); }
+    .ui-exp-new .bottom-nav .nav-item span {
+      font-size: 0.75rem;
+      line-height: 1rem;
+      font-weight: 500;
+    }
     /* Tap / interactions */
     .tap-highlight { -webkit-tap-highlight-color: transparent; }
     .tap-highlight:active { transform: scale(0.97); }
@@ -371,6 +389,23 @@
                   <p class="text-xs text-zinc-500">Suggestions & bug reports</p>
                 </div>
               </a>
+
+              <div class="mt-1 border-t border-zinc-800/80 pt-3 px-3 pb-2">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium text-zinc-200">Try the new UI experience</p>
+                    <p class="text-xs text-zinc-500">Opt-in iterative layout and readability improvements.</p>
+                  </div>
+                  <button id="ui-experience-toggle"
+                          type="button"
+                          role="switch"
+                          aria-checked="false"
+                          class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors bg-zinc-700"
+                          onclick="toggleUiExperienceMode()">
+                    <span id="ui-experience-toggle-dot" class="inline-block h-5 w-5 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-1"></span>
+                  </button>
+                </div>
+              </div>
             </div>
             
             <!-- Admin Section (shown if admin) -->
@@ -581,6 +616,50 @@
       }
     }
     checkUserSession();
+
+    function getUiExperienceMode() {
+      try {
+        return localStorage.getItem('ui_experience_mode') === 'new';
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function applyUiExperienceMode(enabled) {
+      document.documentElement.classList.toggle('ui-exp-new', !!enabled);
+      const toggle = document.getElementById('ui-experience-toggle');
+      const dot = document.getElementById('ui-experience-toggle-dot');
+      if (toggle && dot) {
+        toggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
+        toggle.classList.toggle('bg-indigo-600', !!enabled);
+        toggle.classList.toggle('bg-zinc-700', !enabled);
+        dot.classList.toggle('translate-x-6', !!enabled);
+        dot.classList.toggle('translate-x-1', !enabled);
+        dot.classList.toggle('bg-white', !!enabled);
+        dot.classList.toggle('bg-zinc-400', !enabled);
+      }
+    }
+
+    function setUiExperienceMode(enabled) {
+      try {
+        localStorage.setItem('ui_experience_mode', enabled ? 'new' : 'classic');
+      } catch (e) {
+        // Ignore storage errors and proceed with class toggle.
+      }
+      applyUiExperienceMode(enabled);
+      window.location.reload();
+    }
+
+    function toggleUiExperienceMode() {
+      setUiExperienceMode(!getUiExperienceMode());
+    }
+
+    // Sync toggle state once the DOM and account menu are available.
+    document.addEventListener('DOMContentLoaded', () => {
+      applyUiExperienceMode(getUiExperienceMode());
+    });
+
+    window.toggleUiExperienceMode = toggleUiExperienceMode;
     
     // Global account menu toggle with accessibility
     function toggleGlobalAccountMenu() {

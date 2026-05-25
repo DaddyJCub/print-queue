@@ -109,7 +109,7 @@
       </div>
 
       <!-- Mobile Menu Button -->
-      <button id="mobile-menu-btn" class="lg:hidden p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition" onclick="toggleMobileMenu()">
+      <button id="mobile-menu-btn" class="lg:hidden p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition" onclick="toggleMobileMenu()" aria-label="Toggle admin menu" aria-expanded="false" aria-controls="mobile-menu" type="button">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
         </svg>
@@ -179,11 +179,11 @@
 <!-- Mobile Bottom Nav -->
 <nav class="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-lg border-t border-zinc-800 lg:hidden" style="padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);">
   <div class="grid grid-cols-5 gap-1 px-2 pt-2">
-    <a href="/admin"           class="admin-bnav-item {% if active_page == 'queue' %}active{% endif %}"><span class="text-lg">📋</span><span class="text-[10px]">Queue</span></a>
-    <a href="/admin/analytics" class="admin-bnav-item {% if active_page == 'analytics' %}active{% endif %}"><span class="text-lg">📊</span><span class="text-[10px]">Stats</span></a>
-    <a href="/admin/store"     class="admin-bnav-item {% if active_page == 'store' %}active{% endif %}"><span class="text-lg">🏪</span><span class="text-[10px]">Store</span></a>
-    <a href="/admin/feedback"  class="admin-bnav-item {% if active_page == 'feedback' %}active{% endif %}"><span class="text-lg">📬</span><span class="text-[10px]">Feedback</span></a>
-    <button onclick="toggleMobileMenu()" class="admin-bnav-item text-zinc-400"><span class="text-lg">☰</span><span class="text-[10px]">More</span></button>
+    <a href="/admin"           class="admin-bnav-item {% if active_page == 'queue' %}active{% endif %}"><span class="text-lg">📋</span><span class="text-xs">Queue</span></a>
+    <a href="/admin/analytics" class="admin-bnav-item {% if active_page == 'analytics' %}active{% endif %}"><span class="text-lg">📊</span><span class="text-xs">Stats</span></a>
+    <a href="/admin/store"     class="admin-bnav-item {% if active_page == 'store' %}active{% endif %}"><span class="text-lg">🏪</span><span class="text-xs">Store</span></a>
+    <a href="/admin/feedback"  class="admin-bnav-item {% if active_page == 'feedback' %}active{% endif %}"><span class="text-lg">📬</span><span class="text-xs">Feedback</span></a>
+    <button id="mobile-menu-more-btn" onclick="toggleMobileMenu()" class="admin-bnav-item text-zinc-400" aria-label="Toggle admin menu" aria-expanded="false" aria-controls="mobile-menu" type="button"><span class="text-lg">☰</span><span class="text-xs">More</span></button>
   </div>
 </nav>
 
@@ -232,7 +232,12 @@
 
 <script>
 function toggleMobileMenu() {
-  document.getElementById('mobile-menu').classList.toggle('hidden');
+  const menu = document.getElementById('mobile-menu');
+  if (!menu) return;
+  menu.classList.toggle('hidden');
+  const expanded = !menu.classList.contains('hidden');
+  document.getElementById('mobile-menu-btn')?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  document.getElementById('mobile-menu-more-btn')?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
 }
 function toggleAdminAccountMenu() {
   document.getElementById('admin-account-dropdown').classList.toggle('hidden');

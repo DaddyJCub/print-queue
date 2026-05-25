@@ -51,6 +51,31 @@
   .color-swatch:hover {
     transform: scale(1.2);
   }
+  .ui-exp-new .color-swatch {
+    width: 2rem;
+    height: 2rem;
+    border-width: 2px;
+  }
+  .ui-exp-new .color-swatch:hover {
+    transform: scale(1.1);
+  }
+  .ui-exp-new .color-swatch[data-selected="true"] {
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.75), 0 0 0 4px rgba(255, 255, 255, 0.15);
+  }
+  .ui-exp-new .color-swatch:focus-visible {
+    outline: 2px solid rgba(99, 102, 241, 0.9);
+    outline-offset: 2px;
+  }
+  .ui-exp-new #file-drop-zone {
+    padding-top: 2.25rem;
+    padding-bottom: 2.25rem;
+    border-color: rgba(99, 102, 241, 0.35);
+    background: linear-gradient(180deg, rgba(24, 24, 27, 0.65), rgba(24, 24, 27, 0.35));
+  }
+  .ui-exp-new #submit-btn {
+    min-height: 3.5rem;
+    letter-spacing: 0.01em;
+  }
   
   @media (prefers-reduced-motion: reduce) {
     .printer-icon, .confetti { animation: none !important; }
@@ -593,21 +618,28 @@
     <!-- Quick color picker -->
     <div class="mt-2 flex flex-wrap gap-1.5">
       <span class="text-xs text-zinc-500 mr-1">Quick pick:</span>
-      <button type="button" onclick="addColor('Black')" class="color-swatch w-6 h-6 rounded-full bg-zinc-900 border-2 border-zinc-600 hover:border-white" title="Black"></button>
-      <button type="button" onclick="addColor('White')" class="color-swatch w-6 h-6 rounded-full bg-white border-2 border-zinc-400 hover:border-indigo-400" title="White"></button>
-      <button type="button" onclick="addColor('Red')" class="color-swatch w-6 h-6 rounded-full bg-red-500 border-2 border-red-400 hover:border-white" title="Red"></button>
-      <button type="button" onclick="addColor('Blue')" class="color-swatch w-6 h-6 rounded-full bg-blue-500 border-2 border-blue-400 hover:border-white" title="Blue"></button>
-      <button type="button" onclick="addColor('Green')" class="color-swatch w-6 h-6 rounded-full bg-green-500 border-2 border-green-400 hover:border-white" title="Green"></button>
-      <button type="button" onclick="addColor('Yellow')" class="color-swatch w-6 h-6 rounded-full bg-yellow-400 border-2 border-yellow-300 hover:border-white" title="Yellow"></button>
-      <button type="button" onclick="addColor('Orange')" class="color-swatch w-6 h-6 rounded-full bg-orange-500 border-2 border-orange-400 hover:border-white" title="Orange"></button>
-      <button type="button" onclick="addColor('Purple')" class="color-swatch w-6 h-6 rounded-full bg-purple-500 border-2 border-purple-400 hover:border-white" title="Purple"></button>
-      <button type="button" onclick="addColor('Pink')" class="color-swatch w-6 h-6 rounded-full bg-pink-400 border-2 border-pink-300 hover:border-white" title="Pink"></button>
-      <button type="button" onclick="addColor('Gray')" class="color-swatch w-6 h-6 rounded-full bg-gray-400 border-2 border-gray-300 hover:border-white" title="Gray"></button>
+      <button type="button" onclick="addColor('Black', this)" class="color-swatch w-6 h-6 rounded-full bg-zinc-900 border-2 border-zinc-600 hover:border-white" title="Black" aria-label="Add black color"></button>
+      <button type="button" onclick="addColor('White', this)" class="color-swatch w-6 h-6 rounded-full bg-white border-2 border-zinc-400 hover:border-indigo-400" title="White" aria-label="Add white color"></button>
+      <button type="button" onclick="addColor('Red', this)" class="color-swatch w-6 h-6 rounded-full bg-red-500 border-2 border-red-400 hover:border-white" title="Red" aria-label="Add red color"></button>
+      <button type="button" onclick="addColor('Blue', this)" class="color-swatch w-6 h-6 rounded-full bg-blue-500 border-2 border-blue-400 hover:border-white" title="Blue" aria-label="Add blue color"></button>
+      <button type="button" onclick="addColor('Green', this)" class="color-swatch w-6 h-6 rounded-full bg-green-500 border-2 border-green-400 hover:border-white" title="Green" aria-label="Add green color"></button>
+      <button type="button" onclick="addColor('Yellow', this)" class="color-swatch w-6 h-6 rounded-full bg-yellow-400 border-2 border-yellow-300 hover:border-white" title="Yellow" aria-label="Add yellow color"></button>
+      <button type="button" onclick="addColor('Orange', this)" class="color-swatch w-6 h-6 rounded-full bg-orange-500 border-2 border-orange-400 hover:border-white" title="Orange" aria-label="Add orange color"></button>
+      <button type="button" onclick="addColor('Purple', this)" class="color-swatch w-6 h-6 rounded-full bg-purple-500 border-2 border-purple-400 hover:border-white" title="Purple" aria-label="Add purple color"></button>
+      <button type="button" onclick="addColor('Pink', this)" class="color-swatch w-6 h-6 rounded-full bg-pink-400 border-2 border-pink-300 hover:border-white" title="Pink" aria-label="Add pink color"></button>
+      <button type="button" onclick="addColor('Gray', this)" class="color-swatch w-6 h-6 rounded-full bg-gray-400 border-2 border-gray-300 hover:border-white" title="Gray" aria-label="Add gray color"></button>
     </div>
   </div>
   </div>
   <script>
-    function addColor(color) {
+    function markColorSwatch(buttonEl) {
+      if (!document.documentElement.classList.contains('ui-exp-new')) return;
+      document.querySelectorAll('.color-swatch').forEach((swatch) => {
+        swatch.setAttribute('data-selected', swatch === buttonEl ? 'true' : 'false');
+      });
+    }
+
+    function addColor(color, buttonEl) {
       const input = document.getElementById('colors-input');
       const current = input.value.trim();
       if (current) {
@@ -618,6 +650,9 @@
         }
       } else {
         input.value = color;
+      }
+      if (buttonEl) {
+        markColorSwatch(buttonEl);
       }
       input.focus();
     }
@@ -663,7 +698,7 @@
         </button>
       </div>
     </div>
-    <input id="file-input" name="upload" type="file" accept=".stl,.3mf,.obj,.gcode,.step,.stp,.fpp,.zip" class="hidden" multiple onchange="handleFileSelect(this)" />
+    <input id="file-input" name="upload" type="file" accept=".stl,.3mf,.obj,.gcode,.step,.stp,.fpp,.zip" class="sr-only" multiple onchange="handleFileSelect(this)" />
     <p class="text-xs text-zinc-500 mt-2">You must provide either a link or file upload. Multiple files supported.</p>
   </div>
 
