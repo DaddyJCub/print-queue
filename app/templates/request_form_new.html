@@ -60,17 +60,20 @@
     transform: scale(1.1);
   }
   .ui-exp-new .color-swatch[data-selected="true"] {
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.75), 0 0 0 4px rgba(255, 255, 255, 0.15);
+    box-shadow: none;
+    border-color: #ffffff;
+    outline: 1px solid #ffffff;
+    outline-offset: 2px;
   }
   .ui-exp-new .color-swatch:focus-visible {
-    outline: 2px solid rgba(99, 102, 241, 0.9);
+    outline: 2px solid #ffffff;
     outline-offset: 2px;
   }
   .ui-exp-new #file-drop-zone {
     padding-top: 2.25rem;
     padding-bottom: 2.25rem;
-    border-color: rgba(99, 102, 241, 0.35);
-    background: linear-gradient(180deg, rgba(24, 24, 27, 0.65), rgba(24, 24, 27, 0.35));
+    border-color: #262626;
+    background: #111111;
   }
   .ui-exp-new #submit-btn {
     min-height: 3.5rem;
@@ -81,64 +84,139 @@
     margin-right: 0;
     margin-top: 0;
     padding: 1.25rem;
-    border-radius: 1rem;
-    border: 1px solid rgba(99, 102, 241, 0.25);
-    background: linear-gradient(150deg, rgba(30, 41, 59, 0.35), rgba(24, 24, 27, 0.94));
+    border-radius: 0.5rem;
+    border: 1px solid #262626;
+    background: #111111;
   }
   .ui-exp-new #request-hero .absolute {
-    opacity: 0.55;
+    display: none;
+  }
+  .ui-exp-new .printer-icon {
+    animation: none;
   }
   .ui-exp-new #request-form {
-    border-color: rgba(99, 102, 241, 0.28);
-    background: linear-gradient(180deg, rgba(39, 39, 42, 0.85), rgba(17, 24, 39, 0.68));
-    box-shadow: 0 24px 42px -34px rgba(99, 102, 241, 0.85);
+    border-color: #262626;
+    background: #111111;
+    box-shadow: none;
+    display: grid;
+    gap: 1rem;
+    border-radius: 0.5rem;
+  }
+  .ui-exp-new #request-summary-rail {
+    display: none;
+    border: 1px solid #262626;
+    background: #111111;
+    border-radius: 0.5rem;
+    padding: 1rem;
+  }
+  .ui-exp-new #request-summary-rail .summary-state {
+    font-size: 0.75rem;
+    color: #a1a1aa;
+    border: 1px solid #262626;
+    background: #171717;
+    border-radius: 999px;
+    padding: 0.15rem 0.5rem;
+  }
+  .ui-exp-new #request-summary-rail .summary-state.complete {
+    color: #ffffff;
+    border-color: #3f3f46;
+    background: #262626;
+  }
+  .ui-exp-new #request-summary-rail a {
+    color: #d4d4d8;
+    text-decoration: none;
+  }
+  .ui-exp-new #request-summary-rail a:hover {
+    color: #ffffff;
+  }
+  @media (min-width: 1280px) {
+    .ui-exp-new #request-form {
+      grid-template-columns: minmax(0, 1fr) 18.5rem;
+      align-items: start;
+    }
+    .ui-exp-new #request-form > :not(#request-summary-rail) {
+      grid-column: 1;
+    }
+    .ui-exp-new #request-summary-rail {
+      display: block;
+      grid-column: 2;
+      grid-row: 1 / span 16;
+      position: sticky;
+      top: calc(var(--safe-area-top, 0px) + 5rem);
+    }
   }
   .ui-exp-new #request-form > .pb-4 {
     padding: 1rem;
-    border: 1px solid rgba(82, 82, 91, 0.8);
-    border-radius: 1rem;
-    background: linear-gradient(180deg, rgba(24, 24, 27, 0.55), rgba(24, 24, 27, 0.24));
+    border: 1px solid #262626;
+    border-radius: 0.5rem;
+    background: #111111;
+    border-left: 3px solid #303030;
   }
   .ui-exp-new #request-form > .pb-4 h2 {
-    font-size: 0.75rem;
-    color: #c4b5fd;
+    font-size: 0.78rem;
+    color: #d4d4d8;
     letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
   .ui-exp-new #request-form label {
-    font-size: 0.8rem;
+    font-size: 0.83rem;
     letter-spacing: 0.01em;
-    color: #d4d4d8;
+    color: #e4e4e7;
   }
   .ui-exp-new #request-form input,
   .ui-exp-new #request-form select,
   .ui-exp-new #request-form textarea {
     min-height: 2.95rem;
-    border-color: rgba(82, 82, 91, 0.95);
-    background-color: rgba(9, 9, 11, 0.9);
+    border-color: #262626;
+    background-color: #0b0b0b;
   }
   .ui-exp-new #request-form textarea {
     min-height: 6.5rem;
+  }
+  .ui-exp-new.ui-mode-compact #request-form {
+    gap: 0.75rem;
+  }
+  .ui-exp-new.ui-mode-compact #request-summary-rail {
+    padding: 0.75rem;
+  }
+  .ui-exp-new.ui-mode-compact #request-form > .pb-4,
+  .ui-exp-new.ui-mode-compact #section-rush,
+  .ui-exp-new.ui-mode-compact #submit-row {
+    padding: 0.75rem;
+  }
+  .ui-exp-new.ui-mode-compact #request-form input,
+  .ui-exp-new.ui-mode-compact #request-form select,
+  .ui-exp-new.ui-mode-compact #request-form textarea {
+    min-height: 2.55rem;
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+  }
+  .ui-exp-new.ui-mode-compact #request-form textarea {
+    min-height: 5.25rem;
   }
   .ui-exp-new #request-form .text-zinc-500 {
     color: #9ca3af;
   }
   .ui-exp-new #submit-btn {
     min-height: 3.8rem;
-    border: 1px solid rgba(129, 140, 248, 0.35);
-    box-shadow: 0 16px 28px -18px rgba(79, 70, 229, 0.85);
+    border: 1px solid #ffffff;
+    background: #ffffff;
+    color: #0b0b0b;
+    box-shadow: none;
   }
   .ui-exp-new #submit-text {
     font-size: 1.06rem;
     font-weight: 800;
+    color: #0b0b0b;
   }
   .ui-exp-new #upload-progress-wrap {
     position: sticky;
     bottom: calc(var(--safe-area-bottom, 0px) + 0.5rem);
     z-index: 10;
     padding: 0.5rem 0.625rem;
-    border-radius: 0.75rem;
-    background: rgba(24, 24, 27, 0.92);
-    border: 1px solid rgba(63, 63, 70, 0.8);
+    border-radius: 0.5rem;
+    background: #111111;
+    border: 1px solid #262626;
   }
   
   @media (prefers-reduced-motion: reduce) {
@@ -478,7 +556,7 @@
 
 <!-- Request Form -->
 <form id="request-form" action="/submit" method="POST" enctype="multipart/form-data" 
-      class="space-y-5 bg-gradient-to-b from-zinc-900/80 to-zinc-900/40 border border-zinc-700/50 rounded-2xl p-5 sm:p-6 shadow-xl"
+  class="space-y-5 bg-zinc-900 border border-zinc-800 rounded-xl p-5 sm:p-6"
       data-loading="Submitting...">
   
   <!-- Anti-bot honeypot — hidden from real users, bots auto-fill it -->
@@ -488,8 +566,40 @@
   </div>
   <input type="hidden" name="uploaded_file_ids_json" id="uploaded-file-ids-json" value="" />
 
+  <aside id="request-summary-rail" aria-label="Request summary rail">
+    <h3 class="text-sm font-semibold text-zinc-200 mb-3">Request Checklist</h3>
+    <ul class="space-y-2">
+      <li class="flex items-center justify-between gap-3">
+        <a href="#section-contact" class="text-sm">Contact Info</a>
+        <span id="summary-contact" class="summary-state">Missing</span>
+      </li>
+      <li class="flex items-center justify-between gap-3">
+        <a href="#section-delivery" class="text-sm">Delivery</a>
+        <span id="summary-delivery" class="summary-state">Pending</span>
+      </li>
+      <li class="flex items-center justify-between gap-3">
+        <a href="#section-details" class="text-sm">Print Details</a>
+        <span id="summary-details" class="summary-state">Missing</span>
+      </li>
+      <li class="flex items-center justify-between gap-3">
+        <a href="#section-files" class="text-sm">Files or Link</a>
+        <span id="summary-assets" class="summary-state">Missing</span>
+      </li>
+    </ul>
+    <div class="mt-4 pt-3 border-t border-zinc-800 text-xs text-zinc-500">
+      Use the numbered panels to complete required fields before submission.
+    </div>
+    <div class="mt-3 flex items-center justify-between gap-3">
+      <button type="button" id="request-density-toggle" onclick="toggleRequestDensity(this)"
+              class="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-[11px] uppercase tracking-wide text-zinc-300 hover:border-zinc-500 hover:text-white transition">
+        Dense Mode: Off
+      </button>
+      <span class="text-[11px] text-zinc-500">Alt+1..4 jump · Ctrl+Enter submit</span>
+    </div>
+  </aside>
+
   <!-- Section: Your Info -->
-  <div class="pb-4 border-b border-zinc-800">
+  <div id="section-contact" class="pb-4 border-b border-zinc-800">
     <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
       <span class="w-6 h-6 rounded-lg bg-indigo-600/30 flex items-center justify-center text-indigo-400 text-xs">1</span>
       Your Info
@@ -511,7 +621,7 @@
         Email
         {% if user %}<span class="text-emerald-400 text-xs ml-1">● from profile</span>{% endif %}
       </label>
-      <input name="requester_email" type="email" required
+      <input name="requester_email" id="requester-email" type="email" required
              value="{{ (form.requester_email if form is defined else '') }}"
              class="w-full rounded-xl bg-zinc-950 border {% if user %}border-emerald-600/50 ring-1 ring-emerald-600/20{% else %}border-zinc-700{% endif %} focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
     </div>
@@ -520,7 +630,7 @@
 
   {% if shipping_enabled %}
   <!-- Section: Delivery -->
-  <div class="pb-4 border-b border-zinc-800">
+  <div id="section-delivery" class="pb-4 border-b border-zinc-800">
     <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
       <span class="w-6 h-6 rounded-lg bg-indigo-600/30 flex items-center justify-center text-indigo-400 text-xs">2</span>
       Delivery
@@ -619,7 +729,7 @@
   {% endif %}
 
   <!-- Section: Print Details -->
-  <div class="pb-4 border-b border-zinc-800">
+  <div id="section-details" class="pb-4 border-b border-zinc-800">
     <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
       <span class="w-6 h-6 rounded-lg bg-indigo-600/30 flex items-center justify-center text-indigo-400 text-xs">{% if shipping_enabled %}3{% else %}2{% endif %}</span>
       Print Details
@@ -723,7 +833,7 @@
   </script>
 
   <!-- Section: Files & Notes -->
-  <div class="pb-4 border-b border-zinc-800">
+  <div id="section-files" class="pb-4 border-b border-zinc-800">
     <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
       <span class="w-6 h-6 rounded-lg bg-indigo-600/30 flex items-center justify-center text-indigo-400 text-xs">{% if shipping_enabled %}4{% else %}3{% endif %}</span>
       Files & Notes
@@ -783,7 +893,7 @@
 
   <!-- Priority Rush -->
   {% if rush_settings and rush_settings.enabled %}
-  <div class="bg-gradient-to-r from-amber-900/40 to-orange-900/30 border border-amber-600/50 rounded-2xl p-5 shadow-lg shadow-amber-900/20">
+  <div id="section-rush" class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
     <label class="flex items-start gap-4 cursor-pointer tap-highlight">
       <input type="checkbox" name="rush_request" id="rush-checkbox" value="1" 
              {% if form is defined and form.rush_request %}checked{% endif %}
@@ -881,8 +991,8 @@
   {% endif %}
 
   <!-- Submit -->
-  <div class="flex gap-3 pt-4">
-    <button type="submit" id="submit-btn" class="flex-1 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 active:from-indigo-700 active:to-indigo-600 transition py-4 text-lg font-bold tap-highlight flex items-center justify-center gap-2 shadow-xl shadow-indigo-900/30">
+  <div id="submit-row" class="flex gap-3 pt-4 border-t border-zinc-800">
+    <button type="submit" id="submit-btn" class="flex-1 rounded-xl bg-white hover:bg-zinc-200 active:bg-zinc-300 transition py-4 text-lg font-bold tap-highlight flex items-center justify-center gap-2 text-zinc-900">
       <span id="submit-text">🖨️ Submit Request</span>
       <svg id="submit-spinner" class="hidden w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -1188,10 +1298,67 @@
     '.step': '⚙️', '.stp': '⚙️', '.fpp': '🖨️', '.zip': '📁'
   };
   const REQUEST_DRAFT_KEY = 'printellect_request_draft_v1';
+  const REQUEST_DENSITY_KEY = 'request_form_density';
   const HAS_USER_SESSION = {{ "true" if user else "false" }};
   const CHUNK_UPLOAD_FALLBACK_BYTES = 8 * 1024 * 1024;
   let chunkUploadCacheKey = null;
   let chunkUploadCachedIds = [];
+
+  function applyRequestDensity(mode) {
+    const compact = mode === 'compact';
+    document.documentElement.classList.toggle('ui-mode-compact', compact);
+    const btn = document.getElementById('request-density-toggle');
+    if (btn) btn.textContent = compact ? 'Dense Mode: On' : 'Dense Mode: Off';
+  }
+
+  function toggleRequestDensity(buttonEl) {
+    const compact = !document.documentElement.classList.contains('ui-mode-compact');
+    const mode = compact ? 'compact' : 'default';
+    localStorage.setItem(REQUEST_DENSITY_KEY, mode);
+    applyRequestDensity(mode);
+    if (buttonEl && typeof buttonEl.blur === 'function') buttonEl.blur();
+  }
+
+  function bindRequestKeyboardShortcuts() {
+    document.addEventListener('keydown', function(event) {
+      const target = event.target;
+      const isTyping = target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      );
+
+      if (event.ctrlKey && event.key === 'Enter') {
+        const form = document.getElementById('request-form');
+        if (form) form.requestSubmit();
+        return;
+      }
+
+      if (isTyping || !event.altKey) return;
+
+      const sectionMap = {
+        '1': 'section-contact',
+        '2': 'section-delivery',
+        '3': 'section-details',
+        '4': 'section-files'
+      };
+      if (event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        toggleRequestDensity(null);
+        return;
+      }
+
+      const targetId = sectionMap[event.key];
+      if (!targetId) return;
+      event.preventDefault();
+      const section = document.getElementById(targetId);
+      if (section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        section.querySelector('input, select, textarea, button')?.focus({ preventScroll: true });
+      }
+    });
+  }
 
   function resetUploadedFileCache() {
     chunkUploadCacheKey = null;
@@ -1639,7 +1806,9 @@
     const progressLabel = document.getElementById('upload-progress-label');
     const progressBytes = document.getElementById('upload-progress-bytes');
 
-    launchConfetti();
+    if (!document.documentElement.classList.contains('ui-exp-new')) {
+      launchConfetti();
+    }
     localStorage.removeItem(REQUEST_DRAFT_KEY);
 
     btn.disabled = true;
@@ -1711,6 +1880,39 @@
 
   // Init
   document.addEventListener('DOMContentLoaded', function() {
+    function updateRequestSummaryRail() {
+      const summaryContact = document.getElementById('summary-contact');
+      const summaryDelivery = document.getElementById('summary-delivery');
+      const summaryDetails = document.getElementById('summary-details');
+      const summaryAssets = document.getElementById('summary-assets');
+      if (!summaryContact || !summaryDelivery || !summaryDetails || !summaryAssets) return;
+
+      const name = (document.getElementById('requester-name')?.value || '').trim();
+      const email = (document.getElementById('requester-email')?.value || '').trim();
+      const delivery = document.querySelector('input[name="fulfillment_method"]:checked')?.value || 'pickup';
+      const printName = (document.querySelector('input[name="print_name"]')?.value || '').trim();
+      const colors = (document.getElementById('colors-input')?.value || '').trim();
+      const link = (document.querySelector('input[name="link_url"]')?.value || '').trim();
+      const files = document.getElementById('file-input')?.files?.length || 0;
+      const preparedFiles = (document.getElementById('uploaded-file-ids-json')?.value || '').trim().length > 0;
+
+      const contactDone = !!(name && email);
+      const detailsDone = !!(printName && colors);
+      const assetsDone = !!(link || files > 0 || preparedFiles);
+
+      summaryContact.textContent = contactDone ? 'Complete' : 'Missing';
+      summaryContact.classList.toggle('complete', contactDone);
+
+      summaryDelivery.textContent = delivery === 'shipping' ? 'Shipping' : 'Pickup';
+      summaryDelivery.classList.add('complete');
+
+      summaryDetails.textContent = detailsDone ? 'Complete' : 'Missing';
+      summaryDetails.classList.toggle('complete', detailsDone);
+
+      summaryAssets.textContent = assetsDone ? 'Ready' : 'Missing';
+      summaryAssets.classList.toggle('complete', assetsDone);
+    }
+
     restoreRequestDraft();
     toggleShippingFields();
     toggleRushPayment();
@@ -1727,8 +1929,13 @@
       form.querySelectorAll('input, textarea, select').forEach((el) => {
         el.addEventListener('change', saveRequestDraft);
         el.addEventListener('input', saveRequestDraft);
+        el.addEventListener('change', updateRequestSummaryRail);
+        el.addEventListener('input', updateRequestSummaryRail);
       });
     }
+    applyRequestDensity(localStorage.getItem(REQUEST_DENSITY_KEY) || 'default');
+    bindRequestKeyboardShortcuts();
+    updateRequestSummaryRail();
   });
 </script>
 

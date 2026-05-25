@@ -34,7 +34,7 @@
   .ui-exp-new #my-prints-page-header {
     padding-bottom: 0.85rem;
     margin-bottom: 1rem;
-    border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+    border-bottom: 1px solid #262626;
   }
   .ui-exp-new #my-prints-page-header h1 {
     letter-spacing: 0.01em;
@@ -42,16 +42,22 @@
   .ui-exp-new #my-prints-page-header p {
     color: #a1a1aa;
   }
+  .ui-exp-new .sticky.top-14.z-30 {
+    border-bottom-color: #262626;
+    background: #111111;
+    backdrop-filter: none;
+  }
   .ui-exp-new .request-item {
     border-width: 1px;
-    border-color: rgba(99, 102, 241, 0.28);
-    box-shadow: 0 20px 34px -28px rgba(99, 102, 241, 0.85);
-    background: linear-gradient(180deg, rgba(39, 39, 42, 0.78), rgba(24, 24, 27, 0.72));
-    backdrop-filter: blur(2px);
+    border-color: #262626;
+    box-shadow: none;
+    background: #111111;
+    backdrop-filter: none;
   }
   .ui-exp-new .request-item:hover {
-    border-color: rgba(129, 140, 248, 0.45);
-    transform: translateY(-1px);
+    border-color: #3f3f46;
+    background: #171717;
+    transform: none;
   }
   .ui-exp-new .request-item h3 {
     font-weight: 700;
@@ -64,12 +70,60 @@
     font-weight: 600;
   }
   .ui-exp-new .rounded-full.bg-zinc-800.text-zinc-400.font-medium {
-    background-color: rgba(39, 39, 42, 0.9);
-    color: #c4b5fd;
-    border: 1px solid rgba(99, 102, 241, 0.28);
+    background-color: #171717;
+    color: #d4d4d8;
+    border: 1px solid #262626;
   }
   .ui-exp-new .card-interactive {
-    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+  }
+  .ui-exp-new #my-prints-filter-rail {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    padding: 0.6rem;
+    border: 1px solid #262626;
+    border-radius: 0.5rem;
+    background: #111111;
+    overflow-x: auto;
+  }
+  .ui-exp-new #my-prints-filter-rail .lane-filter-btn {
+    flex-shrink: 0;
+    border: 1px solid #262626;
+    border-radius: 999px;
+    background: #171717;
+    color: #d4d4d8;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 0.35rem 0.7rem;
+  }
+  .ui-exp-new #my-prints-filter-rail .lane-filter-btn.active {
+    background: #ffffff;
+    color: #09090b;
+    border-color: #ffffff;
+  }
+  .ui-exp-new .lane-section-title {
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #a1a1aa;
+  }
+  .ui-exp-new.ui-mode-compact .request-item {
+    padding: 0.75rem !important;
+    border-radius: 0.75rem;
+  }
+  .ui-exp-new.ui-mode-compact .request-item h3 {
+    font-size: 0.92rem;
+  }
+  .ui-exp-new.ui-mode-compact .request-item .text-xs {
+    font-size: 0.68rem;
+  }
+  .ui-exp-new #my-prints-density-toggle.active {
+    background: #ffffff;
+    color: #09090b;
+    border-color: #ffffff;
   }
 </style>
 {% endblock %}
@@ -642,11 +696,22 @@
 } %}
 
 {% if requests_list %}
+  <div id="my-prints-filter-rail" aria-label="My prints lanes">
+    <button type="button" class="lane-filter-btn active" data-lane-filter="all" onclick="applyRequestLaneFilter('all', this)">All</button>
+    <button type="button" class="lane-filter-btn" data-lane-filter="printing" onclick="applyRequestLaneFilter('printing', this)">Printing</button>
+    <button type="button" class="lane-filter-btn" data-lane-filter="queue" onclick="applyRequestLaneFilter('queue', this)">Queue</button>
+    <button type="button" class="lane-filter-btn" data-lane-filter="completed" onclick="applyRequestLaneFilter('completed', this)">Completed</button>
+    <button type="button" class="lane-filter-btn" data-lane-filter="past" onclick="applyRequestLaneFilter('past', this)">Past</button>
+    <button type="button" id="my-prints-density-toggle" class="lane-filter-btn ml-auto" onclick="toggleMyPrintsDensity(this)">Dense: Off</button>
+    <span class="self-center text-[11px] text-zinc-500">1-5 lanes · C density</span>
+  </div>
+
   <!-- Done prints -->
   {% set done_requests = requests_list | selectattr('status', 'equalto', 'DONE') | list %}
   {% if done_requests %}
-  <div class="mb-5">
+  <div id="done-section" class="mb-5" data-lane="completed">
     <div class="flex items-center gap-2 mb-3">
+      <span class="lane-section-title mr-1">Lane</span>
       <div class="w-6 h-6 rounded-lg bg-emerald-600/20 flex items-center justify-center">
         <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
       </div>
@@ -707,8 +772,9 @@
   <!-- Currently printing (includes both PRINTING and IN_PROGRESS with active builds) -->
   {% set printing_requests = requests_list | selectattr('status', 'in', ['PRINTING', 'IN_PROGRESS']) | list %}
   {% if printing_requests %}
-  <div class="mb-5">
+  <div id="printing-section" class="mb-5" data-lane="printing">
     <div class="flex items-center gap-2 mb-3">
+      <span class="lane-section-title mr-1">Lane</span>
       <div class="w-6 h-6 rounded-lg bg-indigo-600/20 flex items-center justify-center">
         <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17H7a2 2 0 01-2-2V5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2z"/></svg>
       </div>
@@ -779,8 +845,9 @@
   
   <!-- Active Requests (NEW, NEEDS_INFO, APPROVED) -->
   {% if active_requests %}
-  <div class="mb-5">
+  <div id="active-section" class="mb-5" data-lane="queue">
     <div class="flex items-center gap-2 mb-3">
+      <span class="lane-section-title mr-1">Lane</span>
       <div class="w-6 h-6 rounded-lg bg-zinc-700/50 flex items-center justify-center">
         <svg class="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h7"/></svg>
       </div>
@@ -836,8 +903,9 @@
   
   <!-- Closed Requests (PICKED_UP, REJECTED, CANCELLED) - Collapsible -->
   {% if closed_requests %}
-  <details class="mb-5 group">
+  <details id="closed-section" class="mb-5 group" data-lane="past">
     <summary class="flex items-center gap-2 mb-2 cursor-pointer list-none py-1">
+      <span class="lane-section-title mr-1">Lane</span>
       <div class="w-6 h-6 rounded-lg bg-zinc-800 flex items-center justify-center">
         <svg class="w-3.5 h-3.5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/></svg>
       </div>
@@ -932,6 +1000,7 @@
 const token = '{{ token }}';
 const email = '{{ email }}';
 let VAPID_PUBLIC_KEY = '';
+const MY_PRINTS_DENSITY_KEY = 'my_prints_density';
 
 // Save token for persistent login
 if (token) {
@@ -957,6 +1026,78 @@ function toggleShowMore(listId, btn) {
     });
     btn.textContent = btn.textContent.replace('Show less ▲', `Show ${items.length - keepCount} more ▼`);
   }
+}
+
+function applyRequestLaneFilter(filter, buttonEl) {
+  const laneMap = {
+    all: ['done-section', 'printing-section', 'active-section', 'closed-section'],
+    printing: ['printing-section'],
+    queue: ['active-section'],
+    completed: ['done-section'],
+    past: ['closed-section']
+  };
+  const visible = laneMap[filter] || laneMap.all;
+  laneMap.all.forEach((id) => {
+    const section = document.getElementById(id);
+    if (!section) return;
+    section.classList.toggle('hidden', !visible.includes(id));
+  });
+  document.querySelectorAll('#my-prints-filter-rail .lane-filter-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.laneFilter === filter);
+  });
+  localStorage.setItem('my_prints_lane_filter', filter);
+  if (buttonEl && typeof buttonEl.blur === 'function') buttonEl.blur();
+}
+
+function applyMyPrintsDensity(mode) {
+  const compact = mode === 'compact';
+  document.documentElement.classList.toggle('ui-mode-compact', compact);
+  const btn = document.getElementById('my-prints-density-toggle');
+  if (btn) {
+    btn.textContent = compact ? 'Dense: On' : 'Dense: Off';
+    btn.classList.toggle('active', compact);
+  }
+}
+
+function toggleMyPrintsDensity(buttonEl) {
+  const compact = !document.documentElement.classList.contains('ui-mode-compact');
+  const mode = compact ? 'compact' : 'default';
+  localStorage.setItem(MY_PRINTS_DENSITY_KEY, mode);
+  applyMyPrintsDensity(mode);
+  if (buttonEl && typeof buttonEl.blur === 'function') buttonEl.blur();
+}
+
+function bindMyPrintsKeyboardShortcuts() {
+  document.addEventListener('keydown', function(event) {
+    const target = event.target;
+    const isTyping = target && (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT' ||
+      target.isContentEditable
+    );
+    if (isTyping || event.ctrlKey || event.metaKey || event.altKey) return;
+
+    const filterMap = {
+      '1': 'all',
+      '2': 'printing',
+      '3': 'queue',
+      '4': 'completed',
+      '5': 'past'
+    };
+    const filter = filterMap[event.key];
+    if (filter) {
+      event.preventDefault();
+      const btn = document.querySelector(`#my-prints-filter-rail .lane-filter-btn[data-lane-filter="${filter}"]`);
+      applyRequestLaneFilter(filter, btn || null);
+      return;
+    }
+
+    if (event.key.toLowerCase() === 'c') {
+      event.preventDefault();
+      toggleMyPrintsDensity(null);
+    }
+  });
 }
 
 // ========== Snapshot Modal ==========
@@ -1103,6 +1244,14 @@ if (sessionStorage.getItem('upgrade_banner_dismissed')) {
 
 // ========== Auto-open modals from query params ==========
 (function() {
+  const savedLane = localStorage.getItem('my_prints_lane_filter') || 'all';
+  const activeBtn = document.querySelector(`#my-prints-filter-rail .lane-filter-btn[data-lane-filter="${savedLane}"]`);
+  if (document.getElementById('my-prints-filter-rail')) {
+    applyRequestLaneFilter(savedLane, activeBtn || null);
+  }
+  applyMyPrintsDensity(localStorage.getItem(MY_PRINTS_DENSITY_KEY) || 'default');
+  bindMyPrintsKeyboardShortcuts();
+
   const params = new URLSearchParams(window.location.search);
   const show = params.get('show');
   if (show === 'sync') {

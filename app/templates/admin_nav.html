@@ -1,6 +1,18 @@
 {# Admin Navigation Component - Two-Tier Flat Layout #}
 {# Usage: {% include 'admin_nav.html' %} with active_page variable set #}
 
+<script>
+  (function() {
+    try {
+      if (localStorage.getItem('ui_experience_mode') === 'new') {
+        document.documentElement.classList.add('ui-exp-new');
+      }
+    } catch (_) {
+      // Ignore storage access failures.
+    }
+  })();
+</script>
+
 {% if environment == 'qa' %}
 <div class="bg-orange-600 text-white text-center text-xs font-bold py-2 tracking-wider -mx-6 -mt-6 mb-0">
   <div class="flex items-center justify-center gap-2">
@@ -42,6 +54,18 @@
 
       <!-- Right: Exit + Avatar -->
       <div class="hidden lg:flex items-center gap-2 shrink-0">
+        <button id="admin-ui-toggle"
+                type="button"
+                role="switch"
+                aria-checked="false"
+                aria-label="Toggle new UI experience"
+                class="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                onclick="toggleUiExperienceMode()">
+          <span id="admin-ui-toggle-label" class="hidden xl:inline">New UI</span>
+          <span id="admin-ui-toggle-track" class="relative inline-flex h-5 w-9 items-center rounded-full bg-zinc-700 transition-colors">
+            <span id="admin-ui-toggle-dot" class="inline-block h-4 w-4 rounded-full bg-zinc-400 shadow transition-transform" style="transform: translateX(2px);"></span>
+          </span>
+        </button>
         <a href="/" class="text-sm text-zinc-400 hover:text-indigo-300 flex items-center gap-1.5 transition px-2">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"/>
@@ -165,6 +189,24 @@
       <a href="/admin/printellect/ota-status" class="mobile-nav-link {% if active_page == 'printellect-ota' %}active{% endif %}">🔄 OTA Status</a>
       <a href="/admin/printellect/docs" class="mobile-nav-link {% if active_page == 'printellect-docs' %}active{% endif %}">📖 Docs</a>
 
+      <div class="mt-3 px-3 py-2.5 rounded-xl border border-zinc-800 bg-zinc-950/45">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-zinc-200">Try the new UI experience</p>
+            <p class="text-xs text-zinc-500">Apply the same updated UI mode in admin pages.</p>
+          </div>
+          <button id="admin-ui-toggle-mobile"
+                  type="button"
+                  role="switch"
+                  aria-checked="false"
+                  aria-label="Toggle new UI experience"
+                  class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors bg-zinc-700"
+                  onclick="toggleUiExperienceMode()">
+            <span id="admin-ui-toggle-mobile-dot" class="inline-block h-5 w-5 rounded-full bg-zinc-400 shadow transition-transform" style="transform: translateX(4px);"></span>
+          </button>
+        </div>
+      </div>
+
       <div class="border-t border-zinc-800 mt-3 pt-2 flex items-center gap-2">
         <a href="/" class="mobile-nav-link flex-1 text-indigo-400">← Exit Admin</a>
         <a href="/admin/logout" class="mobile-nav-link text-red-400">Sign Out</a>
@@ -228,6 +270,32 @@
   }
   .admin-bnav-item:active { transform: scale(0.95); }
   .admin-bnav-item.active { color: #818cf8; }
+
+  html.ui-exp-new body {
+    background: #0b0b0b;
+  }
+  html.ui-exp-new .admin-nav {
+    border-bottom-color: #262626;
+    background: #111111;
+    backdrop-filter: none;
+  }
+  html.ui-exp-new .admin-pill.active {
+    color: #ffffff;
+    background-color: #171717;
+    box-shadow: inset 0 0 0 1px #3f3f46;
+  }
+  html.ui-exp-new .sys-pill.active {
+    color: #ffffff;
+    background-color: #171717;
+  }
+  html.ui-exp-new #mobile-menu {
+    border-top-color: #262626;
+    background: #111111;
+    backdrop-filter: none;
+  }
+  html.ui-exp-new .admin-bnav-item.active {
+    color: #ffffff;
+  }
 </style>
 
 <script>
@@ -239,6 +307,61 @@ function toggleMobileMenu() {
   document.getElementById('mobile-menu-btn')?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
   document.getElementById('mobile-menu-more-btn')?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
 }
+
+function getUiExperienceMode() {
+  try {
+    return localStorage.getItem('ui_experience_mode') === 'new';
+  } catch (_) {
+    return false;
+  }
+}
+
+function applyUiExperienceMode(enabled) {
+  document.documentElement.classList.toggle('ui-exp-new', !!enabled);
+
+  const desktopToggle = document.getElementById('admin-ui-toggle');
+  const desktopTrack = document.getElementById('admin-ui-toggle-track');
+  const desktopDot = document.getElementById('admin-ui-toggle-dot');
+  const desktopLabel = document.getElementById('admin-ui-toggle-label');
+  if (desktopToggle && desktopTrack && desktopDot) {
+    desktopToggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
+    desktopToggle.style.borderColor = enabled ? 'rgba(99, 102, 241, 0.72)' : '#3f3f46';
+    desktopToggle.style.backgroundColor = enabled ? 'rgba(49, 46, 129, 0.36)' : 'rgba(24, 24, 27, 0.8)';
+    desktopTrack.style.backgroundColor = enabled ? '#4f46e5' : '#3f3f46';
+    desktopDot.style.transform = enabled ? 'translateX(17px)' : 'translateX(2px)';
+    desktopDot.style.backgroundColor = enabled ? '#ffffff' : '#a1a1aa';
+    if (desktopLabel) {
+      desktopLabel.textContent = enabled ? 'New UI On' : 'New UI';
+      desktopLabel.style.color = enabled ? '#c7d2fe' : '#d4d4d8';
+    }
+  }
+
+  const mobileToggle = document.getElementById('admin-ui-toggle-mobile');
+  const mobileDot = document.getElementById('admin-ui-toggle-mobile-dot');
+  if (mobileToggle && mobileDot) {
+    mobileToggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
+    mobileToggle.style.backgroundColor = enabled ? '#4f46e5' : '#3f3f46';
+    mobileDot.style.transform = enabled ? 'translateX(22px)' : 'translateX(4px)';
+    mobileDot.style.backgroundColor = enabled ? '#ffffff' : '#a1a1aa';
+  }
+}
+
+function setUiExperienceMode(enabled) {
+  try {
+    localStorage.setItem('ui_experience_mode', enabled ? 'new' : 'classic');
+  } catch (_) {
+    // Ignore storage failures.
+  }
+  applyUiExperienceMode(enabled);
+  if (window.showToast) {
+    window.showToast(enabled ? 'New UI experience enabled.' : 'Classic UI restored.', 'info', 2200);
+  }
+}
+
+function toggleUiExperienceMode() {
+  setUiExperienceMode(!getUiExperienceMode());
+}
+
 function toggleAdminAccountMenu() {
   document.getElementById('admin-account-dropdown').classList.toggle('hidden');
 }
@@ -273,6 +396,8 @@ async function loadAdminAccountInfo() {
   } catch (_) {}
 }
 loadAdminAccountInfo();
+applyUiExperienceMode(getUiExperienceMode());
+window.toggleUiExperienceMode = toggleUiExperienceMode;
 if (window.innerWidth < 1024) {
   document.body.style.paddingBottom = 'calc(80px + env(safe-area-inset-bottom, 0px))';
 }
