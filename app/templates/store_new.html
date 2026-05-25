@@ -7,6 +7,58 @@
 
 {% block header_title %}Store{% endblock %}
 
+{% block head_extra %}
+<style>
+  .ui-exp-new #store-hero {
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: 0;
+    border-radius: 1rem;
+    border: 1px solid rgba(99, 102, 241, 0.24);
+    background: linear-gradient(150deg, rgba(49, 46, 129, 0.2), rgba(24, 24, 27, 0.92));
+  }
+  .ui-exp-new #store-categories {
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .ui-exp-new #store-categories a {
+    min-height: 2.65rem;
+    border: 1px solid rgba(82, 82, 91, 0.9);
+  }
+  .ui-exp-new #store-categories a.bg-indigo-600 {
+    border-color: rgba(129, 140, 248, 0.56);
+    box-shadow: 0 10px 18px -14px rgba(79, 70, 229, 0.9);
+  }
+  .ui-exp-new .store-item-card {
+    border-color: rgba(99, 102, 241, 0.28);
+    background: linear-gradient(180deg, rgba(39, 39, 42, 0.82), rgba(24, 24, 27, 0.72));
+    box-shadow: 0 20px 34px -30px rgba(99, 102, 241, 0.85);
+  }
+  .ui-exp-new .store-item-card:hover {
+    border-color: rgba(129, 140, 248, 0.48);
+    transform: translateY(-1px);
+  }
+  .ui-exp-new .store-item-card .p-3,
+  .ui-exp-new .store-item-card .sm\:p-4 {
+    padding-top: 0.95rem;
+    padding-bottom: 1rem;
+  }
+  .ui-exp-new .store-item-card h3 {
+    letter-spacing: 0.01em;
+  }
+  .ui-exp-new #store-empty {
+    border-color: rgba(99, 102, 241, 0.24);
+    background: linear-gradient(180deg, rgba(39, 39, 42, 0.75), rgba(24, 24, 27, 0.58));
+  }
+  .ui-exp-new #store-footer {
+    border-top-color: rgba(99, 102, 241, 0.25);
+    color: #9ca3af;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 {% if request.query_params.get('payment_cancelled') == '1' %}
 <div class="mb-4 bg-amber-900/30 border border-amber-700 rounded-xl p-3 flex items-center justify-between">
@@ -15,7 +67,7 @@
 </div>
 {% endif %}
 <!-- Hero Section -->
-<div class="relative mb-6 -mx-4 -mt-4 px-4 pt-8 pb-6 bg-gradient-to-br from-purple-950/60 via-zinc-900 to-indigo-950/40 border-b border-purple-500/20 overflow-hidden">
+<div id="store-hero" class="relative mb-6 -mx-4 -mt-4 px-4 pt-8 pb-6 bg-gradient-to-br from-purple-950/60 via-zinc-900 to-indigo-950/40 border-b border-purple-500/20 overflow-hidden">
   <!-- Background decoration -->
   <div class="absolute inset-0 overflow-hidden pointer-events-none">
     <div class="absolute -top-24 -right-24 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl"></div>
@@ -37,7 +89,7 @@
 
 <!-- Category Pills (horizontal scroll on mobile) -->
 {% if categories %}
-<div class="mb-4 -mx-4 px-4 overflow-x-auto hide-scrollbar">
+<div id="store-categories" class="mb-4 -mx-4 px-4 overflow-x-auto hide-scrollbar">
   <div class="flex gap-2 pb-2">
     <a href="/store" 
        class="flex-shrink-0 rounded-xl px-4 py-2 text-sm font-medium transition tap-highlight
@@ -59,8 +111,8 @@
 {% if items %}
 <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
   {% for item in items %}
-  <a href="/store/item/{{ item.id }}" 
-     class="bg-zinc-900/60 border border-zinc-800 rounded-xl overflow-hidden hover:border-indigo-500/50 transition card-interactive group">
+    <a href="/store/item/{{ item.id }}" 
+      class="store-item-card bg-zinc-900/60 border border-zinc-800 rounded-xl overflow-hidden hover:border-indigo-500/50 transition card-interactive group">
     <!-- Image -->
     <div class="aspect-square bg-zinc-800 flex items-center justify-center overflow-hidden">
       {% if item.image_data %}
@@ -96,7 +148,7 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="text-center py-16 bg-zinc-900/40 border border-zinc-800 rounded-2xl">
+<div id="store-empty" class="text-center py-16 bg-zinc-900/40 border border-zinc-800 rounded-2xl">
   <div class="text-5xl mb-4">🏪</div>
   {% if selected_category %}
   <h3 class="font-semibold mb-2">No items in "{{ selected_category }}"</h3>
@@ -115,7 +167,7 @@
 {% endif %}
 
 <!-- Footer -->
-<div class="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
+<div id="store-footer" class="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
   <span>{{ items|length if items else 0 }} items</span>
   <div class="flex items-center gap-4">
     <a href="/terms" class="hover:text-indigo-300 transition">Terms</a>

@@ -71,9 +71,34 @@
     .nav-item.active { color: #818cf8; }
     .nav-item:active { transform: scale(0.92); }
     .ui-exp-new .bottom-nav .nav-item span {
-      font-size: 0.75rem;
+      font-size: 0.8rem;
       line-height: 1rem;
-      font-weight: 500;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+    html.ui-exp-new body {
+      background-image:
+        radial-gradient(circle at 20% 8%, rgba(99, 102, 241, 0.14), transparent 36%),
+        radial-gradient(circle at 88% 12%, rgba(30, 64, 175, 0.13), transparent 34%),
+        linear-gradient(180deg, rgba(10, 10, 15, 0.94), rgba(9, 9, 12, 1));
+      background-attachment: fixed;
+    }
+    .ui-exp-new header[role="banner"] {
+      border-bottom-color: rgba(99, 102, 241, 0.28);
+      background: linear-gradient(180deg, rgba(18, 18, 27, 0.95), rgba(14, 14, 22, 0.9));
+    }
+    .ui-exp-new .bottom-nav {
+      border-top-color: rgba(99, 102, 241, 0.25);
+      background: linear-gradient(180deg, rgba(20, 20, 30, 0.9), rgba(16, 16, 24, 0.96));
+    }
+    .ui-exp-new .nav-item {
+      color: #9ca3af;
+    }
+    .ui-exp-new .nav-item.active {
+      color: #c7d2fe;
+    }
+    .ui-exp-new .page-content > div {
+      max-width: 74rem;
     }
     /* Tap / interactions */
     .tap-highlight { -webkit-tap-highlight-color: transparent; }
@@ -301,7 +326,7 @@
                 class="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 transition tap-highlight"
                 onclick="toggleUiExperienceMode()">
           <span id="ui-experience-toggle-quick-label" class="hidden sm:inline">New UI</span>
-          <span class="relative inline-flex h-5 w-9 items-center rounded-full bg-zinc-700 transition-colors">
+          <span id="ui-experience-toggle-quick-track" class="relative inline-flex h-5 w-9 items-center rounded-full bg-zinc-700 transition-colors">
             <span id="ui-experience-toggle-quick-dot" class="inline-block h-4 w-4 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-0.5"></span>
           </span>
         </button>
@@ -639,47 +664,32 @@
 
     function applyUiExperienceMode(enabled) {
       document.documentElement.classList.toggle('ui-exp-new', !!enabled);
-      const toggleConfigs = [
-        {
-          toggleId: 'ui-experience-toggle',
-          dotId: 'ui-experience-toggle-dot',
-          labelId: null,
-          onDotClass: 'translate-x-6',
-          offDotClass: 'translate-x-1',
-          onToggleClass: 'bg-indigo-600',
-          offToggleClass: 'bg-zinc-700',
-        },
-        {
-          toggleId: 'ui-experience-toggle-quick',
-          dotId: 'ui-experience-toggle-quick-dot',
-          labelId: 'ui-experience-toggle-quick-label',
-          onDotClass: 'translate-x-4.5',
-          offDotClass: 'translate-x-0.5',
-          onToggleClass: 'border-indigo-500/60',
-          offToggleClass: 'border-zinc-700',
-        },
-      ];
+      const menuToggle = document.getElementById('ui-experience-toggle');
+      const menuDot = document.getElementById('ui-experience-toggle-dot');
+      if (menuToggle && menuDot) {
+        menuToggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
+        menuToggle.style.backgroundColor = enabled ? '#4f46e5' : '#3f3f46';
+        menuDot.style.transform = enabled ? 'translateX(22px)' : 'translateX(4px)';
+        menuDot.style.backgroundColor = enabled ? '#ffffff' : '#a1a1aa';
+      }
 
-      toggleConfigs.forEach(({ toggleId, dotId, labelId, onDotClass, offDotClass, onToggleClass, offToggleClass }) => {
-        const toggle = document.getElementById(toggleId);
-        const dot = document.getElementById(dotId);
-        const label = labelId ? document.getElementById(labelId) : null;
-        if (!toggle || !dot) return;
+      const quickToggle = document.getElementById('ui-experience-toggle-quick');
+      const quickTrack = document.getElementById('ui-experience-toggle-quick-track');
+      const quickDot = document.getElementById('ui-experience-toggle-quick-dot');
+      const quickLabel = document.getElementById('ui-experience-toggle-quick-label');
+      if (quickToggle && quickTrack && quickDot) {
+        quickToggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
+        quickToggle.style.borderColor = enabled ? 'rgba(99, 102, 241, 0.72)' : '#3f3f46';
+        quickToggle.style.backgroundColor = enabled ? 'rgba(49, 46, 129, 0.35)' : 'rgba(24, 24, 27, 0.8)';
+        quickTrack.style.backgroundColor = enabled ? '#4f46e5' : '#3f3f46';
+        quickDot.style.transform = enabled ? 'translateX(17px)' : 'translateX(2px)';
+        quickDot.style.backgroundColor = enabled ? '#ffffff' : '#a1a1aa';
 
-        toggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
-        toggle.classList.toggle(onToggleClass, !!enabled);
-        toggle.classList.toggle(offToggleClass, !enabled);
-        dot.classList.toggle(onDotClass, !!enabled);
-        dot.classList.toggle(offDotClass, !enabled);
-        dot.classList.toggle('bg-white', !!enabled);
-        dot.classList.toggle('bg-zinc-400', !enabled);
-
-        if (label) {
-          label.textContent = enabled ? 'New UI On' : 'New UI';
-          label.classList.toggle('text-indigo-200', !!enabled);
-          label.classList.toggle('text-zinc-300', !enabled);
+        if (quickLabel) {
+          quickLabel.textContent = enabled ? 'New UI On' : 'New UI';
+          quickLabel.style.color = enabled ? '#c7d2fe' : '#d4d4d8';
         }
-      });
+      }
     }
 
     function setUiExperienceMode(enabled) {
@@ -689,7 +699,14 @@
         // Ignore storage errors and proceed with class toggle.
       }
       applyUiExperienceMode(enabled);
-      window.location.reload();
+
+      if (window.showToast) {
+        showToast(
+          enabled ? 'New UI experience enabled.' : 'Classic UI restored.',
+          'info',
+          2200
+        );
+      }
     }
 
     function toggleUiExperienceMode() {

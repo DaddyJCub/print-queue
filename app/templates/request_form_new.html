@@ -76,6 +76,70 @@
     min-height: 3.5rem;
     letter-spacing: 0.01em;
   }
+  .ui-exp-new #request-hero {
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: 0;
+    padding: 1.25rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    background: linear-gradient(150deg, rgba(30, 41, 59, 0.35), rgba(24, 24, 27, 0.94));
+  }
+  .ui-exp-new #request-hero .absolute {
+    opacity: 0.55;
+  }
+  .ui-exp-new #request-form {
+    border-color: rgba(99, 102, 241, 0.28);
+    background: linear-gradient(180deg, rgba(39, 39, 42, 0.85), rgba(17, 24, 39, 0.68));
+    box-shadow: 0 24px 42px -34px rgba(99, 102, 241, 0.85);
+  }
+  .ui-exp-new #request-form > .pb-4 {
+    padding: 1rem;
+    border: 1px solid rgba(82, 82, 91, 0.8);
+    border-radius: 1rem;
+    background: linear-gradient(180deg, rgba(24, 24, 27, 0.55), rgba(24, 24, 27, 0.24));
+  }
+  .ui-exp-new #request-form > .pb-4 h2 {
+    font-size: 0.75rem;
+    color: #c4b5fd;
+    letter-spacing: 0.08em;
+  }
+  .ui-exp-new #request-form label {
+    font-size: 0.8rem;
+    letter-spacing: 0.01em;
+    color: #d4d4d8;
+  }
+  .ui-exp-new #request-form input,
+  .ui-exp-new #request-form select,
+  .ui-exp-new #request-form textarea {
+    min-height: 2.95rem;
+    border-color: rgba(82, 82, 91, 0.95);
+    background-color: rgba(9, 9, 11, 0.9);
+  }
+  .ui-exp-new #request-form textarea {
+    min-height: 6.5rem;
+  }
+  .ui-exp-new #request-form .text-zinc-500 {
+    color: #9ca3af;
+  }
+  .ui-exp-new #submit-btn {
+    min-height: 3.8rem;
+    border: 1px solid rgba(129, 140, 248, 0.35);
+    box-shadow: 0 16px 28px -18px rgba(79, 70, 229, 0.85);
+  }
+  .ui-exp-new #submit-text {
+    font-size: 1.06rem;
+    font-weight: 800;
+  }
+  .ui-exp-new #upload-progress-wrap {
+    position: sticky;
+    bottom: calc(var(--safe-area-bottom, 0px) + 0.5rem);
+    z-index: 10;
+    padding: 0.5rem 0.625rem;
+    border-radius: 0.75rem;
+    background: rgba(24, 24, 27, 0.92);
+    border: 1px solid rgba(63, 63, 70, 0.8);
+  }
   
   @media (prefers-reduced-motion: reduce) {
     .printer-icon, .confetti { animation: none !important; }
@@ -91,7 +155,7 @@
 </div>
 {% endif %}
 <!-- Hero Section -->
-<div class="relative mb-8 -mx-4 -mt-4 px-4 pt-8 pb-6 bg-gradient-to-br from-indigo-950/80 via-zinc-900 to-purple-950/50 border-b border-indigo-500/20 overflow-hidden">
+<div id="request-hero" class="relative mb-8 -mx-4 -mt-4 px-4 pt-8 pb-6 bg-gradient-to-br from-indigo-950/80 via-zinc-900 to-purple-950/50 border-b border-indigo-500/20 overflow-hidden">
   <!-- Background decoration -->
   <div class="absolute inset-0 overflow-hidden pointer-events-none">
     <div class="absolute -top-24 -right-24 w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl"></div>

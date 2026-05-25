@@ -31,20 +31,45 @@
 <style>
   /* Tap feedback for mobile */
   .tap-highlight { -webkit-tap-highlight-color: transparent; }
+  .ui-exp-new #my-prints-page-header {
+    padding-bottom: 0.85rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+  }
+  .ui-exp-new #my-prints-page-header h1 {
+    letter-spacing: 0.01em;
+  }
+  .ui-exp-new #my-prints-page-header p {
+    color: #a1a1aa;
+  }
   .ui-exp-new .request-item {
     border-width: 1px;
-    border-color: rgba(99, 102, 241, 0.2);
-    box-shadow: 0 16px 28px -26px rgba(99, 102, 241, 0.8);
+    border-color: rgba(99, 102, 241, 0.28);
+    box-shadow: 0 20px 34px -28px rgba(99, 102, 241, 0.85);
+    background: linear-gradient(180deg, rgba(39, 39, 42, 0.78), rgba(24, 24, 27, 0.72));
+    backdrop-filter: blur(2px);
   }
   .ui-exp-new .request-item:hover {
-    border-color: rgba(129, 140, 248, 0.35);
+    border-color: rgba(129, 140, 248, 0.45);
+    transform: translateY(-1px);
   }
   .ui-exp-new .request-item h3 {
     font-weight: 700;
     letter-spacing: 0.01em;
   }
+  .ui-exp-new .request-item .text-xs.text-zinc-500 {
+    color: #9ca3af;
+  }
   .ui-exp-new .request-item .rounded-lg.text-xs.font-medium {
     font-weight: 600;
+  }
+  .ui-exp-new .rounded-full.bg-zinc-800.text-zinc-400.font-medium {
+    background-color: rgba(39, 39, 42, 0.9);
+    color: #c4b5fd;
+    border: 1px solid rgba(99, 102, 241, 0.28);
+  }
+  .ui-exp-new .card-interactive {
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   }
 </style>
 {% endblock %}
@@ -536,7 +561,7 @@
 {% endif %}
 
 <!-- Page Title -->
-<div class="flex items-center justify-between mb-5">
+<div id="my-prints-page-header" class="flex items-center justify-between mb-5">
   <div>
     <h1 class="text-2xl font-bold">My Prints</h1>
     <p class="text-zinc-400 text-xs mt-0.5">Track your print requests</p>

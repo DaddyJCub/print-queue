@@ -7,9 +7,70 @@
 
 {% block header_title %}Queue{% endblock %}
 
+{% block head_extra %}
+<style>
+  .ui-exp-new #queue-hero {
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: 0;
+    border-radius: 1rem;
+    border: 1px solid rgba(99, 102, 241, 0.24);
+    background: linear-gradient(150deg, rgba(30, 41, 59, 0.32), rgba(24, 24, 27, 0.94));
+    padding-top: 1.1rem;
+    padding-bottom: 1rem;
+  }
+  .ui-exp-new #queue-stats > div {
+    border-color: rgba(99, 102, 241, 0.24) !important;
+    background: linear-gradient(180deg, rgba(39, 39, 42, 0.82), rgba(24, 24, 27, 0.75));
+    box-shadow: 0 10px 20px -18px rgba(99, 102, 241, 0.8);
+  }
+  .ui-exp-new #queue-printers summary {
+    border-color: rgba(82, 82, 91, 0.9);
+    background: linear-gradient(180deg, rgba(24, 24, 27, 0.9), rgba(24, 24, 27, 0.55));
+  }
+  .ui-exp-new #queue-printers > div > div {
+    border-color: rgba(82, 82, 91, 0.9);
+    background: linear-gradient(180deg, rgba(39, 39, 42, 0.8), rgba(24, 24, 27, 0.72));
+    box-shadow: 0 16px 28px -24px rgba(0, 0, 0, 0.95);
+  }
+  .ui-exp-new #active-queue-header h2,
+  .ui-exp-new #done-items h2 {
+    letter-spacing: 0.01em;
+  }
+  .ui-exp-new #queue-mobile > div {
+    border-width: 1px;
+    border-color: rgba(99, 102, 241, 0.24);
+    box-shadow: 0 20px 34px -28px rgba(99, 102, 241, 0.85);
+    background: linear-gradient(180deg, rgba(39, 39, 42, 0.8), rgba(24, 24, 27, 0.74));
+  }
+  .ui-exp-new #queue-mobile > div .text-lg.font-bold.text-zinc-500 {
+    color: #a5b4fc;
+  }
+  .ui-exp-new #queue-desktop {
+    border-color: rgba(99, 102, 241, 0.24);
+    background: linear-gradient(180deg, rgba(39, 39, 42, 0.82), rgba(24, 24, 27, 0.7));
+    box-shadow: 0 24px 40px -34px rgba(99, 102, 241, 0.85);
+  }
+  .ui-exp-new #queue-desktop thead {
+    background: rgba(17, 24, 39, 0.58);
+  }
+  .ui-exp-new #queue-desktop tbody tr {
+    border-bottom-color: rgba(63, 63, 70, 0.85);
+  }
+  .ui-exp-new #done-items .done-list > div {
+    border-color: rgba(245, 158, 11, 0.42);
+    background: linear-gradient(180deg, rgba(120, 53, 15, 0.26), rgba(24, 24, 27, 0.7));
+  }
+  .ui-exp-new #queue-footer {
+    border-top-color: rgba(99, 102, 241, 0.26);
+    color: #9ca3af;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <!-- Hero Section with Stats -->
-<div class="relative mb-6 -mx-4 -mt-4 px-4 pt-8 pb-5 bg-gradient-to-br from-emerald-950/50 via-zinc-900 to-indigo-950/40 border-b border-emerald-500/20 overflow-hidden">
+<div id="queue-hero" class="relative mb-6 -mx-4 -mt-4 px-4 pt-8 pb-5 bg-gradient-to-br from-emerald-950/50 via-zinc-900 to-indigo-950/40 border-b border-emerald-500/20 overflow-hidden">
   <!-- Background decoration -->
   <div class="absolute inset-0 overflow-hidden pointer-events-none">
     <div class="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl"></div>
@@ -84,7 +145,7 @@
 </script>
 
 <!-- Printer Status - Compact -->
-<details class="mb-4 group" open>
+<details id="queue-printers" class="mb-4 group" open>
   <summary class="flex items-center justify-between cursor-pointer p-3 bg-zinc-900/40 rounded-xl border border-zinc-800 hover:bg-zinc-900/60 transition">
     <div class="flex items-center gap-2">
       <span class="text-sm font-medium">🖨 Printers</span>
@@ -323,7 +384,7 @@
 
 <!-- Active Queue -->
 <div class="mb-6">
-  <div class="flex items-center justify-between mb-3">
+  <div id="active-queue-header" class="flex items-center justify-between mb-3">
     <h2 class="text-xl font-semibold">Active Queue</h2>
     <div class="flex items-center gap-2 text-xs">
       <span id="refresh-indicator" class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-900/30 border border-emerald-800/50 text-emerald-300">
@@ -474,7 +535,7 @@
 </div>
 
 <!-- Footer -->
-<div class="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
+<div id="queue-footer" class="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
   <span id="last-update">Updated just now</span>
   <div class="flex items-center gap-4">
     <a href="/terms" class="hover:text-indigo-300 transition">Terms</a>
