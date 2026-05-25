@@ -19,15 +19,14 @@
     }
     section[id$="-section"] {
       box-shadow: none;
-      border-color: #262626;
-      background: #111111;
+      border-color: #353438;
     }
     section[id$="-section"] .request-item {
       transition: background-color 0.2s ease, border-color 0.2s ease;
     }
     section[id$="-section"] .request-item:hover {
       transform: none;
-      background: #171717;
+      background: rgba(99, 102, 241, 0.12);
     }
     section[id$="-section"] summary a {
       letter-spacing: 0.01em;
@@ -36,8 +35,8 @@
       align-items: start;
     }
     #admin-ops-rail {
-      border: 1px solid #262626;
-      background: #111111;
+      border: 1px solid #353438;
+      background: #1f1f22;
       border-radius: 0.75rem;
       padding: 1rem;
       position: sticky;
@@ -51,17 +50,17 @@
       font-size: 0.78rem;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: #d4d4d8;
-      border: 1px solid #262626;
+      color: #e4e1e6;
+      border: 1px solid #464554;
       border-radius: 0.5rem;
-      background: #171717;
+      background: #2a2a2d;
       padding: 0.45rem 0.6rem;
       text-decoration: none;
     }
     #admin-ops-rail .ops-link:hover {
-      color: #ffffff;
-      border-color: #3f3f46;
-      background: #1f1f1f;
+      color: #e1e0ff;
+      border-color: rgba(99, 102, 241, 0.55);
+      background: rgba(99, 102, 241, 0.2);
     }
     #admin-ops-rail .ops-button {
       width: 100%;
@@ -69,9 +68,13 @@
       cursor: pointer;
     }
     #admin-ops-rail .ops-button.active {
-      color: #09090b;
-      background: #ffffff;
-      border-color: #ffffff;
+      color: #e1e0ff;
+      background: rgba(99, 102, 241, 0.24);
+      border-color: rgba(99, 102, 241, 0.62);
+    }
+    #admin-power-tools {
+      border-top: 1px solid #353438;
+      padding-top: 0.75rem;
     }
     body.queue-compact section[id$="-section"] .request-item {
       padding-top: 0.6rem !important;
@@ -88,7 +91,7 @@
   </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100">
-  <div class="max-w-7xl mx-auto p-6">
+  <div class="max-w-7xl mx-auto p-6 admin-mobile-safe-bottom">
     <!-- Navigation -->
     {% set active_page = 'design' if request.query_params.get('design') else 'queue' %}
     {% include 'admin_nav.html' %}
@@ -273,7 +276,37 @@
 
     <script>
       const ADMIN_QUEUE_DENSITY_KEY = 'admin_queue_density';
+      const ADMIN_QUEUE_POWER_KEY = 'admin_queue_power_mode';
       let selectedIds = new Set();
+
+      function isAdminQueuePowerMode() {
+        return localStorage.getItem(ADMIN_QUEUE_POWER_KEY) === 'on';
+      }
+
+      function applyAdminQueuePowerMode(enabled) {
+        const powerOn = !!enabled;
+        const powerBtn = document.getElementById('admin-ops-power-toggle');
+        const powerTools = document.getElementById('admin-power-tools');
+        if (powerBtn) {
+          powerBtn.textContent = powerOn ? 'Power Mode: On' : 'Power Mode: Off';
+          powerBtn.classList.toggle('active', powerOn);
+        }
+        if (powerTools) {
+          powerTools.classList.toggle('hidden', !powerOn);
+        }
+        if (!powerOn) {
+          applyAdminQueueDensity('default');
+        } else {
+          applyAdminQueueDensity(localStorage.getItem(ADMIN_QUEUE_DENSITY_KEY) || 'default');
+        }
+      }
+
+      function toggleAdminQueuePowerMode(buttonEl) {
+        const next = !isAdminQueuePowerMode();
+        localStorage.setItem(ADMIN_QUEUE_POWER_KEY, next ? 'on' : 'off');
+        applyAdminQueuePowerMode(next);
+        if (buttonEl && typeof buttonEl.blur === 'function') buttonEl.blur();
+      }
 
       function applyAdminQueueDensity(mode) {
         const compact = mode === 'compact';
@@ -286,6 +319,7 @@
       }
 
       function toggleAdminQueueDensity(buttonEl) {
+        if (!isAdminQueuePowerMode()) return;
         const compact = !document.body.classList.contains('queue-compact');
         const mode = compact ? 'compact' : 'default';
         localStorage.setItem(ADMIN_QUEUE_DENSITY_KEY, mode);
@@ -308,6 +342,7 @@
             target.tagName === 'SELECT' ||
             target.isContentEditable
           );
+          if (!isAdminQueuePowerMode()) return;
           if (isTyping || event.ctrlKey || event.metaKey || event.altKey) return;
 
           const sectionMap = {
@@ -457,7 +492,7 @@
       });
 
       document.addEventListener('DOMContentLoaded', () => {
-        applyAdminQueueDensity(localStorage.getItem(ADMIN_QUEUE_DENSITY_KEY) || 'default');
+        applyAdminQueuePowerMode(isAdminQueuePowerMode());
         bindAdminQueueKeyboardShortcuts();
       });
     </script>
@@ -1277,9 +1312,12 @@
           <a class="ops-link" href="#done-section"><span>Complete</span><span>{{ done|length }}</span></a>
           {% endif %}
         </nav>
-        <div class="mt-3 pt-3 border-t border-zinc-800 space-y-2">
-          <button type="button" id="admin-ops-density-toggle" class="ops-link ops-button" onclick="toggleAdminQueueDensity(this)">Dense Mode: Off</button>
-          <p class="text-[11px] text-zinc-500 leading-relaxed">Hotkeys: 1-5 jump lanes, C toggles density.</p>
+        <div class="mt-3 space-y-2">
+          <button type="button" id="admin-ops-power-toggle" class="ops-link ops-button" onclick="toggleAdminQueuePowerMode(this)">Power Mode: Off</button>
+          <div id="admin-power-tools" class="hidden space-y-2">
+            <button type="button" id="admin-ops-density-toggle" class="ops-link ops-button" onclick="toggleAdminQueueDensity(this)">Dense Mode: Off</button>
+            <p class="text-[11px] text-zinc-500 leading-relaxed">Hotkeys: 1-5 jump lanes, C toggles density.</p>
+          </div>
         </div>
       </aside>
 
@@ -1294,7 +1332,7 @@
           <div class="flex items-center gap-3">
             <div class="w-3 h-3 rounded-full bg-indigo-500 shadow-lg shadow-indigo-500/50"></div>
             <h2 class="text-lg font-semibold">New Requests</h2>
-            <span class="text-xs font-medium text-indigo-200 bg-indigo-600/40 px-2 py-0.5 rounded-full">{{ new_reqs|length }}</span>
+            <span class="section-count text-xs font-medium text-indigo-200 bg-indigo-600/40 px-2 py-0.5 rounded-full">{{ new_reqs|length }}</span>
           </div>
         </div>
         <div class="divide-y divide-indigo-900/30">
@@ -1385,7 +1423,7 @@
           <div class="flex items-center gap-3">
             <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse shadow-lg shadow-emerald-500/50"></div>
             <h2 class="text-lg font-semibold">Printing Now</h2>
-            <span class="text-xs font-medium text-emerald-200 bg-emerald-600/40 px-2 py-0.5 rounded-full">{{ printing|length }}</span>
+            <span class="section-count text-xs font-medium text-emerald-200 bg-emerald-600/40 px-2 py-0.5 rounded-full">{{ printing|length }}</span>
           </div>
         </div>
         <div class="divide-y divide-emerald-900/30">
@@ -1449,7 +1487,7 @@
           <div class="flex items-center gap-3">
             <div class="w-3 h-3 rounded-full bg-green-500 shadow-lg shadow-green-500/50"></div>
             <h2 class="text-lg font-semibold">Queued</h2>
-            <span class="text-xs font-medium text-green-200 bg-green-600/40 px-2 py-0.5 rounded-full">{{ queued|length }}</span>
+            <span class="section-count text-xs font-medium text-green-200 bg-green-600/40 px-2 py-0.5 rounded-full">{{ queued|length }}</span>
           </div>
         </div>
         <div class="divide-y divide-green-900/30">
@@ -1529,7 +1567,7 @@
           <div class="flex items-center gap-3">
             <div class="w-3 h-3 rounded-full bg-red-500 shadow-lg shadow-red-500/50"></div>
             <h2 class="text-lg font-semibold">⚠️ Blocked</h2>
-            <span class="text-xs font-medium text-red-200 bg-red-600/40 px-2 py-0.5 rounded-full">{{ blocked|length }}</span>
+            <span class="section-count text-xs font-medium text-red-200 bg-red-600/40 px-2 py-0.5 rounded-full">{{ blocked|length }}</span>
           </div>
         </div>
         <div class="divide-y divide-red-900/30">
@@ -1580,7 +1618,7 @@
           <div class="flex items-center gap-3">
             <div class="w-3 h-3 rounded-full bg-cyan-500 shadow-lg shadow-cyan-500/50"></div>
             <h2 class="text-lg font-semibold">Print Complete</h2>
-            <span class="text-xs font-medium text-cyan-200 bg-cyan-600/40 px-2 py-0.5 rounded-full">{{ done|length }}</span>
+            <span class="section-count text-xs font-medium text-cyan-200 bg-cyan-600/40 px-2 py-0.5 rounded-full">{{ done|length }}</span>
           </div>
         </div>
         <div class="divide-y divide-cyan-900/30">

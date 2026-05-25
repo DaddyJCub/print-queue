@@ -105,7 +105,7 @@
                   <p class="text-xs text-zinc-500">Track your requests</p>
                 </div>
               </a>
-              <a href="/user/profile#notifications" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
+              <a id="admin-notifications-link" href="/user/profile#notifications" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-800 transition">
                 <span class="text-lg">🔔</span>
                 <div>
                   <p class="text-sm font-medium">Notification Settings</p>
@@ -272,29 +272,34 @@
   .admin-bnav-item.active { color: #818cf8; }
 
   html.ui-exp-new body {
-    background: #0b0b0b;
+    background: #131316;
   }
   html.ui-exp-new .admin-nav {
-    border-bottom-color: #262626;
-    background: #111111;
+    border-bottom-color: #353438;
+    background: #1f1f22;
     backdrop-filter: none;
   }
   html.ui-exp-new .admin-pill.active {
-    color: #ffffff;
-    background-color: #171717;
-    box-shadow: inset 0 0 0 1px #3f3f46;
+    color: #e1e0ff;
+    background-color: rgba(99, 102, 241, 0.2);
+    box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.4);
   }
   html.ui-exp-new .sys-pill.active {
-    color: #ffffff;
-    background-color: #171717;
+    color: #c0c1ff;
+    background-color: rgba(99, 102, 241, 0.16);
   }
   html.ui-exp-new #mobile-menu {
-    border-top-color: #262626;
-    background: #111111;
+    border-top-color: #353438;
+    background: #1f1f22;
     backdrop-filter: none;
   }
   html.ui-exp-new .admin-bnav-item.active {
-    color: #ffffff;
+    color: #c0c1ff;
+  }
+  @media (max-width: 1023px) {
+    .admin-mobile-safe-bottom {
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 6rem);
+    }
   }
 </style>
 
@@ -389,8 +394,10 @@ async function loadAdminAccountInfo() {
       if (tok) {
         const pl = document.getElementById('admin-profile-link');
         const ml = document.getElementById('admin-my-prints-link');
+        const nl = document.getElementById('admin-notifications-link');
         if (pl) pl.href = '/user/profile?token=' + tok;
         if (ml) ml.href = '/my-requests/view?token=' + tok;
+        if (nl) nl.href = '/user/profile?token=' + tok + '#notifications';
       }
     }
   } catch (_) {}

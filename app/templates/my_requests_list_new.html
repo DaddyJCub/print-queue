@@ -43,20 +43,20 @@
     color: #a1a1aa;
   }
   .ui-exp-new .sticky.top-14.z-30 {
-    border-bottom-color: #262626;
-    background: #111111;
+    border-bottom-color: #353438;
+    background: #1f1f22;
     backdrop-filter: none;
   }
   .ui-exp-new .request-item {
     border-width: 1px;
-    border-color: #262626;
+    border-color: #464554;
     box-shadow: none;
-    background: #111111;
+    background: #1f1f22;
     backdrop-filter: none;
   }
   .ui-exp-new .request-item:hover {
-    border-color: #3f3f46;
-    background: #171717;
+    border-color: rgba(99, 102, 241, 0.55);
+    background: #2a2a2d;
     transform: none;
   }
   .ui-exp-new .request-item h3 {
@@ -82,17 +82,17 @@
     gap: 0.5rem;
     margin-bottom: 1rem;
     padding: 0.6rem;
-    border: 1px solid #262626;
+    border: 1px solid #353438;
     border-radius: 0.5rem;
-    background: #111111;
+    background: #1f1f22;
     overflow-x: auto;
   }
   .ui-exp-new #my-prints-filter-rail .lane-filter-btn {
     flex-shrink: 0;
-    border: 1px solid #262626;
+    border: 1px solid #464554;
     border-radius: 999px;
-    background: #171717;
-    color: #d4d4d8;
+    background: #2a2a2d;
+    color: #e4e1e6;
     font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.03em;
@@ -100,9 +100,9 @@
     padding: 0.35rem 0.7rem;
   }
   .ui-exp-new #my-prints-filter-rail .lane-filter-btn.active {
-    background: #ffffff;
-    color: #09090b;
-    border-color: #ffffff;
+    background: rgba(99, 102, 241, 0.2);
+    color: #e1e0ff;
+    border-color: rgba(99, 102, 241, 0.55);
   }
   .ui-exp-new .lane-section-title {
     font-size: 0.72rem;
@@ -121,9 +121,14 @@
     font-size: 0.68rem;
   }
   .ui-exp-new #my-prints-density-toggle.active {
-    background: #ffffff;
-    color: #09090b;
-    border-color: #ffffff;
+    background: rgba(99, 102, 241, 0.24);
+    color: #e1e0ff;
+    border-color: rgba(99, 102, 241, 0.62);
+  }
+  .ui-exp-new #my-prints-power-tools {
+    width: 100%;
+    border-top: 1px solid #353438;
+    padding-top: 0.5rem;
   }
 </style>
 {% endblock %}
@@ -621,7 +626,7 @@
     <p class="text-zinc-400 text-xs mt-0.5">Track your print requests</p>
   </div>
   <div class="flex items-center gap-2">
-    <a href="/auth/profile#notifications" class="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition tap-highlight" title="Notification settings" aria-label="Notification settings">
+    <a id="my-prints-notifications-link" href="{% if token %}/user/profile?token={{ token }}#notifications{% else %}/auth/profile#notifications{% endif %}" class="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition tap-highlight" title="Notification settings" aria-label="Notification settings">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
     </a>
     <a href="{{ new_request_url() }}" class="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-xl text-sm font-medium transition tap-highlight">
@@ -702,8 +707,11 @@
     <button type="button" class="lane-filter-btn" data-lane-filter="queue" onclick="applyRequestLaneFilter('queue', this)">Queue</button>
     <button type="button" class="lane-filter-btn" data-lane-filter="completed" onclick="applyRequestLaneFilter('completed', this)">Completed</button>
     <button type="button" class="lane-filter-btn" data-lane-filter="past" onclick="applyRequestLaneFilter('past', this)">Past</button>
-    <button type="button" id="my-prints-density-toggle" class="lane-filter-btn ml-auto" onclick="toggleMyPrintsDensity(this)">Dense: Off</button>
-    <span class="self-center text-[11px] text-zinc-500">1-5 lanes · C density</span>
+    <button type="button" id="my-prints-power-toggle" class="lane-filter-btn ml-auto" onclick="toggleMyPrintsPowerMode(this)">Power Mode: Off</button>
+    <div id="my-prints-power-tools" class="hidden flex items-center gap-2">
+      <button type="button" id="my-prints-density-toggle" class="lane-filter-btn" onclick="toggleMyPrintsDensity(this)">Dense: Off</button>
+      <span class="self-center text-[11px] text-zinc-500">1-5 lanes · C density</span>
+    </div>
   </div>
 
   <!-- Done prints -->
@@ -1001,11 +1009,57 @@ const token = '{{ token }}';
 const email = '{{ email }}';
 let VAPID_PUBLIC_KEY = '';
 const MY_PRINTS_DENSITY_KEY = 'my_prints_density';
+const MY_PRINTS_POWER_KEY = 'my_prints_power_mode';
+
+function isMyPrintsPowerMode() {
+  return localStorage.getItem(MY_PRINTS_POWER_KEY) === 'on';
+}
+
+function applyMyPrintsPowerMode(enabled) {
+  const powerOn = !!enabled;
+  const powerBtn = document.getElementById('my-prints-power-toggle');
+  const powerTools = document.getElementById('my-prints-power-tools');
+  if (powerBtn) {
+    powerBtn.textContent = powerOn ? 'Power Mode: On' : 'Power Mode: Off';
+    powerBtn.classList.toggle('active', powerOn);
+  }
+  if (powerTools) {
+    powerTools.classList.toggle('hidden', !powerOn);
+    powerTools.classList.toggle('flex', powerOn);
+  }
+  if (!powerOn) {
+    applyMyPrintsDensity('default');
+  } else {
+    applyMyPrintsDensity(localStorage.getItem(MY_PRINTS_DENSITY_KEY) || 'default');
+  }
+}
+
+function toggleMyPrintsPowerMode(buttonEl) {
+  const next = !isMyPrintsPowerMode();
+  localStorage.setItem(MY_PRINTS_POWER_KEY, next ? 'on' : 'off');
+  applyMyPrintsPowerMode(next);
+  if (buttonEl && typeof buttonEl.blur === 'function') buttonEl.blur();
+}
 
 // Save token for persistent login
 if (token) {
   localStorage.setItem('my_requests_token', token);
   localStorage.setItem('my_requests_email', email);
+}
+
+function getMyPrintsNotificationSettingsHref() {
+  const savedToken = localStorage.getItem('my_requests_token') || token;
+  if (savedToken) {
+    return '/user/profile?token=' + encodeURIComponent(savedToken) + '#notifications';
+  }
+  return '/auth/profile#notifications';
+}
+
+function syncMyPrintsNotificationLink() {
+  const link = document.getElementById('my-prints-notifications-link');
+  if (link) {
+    link.href = getMyPrintsNotificationSettingsHref();
+  }
 }
 
 // ========== Show More Toggle ==========
@@ -1042,7 +1096,7 @@ function applyRequestLaneFilter(filter, buttonEl) {
     if (!section) return;
     section.classList.toggle('hidden', !visible.includes(id));
   });
-  document.querySelectorAll('#my-prints-filter-rail .lane-filter-btn').forEach((btn) => {
+  document.querySelectorAll('#my-prints-filter-rail .lane-filter-btn[data-lane-filter]').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.laneFilter === filter);
   });
   localStorage.setItem('my_prints_lane_filter', filter);
@@ -1060,6 +1114,7 @@ function applyMyPrintsDensity(mode) {
 }
 
 function toggleMyPrintsDensity(buttonEl) {
+  if (!isMyPrintsPowerMode()) return;
   const compact = !document.documentElement.classList.contains('ui-mode-compact');
   const mode = compact ? 'compact' : 'default';
   localStorage.setItem(MY_PRINTS_DENSITY_KEY, mode);
@@ -1076,6 +1131,7 @@ function bindMyPrintsKeyboardShortcuts() {
       target.tagName === 'SELECT' ||
       target.isContentEditable
     );
+    if (!isMyPrintsPowerMode()) return;
     if (isTyping || event.ctrlKey || event.metaKey || event.altKey) return;
 
     const filterMap = {
@@ -1244,12 +1300,13 @@ if (sessionStorage.getItem('upgrade_banner_dismissed')) {
 
 // ========== Auto-open modals from query params ==========
 (function() {
+  syncMyPrintsNotificationLink();
   const savedLane = localStorage.getItem('my_prints_lane_filter') || 'all';
   const activeBtn = document.querySelector(`#my-prints-filter-rail .lane-filter-btn[data-lane-filter="${savedLane}"]`);
   if (document.getElementById('my-prints-filter-rail')) {
     applyRequestLaneFilter(savedLane, activeBtn || null);
   }
-  applyMyPrintsDensity(localStorage.getItem(MY_PRINTS_DENSITY_KEY) || 'default');
+  applyMyPrintsPowerMode(isMyPrintsPowerMode());
   bindMyPrintsKeyboardShortcuts();
 
   const params = new URLSearchParams(window.location.search);

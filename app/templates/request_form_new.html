@@ -85,8 +85,8 @@
     margin-top: 0;
     padding: 1.25rem;
     border-radius: 0.5rem;
-    border: 1px solid #262626;
-    background: #111111;
+    border: 1px solid #464554;
+    background: linear-gradient(135deg, #23233a 0%, #1f1f22 46%, #1a1b2a 100%);
   }
   .ui-exp-new #request-hero .absolute {
     display: none;
@@ -95,8 +95,8 @@
     animation: none;
   }
   .ui-exp-new #request-form {
-    border-color: #262626;
-    background: #111111;
+    border-color: #353438;
+    background: #1f1f22;
     box-shadow: none;
     display: grid;
     gap: 1rem;
@@ -104,30 +104,60 @@
   }
   .ui-exp-new #request-summary-rail {
     display: none;
-    border: 1px solid #262626;
-    background: #111111;
+    border: 1px solid #464554;
+    background: #1b1b1e;
     border-radius: 0.5rem;
     padding: 1rem;
   }
   .ui-exp-new #request-summary-rail .summary-state {
     font-size: 0.75rem;
-    color: #a1a1aa;
-    border: 1px solid #262626;
-    background: #171717;
+    color: #c7c4d7;
+    border: 1px solid #464554;
+    background: #2a2a2d;
     border-radius: 999px;
     padding: 0.15rem 0.5rem;
   }
   .ui-exp-new #request-summary-rail .summary-state.complete {
-    color: #ffffff;
-    border-color: #3f3f46;
-    background: #262626;
+    color: #e1e0ff;
+    border-color: rgba(99, 102, 241, 0.55);
+    background: rgba(99, 102, 241, 0.2);
   }
   .ui-exp-new #request-summary-rail a {
-    color: #d4d4d8;
+    color: #e4e1e6;
     text-decoration: none;
   }
   .ui-exp-new #request-summary-rail a:hover {
-    color: #ffffff;
+    color: #c0c1ff;
+  }
+  #request-mobile-hub {
+    display: none;
+  }
+  .ui-exp-new #request-mobile-hub {
+    display: block;
+    border: 1px solid #353438;
+    background: #1b1b1e;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+  }
+  .ui-exp-new #request-mobile-checklist a {
+    color: #e4e1e6;
+    border: 1px solid #464554;
+    background: #2a2a2d;
+    border-radius: 999px;
+    padding: 0.3rem 0.55rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    text-decoration: none;
+  }
+  .ui-exp-new #request-mobile-checklist a:hover {
+    color: #e1e0ff;
+    border-color: rgba(99, 102, 241, 0.55);
+    background: rgba(99, 102, 241, 0.18);
+  }
+  @media (min-width: 1280px) {
+    .ui-exp-new #request-mobile-hub {
+      display: none;
+    }
   }
   @media (min-width: 1280px) {
     .ui-exp-new #request-form {
@@ -147,10 +177,10 @@
   }
   .ui-exp-new #request-form > .pb-4 {
     padding: 1rem;
-    border: 1px solid #262626;
+    border: 1px solid #353438;
     border-radius: 0.5rem;
-    background: #111111;
-    border-left: 3px solid #303030;
+    background: #1b1b1e;
+    border-left: 3px solid rgba(99, 102, 241, 0.5);
   }
   .ui-exp-new #request-form > .pb-4 h2 {
     font-size: 0.78rem;
@@ -167,8 +197,8 @@
   .ui-exp-new #request-form select,
   .ui-exp-new #request-form textarea {
     min-height: 2.95rem;
-    border-color: #262626;
-    background-color: #0b0b0b;
+    border-color: #464554;
+    background-color: #131316;
   }
   .ui-exp-new #request-form textarea {
     min-height: 6.5rem;
@@ -199,15 +229,15 @@
   }
   .ui-exp-new #submit-btn {
     min-height: 3.8rem;
-    border: 1px solid #ffffff;
-    background: #ffffff;
-    color: #0b0b0b;
+    border: 1px solid #6366f1;
+    background: linear-gradient(90deg, #6366f1 0%, #4f46e5 100%);
+    color: #ffffff;
     box-shadow: none;
   }
   .ui-exp-new #submit-text {
     font-size: 1.06rem;
     font-weight: 800;
-    color: #0b0b0b;
+    color: #ffffff;
   }
   .ui-exp-new #upload-progress-wrap {
     position: sticky;
@@ -215,8 +245,8 @@
     z-index: 10;
     padding: 0.5rem 0.625rem;
     border-radius: 0.5rem;
-    background: #111111;
-    border: 1px solid #262626;
+    background: #1f1f22;
+    border: 1px solid #353438;
   }
   
   @media (prefers-reduced-motion: reduce) {
@@ -556,7 +586,7 @@
 
 <!-- Request Form -->
 <form id="request-form" action="/submit" method="POST" enctype="multipart/form-data" 
-  class="space-y-5 bg-zinc-900 border border-zinc-800 rounded-xl p-5 sm:p-6"
+  class="space-y-5 bg-gradient-to-b from-zinc-900/85 to-zinc-900/55 border border-zinc-700/60 rounded-2xl p-5 sm:p-6 shadow-lg shadow-black/20"
       data-loading="Submitting...">
   
   <!-- Anti-bot honeypot — hidden from real users, bots auto-fill it -->
@@ -566,6 +596,40 @@
   </div>
   <input type="hidden" name="uploaded_file_ids_json" id="uploaded-file-ids-json" value="" />
 
+  <div id="request-mobile-hub" aria-label="Request quick tools">
+    <div class="flex items-center justify-between gap-2">
+      <p class="text-xs uppercase tracking-[0.1em] text-zinc-400">Quick Access</p>
+      <div class="flex items-center gap-2">
+        <button type="button" data-request-power-toggle onclick="toggleRequestPowerMode(this)"
+                class="rounded-lg border border-indigo-600/40 bg-indigo-600/10 px-3 py-1 text-[11px] uppercase tracking-wide text-indigo-200 hover:bg-indigo-600/20 transition">
+          Power Mode: Off
+        </button>
+        <button type="button" id="request-mobile-checklist-toggle" onclick="toggleRequestMobileChecklist(this)"
+                class="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1 text-[11px] uppercase tracking-wide text-zinc-300 hover:border-zinc-500 hover:text-white transition">
+          Checklist
+        </button>
+      </div>
+    </div>
+    <div id="request-mobile-checklist" class="hidden mt-2 flex flex-wrap gap-2">
+      <a href="#section-contact">1 Contact</a>
+      {% if shipping_enabled %}
+      <a href="#section-delivery">2 Delivery</a>
+      <a href="#section-details">3 Details</a>
+      <a href="#section-files">4 Files</a>
+      {% else %}
+      <a href="#section-details">2 Details</a>
+      <a href="#section-files">3 Files</a>
+      {% endif %}
+    </div>
+    <div id="request-mobile-power-tools" class="hidden mt-2 items-center gap-2">
+      <button type="button" id="request-density-toggle-mobile" onclick="toggleRequestDensity(this)"
+              class="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-[11px] uppercase tracking-wide text-zinc-300 hover:border-zinc-500 hover:text-white transition">
+        Dense Mode: Off
+      </button>
+      <span class="text-[11px] text-zinc-500">Desktop shortcuts stay in Power Mode.</span>
+    </div>
+  </div>
+
   <aside id="request-summary-rail" aria-label="Request summary rail">
     <h3 class="text-sm font-semibold text-zinc-200 mb-3">Request Checklist</h3>
     <ul class="space-y-2">
@@ -573,10 +637,12 @@
         <a href="#section-contact" class="text-sm">Contact Info</a>
         <span id="summary-contact" class="summary-state">Missing</span>
       </li>
+      {% if shipping_enabled %}
       <li class="flex items-center justify-between gap-3">
         <a href="#section-delivery" class="text-sm">Delivery</a>
         <span id="summary-delivery" class="summary-state">Pending</span>
       </li>
+      {% endif %}
       <li class="flex items-center justify-between gap-3">
         <a href="#section-details" class="text-sm">Print Details</a>
         <span id="summary-details" class="summary-state">Missing</span>
@@ -589,12 +655,18 @@
     <div class="mt-4 pt-3 border-t border-zinc-800 text-xs text-zinc-500">
       Use the numbered panels to complete required fields before submission.
     </div>
-    <div class="mt-3 flex items-center justify-between gap-3">
-      <button type="button" id="request-density-toggle" onclick="toggleRequestDensity(this)"
-              class="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-[11px] uppercase tracking-wide text-zinc-300 hover:border-zinc-500 hover:text-white transition">
-        Dense Mode: Off
+    <div class="mt-3 flex flex-wrap items-center gap-2">
+      <button type="button" id="request-power-toggle" data-request-power-toggle onclick="toggleRequestPowerMode(this)"
+              class="rounded-lg border border-indigo-600/40 bg-indigo-600/10 px-3 py-1.5 text-[11px] uppercase tracking-wide text-indigo-200 hover:bg-indigo-600/20 transition">
+        Power Mode: Off
       </button>
-      <span class="text-[11px] text-zinc-500">Alt+1..4 jump · Ctrl+Enter submit</span>
+      <div id="request-power-tools" class="hidden items-center gap-2">
+        <button type="button" id="request-density-toggle" onclick="toggleRequestDensity(this)"
+                class="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-[11px] uppercase tracking-wide text-zinc-300 hover:border-zinc-500 hover:text-white transition">
+          Dense Mode: Off
+        </button>
+        <span class="text-[11px] text-zinc-500">Alt+1..4 jump · Ctrl+Enter submit</span>
+      </div>
     </div>
   </aside>
 
@@ -1299,19 +1371,62 @@
   };
   const REQUEST_DRAFT_KEY = 'printellect_request_draft_v1';
   const REQUEST_DENSITY_KEY = 'request_form_density';
+  const REQUEST_POWER_KEY = 'request_form_power_mode';
   const HAS_USER_SESSION = {{ "true" if user else "false" }};
+  const HAS_SHIPPING_ENABLED = {{ "true" if shipping_enabled else "false" }};
   const CHUNK_UPLOAD_FALLBACK_BYTES = 8 * 1024 * 1024;
   let chunkUploadCacheKey = null;
   let chunkUploadCachedIds = [];
 
+  function isRequestPowerMode() {
+    return localStorage.getItem(REQUEST_POWER_KEY) === 'on';
+  }
+
+  function applyRequestPowerMode(enabled) {
+    const powerOn = !!enabled;
+    const powerBtns = document.querySelectorAll('[data-request-power-toggle]');
+    const powerTools = document.getElementById('request-power-tools');
+    const mobilePowerTools = document.getElementById('request-mobile-power-tools');
+    powerBtns.forEach((powerBtn) => {
+      powerBtn.textContent = powerOn ? 'Power Mode: On' : 'Power Mode: Off';
+      powerBtn.classList.toggle('bg-indigo-600/30', powerOn);
+    });
+    if (powerTools) {
+      powerTools.classList.toggle('hidden', !powerOn);
+      powerTools.classList.toggle('flex', powerOn);
+    }
+    if (mobilePowerTools) {
+      mobilePowerTools.classList.toggle('hidden', !powerOn);
+      mobilePowerTools.classList.toggle('flex', powerOn);
+    }
+    if (!powerOn) {
+      applyRequestDensity('default');
+    } else {
+      applyRequestDensity(localStorage.getItem(REQUEST_DENSITY_KEY) || 'default');
+    }
+  }
+
+  function toggleRequestPowerMode(buttonEl) {
+    const next = !isRequestPowerMode();
+    localStorage.setItem(REQUEST_POWER_KEY, next ? 'on' : 'off');
+    applyRequestPowerMode(next);
+    if (buttonEl && typeof buttonEl.blur === 'function') buttonEl.blur();
+  }
+
   function applyRequestDensity(mode) {
     const compact = mode === 'compact';
     document.documentElement.classList.toggle('ui-mode-compact', compact);
-    const btn = document.getElementById('request-density-toggle');
-    if (btn) btn.textContent = compact ? 'Dense Mode: On' : 'Dense Mode: Off';
+    const densityBtns = [
+      document.getElementById('request-density-toggle'),
+      document.getElementById('request-density-toggle-mobile')
+    ].filter(Boolean);
+    densityBtns.forEach((btn) => {
+      btn.textContent = compact ? 'Dense Mode: On' : 'Dense Mode: Off';
+    });
   }
 
   function toggleRequestDensity(buttonEl) {
+    if (!isRequestPowerMode()) return;
     const compact = !document.documentElement.classList.contains('ui-mode-compact');
     const mode = compact ? 'compact' : 'default';
     localStorage.setItem(REQUEST_DENSITY_KEY, mode);
@@ -1329,6 +1444,8 @@
         target.isContentEditable
       );
 
+      if (!isRequestPowerMode()) return;
+
       if (event.ctrlKey && event.key === 'Enter') {
         const form = document.getElementById('request-form');
         if (form) form.requestSubmit();
@@ -1339,9 +1456,9 @@
 
       const sectionMap = {
         '1': 'section-contact',
-        '2': 'section-delivery',
-        '3': 'section-details',
-        '4': 'section-files'
+        '2': HAS_SHIPPING_ENABLED ? 'section-delivery' : 'section-details',
+        '3': HAS_SHIPPING_ENABLED ? 'section-details' : 'section-files',
+        '4': HAS_SHIPPING_ENABLED ? 'section-files' : null
       };
       if (event.key.toLowerCase() === 'd') {
         event.preventDefault();
@@ -1358,6 +1475,16 @@
         section.querySelector('input, select, textarea, button')?.focus({ preventScroll: true });
       }
     });
+  }
+
+  function toggleRequestMobileChecklist(buttonEl) {
+    const panel = document.getElementById('request-mobile-checklist');
+    if (!panel) return;
+    const open = panel.classList.toggle('hidden') === false;
+    if (buttonEl) {
+      buttonEl.textContent = open ? 'Hide Checklist' : 'Checklist';
+      if (typeof buttonEl.blur === 'function') buttonEl.blur();
+    }
   }
 
   function resetUploadedFileCache() {
@@ -1885,7 +2012,7 @@
       const summaryDelivery = document.getElementById('summary-delivery');
       const summaryDetails = document.getElementById('summary-details');
       const summaryAssets = document.getElementById('summary-assets');
-      if (!summaryContact || !summaryDelivery || !summaryDetails || !summaryAssets) return;
+      if (!summaryContact || !summaryDetails || !summaryAssets) return;
 
       const name = (document.getElementById('requester-name')?.value || '').trim();
       const email = (document.getElementById('requester-email')?.value || '').trim();
@@ -1903,8 +2030,10 @@
       summaryContact.textContent = contactDone ? 'Complete' : 'Missing';
       summaryContact.classList.toggle('complete', contactDone);
 
-      summaryDelivery.textContent = delivery === 'shipping' ? 'Shipping' : 'Pickup';
-      summaryDelivery.classList.add('complete');
+      if (summaryDelivery) {
+        summaryDelivery.textContent = delivery === 'shipping' ? 'Shipping' : 'Pickup';
+        summaryDelivery.classList.add('complete');
+      }
 
       summaryDetails.textContent = detailsDone ? 'Complete' : 'Missing';
       summaryDetails.classList.toggle('complete', detailsDone);
@@ -1933,7 +2062,7 @@
         el.addEventListener('input', updateRequestSummaryRail);
       });
     }
-    applyRequestDensity(localStorage.getItem(REQUEST_DENSITY_KEY) || 'default');
+    applyRequestPowerMode(isRequestPowerMode());
     bindRequestKeyboardShortcuts();
     updateRequestSummaryRail();
   });
