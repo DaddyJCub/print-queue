@@ -293,6 +293,18 @@
       
       <!-- Right: Actions -->
       <div class="flex items-center gap-2">
+        <button id="ui-experience-toggle-quick"
+                type="button"
+                role="switch"
+                aria-checked="false"
+                aria-label="Toggle new UI experience"
+                class="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 transition tap-highlight"
+                onclick="toggleUiExperienceMode()">
+          <span id="ui-experience-toggle-quick-label" class="hidden sm:inline">New UI</span>
+          <span class="relative inline-flex h-5 w-9 items-center rounded-full bg-zinc-700 transition-colors">
+            <span id="ui-experience-toggle-quick-dot" class="inline-block h-4 w-4 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-0.5"></span>
+          </span>
+        </button>
         {% block header_right %}
         <!-- Desktop nav links -->
         <nav aria-label="Main navigation" class="hidden sm:flex items-center gap-1">
@@ -627,17 +639,47 @@
 
     function applyUiExperienceMode(enabled) {
       document.documentElement.classList.toggle('ui-exp-new', !!enabled);
-      const toggle = document.getElementById('ui-experience-toggle');
-      const dot = document.getElementById('ui-experience-toggle-dot');
-      if (toggle && dot) {
+      const toggleConfigs = [
+        {
+          toggleId: 'ui-experience-toggle',
+          dotId: 'ui-experience-toggle-dot',
+          labelId: null,
+          onDotClass: 'translate-x-6',
+          offDotClass: 'translate-x-1',
+          onToggleClass: 'bg-indigo-600',
+          offToggleClass: 'bg-zinc-700',
+        },
+        {
+          toggleId: 'ui-experience-toggle-quick',
+          dotId: 'ui-experience-toggle-quick-dot',
+          labelId: 'ui-experience-toggle-quick-label',
+          onDotClass: 'translate-x-4.5',
+          offDotClass: 'translate-x-0.5',
+          onToggleClass: 'border-indigo-500/60',
+          offToggleClass: 'border-zinc-700',
+        },
+      ];
+
+      toggleConfigs.forEach(({ toggleId, dotId, labelId, onDotClass, offDotClass, onToggleClass, offToggleClass }) => {
+        const toggle = document.getElementById(toggleId);
+        const dot = document.getElementById(dotId);
+        const label = labelId ? document.getElementById(labelId) : null;
+        if (!toggle || !dot) return;
+
         toggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
-        toggle.classList.toggle('bg-indigo-600', !!enabled);
-        toggle.classList.toggle('bg-zinc-700', !enabled);
-        dot.classList.toggle('translate-x-6', !!enabled);
-        dot.classList.toggle('translate-x-1', !enabled);
+        toggle.classList.toggle(onToggleClass, !!enabled);
+        toggle.classList.toggle(offToggleClass, !enabled);
+        dot.classList.toggle(onDotClass, !!enabled);
+        dot.classList.toggle(offDotClass, !enabled);
         dot.classList.toggle('bg-white', !!enabled);
         dot.classList.toggle('bg-zinc-400', !enabled);
-      }
+
+        if (label) {
+          label.textContent = enabled ? 'New UI On' : 'New UI';
+          label.classList.toggle('text-indigo-200', !!enabled);
+          label.classList.toggle('text-zinc-300', !enabled);
+        }
+      });
     }
 
     function setUiExperienceMode(enabled) {
