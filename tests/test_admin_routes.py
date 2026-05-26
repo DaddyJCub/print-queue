@@ -511,11 +511,45 @@ class TestAdminStore:
 
 class TestAdminFeatureFlags:
     """Tests for feature flag management."""
+
+    @staticmethod
+    def _set_ui_experience_toggle(enabled: bool):
+        conn = get_test_db()
+        conn.execute(
+            "UPDATE feature_flags SET enabled = ? WHERE key = 'ui_experience_toggle'",
+            (1 if enabled else 0,),
+        )
+        conn.commit()
+        conn.close()
+
+        from app.auth import invalidate_feature_flag_cache
+        invalidate_feature_flag_cache("ui_experience_toggle")
     
     def test_admin_features_page_loads(self, admin_client):
         """Admin features page should load."""
         response = admin_client.get("/admin/features")
         assert response.status_code == 200
+
+    def test_admin_features_page_lists_ui_experience_toggle(self, admin_client):
+        """Features page should expose the UI experience toggle flag."""
+        response = admin_client.get("/admin/features")
+        assert response.status_code == 200
+        assert "New UI Experience Toggle" in response.text
+
+    def test_admin_nav_shows_ui_experience_toggle_when_enabled(self, admin_client):
+        """Admin nav should render UI experience toggle when feature is enabled."""
+        self._set_ui_experience_toggle(True)
+        response = admin_client.get("/admin")
+        assert response.status_code == 200
+        assert 'id="admin-ui-toggle"' in response.text
+
+    def test_admin_nav_hides_ui_experience_toggle_when_disabled(self, admin_client):
+        """Admin nav should hide UI experience toggle when feature is disabled."""
+        self._set_ui_experience_toggle(False)
+        response = admin_client.get("/admin")
+        assert response.status_code == 200
+        assert 'id="admin-ui-toggle"' not in response.text
+        assert "Try the new UI experience" not in response.text
     
     def test_admin_audit_page_loads(self, admin_client):
         """Admin audit log page should load."""

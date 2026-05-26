@@ -930,6 +930,11 @@ DEFAULT_FEATURE_FLAGS = {
         enabled=False,
         description="Allow users to toggle between dark/light mode",
     ),
+    "ui_experience_toggle": FeatureFlag(
+        key="ui_experience_toggle",
+        enabled=True,
+        description="Enable the 'Try the new UI experience' toggle in navigation menus",
+    ),
     "dashboard_home": FeatureFlag(
         key="dashboard_home",
         enabled=False,

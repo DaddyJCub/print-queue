@@ -397,6 +397,15 @@ def _new_request_url():
         return "/"
 templates.env.globals["new_request_url"] = _new_request_url
 
+def _ui_experience_toggle_enabled():
+    try:
+        from app.auth import get_feature_flag
+        flag = get_feature_flag("ui_experience_toggle")
+        return flag.enabled if flag else False
+    except Exception:
+        return False
+templates.env.globals["ui_experience_toggle_enabled"] = _ui_experience_toggle_enabled
+
 # NOTE: app/static must exist in your repo (can be empty with a .gitkeep)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

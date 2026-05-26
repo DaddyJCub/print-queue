@@ -1,4 +1,5 @@
 <!doctype html>
+{% if ui_experience_toggle_enabled is callable %}{% set _ui_exp_toggle_on = ui_experience_toggle_enabled() %}{% else %}{% set _ui_exp_toggle_on = ui_experience_toggle_enabled %}{% endif %}
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -21,7 +22,12 @@
   <script>
     // Apply UI experience mode early to avoid flash on page load.
     (function() {
+      const uiExperienceToggleAllowed = {{ 'true' if _ui_exp_toggle_on else 'false' }};
       try {
+        if (!uiExperienceToggleAllowed) {
+          localStorage.setItem('ui_experience_mode', 'classic');
+          return;
+        }
         if (localStorage.getItem('ui_experience_mode') === 'new') {
           document.documentElement.classList.add('ui-exp-new');
         }
@@ -314,6 +320,7 @@
       
       <!-- Right: Actions -->
       <div class="flex items-center gap-2">
+        {% if _ui_exp_toggle_on %}
         <button id="ui-experience-toggle-quick"
                 type="button"
                 role="switch"
@@ -326,6 +333,7 @@
             <span id="ui-experience-toggle-quick-dot" class="inline-block h-4 w-4 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-0.5"></span>
           </span>
         </button>
+        {% endif %}
         {% block header_right %}
         <!-- Desktop nav links -->
         <nav aria-label="Main navigation" class="hidden sm:flex items-center gap-1">
@@ -424,6 +432,7 @@
               </a>
 
               <div class="mt-1 border-t border-zinc-800/80 pt-3 px-3 pb-2">
+                {% if _ui_exp_toggle_on %}
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
                     <p class="text-sm font-medium text-zinc-200">Try the new UI experience</p>
@@ -438,6 +447,7 @@
                     <span id="ui-experience-toggle-dot" class="inline-block h-5 w-5 transform rounded-full bg-zinc-400 shadow transition-transform translate-x-1"></span>
                   </button>
                 </div>
+                {% endif %}
               </div>
             </div>
             
@@ -650,7 +660,12 @@
     }
     checkUserSession();
 
+    const UI_EXPERIENCE_TOGGLE_ENABLED = {{ 'true' if _ui_exp_toggle_on else 'false' }};
+
     function getUiExperienceMode() {
+      if (!UI_EXPERIENCE_TOGGLE_ENABLED) {
+        return false;
+      }
       try {
         return localStorage.getItem('ui_experience_mode') === 'new';
       } catch (e) {
@@ -659,14 +674,15 @@
     }
 
     function applyUiExperienceMode(enabled) {
-      document.documentElement.classList.toggle('ui-exp-new', !!enabled);
+      const modeEnabled = UI_EXPERIENCE_TOGGLE_ENABLED && !!enabled;
+      document.documentElement.classList.toggle('ui-exp-new', modeEnabled);
       const menuToggle = document.getElementById('ui-experience-toggle');
       const menuDot = document.getElementById('ui-experience-toggle-dot');
       if (menuToggle && menuDot) {
-        menuToggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
-        menuToggle.style.backgroundColor = enabled ? '#4f46e5' : '#3f3f46';
-        menuDot.style.transform = enabled ? 'translateX(22px)' : 'translateX(4px)';
-        menuDot.style.backgroundColor = enabled ? '#ffffff' : '#a1a1aa';
+        menuToggle.setAttribute('aria-checked', modeEnabled ? 'true' : 'false');
+        menuToggle.style.backgroundColor = modeEnabled ? '#4f46e5' : '#3f3f46';
+        menuDot.style.transform = modeEnabled ? 'translateX(22px)' : 'translateX(4px)';
+        menuDot.style.backgroundColor = modeEnabled ? '#ffffff' : '#a1a1aa';
       }
 
       const quickToggle = document.getElementById('ui-experience-toggle-quick');
@@ -674,21 +690,31 @@
       const quickDot = document.getElementById('ui-experience-toggle-quick-dot');
       const quickLabel = document.getElementById('ui-experience-toggle-quick-label');
       if (quickToggle && quickTrack && quickDot) {
-        quickToggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
-        quickToggle.style.borderColor = enabled ? 'rgba(99, 102, 241, 0.72)' : '#3f3f46';
-        quickToggle.style.backgroundColor = enabled ? 'rgba(49, 46, 129, 0.35)' : 'rgba(24, 24, 27, 0.8)';
-        quickTrack.style.backgroundColor = enabled ? '#4f46e5' : '#3f3f46';
-        quickDot.style.transform = enabled ? 'translateX(17px)' : 'translateX(2px)';
-        quickDot.style.backgroundColor = enabled ? '#ffffff' : '#a1a1aa';
+        quickToggle.setAttribute('aria-checked', modeEnabled ? 'true' : 'false');
+        quickToggle.style.borderColor = modeEnabled ? 'rgba(99, 102, 241, 0.72)' : '#3f3f46';
+        quickToggle.style.backgroundColor = modeEnabled ? 'rgba(49, 46, 129, 0.35)' : 'rgba(24, 24, 27, 0.8)';
+        quickTrack.style.backgroundColor = modeEnabled ? '#4f46e5' : '#3f3f46';
+        quickDot.style.transform = modeEnabled ? 'translateX(17px)' : 'translateX(2px)';
+        quickDot.style.backgroundColor = modeEnabled ? '#ffffff' : '#a1a1aa';
 
         if (quickLabel) {
-          quickLabel.textContent = enabled ? 'New UI On' : 'New UI';
-          quickLabel.style.color = enabled ? '#c7d2fe' : '#d4d4d8';
+          quickLabel.textContent = modeEnabled ? 'New UI On' : 'New UI';
+          quickLabel.style.color = modeEnabled ? '#c7d2fe' : '#d4d4d8';
         }
       }
     }
 
     function setUiExperienceMode(enabled) {
+      if (!UI_EXPERIENCE_TOGGLE_ENABLED) {
+        try {
+          localStorage.setItem('ui_experience_mode', 'classic');
+        } catch (e) {
+          // Ignore storage errors and proceed with class toggle.
+        }
+        applyUiExperienceMode(false);
+        return;
+      }
+
       try {
         localStorage.setItem('ui_experience_mode', enabled ? 'new' : 'classic');
       } catch (e) {
@@ -706,6 +732,9 @@
     }
 
     function toggleUiExperienceMode() {
+      if (!UI_EXPERIENCE_TOGGLE_ENABLED) {
+        return;
+      }
       setUiExperienceMode(!getUiExperienceMode());
     }
 

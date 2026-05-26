@@ -25,6 +25,19 @@ from tests.conftest import (
 
 class TestHomePage:
     """Tests for the home/request form page."""
+
+    @staticmethod
+    def _set_ui_experience_toggle(enabled: bool):
+        conn = get_test_db()
+        conn.execute(
+            "UPDATE feature_flags SET enabled = ? WHERE key = 'ui_experience_toggle'",
+            (1 if enabled else 0,),
+        )
+        conn.commit()
+        conn.close()
+
+        from app.auth import invalidate_feature_flag_cache
+        invalidate_feature_flag_cache("ui_experience_toggle")
     
     def test_home_page_loads(self, client):
         """Home page should load with request form."""
@@ -75,6 +88,21 @@ class TestHomePage:
         response = client.get("/")
         assert response.status_code == 200
         assert_html_contains(response, "New Print Request", "form")
+
+    def test_home_shows_ui_experience_toggle_when_flag_enabled(self, client):
+        """Home should render the quick UI experience toggle when feature is enabled."""
+        self._set_ui_experience_toggle(True)
+        response = client.get("/")
+        assert response.status_code == 200
+        assert 'id="ui-experience-toggle-quick"' in response.text
+
+    def test_home_hides_ui_experience_toggle_when_flag_disabled(self, client):
+        """Home should hide UI experience toggles when feature is disabled."""
+        self._set_ui_experience_toggle(False)
+        response = client.get("/")
+        assert response.status_code == 200
+        assert 'id="ui-experience-toggle-quick"' not in response.text
+        assert "Try the new UI experience" not in response.text
 
 
 class TestPolicyPages:

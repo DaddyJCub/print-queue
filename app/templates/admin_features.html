@@ -164,10 +164,11 @@
       <p class="text-sm text-zinc-500 mb-4">Customize the user interface experience.</p>
       <div class="space-y-3">
         {% set ui_flag_details = {
-          'dark_mode_toggle': {'icon': '🌙', 'title': 'Dark Mode Toggle', 'desc': 'Allow users to switch between light and dark themes. Currently dark-only.'},
-          'dashboard_home': {'icon': '🏠', 'title': 'Dashboard Home', 'desc': 'Replace the request form at / with a dashboard landing page. Shows quick actions, active requests, printer status, and activity feed. Request form moves to /new-request.'}
+          'dark_mode_toggle': {'icon': '🌙', 'title': 'Dark Mode Toggle', 'desc': 'Allow users to switch between light and dark themes. Currently dark-only.', 'user_gated': False},
+          'ui_experience_toggle': {'icon': '🧪', 'title': 'New UI Experience Toggle', 'desc': 'Show the "Try the new UI experience" toggle in app and admin navigation for opt-in UI refinement.', 'user_gated': False},
+          'dashboard_home': {'icon': '🏠', 'title': 'Dashboard Home', 'desc': 'Replace the request form at / with a dashboard landing page. Shows quick actions, active requests, printer status, and activity feed. Request form moves to /new-request.', 'user_gated': True}
         } %}
-        {% for key in ['dark_mode_toggle', 'dashboard_home'] %}
+        {% for key in ['dark_mode_toggle', 'ui_experience_toggle', 'dashboard_home'] %}
         {% set flag = flags.get(key) %}
         {% set details = ui_flag_details.get(key, {}) %}
         {% if flag %}
@@ -179,10 +180,10 @@
                 <span class="font-medium">{{ details.title }}</span>
                 {% if flag.enabled %}<span class="px-2 py-0.5 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg">Enabled</span>
                 {% else %}<span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-lg">Disabled</span>{% endif %}
-                {% if flag.allowed_emails is defined %}<span class="px-2 py-0.5 bg-purple-600/20 text-purple-300 text-xs rounded-lg">User-Gated</span>{% endif %}
+                {% if details.user_gated %}<span class="px-2 py-0.5 bg-purple-600/20 text-purple-300 text-xs rounded-lg">User-Gated</span>{% endif %}
               </div>
               <p class="text-sm text-zinc-400 mt-2">{{ details.desc }}</p>
-              {% if flag.allowed_emails is defined %}
+              {% if details.user_gated %}
               <!-- Allowed Emails Section -->
               <div class="mt-4 p-3 bg-zinc-950 border border-zinc-800 rounded-lg">
                 <p class="text-xs text-zinc-400 mb-2 font-medium">👥 Allowed Users ({{ flag.allowed_emails|length if flag.allowed_emails else 0 }} emails)</p>

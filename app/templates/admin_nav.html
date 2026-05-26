@@ -1,9 +1,15 @@
 {# Admin Navigation Component - Two-Tier Flat Layout #}
 {# Usage: {% include 'admin_nav.html' %} with active_page variable set #}
+{% if ui_experience_toggle_enabled is callable %}{% set _ui_exp_toggle_on = ui_experience_toggle_enabled() %}{% else %}{% set _ui_exp_toggle_on = ui_experience_toggle_enabled %}{% endif %}
 
 <script>
   (function() {
+    const uiExperienceToggleAllowed = {{ 'true' if _ui_exp_toggle_on else 'false' }};
     try {
+      if (!uiExperienceToggleAllowed) {
+        localStorage.setItem('ui_experience_mode', 'classic');
+        return;
+      }
       if (localStorage.getItem('ui_experience_mode') === 'new') {
         document.documentElement.classList.add('ui-exp-new');
       }
@@ -54,6 +60,7 @@
 
       <!-- Right: Exit + Avatar -->
       <div class="hidden lg:flex items-center gap-2 shrink-0">
+        {% if _ui_exp_toggle_on %}
         <button id="admin-ui-toggle"
                 type="button"
                 role="switch"
@@ -66,6 +73,7 @@
             <span id="admin-ui-toggle-dot" class="inline-block h-4 w-4 rounded-full bg-zinc-400 shadow transition-transform" style="transform: translateX(2px);"></span>
           </span>
         </button>
+        {% endif %}
         <a href="/" class="text-sm text-zinc-400 hover:text-indigo-300 flex items-center gap-1.5 transition px-2">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"/>
@@ -189,6 +197,7 @@
       <a href="/admin/printellect/ota-status" class="mobile-nav-link {% if active_page == 'printellect-ota' %}active{% endif %}">🔄 OTA Status</a>
       <a href="/admin/printellect/docs" class="mobile-nav-link {% if active_page == 'printellect-docs' %}active{% endif %}">📖 Docs</a>
 
+      {% if _ui_exp_toggle_on %}
       <div class="mt-3 px-3 py-2.5 rounded-xl border border-zinc-800 bg-zinc-950/45">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
@@ -206,6 +215,7 @@
           </button>
         </div>
       </div>
+      {% endif %}
 
       <div class="border-t border-zinc-800 mt-3 pt-2 flex items-center gap-2">
         <a href="/" class="mobile-nav-link flex-1 text-indigo-400">← Exit Admin</a>
@@ -304,6 +314,8 @@
 </style>
 
 <script>
+const UI_EXPERIENCE_TOGGLE_ENABLED = {{ 'true' if _ui_exp_toggle_on else 'false' }};
+
 function toggleMobileMenu() {
   const menu = document.getElementById('mobile-menu');
   if (!menu) return;
@@ -314,6 +326,9 @@ function toggleMobileMenu() {
 }
 
 function getUiExperienceMode() {
+  if (!UI_EXPERIENCE_TOGGLE_ENABLED) {
+    return false;
+  }
   try {
     return localStorage.getItem('ui_experience_mode') === 'new';
   } catch (_) {
@@ -322,36 +337,47 @@ function getUiExperienceMode() {
 }
 
 function applyUiExperienceMode(enabled) {
-  document.documentElement.classList.toggle('ui-exp-new', !!enabled);
+  const modeEnabled = UI_EXPERIENCE_TOGGLE_ENABLED && !!enabled;
+  document.documentElement.classList.toggle('ui-exp-new', modeEnabled);
 
   const desktopToggle = document.getElementById('admin-ui-toggle');
   const desktopTrack = document.getElementById('admin-ui-toggle-track');
   const desktopDot = document.getElementById('admin-ui-toggle-dot');
   const desktopLabel = document.getElementById('admin-ui-toggle-label');
   if (desktopToggle && desktopTrack && desktopDot) {
-    desktopToggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
-    desktopToggle.style.borderColor = enabled ? 'rgba(99, 102, 241, 0.72)' : '#3f3f46';
-    desktopToggle.style.backgroundColor = enabled ? 'rgba(49, 46, 129, 0.36)' : 'rgba(24, 24, 27, 0.8)';
-    desktopTrack.style.backgroundColor = enabled ? '#4f46e5' : '#3f3f46';
-    desktopDot.style.transform = enabled ? 'translateX(17px)' : 'translateX(2px)';
-    desktopDot.style.backgroundColor = enabled ? '#ffffff' : '#a1a1aa';
+    desktopToggle.setAttribute('aria-checked', modeEnabled ? 'true' : 'false');
+    desktopToggle.style.borderColor = modeEnabled ? 'rgba(99, 102, 241, 0.72)' : '#3f3f46';
+    desktopToggle.style.backgroundColor = modeEnabled ? 'rgba(49, 46, 129, 0.36)' : 'rgba(24, 24, 27, 0.8)';
+    desktopTrack.style.backgroundColor = modeEnabled ? '#4f46e5' : '#3f3f46';
+    desktopDot.style.transform = modeEnabled ? 'translateX(17px)' : 'translateX(2px)';
+    desktopDot.style.backgroundColor = modeEnabled ? '#ffffff' : '#a1a1aa';
     if (desktopLabel) {
-      desktopLabel.textContent = enabled ? 'New UI On' : 'New UI';
-      desktopLabel.style.color = enabled ? '#c7d2fe' : '#d4d4d8';
+      desktopLabel.textContent = modeEnabled ? 'New UI On' : 'New UI';
+      desktopLabel.style.color = modeEnabled ? '#c7d2fe' : '#d4d4d8';
     }
   }
 
   const mobileToggle = document.getElementById('admin-ui-toggle-mobile');
   const mobileDot = document.getElementById('admin-ui-toggle-mobile-dot');
   if (mobileToggle && mobileDot) {
-    mobileToggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
-    mobileToggle.style.backgroundColor = enabled ? '#4f46e5' : '#3f3f46';
-    mobileDot.style.transform = enabled ? 'translateX(22px)' : 'translateX(4px)';
-    mobileDot.style.backgroundColor = enabled ? '#ffffff' : '#a1a1aa';
+    mobileToggle.setAttribute('aria-checked', modeEnabled ? 'true' : 'false');
+    mobileToggle.style.backgroundColor = modeEnabled ? '#4f46e5' : '#3f3f46';
+    mobileDot.style.transform = modeEnabled ? 'translateX(22px)' : 'translateX(4px)';
+    mobileDot.style.backgroundColor = modeEnabled ? '#ffffff' : '#a1a1aa';
   }
 }
 
 function setUiExperienceMode(enabled) {
+  if (!UI_EXPERIENCE_TOGGLE_ENABLED) {
+    try {
+      localStorage.setItem('ui_experience_mode', 'classic');
+    } catch (_) {
+      // Ignore storage failures.
+    }
+    applyUiExperienceMode(false);
+    return;
+  }
+
   try {
     localStorage.setItem('ui_experience_mode', enabled ? 'new' : 'classic');
   } catch (_) {
@@ -364,6 +390,9 @@ function setUiExperienceMode(enabled) {
 }
 
 function toggleUiExperienceMode() {
+  if (!UI_EXPERIENCE_TOGGLE_ENABLED) {
+    return;
+  }
   setUiExperienceMode(!getUiExperienceMode());
 }
 
