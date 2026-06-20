@@ -143,7 +143,28 @@ def _load_config():
 
 
 def _get_scene_gcode():
-    """Return the joined G-code string for the active build plate, or ''."""
+    """Return the sliced G-code string, or ''.
+
+    Uses Cura's GCodeWriter plugin (the same path as "Save to File"), which is
+    the robust, version-stable way to obtain the active build plate's G-code —
+    identical bytes to what you'd export by hand. Falls back to reading the
+    scene's gcode_dict directly if the writer is unavailable.
+    """
+    # Preferred: GCodeWriter plugin.
+    try:
+        from io import StringIO
+        from UM.PluginRegistry import PluginRegistry
+
+        writer = PluginRegistry.getInstance().getPluginObject("GCodeWriter")
+        stream = StringIO()
+        if writer is not None and writer.write(stream, None):
+            text = stream.getvalue()
+            if text:
+                return text
+    except Exception as e:
+        Logger.log("w", "GCodeWriter path failed, falling back: %s", e)
+
+    # Fallback: read the scene gcode_dict directly.
     try:
         from cura.CuraApplication import CuraApplication
         app = CuraApplication.getInstance()
@@ -156,9 +177,7 @@ def _get_scene_gcode():
         except Exception:
             active = 0
         gcode_list = gcode_dict.get(active) or gcode_dict.get(0)
-        if not gcode_list:
-            return ""
-        return "".join(gcode_list)
+        return "".join(gcode_list) if gcode_list else ""
     except Exception as e:
         Logger.log("e", "Could not read scene g-code: %s", e)
         return ""

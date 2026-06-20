@@ -75,5 +75,11 @@ admin panel), use the post-processing script
 - **Print accuracy is unchanged**: the agent uploads the exact bytes Cura
   produced and prints from SD — identical to printing that file from the
   printer's own menu (and more reliable than USB host-streaming).
-- **Firmware**: stock LK5 Pro Marlin supports SD upload (`M28`/`M29`) + SD print
-  (`M23`/`M24`) + status reports (`M27`/`M105`/`M155`). Default baud is 115200.
+- **Firmware**: SD upload (`M28`/`M29`), SD print (`M23`/`M24`) and status
+  reports (`M27`/`M105`) are standard Marlin and work on the stock LK5 Pro
+  (Marlin 1.1.9) and community Marlin 2.x builds. **Job cancel** uses `M524`,
+  which is **Marlin 2.0+ only**; on stock 1.1.9 the agent falls back to pausing
+  + cooling, and a full stop may need the printer's screen.
+- **Baud rate**: default `115200` (stock). Some community firmware uses
+  `250000` — if the agent can't connect, set `"baud_rate": 250000` in
+  `config.json`.

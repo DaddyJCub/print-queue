@@ -131,6 +131,26 @@ The agent reports a flat status object; the dashboard adapter
 }
 ```
 
+## Firmware compatibility (LK5 Pro)
+
+| Capability | G-code | Stock LK5 Pro (Marlin 1.1.9) | Community Marlin 2.x |
+|------------|--------|------------------------------|----------------------|
+| SD upload over USB | `M28` / `M29` | ✅ | ✅ |
+| Start SD print | `M23` / `M24` | ✅ | ✅ |
+| Status / progress | `M105` / `M27` | ✅ | ✅ |
+| Pause | `M25` | ✅ | ✅ |
+| Clean job abort | `M524` | ❌ (2.0+ only) | ✅ |
+
+- The SD upload uses Marlin's line-numbered + checksummed protocol so the
+  transfer is verified (a corrupt/dropped line triggers a resend), and `M29` is
+  framed the same way to satisfy Marlin's post-`M28` line-number requirement.
+- **Cancel:** on Marlin 2.x the agent issues `M524` for a clean abort. On stock
+  1.1.9 there is no host abort gcode, so the agent **pauses (`M25`) and cools the
+  hotend/bed**; fully clearing the job may require the printer's screen. Flashing
+  community Marlin 2.x (commonly done on the LK5 Pro) enables clean cancel.
+- **Baud:** `115200` by default; some community firmware uses `250000`
+  (configurable via `baud_rate`).
+
 ## Hosting options
 
 | Host | Notes |

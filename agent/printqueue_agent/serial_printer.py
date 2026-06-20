@@ -231,9 +231,19 @@ class SerialPrinter:
                             last_pct = pct
                             on_progress(pct)
         finally:
-            # Always close the SD file, even on error.
-            self._send_now("M29")
-            self._wait_ok(timeout=30)
+            # Always close the SD file, even on error. Marlin requires lines
+            # after M28 to keep the line-number/checksum framing, so close with
+            # the framed sender (a raw M29 after numbered lines can error); fall
+            # back to a raw M29 if the framed one is rejected.
+            try:
+                self.send_command("M29", timeout=30)
+            except Exception as e:
+                log.warning("Framed M29 failed (%s); sending raw M29", e)
+                self._send_now("M29")
+                try:
+                    self._wait_ok(timeout=30)
+                except Exception:
+                    pass
         log.info("Upload complete: %s", SD_FILENAME)
 
     def start_sd_print(self) -> None:
@@ -251,12 +261,26 @@ class SerialPrinter:
             log.warning("Could not enable auto-reports (non-fatal): %s", e)
 
     def abort_print(self) -> None:
-        """Abort an in-progress SD print and cool down."""
-        log.info("Aborting SD print")
+        """Stop an in-progress SD print and cool down, across firmware versions.
+
+        ``M524`` (clean SD abort) only exists on Marlin 2.0+. The stock LK5 Pro
+        ships Marlin 1.1.9, which has no host abort gcode — so we fall back to
+        ``M25`` (pause SD print, halting motion) plus cooling the hotend/bed and
+        turning the fan off. On 1.1.9 a full job clear may still require the
+        printer's screen; see the integration doc.
+        """
+        log.info("Stopping SD print")
+        aborted = False
         try:
-            self.send_command("M524", timeout=15)  # abort SD print
+            self.send_command("M524", timeout=15)  # Marlin 2.0+ clean abort
+            aborted = True
         except Exception as e:
-            log.warning("M524 abort failed: %s", e)
+            log.warning("M524 not available (%s); falling back to M25 pause", e)
+        if not aborted:
+            try:
+                self.send_command("M25", timeout=15)  # pause SD print (1.1.9-safe)
+            except Exception as e:
+                log.warning("M25 pause failed: %s", e)
         for cmd in ("M104 S0", "M140 S0", "M107"):  # nozzle off, bed off, fan off
             try:
                 self.send_command(cmd, timeout=8)
