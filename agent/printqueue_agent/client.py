@@ -1,0 +1,109 @@
+"""HTTP client for the print-queue printer-agent API.
+
+Every call is *outbound* from the agent to the server, so the printer's network
+needs no inbound ports. The agent authenticates with a bearer token obtained by
+provisioning once with its claim code.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, Optional
+
+import requests
+
+log = logging.getLogger("printqueue.client")
+
+
+class ServerError(Exception):
+    pass
+
+
+class PrintQueueClient:
+    def __init__(self, base_url: str, agent_id: str, claim_code: str, *,
+                 verify_tls: bool = True, timeout: float = 30.0):
+        self.base = base_url.rstrip("/")
+        self.api = f"{self.base}/api/printer-agent/v1"
+        self.agent_id = agent_id
+        self.claim_code = claim_code
+        self.verify_tls = verify_tls
+        self.timeout = timeout
+        self._token: Optional[str] = None
+        self._session = requests.Session()
+
+    # ── auth ──────────────────────────────────────────────────────
+    @property
+    def _headers(self) -> Dict[str, str]:
+        if not self._token:
+            raise ServerError("Not provisioned yet")
+        return {"Authorization": f"Bearer {self._token}"}
+
+    def provision(self, agent_version: str) -> Dict[str, Any]:
+        """Exchange the claim code for a bearer token. Idempotent (re-provision rotates the token)."""
+        r = self._session.post(
+            f"{self.api}/provision",
+            json={"agent_id": self.agent_id, "claim_code": self.claim_code, "agent_version": agent_version},
+            verify=self.verify_tls, timeout=self.timeout,
+        )
+        if r.status_code != 200:
+            raise ServerError(f"provision failed: {r.status_code} {r.text}")
+        data = r.json()
+        self._token = data["agent_token"]
+        log.info("Provisioned as %s (printer_code=%s)", self.agent_id, data.get("printer_code"))
+        return data
+
+    def _request(self, method: str, path: str, **kwargs) -> requests.Response:
+        """Wrapper that re-provisions on 401 (token revoked/expired)."""
+        url = f"{self.api}{path}"
+        r = self._session.request(method, url, headers=self._headers,
+                                  verify=self.verify_tls, timeout=self.timeout, **kwargs)
+        if r.status_code == 401:
+            log.warning("401 from server — re-provisioning")
+            self._token = None
+            self.provision(kwargs.pop("_agent_version", "unknown") or "unknown")
+            r = self._session.request(method, url, headers=self._headers,
+                                      verify=self.verify_tls, timeout=self.timeout, **kwargs)
+        return r
+
+    # ── lifecycle ─────────────────────────────────────────────────
+    def heartbeat(self, agent_version: str, printer_status: Dict[str, Any]) -> None:
+        r = self._request("POST", "/heartbeat", json={"agent_version": agent_version, "printer": printer_status})
+        if r.status_code != 200:
+            raise ServerError(f"heartbeat failed: {r.status_code} {r.text}")
+
+    def next_job(self) -> Optional[Dict[str, Any]]:
+        """Claim the next queued job, or None if the queue is empty."""
+        r = self._request("GET", "/jobs/next")
+        if r.status_code == 204:
+            return None
+        if r.status_code != 200:
+            raise ServerError(f"jobs/next failed: {r.status_code} {r.text}")
+        return r.json()
+
+    def download_job_file(self, job_id: str, dest_path: str) -> None:
+        r = self._request("GET", f"/jobs/{job_id}/file", stream=True)
+        if r.status_code != 200:
+            raise ServerError(f"download failed: {r.status_code} {r.text}")
+        with open(dest_path, "wb") as fh:
+            for chunk in r.iter_content(chunk_size=64 * 1024):
+                if chunk:
+                    fh.write(chunk)
+
+    def update_job(self, job_id: str, status: str, *, progress: Optional[int] = None,
+                   error: Optional[str] = None, result: Optional[Dict[str, Any]] = None) -> None:
+        body: Dict[str, Any] = {"status": status}
+        if progress is not None:
+            body["progress"] = progress
+        if error is not None:
+            body["error"] = error
+        if result is not None:
+            body["result"] = result
+        r = self._request("POST", f"/jobs/{job_id}/status", json=body)
+        if r.status_code != 200:
+            raise ServerError(f"update_job failed: {r.status_code} {r.text}")
+
+    def upload_snapshot(self, jpeg_bytes: bytes) -> None:
+        r = self._request("POST", "/snapshot", data=jpeg_bytes,
+                          headers={**self._headers, "Content-Type": "image/jpeg"})
+        if r.status_code != 200:
+            raise ServerError(f"snapshot failed: {r.status_code} {r.text}")

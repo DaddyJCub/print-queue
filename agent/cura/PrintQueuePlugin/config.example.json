@@ -1,0 +1,6 @@
+{
+  "server_url": "https://print.jcubhub.com",
+  "ingest_token": "REPLACE_WITH_INGEST_TOKEN_FROM_ADMIN_PANEL",
+  "printer_code": "LK5_PRO",
+  "agent_id": ""
+}

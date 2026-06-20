@@ -1,0 +1,23 @@
+[Unit]
+# systemd unit for running the agent on a Raspberry Pi (Raspberry Pi OS / Debian).
+# Install:
+#   sudo cp printqueue-agent.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now printqueue-agent
+Description=Print Queue Printer Agent (LK5 Pro)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust paths/user to match your install.
+User=pi
+WorkingDirectory=/home/pi/printqueue-agent
+ExecStart=/usr/bin/python3 -m printqueue_agent --config /home/pi/printqueue-agent/config.json
+Restart=always
+RestartSec=5
+# The pi user must be in the 'dialout' group to access the serial port:
+#   sudo usermod -a -G dialout pi   (then reboot)
+
+[Install]
+WantedBy=multi-user.target

@@ -34,6 +34,7 @@ Auto-generated docs (when server is running):
 | [Pico Integration Handoff](printellect-pico-integration-handoff.md) | Firmware engineer handoff contract |
 | [Pico Final Implementation Guide](printellect-pico-final-implementation-guide.md) | v0.17.0+ rollout notes and manufacturing contract |
 | [Device Control Roadmap](printellect-device-control-roadmap.md) | Multi-phase implementation checklist and acceptance gates |
+| [LK5 Pro Agent Integration](lk5-pro-agent-integration.md) | Cross-network USB printer (LK5 Pro) via a Raspberry Pi / Windows agent |
 
 ## Local development
 
