@@ -1,0 +1,20 @@
+{
+  "server_url": "https://print.jcubhub.com",
+  "agent_id": "agent-REPLACE_ME",
+  "claim_code": "REPLACE_ME_FROM_ADMIN_PANEL",
+  "agent_version": "1.0.0",
+  "verify_tls": true,
+
+  "serial_port": "auto",
+  "baud_rate": 115200,
+
+  "poll_interval_s": 5,
+  "heartbeat_interval_s": 15,
+
+  "camera": {
+    "enabled": false,
+    "snapshot_url": "http://localhost:8080/?action=snapshot",
+    "device_index": null,
+    "interval_s": 10
+  }
+}

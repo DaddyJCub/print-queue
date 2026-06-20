@@ -1,0 +1,934 @@
+"""
+Print-queue printer agent API.
+
+This module powers cross-network printers that cannot be reached directly from
+the server (e.g. a Longer LK5 Pro connected over USB to a Windows PC that lives
+on a *separate* network from the print-queue container).
+
+Instead of the server reaching *into* the printer's LAN (the FlashForge /
+Moonraker model in ``app.main``), a small **agent** runs next to the printer and
+makes only **outbound** HTTPS calls to this API:
+
+    provision (claim code -> bearer token)
+        -> heartbeat (report printer status / telemetry)
+        -> GET jobs/next (claim a queued print job)
+        -> GET jobs/{id}/file (download the sliced .gcode)
+        -> POST jobs/{id}/status (stream progress + lifecycle)
+        -> POST snapshot (optional webcam frame)
+
+Because the agent only dials out, there are **no inbound ports** to open and the
+channel is authenticated with a per-agent bearer token over TLS. This mirrors
+the existing Printellect device contract (``app.printellect``) but is scoped to
+3D-print jobs rather than IoT light/sound perks.
+
+The Windows agent implementation lives under ``windows-agent/``.
+"""
+
+import json
+import os
+import secrets
+import sqlite3
+import time
+import uuid
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response
+from pydantic import BaseModel
+
+from app.auth import require_admin
+from app.printellect_service import claim_hash, generate_device_token, token_hash, verify_claim_code
+
+router = APIRouter(tags=["printer-agent"])
+
+API_PREFIX = "/api/printer-agent/v1"
+ADMIN_PREFIX = "/api/printer-agent/admin"
+
+# An agent is "online" if we have seen a heartbeat within this window.
+AGENT_ONLINE_WINDOW_SECONDS = int(os.getenv("AGENT_ONLINE_WINDOW_SECONDS", "120"))
+# How often the agent should heartbeat / poll (advertised in provision response).
+AGENT_HEARTBEAT_INTERVAL_S = int(os.getenv("AGENT_HEARTBEAT_INTERVAL_S", "15"))
+AGENT_POLL_INTERVAL_S = int(os.getenv("AGENT_POLL_INTERVAL_S", "5"))
+# Long-poll cap for jobs/stream.
+AGENT_STREAM_MAX_SECONDS = int(os.getenv("AGENT_STREAM_MAX_SECONDS", "25"))
+AGENT_STREAM_POLL_STEP_SECONDS = max(0.1, float(os.getenv("AGENT_STREAM_POLL_STEP_SECONDS", "0.5")))
+
+# Brute-force protection on the claim code (per agent_id).
+MAX_CLAIM_FAILURES = int(os.getenv("AGENT_MAX_CLAIM_FAILURES", "8"))
+CLAIM_FAIL_WINDOW_SECONDS = int(os.getenv("AGENT_CLAIM_FAIL_WINDOW_S", "300"))
+_claim_failures: Dict[str, List[float]] = {}
+
+# Job lifecycle. ``queued`` is enqueued by an admin ("Send to LK5"); the agent
+# drives it through the remaining states and reports them back.
+JOB_STATUSES = {
+    "queued",      # waiting for an agent to claim
+    "claimed",     # agent fetched it, downloading
+    "uploading",   # streaming gcode to the printer's SD card
+    "printing",    # SD print running
+    "paused",
+    "completed",
+    "failed",
+    "canceled",
+}
+JOB_TERMINAL = {"completed", "failed", "canceled"}
+
+# Printer codes that are serviced by an agent rather than a direct LAN API.
+AGENT_PRINTER_CODES = {"LK5_PRO"}
+
+INGEST_TOKEN_SETTING = "printer_agent_ingest_token"
+
+
+def db() -> sqlite3.Connection:
+    conn = sqlite3.connect(os.getenv("DB_PATH", "/data/app.db"), timeout=30)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def now_iso() -> str:
+    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
+def upload_dir() -> str:
+    return os.getenv("UPLOAD_DIR", "/uploads")
+
+
+def _json_dumps(value: Any) -> str:
+    try:
+        return json.dumps(value, default=str)
+    except Exception:
+        return "{}"
+
+
+def _json_loads(value: Optional[str]) -> Dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        loaded = json.loads(value)
+        return loaded if isinstance(loaded, dict) else {}
+    except Exception:
+        return {}
+
+
+# ──────────────────────────── schema ────────────────────────────
+
+def init_printer_agent_tables(cur: sqlite3.Cursor) -> None:
+    """Create agent tables. Safe to call repeatedly (used from init_db)."""
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS printer_agents (
+            agent_id TEXT PRIMARY KEY,
+            name TEXT,
+            printer_code TEXT NOT NULL,
+            claim_code_hash TEXT,
+            created_at TEXT NOT NULL,
+            created_by TEXT,
+            claimed_at TEXT,
+            last_seen_at TEXT,
+            agent_version TEXT,
+            status_json TEXT,
+            notes TEXT,
+            revoked INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS printer_agent_tokens (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            token_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            revoked_at TEXT,
+            last_used_at TEXT,
+            FOREIGN KEY(agent_id) REFERENCES printer_agents(agent_id)
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS printer_agent_jobs (
+            job_id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            request_id TEXT,
+            file_id TEXT,
+            file_name TEXT,
+            stored_filename TEXT,
+            sha256 TEXT,
+            size_bytes INTEGER,
+            status TEXT NOT NULL,
+            progress INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            result_json TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            created_by TEXT,
+            claimed_at TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY(agent_id) REFERENCES printer_agents(agent_id)
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS printer_agent_snapshots (
+            agent_id TEXT PRIMARY KEY,
+            image BLOB,
+            content_type TEXT,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(agent_id) REFERENCES printer_agents(agent_id)
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_agent_tokens_lookup ON printer_agent_tokens(token_hash, revoked_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_agent_jobs_queue ON printer_agent_jobs(agent_id, status, created_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_agents_printer ON printer_agents(printer_code, last_seen_at)")
+
+
+# ──────────────────────────── settings / ingest token ────────────────────────────
+
+def _get_setting(conn: sqlite3.Connection, key: str, default: str = "") -> str:
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def _set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+        (key, value, now_iso()),
+    )
+
+
+def get_or_create_ingest_token(conn: sqlite3.Connection) -> str:
+    """Static token the Cura post-processing uploader presents to ingest gcode."""
+    token = _get_setting(conn, INGEST_TOKEN_SETTING, "")
+    if not token:
+        token = secrets.token_urlsafe(24)
+        _set_setting(conn, INGEST_TOKEN_SETTING, token)
+        conn.commit()
+    return token
+
+
+# ──────────────────────────── auth helpers ────────────────────────────
+
+def _bearer_token(request: Request) -> str:
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = auth.split(" ", 1)[1].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    return token
+
+
+async def _agent_from_bearer(request: Request) -> sqlite3.Row:
+    token = _bearer_token(request)
+    conn = db()
+    try:
+        token_row = conn.execute(
+            """
+            SELECT t.id AS token_id, t.agent_id AS agent_id
+            FROM printer_agent_tokens t
+            WHERE t.token_hash = ? AND t.revoked_at IS NULL
+            ORDER BY t.created_at DESC
+            LIMIT 1
+            """,
+            (token_hash(token),),
+        ).fetchone()
+        if not token_row:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        agent = conn.execute(
+            "SELECT * FROM printer_agents WHERE agent_id = ?", (token_row["agent_id"],)
+        ).fetchone()
+        if not agent or agent["revoked"]:
+            raise HTTPException(status_code=401, detail="Unknown or revoked agent")
+
+        conn.execute(
+            "UPDATE printer_agent_tokens SET last_used_at = ? WHERE id = ?",
+            (now_iso(), token_row["token_id"]),
+        )
+        conn.commit()
+        return agent
+    finally:
+        conn.close()
+
+
+def _record_claim_failure(agent_id: str) -> None:
+    now = time.time()
+    window = _claim_failures.setdefault(agent_id, [])
+    window.append(now)
+    cutoff = now - CLAIM_FAIL_WINDOW_SECONDS
+    _claim_failures[agent_id] = [t for t in window if t >= cutoff]
+
+
+def _claim_rate_limited(agent_id: str) -> bool:
+    now = time.time()
+    cutoff = now - CLAIM_FAIL_WINDOW_SECONDS
+    window = [t for t in _claim_failures.get(agent_id, []) if t >= cutoff]
+    _claim_failures[agent_id] = window
+    return len(window) >= MAX_CLAIM_FAILURES
+
+
+# ──────────────────────────── request models ────────────────────────────
+
+class ProvisionRequest(BaseModel):
+    agent_id: str
+    claim_code: str
+    agent_version: Optional[str] = None
+
+
+class HeartbeatRequest(BaseModel):
+    agent_version: Optional[str] = None
+    printer: Optional[Dict[str, Any]] = None
+
+
+class JobStatusRequest(BaseModel):
+    status: str
+    progress: Optional[int] = None
+    error: Optional[str] = None
+    result: Optional[Dict[str, Any]] = None
+
+
+class CreateAgentRequest(BaseModel):
+    name: str
+    printer_code: str = "LK5_PRO"
+    notes: Optional[str] = None
+
+
+class EnqueueJobRequest(BaseModel):
+    file_id: str
+    request_id: Optional[str] = None
+
+
+# ──────────────────────────── device-facing endpoints ────────────────────────────
+
+@router.get(API_PREFIX + "/debug")
+async def agent_debug():
+    """Compact contract the agent can fetch for discovery / debugging."""
+    return {
+        "auth": "Authorization: Bearer <agent_token>",
+        "job_statuses": sorted(JOB_STATUSES),
+        "online_window_s": AGENT_ONLINE_WINDOW_SECONDS,
+        "heartbeat_interval_s": AGENT_HEARTBEAT_INTERVAL_S,
+        "poll_interval_s": AGENT_POLL_INTERVAL_S,
+        "endpoints": {
+            "provision": API_PREFIX + "/provision",
+            "heartbeat": API_PREFIX + "/heartbeat",
+            "jobs_next": API_PREFIX + "/jobs/next",
+            "jobs_stream": API_PREFIX + "/jobs/stream",
+            "job_file": API_PREFIX + "/jobs/{job_id}/file",
+            "job_status": API_PREFIX + "/jobs/{job_id}/status",
+            "snapshot": API_PREFIX + "/snapshot",
+        },
+        "openapi": "/openapi.json",
+    }
+
+
+@router.post(API_PREFIX + "/provision")
+async def provision(body: ProvisionRequest):
+    agent_id = body.agent_id.strip()
+    if not agent_id:
+        raise HTTPException(status_code=422, detail="agent_id required")
+
+    if _claim_rate_limited(agent_id):
+        return JSONResponse(
+            {"detail": "Too many failed claim attempts"},
+            status_code=429,
+            headers={"Retry-After": str(CLAIM_FAIL_WINDOW_SECONDS)},
+        )
+
+    conn = db()
+    try:
+        agent = conn.execute("SELECT * FROM printer_agents WHERE agent_id = ?", (agent_id,)).fetchone()
+        if not agent or agent["revoked"]:
+            _record_claim_failure(agent_id)
+            raise HTTPException(status_code=403, detail="Unknown or revoked agent")
+
+        if not verify_claim_code(body.claim_code, agent["claim_code_hash"]):
+            _record_claim_failure(agent_id)
+            raise HTTPException(status_code=403, detail="Invalid claim code")
+
+        now = now_iso()
+        token = generate_device_token(32)
+        # Single active token per agent: revoke previous tokens on (re)provision.
+        conn.execute(
+            "UPDATE printer_agent_tokens SET revoked_at = ? WHERE agent_id = ? AND revoked_at IS NULL",
+            (now, agent_id),
+        )
+        conn.execute(
+            "INSERT INTO printer_agent_tokens (id, agent_id, token_hash, created_at, last_used_at) VALUES (?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), agent_id, token_hash(token), now, now),
+        )
+        conn.execute(
+            "UPDATE printer_agents SET claimed_at = COALESCE(claimed_at, ?), last_seen_at = ?, agent_version = ? WHERE agent_id = ?",
+            (now, now, body.agent_version, agent_id),
+        )
+        conn.commit()
+        _claim_failures.pop(agent_id, None)
+        return {
+            "status": "provisioned",
+            "agent_token": token,
+            "printer_code": agent["printer_code"],
+            "heartbeat_interval_s": AGENT_HEARTBEAT_INTERVAL_S,
+            "poll_interval_s": AGENT_POLL_INTERVAL_S,
+        }
+    finally:
+        conn.close()
+
+
+@router.post(API_PREFIX + "/heartbeat")
+async def heartbeat(body: HeartbeatRequest, request: Request):
+    agent = await _agent_from_bearer(request)
+    conn = db()
+    try:
+        status_json = _json_dumps(body.printer) if body.printer is not None else agent["status_json"]
+        conn.execute(
+            "UPDATE printer_agents SET last_seen_at = ?, agent_version = COALESCE(?, agent_version), status_json = ? WHERE agent_id = ?",
+            (now_iso(), body.agent_version, status_json, agent["agent_id"]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "online_window_s": AGENT_ONLINE_WINDOW_SECONDS}
+
+
+def _claim_next_job(conn: sqlite3.Connection, agent_id: str) -> Optional[sqlite3.Row]:
+    """Atomically move the oldest queued job to ``claimed`` and return it."""
+    row = conn.execute(
+        "SELECT * FROM printer_agent_jobs WHERE agent_id = ? AND status = 'queued' ORDER BY created_at ASC LIMIT 1",
+        (agent_id,),
+    ).fetchone()
+    if not row:
+        return None
+    now = now_iso()
+    updated = conn.execute(
+        "UPDATE printer_agent_jobs SET status = 'claimed', claimed_at = ?, updated_at = ? WHERE job_id = ? AND status = 'queued'",
+        (now, now, row["job_id"]),
+    )
+    if updated.rowcount == 0:
+        return None  # raced with another claim
+    conn.commit()
+    return conn.execute("SELECT * FROM printer_agent_jobs WHERE job_id = ?", (row["job_id"],)).fetchone()
+
+
+def _job_payload(job: sqlite3.Row) -> Dict[str, Any]:
+    return {
+        "job_id": job["job_id"],
+        "request_id": job["request_id"],
+        "file_id": job["file_id"],
+        "file_name": job["file_name"],
+        "sha256": job["sha256"],
+        "size_bytes": job["size_bytes"],
+        "status": job["status"],
+        "download_url": f"{API_PREFIX}/jobs/{job['job_id']}/file",
+        "created_at": job["created_at"],
+    }
+
+
+@router.get(API_PREFIX + "/jobs/next")
+async def jobs_next(request: Request):
+    agent = await _agent_from_bearer(request)
+    conn = db()
+    try:
+        job = _claim_next_job(conn, agent["agent_id"])
+    finally:
+        conn.close()
+    if not job:
+        return Response(status_code=204)
+    return _job_payload(job)
+
+
+@router.get(API_PREFIX + "/jobs/stream")
+async def jobs_stream(request: Request, timeout_s: int = 20):
+    """Long-poll variant of jobs/next for lower dispatch latency."""
+    agent = await _agent_from_bearer(request)
+    import asyncio
+
+    deadline = time.monotonic() + min(max(1, timeout_s), AGENT_STREAM_MAX_SECONDS)
+    while True:
+        conn = db()
+        try:
+            job = _claim_next_job(conn, agent["agent_id"])
+        finally:
+            conn.close()
+        if job:
+            return _job_payload(job)
+        if time.monotonic() >= deadline:
+            return Response(status_code=204)
+        await asyncio.sleep(AGENT_STREAM_POLL_STEP_SECONDS)
+
+
+@router.get(API_PREFIX + "/jobs/{job_id}/file")
+async def job_file(job_id: str, request: Request):
+    agent = await _agent_from_bearer(request)
+    conn = db()
+    try:
+        job = conn.execute(
+            "SELECT * FROM printer_agent_jobs WHERE job_id = ? AND agent_id = ?",
+            (job_id, agent["agent_id"]),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not job["stored_filename"]:
+        raise HTTPException(status_code=404, detail="Job has no file")
+    path = os.path.join(upload_dir(), job["stored_filename"])
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="File missing on server")
+    return FileResponse(
+        path,
+        media_type="text/plain.gcode" if str(job["file_name"]).lower().endswith(".gcode") else "application/octet-stream",
+        filename=job["file_name"] or os.path.basename(path),
+    )
+
+
+def _reflect_request_status(conn: sqlite3.Connection, request_id: Optional[str], job_status: str) -> None:
+    """Best-effort mirror of job lifecycle onto a linked queue request."""
+    if not request_id:
+        return
+    mapping = {
+        "printing": "PRINTING",
+        "uploading": "PRINTING",
+        "completed": "DONE",
+    }
+    new_status = mapping.get(job_status)
+    if not new_status:
+        return
+    try:
+        row = conn.execute("SELECT status FROM requests WHERE id = ?", (request_id,)).fetchone()
+        if not row:
+            return
+        # Don't clobber a manually-set terminal state.
+        if row["status"] in ("DONE", "CANCELED", "REJECTED"):
+            return
+        conn.execute(
+            "UPDATE requests SET status = ?, updated_at = ? WHERE id = ?",
+            (new_status, now_iso(), request_id),
+        )
+    except Exception:
+        pass
+
+
+@router.post(API_PREFIX + "/jobs/{job_id}/status")
+async def job_status(job_id: str, body: JobStatusRequest, request: Request):
+    agent = await _agent_from_bearer(request)
+    status = body.status.strip().lower()
+    if status not in JOB_STATUSES:
+        raise HTTPException(status_code=422, detail=f"Invalid status '{status}'")
+
+    conn = db()
+    try:
+        job = conn.execute(
+            "SELECT * FROM printer_agent_jobs WHERE job_id = ? AND agent_id = ?",
+            (job_id, agent["agent_id"]),
+        ).fetchone()
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        now = now_iso()
+        progress = job["progress"]
+        if body.progress is not None:
+            progress = max(0, min(100, int(body.progress)))
+
+        started_at = job["started_at"]
+        completed_at = job["completed_at"]
+        if status in ("printing",) and not started_at:
+            started_at = now
+        if status in JOB_TERMINAL and not completed_at:
+            completed_at = now
+        if status == "completed":
+            progress = 100
+
+        conn.execute(
+            """
+            UPDATE printer_agent_jobs
+            SET status = ?, progress = ?, error = ?, result_json = COALESCE(?, result_json),
+                updated_at = ?, started_at = ?, completed_at = ?
+            WHERE job_id = ?
+            """,
+            (
+                status,
+                progress,
+                body.error,
+                _json_dumps(body.result) if body.result is not None else None,
+                now,
+                started_at,
+                completed_at,
+                job_id,
+            ),
+        )
+        _reflect_request_status(conn, job["request_id"], status)
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+@router.post(API_PREFIX + "/snapshot")
+async def upload_snapshot(request: Request, image: Optional[UploadFile] = File(default=None)):
+    """Receive the latest webcam frame from the agent (snapshot-push camera)."""
+    agent = await _agent_from_bearer(request)
+    if image is not None:
+        data = await image.read()
+        content_type = image.content_type or "image/jpeg"
+    else:
+        data = await request.body()
+        content_type = request.headers.get("Content-Type", "image/jpeg")
+    if not data:
+        raise HTTPException(status_code=422, detail="Empty image")
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Snapshot too large")
+
+    conn = db()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO printer_agent_snapshots (agent_id, image, content_type, updated_at) VALUES (?, ?, ?, ?)",
+            (agent["agent_id"], data, content_type, now_iso()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+# ──────────────────────────── admin endpoints ────────────────────────────
+
+def _agent_view(agent: sqlite3.Row) -> Dict[str, Any]:
+    last_seen = agent["last_seen_at"]
+    online = False
+    if last_seen:
+        try:
+            seen = datetime.fromisoformat(last_seen.replace("Z", ""))
+            online = (datetime.utcnow() - seen).total_seconds() <= AGENT_ONLINE_WINDOW_SECONDS
+        except Exception:
+            online = False
+    return {
+        "agent_id": agent["agent_id"],
+        "name": agent["name"],
+        "printer_code": agent["printer_code"],
+        "created_at": agent["created_at"],
+        "claimed_at": agent["claimed_at"],
+        "last_seen_at": last_seen,
+        "agent_version": agent["agent_version"],
+        "online": online,
+        "revoked": bool(agent["revoked"]),
+        "status": _json_loads(agent["status_json"]),
+        "notes": agent["notes"],
+    }
+
+
+@router.get(ADMIN_PREFIX + "/agents")
+async def admin_list_agents(admin=Depends(require_admin)):
+    conn = db()
+    try:
+        rows = conn.execute("SELECT * FROM printer_agents ORDER BY created_at DESC").fetchall()
+        ingest_token = get_or_create_ingest_token(conn)
+    finally:
+        conn.close()
+    return {"agents": [_agent_view(r) for r in rows], "ingest_token": ingest_token}
+
+
+@router.post(ADMIN_PREFIX + "/agents")
+async def admin_create_agent(body: CreateAgentRequest, admin=Depends(require_admin)):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name required")
+    agent_id = f"agent-{secrets.token_hex(6)}"
+    claim_code = secrets.token_urlsafe(18)
+    conn = db()
+    try:
+        conn.execute(
+            """
+            INSERT INTO printer_agents (agent_id, name, printer_code, claim_code_hash, created_at, created_by, notes, revoked)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            (
+                agent_id,
+                name,
+                body.printer_code.strip() or "LK5_PRO",
+                claim_hash(claim_code),
+                now_iso(),
+                getattr(admin, "id", None),
+                body.notes,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    # claim_code is returned exactly once; only its hash is stored.
+    return {
+        "agent_id": agent_id,
+        "claim_code": claim_code,
+        "printer_code": body.printer_code,
+        "note": "Store the claim_code now — it is not retrievable later.",
+    }
+
+
+@router.post(ADMIN_PREFIX + "/agents/{agent_id}/revoke")
+async def admin_revoke_agent(agent_id: str, admin=Depends(require_admin)):
+    conn = db()
+    try:
+        agent = conn.execute("SELECT agent_id FROM printer_agents WHERE agent_id = ?", (agent_id,)).fetchone()
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        now = now_iso()
+        conn.execute("UPDATE printer_agents SET revoked = 1 WHERE agent_id = ?", (agent_id,))
+        conn.execute(
+            "UPDATE printer_agent_tokens SET revoked_at = ? WHERE agent_id = ? AND revoked_at IS NULL",
+            (now, agent_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+@router.post(ADMIN_PREFIX + "/agents/{agent_id}/jobs")
+async def admin_enqueue_job(agent_id: str, body: EnqueueJobRequest, admin=Depends(require_admin)):
+    """The 'Send to LK5' action: queue a sliced gcode file for the agent."""
+    conn = db()
+    try:
+        agent = conn.execute("SELECT * FROM printer_agents WHERE agent_id = ?", (agent_id,)).fetchone()
+        if not agent or agent["revoked"]:
+            raise HTTPException(status_code=404, detail="Agent not found")
+
+        file_row = conn.execute(
+            "SELECT id, original_filename, stored_filename, size_bytes, sha256 FROM files WHERE id = ?",
+            (body.file_id,),
+        ).fetchone()
+        if not file_row:
+            raise HTTPException(status_code=404, detail="File not found")
+        if not str(file_row["original_filename"]).lower().endswith(".gcode"):
+            raise HTTPException(status_code=422, detail="Only .gcode files can be sent to this printer")
+
+        job_id = str(uuid.uuid4())
+        now = now_iso()
+        conn.execute(
+            """
+            INSERT INTO printer_agent_jobs
+                (job_id, agent_id, request_id, file_id, file_name, stored_filename, sha256, size_bytes,
+                 status, progress, created_at, updated_at, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)
+            """,
+            (
+                job_id,
+                agent_id,
+                body.request_id,
+                file_row["id"],
+                file_row["original_filename"],
+                file_row["stored_filename"],
+                file_row["sha256"],
+                file_row["size_bytes"],
+                now,
+                now,
+                getattr(admin, "id", None),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "job_id": job_id, "status": "queued"}
+
+
+def _job_view(job: sqlite3.Row) -> Dict[str, Any]:
+    return {
+        "job_id": job["job_id"],
+        "agent_id": job["agent_id"],
+        "request_id": job["request_id"],
+        "file_name": job["file_name"],
+        "size_bytes": job["size_bytes"],
+        "status": job["status"],
+        "progress": job["progress"],
+        "error": job["error"],
+        "created_at": job["created_at"],
+        "updated_at": job["updated_at"],
+        "started_at": job["started_at"],
+        "completed_at": job["completed_at"],
+        "result": _json_loads(job["result_json"]),
+    }
+
+
+@router.get(ADMIN_PREFIX + "/agents/{agent_id}/jobs")
+async def admin_list_jobs(agent_id: str, admin=Depends(require_admin)):
+    conn = db()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM printer_agent_jobs WHERE agent_id = ? ORDER BY created_at DESC LIMIT 100",
+            (agent_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return {"jobs": [_job_view(r) for r in rows]}
+
+
+@router.post(ADMIN_PREFIX + "/jobs/{job_id}/cancel")
+async def admin_cancel_job(job_id: str, admin=Depends(require_admin)):
+    """Mark a job canceled. The agent observes this and aborts the SD print."""
+    conn = db()
+    try:
+        job = conn.execute("SELECT status FROM printer_agent_jobs WHERE job_id = ?", (job_id,)).fetchone()
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if job["status"] in JOB_TERMINAL:
+            raise HTTPException(status_code=409, detail=f"Job already {job['status']}")
+        now = now_iso()
+        conn.execute(
+            "UPDATE printer_agent_jobs SET status = 'canceled', completed_at = ?, updated_at = ? WHERE job_id = ?",
+            (now, now, job_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+@router.get(ADMIN_PREFIX + "/agents/{agent_id}/snapshot.jpg")
+async def admin_agent_snapshot(agent_id: str, admin=Depends(require_admin)):
+    conn = db()
+    try:
+        row = conn.execute(
+            "SELECT image, content_type FROM printer_agent_snapshots WHERE agent_id = ?",
+            (agent_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row or not row["image"]:
+        raise HTTPException(status_code=404, detail="No snapshot available")
+    return Response(content=row["image"], media_type=row["content_type"] or "image/jpeg")
+
+
+# ──────────────────────────── Cura ingest endpoint ────────────────────────────
+
+@router.post(API_PREFIX + "/ingest/gcode")
+async def ingest_gcode(
+    request: Request,
+    file: UploadFile = File(...),
+    x_ingest_token: Optional[str] = Header(default=None),
+):
+    """Receive a sliced .gcode from the Cura post-processing uploader.
+
+    Authenticated by the static ingest token (not an agent bearer token), since
+    Cura cannot hold an interactive admin session. The file is stored as a loose
+    upload that an admin then dispatches with 'Send to LK5'.
+    """
+    conn = db()
+    try:
+        expected = get_or_create_ingest_token(conn)
+        if not x_ingest_token or not secrets.compare_digest(x_ingest_token, expected):
+            raise HTTPException(status_code=401, detail="Invalid ingest token")
+
+        original = os.path.basename(file.filename or "print.gcode")
+        if not original.lower().endswith(".gcode"):
+            raise HTTPException(status_code=422, detail="Only .gcode uploads are accepted")
+
+        data = await file.read()
+        if not data:
+            raise HTTPException(status_code=422, detail="Empty file")
+        if len(data) > 512 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="File too large")
+
+        import hashlib
+
+        os.makedirs(upload_dir(), exist_ok=True)
+        stored = f"{uuid.uuid4().hex}.gcode"
+        path = os.path.join(upload_dir(), stored)
+        with open(path, "wb") as fh:
+            fh.write(data)
+        sha = hashlib.sha256(data).hexdigest()
+
+        file_id = str(uuid.uuid4())
+        conn.execute(
+            """
+            INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256)
+            VALUES (?, '', ?, ?, ?, ?, ?)
+            """,
+            (file_id, now_iso(), original, stored, len(data), sha),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "file_id": file_id, "file_name": original, "size_bytes": len(data), "sha256": sha}
+
+
+# ──────────────────────────── status backend (dashboard integration) ────────────────────────────
+
+class AgentPrinterAPI:
+    """Adapter so agent-backed printers plug into ``fetch_printer_status_with_cache``.
+
+    Unlike FlashForge/Moonraker (which reach into the LAN), this reads the last
+    heartbeat the agent pushed. Method names mirror the other printer APIs.
+    """
+
+    def __init__(self, printer_code: str):
+        self.printer_code = printer_code
+
+    def _latest(self) -> Optional[Dict[str, Any]]:
+        conn = db()
+        try:
+            row = conn.execute(
+                "SELECT status_json, last_seen_at FROM printer_agents "
+                "WHERE printer_code = ? AND revoked = 0 AND last_seen_at IS NOT NULL "
+                "ORDER BY last_seen_at DESC LIMIT 1",
+                (self.printer_code,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if not row or not row["last_seen_at"]:
+            return None
+        try:
+            seen = datetime.fromisoformat(row["last_seen_at"].replace("Z", ""))
+            if (datetime.utcnow() - seen).total_seconds() > AGENT_ONLINE_WINDOW_SECONDS:
+                return None  # stale -> treat as offline
+        except Exception:
+            return None
+        return _json_loads(row["status_json"])
+
+    async def get_status(self) -> Optional[Dict[str, Any]]:
+        status = self._latest()
+        if status is None:
+            return None
+        state = str(status.get("state", "")).lower()
+        machine = {
+            "printing": "BUILDING_FROM_SD",
+            "paused": "PAUSED",
+            "idle": "READY",
+            "ready": "READY",
+        }.get(state, "READY")
+        return {"MachineStatus": machine}
+
+    async def get_percent_complete(self) -> Optional[int]:
+        status = self._latest()
+        if not status:
+            return None
+        pct = status.get("progress")
+        return int(pct) if pct is not None else None
+
+    async def get_temperature(self) -> Optional[Dict[str, Any]]:
+        status = self._latest()
+        if not status:
+            return None
+        cur = status.get("nozzle_temp")
+        target = status.get("nozzle_target")
+        if cur is None and target is None:
+            return None
+        return {"Temperature": f"{cur}/{target}", "TargetTemperature": target}
+
+    async def get_extended_status(self) -> Optional[Dict[str, Any]]:
+        status = self._latest()
+        if not status:
+            return None
+        return {
+            "current_file": status.get("current_file"),
+            "current_layer": status.get("current_layer"),
+            "total_layers": status.get("total_layers"),
+        }
+
+
+def get_agent_printer_api(printer_code: str) -> Optional[AgentPrinterAPI]:
+    """Return an agent-backed status API for printer codes serviced by an agent."""
+    if printer_code in AGENT_PRINTER_CODES:
+        return AgentPrinterAPI(printer_code)
+    return None

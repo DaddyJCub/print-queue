@@ -1,0 +1,7 @@
+# Core agent dependencies (Raspberry Pi OS or Windows; Python 3.9+)
+pyserial==3.5
+requests==2.32.3
+
+# Optional: only needed for the OpenCV "device_index" camera source.
+# A snapshot_url source (ustreamer / mjpg-streamer / OctoPrint) needs nothing extra.
+# opencv-python==4.10.0.84

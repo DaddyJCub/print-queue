@@ -840,6 +840,7 @@ PRINTERS = [
     ("ANY", "Any"),
     ("ADVENTURER_4", "FlashForge Adventurer 4"),
     ("AD5X", "FlashForge AD5X"),
+    ("LK5_PRO", "Longer LK5 Pro"),
 ]
 
 MATERIALS = [
@@ -1491,6 +1492,9 @@ def init_db():
     # Printellect device-control tables
     from app.printellect import init_printellect_tables
     init_printellect_tables(cur)
+    # Cross-network printer agent tables (e.g. LK5 Pro via Windows PC / Raspberry Pi)
+    from app.printer_agent import init_printer_agent_tables
+    init_printer_agent_tables(cur)
     # Shipping indexes are created in ensure_migrations() after the column/tables are guaranteed to exist
 
     # ─────────────────────────────────────────────────────────────────────────────
@@ -5984,6 +5988,13 @@ def get_printer_api(printer_code: str):
     Returns MoonrakerAPI for AD5X when the moonraker_ad5x feature flag is enabled
     and a Moonraker URL is configured. Otherwise returns FlashForgeAPI.
     """
+    # Agent-backed printers (cross-network, e.g. LK5 Pro): status comes from the
+    # agent's last heartbeat rather than a direct LAN connection.
+    from app.printer_agent import get_agent_printer_api
+    agent_api = get_agent_printer_api(printer_code)
+    if agent_api is not None:
+        return agent_api
+
     # Moonraker path for AD5X (when feature flag is on)
     if printer_code == "AD5X" and is_feature_enabled("moonraker_ad5x"):
         moonraker_url = get_setting("moonraker_ad5x_url", "")
@@ -8307,6 +8318,7 @@ from app.api_push import router as api_push_router
 from app.api_builds import router as api_builds_router
 from app.trips import router as trips_router
 from app.printellect import router as printellect_router
+from app.printer_agent import router as printer_agent_router
 from app.payments import router as payments_router, is_payments_enabled
 
 
@@ -8351,4 +8363,5 @@ app.include_router(api_push_router)
 app.include_router(api_builds_router)
 app.include_router(trips_router)
 app.include_router(printellect_router)
+app.include_router(printer_agent_router)
 app.include_router(payments_router)
