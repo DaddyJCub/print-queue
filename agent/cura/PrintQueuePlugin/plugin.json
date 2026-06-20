@@ -1,0 +1,8 @@
+{
+    "name": "Send to Print Queue",
+    "author": "print-queue",
+    "version": "1.0.0",
+    "description": "Adds a 'Send to LK5 Pro' button that uploads the sliced G-code to the print queue and starts the print in one click.",
+    "api": 8,
+    "supported_sdk_versions": [7, 8, 9]
+}

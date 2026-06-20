@@ -40,12 +40,15 @@ device contract, scoped to print jobs.
 
 ## Print flow
 
-1. **Slice** in Cura (unchanged). Optionally the Cura post-processing uploader
-   (`agent/cura/PrintQueueUploader.py`) pushes the `.gcode` to the server's
-   ingest endpoint so it lands in the queue automatically.
-2. **Dispatch**: an admin enqueues the gcode for the agent
-   (`POST /api/printer-agent/admin/agents/{agent_id}/jobs`, the "Send to LK5"
-   action).
+1. **Slice** in Cura (unchanged).
+2. **Send — one click.** The Cura **output-device plugin**
+   (`agent/cura/PrintQueuePlugin/`) adds a **"Send to LK5 Pro"** button next to
+   Cura's Save/Print button. Clicking it uploads the sliced gcode to
+   `POST /api/printer-agent/v1/print`, which stores it and enqueues a job in one
+   call — no export, no second app.
+   - *Alternatives:* the post-processing uploader (`PrintQueueUploader.py`)
+     auto-uploads on every slice (upload only), or an admin can enqueue from the
+     panel (`POST /api/printer-agent/admin/agents/{agent_id}/jobs`).
 3. **Claim & upload**: the agent claims the job, downloads the gcode, and
    streams it to the printer's **SD card** using Marlin's line-numbered +
    checksummed protocol (`M28`/`M29`) — a verified, byte-accurate transfer.
@@ -94,7 +97,8 @@ Base path: `/api/printer-agent/v1` (agent) and `/api/printer-agent/admin` (admin
 | `GET`  | `/jobs/{job_id}/file` | Download the sliced gcode |
 | `POST` | `/jobs/{job_id}/status` | Lifecycle/progress updates |
 | `POST` | `/snapshot` | Upload latest webcam frame (JPEG) |
-| `POST` | `/ingest/gcode` | Cura uploader (uses `X-Ingest-Token`) |
+| `POST` | `/print` | One-click upload **and** dispatch from Cura (`X-Ingest-Token`) |
+| `POST` | `/ingest/gcode` | Upload-only ingest for the Cura post-processing script (`X-Ingest-Token`) |
 
 Job lifecycle: `queued → claimed → uploading → printing → completed | failed | canceled`.
 

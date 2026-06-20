@@ -14,8 +14,9 @@ the architecture and security model.
 Cura (slice)  ──upload .gcode──▶  Print Queue server  ◀──poll jobs / push status & camera──  Agent ──USB──▶  LK5 Pro
 ```
 
-1. You slice in Cura as usual. (Optional Cura plugin auto-uploads the `.gcode`.)
-2. In the admin panel you click **Send to LK5**, queueing the file.
+1. You slice in Cura as usual, then click **Send to LK5 Pro** (added by the Cura
+   plugin — sits next to Cura's Save/Print button). One click; no file export.
+2. That uploads the gcode and queues it in a single call.
 3. The agent (next to the printer) claims the job, **uploads the gcode to the
    printer's SD card**, and **starts an SD print**.
 4. The printer then prints **autonomously** — the host PC/Pi can even power off.
@@ -56,12 +57,15 @@ Set `camera.enabled` to `true` and either:
 Frames are pushed outbound to the server and shown in the dashboard — so a
 camera on the printer's network is viewable remotely with no inbound ports.
 
-## Cura auto-upload (optional)
+## One-click send from Cura (recommended)
 
-Copy [`cura/PrintQueueUploader.py`](cura/PrintQueueUploader.py) into Cura's
-`scripts` folder, then enable it under **Extensions > Post Processing**. Set the
-server URL and the **ingest token** (shown in `Admin > Printer Agents`). After
-that, slicing pushes the gcode straight into the queue.
+Install the [`cura/PrintQueuePlugin`](cura/PrintQueuePlugin/) plugin (see its
+README). It adds a **"Send to LK5 Pro"** button to Cura's print button — slice,
+click, done. No exporting G-code, no second app.
+
+If you'd rather auto-upload on every slice (upload only, then dispatch from the
+admin panel), use the post-processing script
+[`cura/PrintQueueUploader.py`](cura/PrintQueueUploader.py) instead.
 
 ## Important notes
 

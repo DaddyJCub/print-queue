@@ -234,3 +234,63 @@ def test_ingest_gcode_rejects_bad_token(client):
     files = {"file": ("auto.gcode", b"G28\n", "text/plain")}
     r = client.post(f"{PREFIX}/ingest/gcode", files=files, headers={"X-Ingest-Token": "nope"})
     assert r.status_code == 401
+
+
+# ─────────────────────────── one-click print (Cura plugin) ───────────────────────────
+
+def test_print_now_uploads_and_dispatches(client, admin_client):
+    """The Cura 'Send to LK5' button: upload gcode + enqueue in one call."""
+    created = _create_agent(admin_client)
+    agent_id = created["agent_id"]
+    token = _provision(client, agent_id, created["claim_code"]).json()["agent_token"]
+    ingest_token = admin_client.get(f"{ADMIN}/agents").json()["ingest_token"]
+
+    files = {"file": ("cura_print.gcode", b"; sliced\nG28\nG1 X5\n", "text/plain")}
+    r = client.post(
+        f"{PREFIX}/print",
+        files=files,
+        data={"agent_id": agent_id},
+        headers={"X-Ingest-Token": ingest_token},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "queued"
+    assert r.json()["agent_id"] == agent_id
+
+    # The agent immediately sees the job without any admin dispatch step.
+    nxt = client.get(f"{PREFIX}/jobs/next", headers={"Authorization": f"Bearer {token}"})
+    assert nxt.status_code == 200
+    assert nxt.json()["file_name"] == "cura_print.gcode"
+
+
+def test_print_now_resolves_agent_by_printer_code(client, admin_client):
+    """With no agent_id, it targets the agent registered for the printer_code."""
+    # Unique printer_code so resolution is unambiguous regardless of other agents.
+    code = f"LK5_{uuid.uuid4().hex[:8].upper()}"
+    created = _create_agent(admin_client, name="Default LK5", printer_code=code)
+    ingest_token = admin_client.get(f"{ADMIN}/agents").json()["ingest_token"]
+
+    files = {"file": ("auto.gcode", b"G28\n", "text/plain")}
+    r = client.post(
+        f"{PREFIX}/print",
+        files=files,
+        data={"printer_code": code},
+        headers={"X-Ingest-Token": ingest_token},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["agent_id"] == created["agent_id"]
+
+
+def test_print_now_requires_token(client, admin_client):
+    _create_agent(admin_client)
+    files = {"file": ("auto.gcode", b"G28\n", "text/plain")}
+    r = client.post(f"{PREFIX}/print", files=files, data={"printer_code": "LK5_PRO"},
+                    headers={"X-Ingest-Token": "wrong"})
+    assert r.status_code == 401
+
+
+def test_print_now_no_agent_returns_404(client, admin_client):
+    ingest_token = admin_client.get(f"{ADMIN}/agents").json()["ingest_token"]
+    files = {"file": ("auto.gcode", b"G28\n", "text/plain")}
+    r = client.post(f"{PREFIX}/print", files=files, data={"printer_code": "NOPE_PRINTER"},
+                    headers={"X-Ingest-Token": ingest_token})
+    assert r.status_code == 404

@@ -800,7 +800,65 @@ async def admin_agent_snapshot(agent_id: str, admin=Depends(require_admin)):
     return Response(content=row["image"], media_type=row["content_type"] or "image/jpeg")
 
 
-# ──────────────────────────── Cura ingest endpoint ────────────────────────────
+# ──────────────────────────── Cura ingest / one-click print ────────────────────────────
+
+def _check_ingest_token(conn: sqlite3.Connection, presented: Optional[str]) -> None:
+    expected = get_or_create_ingest_token(conn)
+    if not presented or not secrets.compare_digest(presented, expected):
+        raise HTTPException(status_code=401, detail="Invalid ingest token")
+
+
+def _validate_gcode_name(filename: Optional[str]) -> str:
+    original = os.path.basename(filename or "print.gcode")
+    if not original.lower().endswith(".gcode"):
+        raise HTTPException(status_code=422, detail="Only .gcode uploads are accepted")
+    return original
+
+
+async def _read_upload(file: UploadFile) -> bytes:
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="Empty file")
+    if len(data) > 512 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large")
+    return data
+
+
+def _store_gcode_bytes(data: bytes) -> tuple[str, str]:
+    """Write gcode bytes to the upload dir; return (stored_filename, sha256)."""
+    import hashlib
+
+    os.makedirs(upload_dir(), exist_ok=True)
+    stored = f"{uuid.uuid4().hex}.gcode"
+    with open(os.path.join(upload_dir(), stored), "wb") as fh:
+        fh.write(data)
+    return stored, hashlib.sha256(data).hexdigest()
+
+
+def _insert_loose_file(conn: sqlite3.Connection, original: str, stored: str, data: bytes, sha: str) -> str:
+    file_id = str(uuid.uuid4())
+    conn.execute(
+        """
+        INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256)
+        VALUES (?, '', ?, ?, ?, ?, ?)
+        """,
+        (file_id, now_iso(), original, stored, len(data), sha),
+    )
+    return file_id
+
+
+def _resolve_target_agent(conn: sqlite3.Connection, agent_id: Optional[str], printer_code: str) -> Optional[sqlite3.Row]:
+    if agent_id:
+        return conn.execute(
+            "SELECT * FROM printer_agents WHERE agent_id = ? AND revoked = 0", (agent_id,)
+        ).fetchone()
+    # No explicit agent: pick the most recently-seen, non-revoked agent for the printer.
+    return conn.execute(
+        "SELECT * FROM printer_agents WHERE printer_code = ? AND revoked = 0 "
+        "ORDER BY (last_seen_at IS NOT NULL) DESC, last_seen_at DESC, created_at DESC LIMIT 1",
+        (printer_code,),
+    ).fetchone()
+
 
 @router.post(API_PREFIX + "/ingest/gcode")
 async def ingest_gcode(
@@ -812,45 +870,74 @@ async def ingest_gcode(
 
     Authenticated by the static ingest token (not an agent bearer token), since
     Cura cannot hold an interactive admin session. The file is stored as a loose
-    upload that an admin then dispatches with 'Send to LK5'.
+    upload that an admin then dispatches with 'Send to LK5'. For true one-click
+    upload-and-print from Cura, use ``/print`` instead.
     """
     conn = db()
     try:
-        expected = get_or_create_ingest_token(conn)
-        if not x_ingest_token or not secrets.compare_digest(x_ingest_token, expected):
-            raise HTTPException(status_code=401, detail="Invalid ingest token")
-
-        original = os.path.basename(file.filename or "print.gcode")
-        if not original.lower().endswith(".gcode"):
-            raise HTTPException(status_code=422, detail="Only .gcode uploads are accepted")
-
-        data = await file.read()
-        if not data:
-            raise HTTPException(status_code=422, detail="Empty file")
-        if len(data) > 512 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="File too large")
-
-        import hashlib
-
-        os.makedirs(upload_dir(), exist_ok=True)
-        stored = f"{uuid.uuid4().hex}.gcode"
-        path = os.path.join(upload_dir(), stored)
-        with open(path, "wb") as fh:
-            fh.write(data)
-        sha = hashlib.sha256(data).hexdigest()
-
-        file_id = str(uuid.uuid4())
-        conn.execute(
-            """
-            INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256)
-            VALUES (?, '', ?, ?, ?, ?, ?)
-            """,
-            (file_id, now_iso(), original, stored, len(data), sha),
-        )
+        _check_ingest_token(conn, x_ingest_token)
+        original = _validate_gcode_name(file.filename)
+        data = await _read_upload(file)
+        stored, sha = _store_gcode_bytes(data)
+        file_id = _insert_loose_file(conn, original, stored, data, sha)
         conn.commit()
     finally:
         conn.close()
     return {"ok": True, "file_id": file_id, "file_name": original, "size_bytes": len(data), "sha256": sha}
+
+
+@router.post(API_PREFIX + "/print")
+async def print_now(
+    request: Request,
+    file: UploadFile = File(...),
+    agent_id: Optional[str] = Form(default=None),
+    printer_code: Optional[str] = Form(default="LK5_PRO"),
+    x_ingest_token: Optional[str] = Header(default=None),
+):
+    """One-click upload-and-print, used by the Cura "Send to LK5 Pro" plugin.
+
+    Stores the gcode and immediately enqueues a job for the target agent — no
+    separate dispatch step. The agent claims queued jobs automatically, so this
+    is all it takes to go from "Slice" in Cura to a running print.
+
+    The target is resolved by explicit ``agent_id`` if given, otherwise the most
+    recently-seen, non-revoked agent for ``printer_code``.
+    """
+    conn = db()
+    try:
+        _check_ingest_token(conn, x_ingest_token)
+        original = _validate_gcode_name(file.filename)
+        data = await _read_upload(file)
+
+        agent = _resolve_target_agent(conn, agent_id, printer_code or "LK5_PRO")
+        if not agent:
+            raise HTTPException(status_code=404, detail="No matching agent for this printer")
+
+        stored, sha = _store_gcode_bytes(data)
+        file_id = _insert_loose_file(conn, original, stored, data, sha)
+
+        job_id = str(uuid.uuid4())
+        now = now_iso()
+        conn.execute(
+            """
+            INSERT INTO printer_agent_jobs
+                (job_id, agent_id, request_id, file_id, file_name, stored_filename, sha256, size_bytes,
+                 status, progress, created_at, updated_at, created_by)
+            VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, 'cura')
+            """,
+            (job_id, agent["agent_id"], file_id, original, stored, sha, len(data), now, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {
+        "ok": True,
+        "job_id": job_id,
+        "agent_id": agent["agent_id"],
+        "file_name": original,
+        "status": "queued",
+        "message": f"Queued '{original}' for {agent['name'] or agent['agent_id']}",
+    }
 
 
 # ──────────────────────────── status backend (dashboard integration) ────────────────────────────
