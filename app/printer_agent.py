@@ -73,6 +73,18 @@ JOB_STATUSES = {
 }
 JOB_TERMINAL = {"completed", "failed", "canceled"}
 
+# Remote-management commands the server may send to an agent (Printellect-style).
+# update_agent / flash_firmware are handled in later phases.
+AGENT_COMMAND_ACTIONS = {
+    "restart_agent",   # exit so the service manager restarts a fresh process
+    "reboot_host",     # reboot the Pi/PC
+    "reload_config",   # re-read config.json
+    "get_logs",        # return recent agent log lines in the command result
+    "identify",        # blink/log so an operator can find the unit
+}
+COMMAND_STATUSES = {"queued", "delivered", "executing", "completed", "failed"}
+COMMAND_TERMINAL = {"completed", "failed"}
+
 # Printer codes that are serviced by an agent rather than a direct LAN API.
 AGENT_PRINTER_CODES = {"LK5_PRO"}
 
@@ -181,9 +193,29 @@ def init_printer_agent_tables(cur: sqlite3.Cursor) -> None:
         )
         """
     )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS printer_agent_commands (
+            cmd_id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            payload_json TEXT,
+            status TEXT NOT NULL,
+            result_json TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            created_by TEXT,
+            delivered_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY(agent_id) REFERENCES printer_agents(agent_id)
+        )
+        """
+    )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_agent_tokens_lookup ON printer_agent_tokens(token_hash, revoked_at)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_agent_jobs_queue ON printer_agent_jobs(agent_id, status, created_at)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_agents_printer ON printer_agents(printer_code, last_seen_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_agent_commands_queue ON printer_agent_commands(agent_id, status, created_at)")
 
 
 # ──────────────────────────── settings / ingest token ────────────────────────────
@@ -567,6 +599,79 @@ async def job_status(job_id: str, body: JobStatusRequest, request: Request):
     return {"ok": True}
 
 
+# ──────────────────────────── remote management commands ────────────────────────────
+
+class CommandStatusRequest(BaseModel):
+    status: str
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+@router.get(API_PREFIX + "/commands/next")
+async def commands_next(request: Request):
+    """Agent claims the next queued management command (204 if none)."""
+    agent = await _agent_from_bearer(request)
+    conn = db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM printer_agent_commands WHERE agent_id = ? AND status = 'queued' ORDER BY created_at ASC LIMIT 1",
+            (agent["agent_id"],),
+        ).fetchone()
+        if not row:
+            return Response(status_code=204)
+        now = now_iso()
+        updated = conn.execute(
+            "UPDATE printer_agent_commands SET status = 'delivered', delivered_at = ?, updated_at = ? "
+            "WHERE cmd_id = ? AND status = 'queued'",
+            (now, now, row["cmd_id"]),
+        )
+        if updated.rowcount == 0:
+            return Response(status_code=204)
+        conn.commit()
+    finally:
+        conn.close()
+    return {
+        "cmd_id": row["cmd_id"],
+        "action": row["action"],
+        "payload": _json_loads(row["payload_json"]),
+        "created_at": row["created_at"],
+    }
+
+
+@router.post(API_PREFIX + "/commands/{cmd_id}/status")
+async def command_status(cmd_id: str, body: CommandStatusRequest, request: Request):
+    agent = await _agent_from_bearer(request)
+    status = body.status.strip().lower()
+    if status not in COMMAND_STATUSES:
+        raise HTTPException(status_code=422, detail=f"Invalid status '{status}'")
+    conn = db()
+    try:
+        cmd = conn.execute(
+            "SELECT cmd_id FROM printer_agent_commands WHERE cmd_id = ? AND agent_id = ?",
+            (cmd_id, agent["agent_id"]),
+        ).fetchone()
+        if not cmd:
+            raise HTTPException(status_code=404, detail="Command not found")
+        now = now_iso()
+        completed_at = now if status in COMMAND_TERMINAL else None
+        conn.execute(
+            "UPDATE printer_agent_commands SET status = ?, result_json = COALESCE(?, result_json), "
+            "error = ?, updated_at = ?, completed_at = COALESCE(?, completed_at) WHERE cmd_id = ?",
+            (
+                status,
+                _json_dumps(body.result) if body.result is not None else None,
+                body.error,
+                now,
+                completed_at,
+                cmd_id,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
 @router.post(API_PREFIX + "/snapshot")
 async def upload_snapshot(request: Request, image: Optional[UploadFile] = File(default=None)):
     """Receive the latest webcam frame from the agent (snapshot-push camera)."""
@@ -684,6 +789,52 @@ async def admin_revoke_agent(agent_id: str, admin=Depends(require_admin)):
     finally:
         conn.close()
     return {"ok": True}
+
+
+class CommandRequest(BaseModel):
+    action: str
+    payload: Optional[Dict[str, Any]] = None
+
+
+@router.post(ADMIN_PREFIX + "/agents/{agent_id}/commands")
+async def admin_enqueue_command(agent_id: str, body: CommandRequest, admin=Depends(require_admin)):
+    """Queue a remote-management command (restart, reboot, logs, …) for the agent."""
+    action = body.action.strip()
+    if action not in AGENT_COMMAND_ACTIONS:
+        raise HTTPException(status_code=422, detail=f"Unknown action '{action}'")
+    conn = db()
+    try:
+        agent = conn.execute("SELECT agent_id FROM printer_agents WHERE agent_id = ? AND revoked = 0", (agent_id,)).fetchone()
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        cmd_id = str(uuid.uuid4())
+        now = now_iso()
+        conn.execute(
+            "INSERT INTO printer_agent_commands (cmd_id, agent_id, action, payload_json, status, created_at, updated_at, created_by) "
+            "VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)",
+            (cmd_id, agent_id, action, _json_dumps(body.payload) if body.payload else None, now, now, getattr(admin, "id", None)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "cmd_id": cmd_id, "status": "queued"}
+
+
+@router.get(ADMIN_PREFIX + "/agents/{agent_id}/commands")
+async def admin_list_commands(agent_id: str, admin=Depends(require_admin)):
+    conn = db()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM printer_agent_commands WHERE agent_id = ? ORDER BY created_at DESC LIMIT 30",
+            (agent_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return {"commands": [{
+        "cmd_id": r["cmd_id"], "action": r["action"], "status": r["status"],
+        "error": r["error"], "result": _json_loads(r["result_json"]),
+        "created_at": r["created_at"], "completed_at": r["completed_at"],
+    } for r in rows]}
 
 
 @router.post(ADMIN_PREFIX + "/agents/{agent_id}/jobs")

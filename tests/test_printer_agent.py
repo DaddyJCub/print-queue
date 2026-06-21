@@ -236,6 +236,55 @@ def test_ingest_gcode_rejects_bad_token(client):
     assert r.status_code == 401
 
 
+# ─────────────────────────── remote management commands ───────────────────────────
+
+def test_command_lifecycle(client, admin_client):
+    created = _create_agent(admin_client)
+    agent_id = created["agent_id"]
+    token = _provision(client, agent_id, created["claim_code"]).json()["agent_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # No commands yet.
+    assert client.get(f"{PREFIX}/commands/next", headers=headers).status_code == 204
+
+    # Admin queues a get_logs command.
+    enq = admin_client.post(f"{ADMIN}/agents/{agent_id}/commands", json={"action": "get_logs"})
+    assert enq.status_code == 200, enq.text
+    cmd_id = enq.json()["cmd_id"]
+
+    # Agent claims it (and a second poll returns nothing).
+    nxt = client.get(f"{PREFIX}/commands/next", headers=headers)
+    assert nxt.status_code == 200
+    assert nxt.json()["action"] == "get_logs"
+    assert client.get(f"{PREFIX}/commands/next", headers=headers).status_code == 204
+
+    # Agent reports a result.
+    r = client.post(f"{PREFIX}/commands/{cmd_id}/status", headers=headers,
+                    json={"status": "completed", "result": {"logs": "hello world"}})
+    assert r.status_code == 200
+
+    cmds = admin_client.get(f"{ADMIN}/agents/{agent_id}/commands").json()["commands"]
+    done = next(c for c in cmds if c["cmd_id"] == cmd_id)
+    assert done["status"] == "completed"
+    assert done["result"]["logs"] == "hello world"
+
+
+def test_command_rejects_unknown_action(admin_client):
+    created = _create_agent(admin_client)
+    r = admin_client.post(f"{ADMIN}/agents/{created['agent_id']}/commands", json={"action": "rm_rf_slash"})
+    assert r.status_code == 422
+
+
+def test_command_requires_admin_to_enqueue(client, admin_client):
+    created = _create_agent(admin_client)
+    r = client.post(f"{ADMIN}/agents/{created['agent_id']}/commands", json={"action": "get_logs"})
+    assert r.status_code == 401
+
+
+def test_command_next_requires_bearer(client):
+    assert client.get(f"{PREFIX}/commands/next").status_code == 401
+
+
 # ─────────────────────────── admin web UI ───────────────────────────
 
 def test_admin_agents_page_renders(admin_client):
