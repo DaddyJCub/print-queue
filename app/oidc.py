@@ -283,13 +283,19 @@ async def get_end_session_url(id_token_hint: Optional[str] = None, post_logout_r
     params = {}
     if id_token_hint:
         params["id_token_hint"] = id_token_hint
-    
+
     redirect = post_logout_redirect or config.get("end_session_redirect_uri")
-    if redirect:
+    # Per the OIDC RP-initiated logout spec, Authentik only honors
+    # post_logout_redirect_uri when an id_token_hint is also supplied. Sending the
+    # redirect without the hint makes Authentik reject the request with
+    # "Bad Request — the request is otherwise malformed". So only attach the
+    # redirect when we actually have a hint; otherwise fall back to a bare
+    # end-session call (which logs the user out and shows Authentik's own page).
+    if redirect and id_token_hint:
         params["post_logout_redirect_uri"] = redirect
-    
+
     if params:
         url = httpx.URL(end_session_endpoint, params=params)
         return str(url)
-    
+
     return end_session_endpoint

@@ -542,16 +542,18 @@ async def user_logout(request: Request):
     if session_token and is_oidc_enabled():
         base_url = os.getenv("BASE_URL", "http://localhost:3000")
         end_session = await get_end_session_url(
+            id_token_hint=request.cookies.get("oidc_id_token"),
             post_logout_redirect=f"{base_url}/"
         )
         if end_session:
             redirect_url = end_session
-    
+
     resp = RedirectResponse(url=redirect_url, status_code=303)
     resp.delete_cookie("session", path="/")
     resp.delete_cookie("user_session", path="/")
     resp.delete_cookie("admin_session", path="/")
     resp.delete_cookie("admin_pw", path="/")
+    resp.delete_cookie("oidc_id_token", path="/")
     return resp
 
 
@@ -2734,10 +2736,20 @@ async def oidc_callback(request: Request, code: str = None, state: str = None, e
             httponly=True, samesite="lax", secure=is_secure,
             path="/", max_age=30 * 24 * 60 * 60  # 30 days
         )
+        # Persist the raw id_token so logout can pass it as id_token_hint to
+        # Authentik's end-session endpoint. Without the hint, Authentik rejects a
+        # post_logout_redirect_uri with "Bad Request — the request is otherwise
+        # malformed".
+        if id_token_raw:
+            resp.set_cookie(
+                "oidc_id_token", id_token_raw,
+                httponly=True, samesite="lax", secure=is_secure,
+                path="/", max_age=30 * 24 * 60 * 60  # 30 days
+            )
         # Clear OIDC flow cookies
         resp.delete_cookie("oidc_state", path="/")
         resp.delete_cookie("oidc_nonce", path="/")
-        
+
         return resp
         
     except Exception as e:
@@ -2765,17 +2777,19 @@ async def oidc_logout(request: Request):
     # Try to redirect to Authentik end-session endpoint
     base_url = os.getenv("BASE_URL", "http://localhost:3000")
     end_session_url = await get_end_session_url(
+        id_token_hint=request.cookies.get("oidc_id_token"),
         post_logout_redirect=f"{base_url}/auth/login"
     )
-    
+
     redirect_url = end_session_url or "/auth/login"
-    
+
     resp = RedirectResponse(url=redirect_url, status_code=303)
     resp.delete_cookie("session", path="/")
     resp.delete_cookie("user_session", path="/")
     resp.delete_cookie("admin_session", path="/")
     resp.delete_cookie("admin_pw", path="/")
-    
+    resp.delete_cookie("oidc_id_token", path="/")
+
     return resp
 
 
