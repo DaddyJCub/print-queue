@@ -74,7 +74,6 @@ JOB_STATUSES = {
 JOB_TERMINAL = {"completed", "failed", "canceled"}
 
 # Remote-management commands the server may send to an agent (Printellect-style).
-# update_agent / flash_firmware are handled in later phases.
 AGENT_COMMAND_ACTIONS = {
     "restart_agent",   # exit so the service manager restarts a fresh process
     "reboot_host",     # reboot the Pi/PC
@@ -82,12 +81,15 @@ AGENT_COMMAND_ACTIONS = {
     "get_logs",        # return recent agent log lines in the command result
     "identify",        # blink/log so an operator can find the unit
     "update_agent",    # download a new agent bundle, self-update, restart (OTA)
+    "flash_firmware",  # flash printer firmware (.hex) via avrdude — opt-in on agent
 }
 COMMAND_STATUSES = {"queued", "delivered", "executing", "completed", "failed"}
 COMMAND_TERMINAL = {"completed", "failed"}
 
-# Directory where uploaded agent OTA bundles (.zip) are stored.
+# Directories where uploaded agent OTA bundles (.zip) and printer firmware
+# (.hex) are stored.
 AGENT_RELEASES_DIR = os.getenv("AGENT_RELEASES_DIR", os.path.join("local_data", "agent_releases"))
+FIRMWARE_DIR = os.getenv("AGENT_FIRMWARE_DIR", os.path.join("local_data", "printer_firmware"))
 
 # Printer codes that are serviced by an agent rather than a direct LAN API.
 AGENT_PRINTER_CODES = {"LK5_PRO"}
@@ -224,6 +226,22 @@ def init_printer_agent_tables(cur: sqlite3.Cursor) -> None:
             created_by TEXT,
             notes TEXT,
             bundle_path TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            is_current INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS printer_firmware (
+            version TEXT PRIMARY KEY,
+            printer_code TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            created_by TEXT,
+            notes TEXT,
+            file_path TEXT NOT NULL,
+            file_name TEXT NOT NULL,
             sha256 TEXT NOT NULL,
             size_bytes INTEGER NOT NULL,
             is_current INTEGER NOT NULL DEFAULT 0
@@ -969,6 +987,124 @@ async def agent_download_bundle(version: str, request: Request):
     if not rel or not rel["bundle_path"] or not os.path.isfile(rel["bundle_path"]):
         raise HTTPException(status_code=404, detail="Release not found")
     return FileResponse(rel["bundle_path"], media_type="application/zip", filename=f"agent-{version}.zip")
+
+
+# ──────────────────────────── printer firmware (avrdude) ────────────────────────────
+
+def _current_firmware(conn: sqlite3.Connection, printer_code: str) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM printer_firmware WHERE printer_code = ? ORDER BY is_current DESC, created_at DESC LIMIT 1",
+        (printer_code,),
+    ).fetchone()
+
+
+@router.post(ADMIN_PREFIX + "/firmware")
+async def admin_upload_firmware(
+    version: str = Form(...),
+    printer_code: str = Form(default="LK5_PRO"),
+    notes: Optional[str] = Form(default=None),
+    file: UploadFile = File(...),
+    admin=Depends(require_admin),
+):
+    """Upload a printer firmware image (.hex) for a printer model."""
+    import hashlib
+
+    version = version.strip()
+    printer_code = (printer_code or "LK5_PRO").strip()
+    if not version:
+        raise HTTPException(status_code=422, detail="version required")
+    original = os.path.basename(file.filename or "firmware.hex")
+    if not original.lower().endswith(".hex"):
+        raise HTTPException(status_code=422, detail="Firmware must be a .hex file")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="Empty firmware")
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Firmware too large")
+
+    os.makedirs(FIRMWARE_DIR, exist_ok=True)
+    safe = "".join(c for c in f"{printer_code}-{version}" if c.isalnum() or c in ".-_")
+    path = os.path.join(FIRMWARE_DIR, f"{safe}.hex")
+    with open(path, "wb") as fh:
+        fh.write(data)
+    sha = hashlib.sha256(data).hexdigest()
+
+    conn = db()
+    try:
+        conn.execute("UPDATE printer_firmware SET is_current = 0 WHERE printer_code = ?", (printer_code,))
+        conn.execute(
+            "INSERT OR REPLACE INTO printer_firmware "
+            "(version, printer_code, created_at, created_by, notes, file_path, file_name, sha256, size_bytes, is_current) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+            (version, printer_code, now_iso(), getattr(admin, "id", None), notes, path, original, sha, len(data)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "version": version, "printer_code": printer_code, "sha256": sha, "size_bytes": len(data)}
+
+
+@router.get(ADMIN_PREFIX + "/firmware")
+async def admin_list_firmware(admin=Depends(require_admin)):
+    conn = db()
+    try:
+        rows = conn.execute(
+            "SELECT version, printer_code, file_name, created_at, notes, sha256, size_bytes, is_current "
+            "FROM printer_firmware ORDER BY created_at DESC LIMIT 50"
+        ).fetchall()
+    finally:
+        conn.close()
+    return {"firmware": [dict(r) for r in rows]}
+
+
+@router.post(ADMIN_PREFIX + "/agents/{agent_id}/flash")
+async def admin_flash_firmware(agent_id: str, admin=Depends(require_admin)):
+    """Queue a flash_firmware command pointing the agent at the current firmware
+    for its printer model. The agent only flashes if it is opt-in enabled."""
+    conn = db()
+    try:
+        agent = conn.execute(
+            "SELECT agent_id, printer_code FROM printer_agents WHERE agent_id = ? AND revoked = 0", (agent_id,)
+        ).fetchone()
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        fw = _current_firmware(conn, agent["printer_code"])
+        if not fw:
+            raise HTTPException(status_code=404, detail=f"No firmware uploaded for {agent['printer_code']}")
+        cmd_id = str(uuid.uuid4())
+        now = now_iso()
+        payload = {
+            "version": fw["version"],
+            "sha256": fw["sha256"],
+            "file_name": fw["file_name"],
+            "firmware_url": f"{API_PREFIX}/firmware/{agent['printer_code']}/{fw['version']}/file",
+        }
+        conn.execute(
+            "INSERT INTO printer_agent_commands (cmd_id, agent_id, action, payload_json, status, created_at, updated_at, created_by) "
+            "VALUES (?, ?, 'flash_firmware', ?, 'queued', ?, ?, ?)",
+            (cmd_id, agent_id, _json_dumps(payload), now, now, getattr(admin, "id", None)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "cmd_id": cmd_id, "version": fw["version"]}
+
+
+@router.get(API_PREFIX + "/firmware/{printer_code}/{version}/file")
+async def agent_download_firmware(printer_code: str, version: str, request: Request):
+    """Agent downloads a firmware .hex (bearer-authenticated)."""
+    await _agent_from_bearer(request)
+    conn = db()
+    try:
+        fw = conn.execute(
+            "SELECT file_path, file_name FROM printer_firmware WHERE printer_code = ? AND version = ?",
+            (printer_code, version),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not fw or not fw["file_path"] or not os.path.isfile(fw["file_path"]):
+        raise HTTPException(status_code=404, detail="Firmware not found")
+    return FileResponse(fw["file_path"], media_type="text/plain", filename=fw["file_name"] or f"{version}.hex")
 
 
 @router.post(ADMIN_PREFIX + "/agents/{agent_id}/jobs")

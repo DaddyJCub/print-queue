@@ -362,6 +362,56 @@ def test_bundle_download_requires_bearer(client, admin_client):
     assert client.get(f"{PREFIX}/releases/agent/2.0.0/bundle").status_code == 401
 
 
+# ─────────────────────────── printer firmware ───────────────────────────
+
+def test_upload_and_flash_firmware(client, admin_client):
+    created = _create_agent(admin_client, printer_code="LK5_PRO")
+    agent_id = created["agent_id"]
+    token = _provision(client, agent_id, created["claim_code"]).json()["agent_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    hexdata = b":100000000C9434000C9446000C9446000C944600AA\n:00000001FF\n"
+    up = admin_client.post(
+        f"{ADMIN}/firmware",
+        data={"version": "2.1.2", "printer_code": "LK5_PRO"},
+        files={"file": ("marlin.hex", hexdata, "text/plain")},
+    )
+    assert up.status_code == 200, up.text
+
+    fws = admin_client.get(f"{ADMIN}/firmware").json()["firmware"]
+    assert any(f["version"] == "2.1.2" and f["is_current"] for f in fws)
+
+    flash = admin_client.post(f"{ADMIN}/agents/{agent_id}/flash")
+    assert flash.status_code == 200, flash.text
+
+    cmd = client.get(f"{PREFIX}/commands/next", headers=headers).json()
+    assert cmd["action"] == "flash_firmware"
+    assert cmd["payload"]["version"] == "2.1.2"
+
+    dl = client.get(cmd["payload"]["firmware_url"], headers=headers)
+    assert dl.status_code == 200
+    assert dl.content == hexdata
+
+
+def test_upload_firmware_rejects_non_hex(admin_client):
+    r = admin_client.post(
+        f"{ADMIN}/firmware",
+        data={"version": "1.0", "printer_code": "LK5_PRO"},
+        files={"file": ("notfirmware.txt", b"nope", "text/plain")},
+    )
+    assert r.status_code == 422
+
+
+def test_flash_without_firmware_404(admin_client):
+    conn = get_test_db()
+    conn.execute("DELETE FROM printer_firmware")
+    conn.commit()
+    conn.close()
+    created = _create_agent(admin_client, printer_code="LK5_PRO")
+    r = admin_client.post(f"{ADMIN}/agents/{created['agent_id']}/flash")
+    assert r.status_code == 404
+
+
 # ─────────────────────────── admin web UI ───────────────────────────
 
 def test_admin_agents_page_renders(admin_client):

@@ -16,5 +16,14 @@
     "snapshot_url": "http://localhost:8080/?action=snapshot",
     "device_index": null,
     "interval_s": 10
+  },
+
+  "firmware": {
+    "enabled": false,
+    "avrdude_path": "avrdude",
+    "mcu": "atmega2560",
+    "programmer": "wiring",
+    "baud": 115200,
+    "extra_args": []
   }
 }

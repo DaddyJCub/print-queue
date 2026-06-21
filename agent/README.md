@@ -78,6 +78,12 @@ remotely over the same outbound channel:
   resulting `.zip` under "Agent software updates", then click **Update agent** —
   the agent downloads it, verifies the checksum, swaps its package, and restarts.
   (Requires the service manager — systemd/NSSM — to auto-restart the process.)
+- **Printer firmware flashing** (advanced, opt-in, can brick the board): set
+  `firmware.enabled: true` in `config.json` and install `avrdude`
+  (`sudo apt install avrdude` on a Pi). Upload a Marlin `.hex` under "Printer
+  firmware", then click **Flash firmware** on the agent. The agent releases the
+  serial port and runs avrdude (`-c wiring -p atmega2560` for the LK5 Pro). It
+  refuses to flash while a print is running.
 
 ## Important notes
 

@@ -42,6 +42,33 @@
       </form>
     </section>
 
+    <!-- Agent software updates (OTA) -->
+    <section class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
+      <h2 class="text-sm font-semibold text-zinc-300 mb-2">⬆️ Agent software updates</h2>
+      <p class="text-xs text-zinc-500 mb-3">Upload a new agent bundle (a <code class="bg-zinc-800 px-1 rounded">.zip</code> of the <code class="bg-zinc-800 px-1 rounded">printqueue_agent/</code> package — build with <code class="bg-zinc-800 px-1 rounded">python build_bundle.py</code>). Then use <strong>Update agent</strong> under each agent's Manage panel — it self-updates and restarts.</p>
+      <form id="releaseForm" class="grid md:grid-cols-3 gap-2 items-center">
+        <input name="version" required placeholder="Version (e.g. 1.1.0)" class="rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 text-sm" />
+        <input name="file" type="file" accept=".zip" required class="text-sm text-zinc-400" />
+        <button class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-4 py-2.5 text-sm font-semibold">Upload bundle</button>
+      </form>
+      <div id="releaseInfo" class="text-xs text-zinc-400 mt-2"></div>
+    </section>
+
+    <!-- Printer firmware (avrdude) -->
+    <section class="rounded-2xl border border-amber-900/40 bg-amber-950/10 p-4 mb-4">
+      <h2 class="text-sm font-semibold text-amber-200 mb-2">⚠️ Printer firmware (advanced)</h2>
+      <p class="text-xs text-zinc-500 mb-3">Upload a Marlin <code class="bg-zinc-800 px-1 rounded">.hex</code> for the printer. Flashing is <strong>opt-in per agent</strong> (set <code class="bg-zinc-800 px-1 rounded">firmware.enabled</code> in its config) and can brick the board — use with care. Requires avrdude on the agent host.</p>
+      <form id="firmwareForm" class="grid md:grid-cols-4 gap-2 items-center">
+        <input name="version" required placeholder="Version (e.g. 2.1.2)" class="rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 text-sm" />
+        <select name="printer_code" class="rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 text-sm">
+          <option value="LK5_PRO">Longer LK5 Pro</option>
+        </select>
+        <input name="file" type="file" accept=".hex" required class="text-sm text-zinc-400" />
+        <button class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-4 py-2.5 text-sm font-semibold">Upload .hex</button>
+      </form>
+      <div id="firmwareInfo" class="text-xs text-zinc-400 mt-2"></div>
+    </section>
+
     <!-- Agent list -->
     <div id="agentList" class="space-y-4">
       <div class="text-center text-zinc-500 py-10">Loading agents…</div>
@@ -205,8 +232,10 @@
           <button onclick="cmd('${agentId}','get_logs')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">📄 View logs</button>
           <button onclick="cmd('${agentId}','identify')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">👋 Identify</button>
           <button onclick="cmd('${agentId}','reload_config')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">♻️ Reload config</button>
+          <button onclick="pushUpdate('${agentId}')" class="rounded-lg bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-200 px-3 py-1.5 text-sm">⬆️ Update agent</button>
           <button onclick="cmd('${agentId}','restart_agent', true)" class="rounded-lg bg-amber-900/40 hover:bg-amber-900/60 text-amber-200 px-3 py-1.5 text-sm">🔁 Restart agent</button>
           <button onclick="cmd('${agentId}','reboot_host', true)" class="rounded-lg bg-amber-900/40 hover:bg-amber-900/60 text-amber-200 px-3 py-1.5 text-sm">⏻ Reboot Pi</button>
+          <button onclick="flashFirmware('${agentId}')" class="rounded-lg bg-red-900/40 hover:bg-red-900/60 text-red-200 px-3 py-1.5 text-sm">⚡ Flash firmware</button>
         </div>
         <div id="cmdlog-${agentId}" class="text-xs"></div>`;
       refreshCommands(agentId);
@@ -250,6 +279,54 @@
       else { showToast("Failed: " + (await r.text()), "error"); }
     }
 
+    // ── Agent OTA updates ──
+    async function pushUpdate(agentId) {
+      if (!(await showConfirm("Push the current agent bundle to this agent? It will self-update and restart.", { destructive: false, confirmText: "Update" }))) return;
+      const r = await fetch(API + `/agents/${agentId}/update`, { method: "POST", credentials: "include" });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) { showToast("Update queued (v" + (d.version || "?") + ")", "success"); setTimeout(() => refreshCommands(agentId), 1500); }
+      else { showToast("Failed: " + (d.detail || r.status), "error"); }
+    }
+    async function loadReleases() {
+      try {
+        const rels = (await (await fetch(API + "/agent-releases", { credentials: "include" })).json()).releases || [];
+        const box = document.getElementById("releaseInfo");
+        if (!rels.length) { box.textContent = "No bundle uploaded yet."; return; }
+        const cur = rels.find(x => x.is_current) || rels[0];
+        box.innerHTML = "Current bundle: <strong class='text-zinc-200'>v" + esc(cur.version) + "</strong> · " + fmtBytes(cur.size_bytes) + " · uploaded " + timeAgo(cur.created_at);
+      } catch (_) {}
+    }
+    document.getElementById("releaseForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const r = await fetch(API + "/agent-releases", { method: "POST", credentials: "include", body: new FormData(e.target) });
+      if (r.ok) { const d = await r.json(); showToast("Uploaded agent v" + d.version, "success"); e.target.reset(); loadReleases(); }
+      else { showToast("Upload failed: " + (await r.text()), "error"); }
+    });
+
+    // ── Printer firmware ──
+    async function flashFirmware(agentId) {
+      if (!(await showConfirm("⚠️ Flash printer firmware on this agent? This can BRICK the printer if interrupted or if the wrong firmware is used. The agent must have firmware.enabled set."))) return;
+      const r = await fetch(API + `/agents/${agentId}/flash`, { method: "POST", credentials: "include" });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) { showToast("Firmware flash queued (v" + (d.version || "?") + ")", "success"); setTimeout(() => refreshCommands(agentId), 1500); }
+      else { showToast("Failed: " + (d.detail || r.status), "error"); }
+    }
+    async function loadFirmware() {
+      try {
+        const fws = (await (await fetch(API + "/firmware", { credentials: "include" })).json()).firmware || [];
+        const box = document.getElementById("firmwareInfo");
+        if (!fws.length) { box.textContent = "No firmware uploaded."; return; }
+        const cur = fws.find(x => x.is_current) || fws[0];
+        box.innerHTML = "Current firmware: <strong class='text-zinc-200'>v" + esc(cur.version) + "</strong> (" + esc(cur.printer_code) + ") · " + esc(cur.file_name) + " · " + timeAgo(cur.created_at);
+      } catch (_) {}
+    }
+    document.getElementById("firmwareForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const r = await fetch(API + "/firmware", { method: "POST", credentials: "include", body: new FormData(e.target) });
+      if (r.ok) { const d = await r.json(); showToast("Uploaded firmware v" + d.version, "success"); e.target.reset(); loadFirmware(); }
+      else { showToast("Upload failed: " + (await r.text()), "error"); }
+    });
+
     document.getElementById("createForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
@@ -268,6 +345,8 @@
     });
 
     load();
+    loadReleases();
+    loadFirmware();
     setInterval(load, 15000);  // refresh status periodically
   </script>
 </body>
