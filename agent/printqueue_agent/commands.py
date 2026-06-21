@@ -127,6 +127,33 @@ class CommandExecutor:
         _delayed_exit(1.0, code=0)
         return None
 
+    def _do_flash_firmware(self, payload, cmd_id) -> Dict[str, Any]:
+        """Flash printer firmware via avrdude (opt-in, guarded)."""
+        from . import flash_firmware
+
+        fw_cfg = self.agent.cfg.firmware
+        if not fw_cfg.enabled:
+            raise RuntimeError("Firmware flashing is disabled on this agent (set firmware.enabled)")
+        if self.agent.printer and self.agent.printer.is_busy():
+            raise RuntimeError("Refusing to flash: a print is in progress")
+
+        firmware_url = payload.get("firmware_url")
+        if not firmware_url:
+            raise RuntimeError("No firmware_url in payload")
+
+        # Release the serial port so avrdude can take it over.
+        port = self.agent._resolve_port()
+        if self.agent.printer:
+            self.agent.printer.close()
+            self.agent.printer = None
+        if not port:
+            raise RuntimeError("No serial port available to flash")
+
+        return flash_firmware.flash(
+            self.agent.client, fw_cfg, port, firmware_url,
+            payload.get("sha256"), payload.get("file_name", "firmware.hex"),
+        )
+
     def _do_reboot_host(self, payload, cmd_id) -> Dict[str, Any]:
         if self.agent.printer and self.agent.printer.is_busy():
             raise RuntimeError("Refusing to reboot: a print is in progress")

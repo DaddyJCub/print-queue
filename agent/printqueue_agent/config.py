@@ -19,6 +19,17 @@ class CameraConfig:
 
 
 @dataclass
+class FirmwareConfig:
+    # Printer-firmware flashing is OFF by default — it can brick the board.
+    enabled: bool = False
+    avrdude_path: str = "avrdude"
+    mcu: str = "atmega2560"       # LK5 Pro mainboard
+    programmer: str = "wiring"    # Mega2560 bootloader
+    baud: int = 115200
+    extra_args: list = field(default_factory=list)
+
+
+@dataclass
 class AgentConfig:
     # Server / identity
     server_url: str = "https://print.jcubhub.com"
@@ -36,6 +47,7 @@ class AgentConfig:
     heartbeat_interval_s: int = 15
 
     camera: CameraConfig = field(default_factory=CameraConfig)
+    firmware: FirmwareConfig = field(default_factory=FirmwareConfig)
 
     @staticmethod
     def load(path: str) -> "AgentConfig":
@@ -45,6 +57,7 @@ class AgentConfig:
                 data = json.load(fh)
 
         cam_data = data.get("camera", {}) or {}
+        fw_data = data.get("firmware", {}) or {}
         cfg = AgentConfig(
             server_url=os.getenv("PQ_SERVER_URL", data.get("server_url", AgentConfig.server_url)),
             agent_id=os.getenv("PQ_AGENT_ID", data.get("agent_id", "")),
@@ -60,6 +73,14 @@ class AgentConfig:
                 snapshot_url=os.getenv("PQ_CAMERA_URL", cam_data.get("snapshot_url")),
                 device_index=cam_data.get("device_index"),
                 interval_s=int(cam_data.get("interval_s", 10)),
+            ),
+            firmware=FirmwareConfig(
+                enabled=_as_bool(os.getenv("PQ_FIRMWARE_ENABLED"), fw_data.get("enabled", False)),
+                avrdude_path=fw_data.get("avrdude_path", "avrdude"),
+                mcu=fw_data.get("mcu", "atmega2560"),
+                programmer=fw_data.get("programmer", "wiring"),
+                baud=int(fw_data.get("baud", 115200)),
+                extra_args=list(fw_data.get("extra_args", [])),
             ),
         )
         if not cfg.agent_id or not cfg.claim_code:
