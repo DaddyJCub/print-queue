@@ -342,7 +342,7 @@
 
     function openWizard() {
       WIZ = { step: 0, name: "", host: "pi", serverUrl: location.origin, agentId: "", claimCode: "", apiKey: genKey(),
-              ts: { enabled: true, loginServer: "https://headscale.jcubhub.com", authKey: "" } };
+              netMode: "router", ts: { enabled: false, loginServer: "https://headscale.jcubhub.com", authKey: "" } };
       document.getElementById("wiz").classList.remove("hidden");
       renderWiz();
     }
@@ -427,6 +427,14 @@
       ]).join("\n");
     }
 
+    function saveBasics() {
+      // Read whatever Basics fields are currently on screen into WIZ (mode-dependent).
+      const g = id => document.getElementById(id);
+      if (g("wz-name")) WIZ.name = (g("wz-name").value || "").trim();
+      if (g("wz-url")) WIZ.serverUrl = (g("wz-url").value || "").trim().replace(/\/+$/, "");
+      if (g("wz-ts-server")) WIZ.ts.loginServer = (g("wz-ts-server").value || "").trim().replace(/\/+$/, "");
+      if (g("wz-ts-key")) WIZ.ts.authKey = (g("wz-ts-key").value || "").trim();
+    }
     function pre(text) {
       return `<pre class="bg-black/50 border border-zinc-800 rounded-xl p-3 text-[12px] leading-snug overflow-auto max-h-72 whitespace-pre-wrap font-mono">${esc(text)}</pre>`;
     }
@@ -452,16 +460,26 @@
             <label class="flex-1 rounded-xl border ${WIZ.host==='windows'?'border-indigo-500 bg-indigo-950/30':'border-zinc-800'} p-3 cursor-pointer">
               <input type="radio" name="wz-host" value="windows" ${WIZ.host==='windows'?'checked':''} class="mr-2" onchange="WIZ.host='windows'">🪟 Windows PC</label>
           </div>
-          <label class="text-xs text-zinc-400">Server URL <span class="text-zinc-600">(what the agent dials out to — use its Tailscale name/IP if only reachable on the tailnet)</span></label>
+          <label class="text-xs text-zinc-400">How does the agent reach the server?</label>
+          <div class="grid gap-2 my-1 mb-3">
+            <label class="rounded-xl border ${WIZ.netMode==='router'?'border-indigo-500 bg-indigo-950/30':'border-zinc-800'} p-3 cursor-pointer text-sm">
+              <input type="radio" name="wz-net" ${WIZ.netMode==='router'?'checked':''} class="mr-2" onchange="saveBasics();WIZ.netMode='router';WIZ.ts.enabled=false;renderWiz()">🌐 Through my network / router <span class="text-zinc-500">(e.g. pfSense Tailscale subnet router — nothing to install on the agent)</span></label>
+            <label class="rounded-xl border ${WIZ.netMode==='pi'?'border-indigo-500 bg-indigo-950/30':'border-zinc-800'} p-3 cursor-pointer text-sm">
+              <input type="radio" name="wz-net" ${WIZ.netMode==='pi'?'checked':''} class="mr-2" onchange="saveBasics();WIZ.netMode='pi';WIZ.ts.enabled=true;renderWiz()">🔗 Install Tailscale on the agent <span class="text-zinc-500">(joins your Headscale tailnet directly)</span></label>
+          </div>
+          <label class="text-xs text-zinc-400">Server URL <span class="text-zinc-600">(an address the agent can reach — its LAN IP, Tailscale name/IP, or DNS name)</span></label>
           <input id="wz-url" value="${esc(WIZ.serverUrl)}" class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 font-mono text-xs" />
-          <div class="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
-            <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="wz-ts" ${WIZ.ts.enabled?'checked':''} onchange="WIZ.ts.enabled=this.checked"> 🔗 Connect over Tailscale (Headscale)</label>
-            <div class="grid gap-2 mt-2">
-              <input id="wz-ts-server" value="${esc(WIZ.ts.loginServer)}" placeholder="https://headscale.jcubhub.com" class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-2 font-mono text-xs" />
-              <input id="wz-ts-key" value="${esc(WIZ.ts.authKey)}" placeholder="Headscale pre-auth key (optional — for unattended join)" class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-2 font-mono text-xs" />
-            </div>
-            <p class="text-xs text-zinc-600 mt-1">No key? The install prints a URL to approve the Pi in Headscale.</p>
-          </div>`;
+          ${WIZ.netMode==='router' ? `
+            <p class="text-xs text-zinc-500 mt-2">✅ Nothing to install on the agent. Just make sure your router (pfSense) advertises a route to the server and the agent uses it as its gateway, then set the Server URL above to an address reachable through it.</p>`
+          : `
+            <div class="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
+              <div class="text-xs text-zinc-400 mb-2">Headscale join settings</div>
+              <div class="grid gap-2">
+                <input id="wz-ts-server" value="${esc(WIZ.ts.loginServer)}" placeholder="https://headscale.jcubhub.com" class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-2 font-mono text-xs" />
+                <input id="wz-ts-key" value="${esc(WIZ.ts.authKey)}" placeholder="Headscale pre-auth key (optional — for unattended join)" class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-2 font-mono text-xs" />
+              </div>
+              <p class="text-xs text-zinc-600 mt-1">No key? The install prints a URL to approve the agent in Headscale.</p>
+            </div>`}`;
       } else if (s === 1) {
         body.innerHTML = `
           <p class="text-zinc-400 mb-1">Agent <b class="text-zinc-200">${esc(WIZ.name)}</b> created. This is its <code class="bg-zinc-800 px-1 rounded">config.json</code> — the claim code appears <b>only here</b>, so save it now.</p>
@@ -518,11 +536,7 @@
     async function wizGo(dir) {
       if (dir < 0) { if (WIZ.step > 0) { WIZ.step--; renderWiz(); } return; }
       if (WIZ.step === 0) {
-        WIZ.name = (document.getElementById("wz-name").value || "").trim();
-        WIZ.serverUrl = (document.getElementById("wz-url").value || "").trim().replace(/\/+$/, "");
-        WIZ.ts.enabled = document.getElementById("wz-ts").checked;
-        WIZ.ts.loginServer = (document.getElementById("wz-ts-server").value || "").trim().replace(/\/+$/, "");
-        WIZ.ts.authKey = (document.getElementById("wz-ts-key").value || "").trim();
+        saveBasics();
         if (!WIZ.name) { showToast("Give the agent a name", "error"); return; }
         const r = await fetch(API + "/agents", {
           method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },

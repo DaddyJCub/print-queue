@@ -38,11 +38,30 @@ rely on one back-powering the other.
 
 ---
 
-## 1b. Tailscale / Headscale (network access)
+## 1b. Network access (how the agent reaches the server)
 
-If the server is reachable only over your **Tailscale** network (Headscale control
-server at `https://headscale.jcubhub.com`), join the Pi to the tailnet **before**
-installing the agent, and point `server_url` at the server's Tailscale name/IP.
+The agent only makes **outbound** calls, so no inbound ports are ever needed.
+Pick whichever path matches your network — the wizard's *"How does the agent reach
+the server?"* choice maps to these:
+
+### Option A (simplest) — through your router / pfSense subnet router
+
+If you already run **Tailscale on pfSense** as a subnet router, the agent needs
+**nothing installed**. Requirements:
+
+1. pfSense advertises a route to the server's network into the tailnet
+   (`--advertise-routes`), approved in Headscale. If the server is a pure tailnet
+   host, advertise `100.64.0.0/10`.
+2. The agent's host uses pfSense as its gateway (normal on a home LAN).
+3. Set `server_url` to an address reachable through that route (the server's LAN
+   IP, its Tailscale `100.x`, or a DNS name).
+
+That's it — slimmest footprint on the Pi.
+
+### Option B — install Tailscale on the agent itself
+
+If the agent can't route to the server via your router, join it to the tailnet
+directly:
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
@@ -51,14 +70,13 @@ sudo tailscale up --login-server https://headscale.jcubhub.com --hostname pq-<na
 #   `headscale preauthkeys create --user <user> --reusable --expiration 24h`)
 ```
 
-Without an auth key, `tailscale up` prints a URL — approve the node in Headscale,
-then continue. The Pi's tailnet address (`tailscale ip -4`) is also how you'll
-reach its device page (`http://<tailscale-ip>:7130`) from other tailnet devices.
-The agent only makes outbound calls, so no inbound ports are needed either way.
+Without a key, `tailscale up` prints a URL — approve the node in Headscale, then
+continue. The agent's tailnet address (`tailscale ip -4`) is also how you'd reach
+its device page (`http://<tailscale-ip>:7130`) from other tailnet devices.
 
-> The **Guided setup wizard** includes these steps automatically — tick *Connect
-> over Tailscale (Headscale)* and (optionally) paste a pre-auth key, and the
-> generated install command joins the tailnet for you.
+> The **Guided setup wizard** handles both: pick *Through my network / router*
+> (nothing to install) or *Install Tailscale on the agent* and the generated
+> install command does the right thing.
 
 ## 2a. Raspberry Pi (recommended)
 
