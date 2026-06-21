@@ -1,0 +1,224 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Print Agents | Printellect</title>
+  <link rel="stylesheet" href="/static/css/tailwind.css" />
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div class="max-w-7xl mx-auto p-6">
+    {% set active_page = 'printer-agents' %}
+    {% include 'admin_nav.html' %}
+
+    <div class="mb-5 rounded-2xl border border-indigo-900/60 bg-gradient-to-r from-indigo-950/30 to-zinc-900/80 p-4">
+      <h1 class="text-2xl font-bold">🛰️ Print Agents</h1>
+      <p class="text-sm text-zinc-300 mt-1">
+        Cross-network USB printers (e.g. <strong>Longer LK5 Pro</strong>) driven by an agent on a
+        Raspberry Pi or Windows PC. <a class="text-indigo-400 hover:underline" href="/admin/printellect/docs/lk5-pro-agent-integration.md" target="_blank">Setup guide</a>
+      </p>
+    </div>
+
+    <!-- Ingest token (for the Cura plugin) -->
+    <section class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
+      <h2 class="text-sm font-semibold text-zinc-300 mb-2">🔑 Cura ingest token</h2>
+      <p class="text-xs text-zinc-500 mb-2">Paste this into the Cura plugin's <code class="bg-zinc-800 px-1 rounded">config.json</code> (and the post-processing uploader). It lets Cura send sliced G-code to the queue.</p>
+      <div class="flex items-center gap-2">
+        <input id="ingestToken" readonly class="flex-1 rounded-xl bg-zinc-950 border border-zinc-800 p-2 font-mono text-sm" value="loading…" />
+        <button onclick="copyVal('ingestToken')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-4 py-2 text-sm">Copy</button>
+      </div>
+    </section>
+
+    <!-- Add agent -->
+    <section class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
+      <h2 class="text-sm font-semibold text-zinc-300 mb-3">➕ Register a new agent</h2>
+      <form id="createForm" class="grid md:grid-cols-3 gap-2">
+        <input name="name" required placeholder="Name (e.g. LK5 Pro – Garage)"
+               class="rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 text-sm" />
+        <select name="printer_code" class="rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 text-sm">
+          <option value="LK5_PRO">Longer LK5 Pro</option>
+        </select>
+        <button class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2.5 text-sm font-semibold">Create agent</button>
+      </form>
+    </section>
+
+    <!-- Agent list -->
+    <div id="agentList" class="space-y-4">
+      <div class="text-center text-zinc-500 py-10">Loading agents…</div>
+    </div>
+  </div>
+
+  <!-- Claim-code modal (shown once after creating an agent) -->
+  <div id="claimModal" class="hidden fixed inset-0 bg-black/70 z-[9999] flex items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+      <h3 class="font-semibold text-lg mb-1">Agent created ✅</h3>
+      <p class="text-sm text-zinc-400 mb-4">Copy these into the agent's <code class="bg-zinc-800 px-1 rounded">config.json</code> now — the claim code is shown <strong>only once</strong>.</p>
+      <label class="text-xs text-zinc-500">Agent ID</label>
+      <div class="flex items-center gap-2 mb-3">
+        <input id="newAgentId" readonly class="flex-1 rounded-xl bg-zinc-950 border border-zinc-800 p-2 font-mono text-sm" />
+        <button onclick="copyVal('newAgentId')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-2 text-sm">Copy</button>
+      </div>
+      <label class="text-xs text-zinc-500">Claim code</label>
+      <div class="flex items-center gap-2 mb-5">
+        <input id="newClaimCode" readonly class="flex-1 rounded-xl bg-zinc-950 border border-zinc-800 p-2 font-mono text-sm" />
+        <button onclick="copyVal('newClaimCode')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-2 text-sm">Copy</button>
+      </div>
+      <button onclick="document.getElementById('claimModal').classList.add('hidden')"
+              class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2.5 text-sm font-semibold">Done</button>
+    </div>
+  </div>
+
+  <script>
+    const API = "/api/printer-agent/admin";
+
+    function copyVal(id) {
+      const el = document.getElementById(id);
+      el.select();
+      navigator.clipboard.writeText(el.value).then(() => showToast("Copied", "success", 1500));
+    }
+    function esc(s) { return (s == null ? "" : String(s)).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    function fmtBytes(n) { if (!n) return "—"; const u=["B","KB","MB","GB"]; let i=0,v=n; while(v>=1024&&i<u.length-1){v/=1024;i++;} return v.toFixed(1)+" "+u[i]; }
+    function timeAgo(iso) {
+      if (!iso) return "never";
+      const s = Math.max(0, (Date.now() - new Date(iso.replace(' ','T')+'Z').getTime())/1000);
+      if (s < 60) return Math.floor(s)+"s ago";
+      if (s < 3600) return Math.floor(s/60)+"m ago";
+      if (s < 86400) return Math.floor(s/3600)+"h ago";
+      return Math.floor(s/86400)+"d ago";
+    }
+
+    async function load() {
+      const r = await fetch(API + "/agents", { credentials: "include" });
+      if (!r.ok) { document.getElementById("agentList").innerHTML = '<div class="text-red-400 p-4">Failed to load agents.</div>'; return; }
+      const data = await r.json();
+      document.getElementById("ingestToken").value = data.ingest_token || "(none)";
+      renderAgents(data.agents || []);
+    }
+
+    function statusLine(s) {
+      if (!s || !s.state) return "";
+      const bits = [];
+      if (s.state) bits.push(esc(s.state));
+      if (s.progress != null) bits.push(s.progress + "%");
+      if (s.nozzle_temp != null) bits.push("🌡 " + s.nozzle_temp + "/" + (s.nozzle_target ?? "–") + "°");
+      if (s.current_file) bits.push("📄 " + esc(s.current_file));
+      return bits.join(" · ");
+    }
+
+    function renderAgents(agents) {
+      const wrap = document.getElementById("agentList");
+      if (!agents.length) { wrap.innerHTML = '<div class="text-center text-zinc-500 py-10 border border-dashed border-zinc-800 rounded-2xl">No agents yet. Register one above.</div>'; return; }
+      wrap.innerHTML = agents.map(a => `
+        <div class="rounded-2xl border ${a.revoked ? 'border-red-900/50 opacity-60' : 'border-zinc-800'} bg-zinc-900/60 p-4">
+          <div class="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full ${a.online ? 'bg-emerald-400' : 'bg-zinc-600'}"></span>
+                <span class="font-semibold">${esc(a.name || a.agent_id)}</span>
+                <span class="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-lg">${esc(a.printer_code)}</span>
+                ${a.revoked ? '<span class="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded-lg">revoked</span>' : ''}
+              </div>
+              <div class="text-xs text-zinc-500 mt-1 font-mono">${esc(a.agent_id)}</div>
+              <div class="text-xs text-zinc-400 mt-1">${a.online ? 'Online' : 'Offline'} · last seen ${timeAgo(a.last_seen_at)}${a.agent_version ? ' · v'+esc(a.agent_version) : ''}</div>
+              ${statusLine(a.status) ? `<div class="text-xs text-indigo-300 mt-1">${statusLine(a.status)}</div>` : ''}
+            </div>
+            <div class="flex items-center gap-2">
+              ${a.revoked ? '' : `<button onclick="sendPanel('${a.agent_id}')" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm">Send file</button>`}
+              <button onclick="toggleJobs('${a.agent_id}')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">Jobs</button>
+              ${a.revoked ? '' : `<button onclick="revoke('${a.agent_id}')" class="rounded-xl bg-red-900/40 hover:bg-red-900/60 text-red-300 px-3 py-1.5 text-sm">Revoke</button>`}
+            </div>
+          </div>
+          <div id="panel-${a.agent_id}" class="hidden mt-3 pt-3 border-t border-zinc-800"></div>
+        </div>`).join("");
+    }
+
+    async function sendPanel(agentId) {
+      const panel = document.getElementById("panel-" + agentId);
+      panel.classList.remove("hidden");
+      panel.innerHTML = '<div class="text-sm text-zinc-500">Loading G-code files…</div>';
+      const r = await fetch(API + "/gcode-files", { credentials: "include" });
+      const files = (await r.json()).files || [];
+      if (!files.length) {
+        panel.innerHTML = '<div class="text-sm text-zinc-500">No uploaded G-code files. Slice in Cura and use "Send to LK5 Pro", or the upload happens automatically with the Cura plugin.</div>';
+        return;
+      }
+      panel.innerHTML = `
+        <div class="text-sm font-medium mb-2">Dispatch a G-code file to this printer:</div>
+        <div class="space-y-1">${files.map(f => `
+          <div class="flex items-center justify-between gap-2 bg-zinc-950/60 rounded-xl px-3 py-2">
+            <div class="min-w-0"><div class="text-sm truncate">${esc(f.original_filename)}</div>
+              <div class="text-xs text-zinc-500">${fmtBytes(f.size_bytes)} · ${timeAgo(f.created_at)}</div></div>
+            <button onclick="enqueue('${agentId}','${f.id}')" class="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm shrink-0">Send</button>
+          </div>`).join("")}</div>`;
+    }
+
+    async function enqueue(agentId, fileId) {
+      const r = await fetch(API + `/agents/${agentId}/jobs`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_id: fileId }),
+      });
+      if (r.ok) { showToast("Queued for printing", "success"); toggleJobs(agentId, true); }
+      else { showToast("Failed: " + (await r.text()), "error"); }
+    }
+
+    async function toggleJobs(agentId, forceOpen) {
+      const panel = document.getElementById("panel-" + agentId);
+      if (!forceOpen && !panel.classList.contains("hidden") && panel.dataset.mode === "jobs") { panel.classList.add("hidden"); return; }
+      panel.classList.remove("hidden");
+      panel.dataset.mode = "jobs";
+      panel.innerHTML = '<div class="text-sm text-zinc-500">Loading jobs…</div>';
+      const r = await fetch(API + `/agents/${agentId}/jobs`, { credentials: "include" });
+      const jobs = (await r.json()).jobs || [];
+      if (!jobs.length) { panel.innerHTML = '<div class="text-sm text-zinc-500">No jobs yet.</div>'; return; }
+      const badge = s => ({queued:'bg-zinc-700 text-zinc-200',claimed:'bg-blue-900/50 text-blue-200',uploading:'bg-blue-900/50 text-blue-200',printing:'bg-emerald-900/50 text-emerald-200',completed:'bg-emerald-900/60 text-emerald-200',failed:'bg-red-900/50 text-red-200',canceled:'bg-zinc-700 text-zinc-400',paused:'bg-amber-900/50 text-amber-200'}[s] || 'bg-zinc-700');
+      const active = ['queued','claimed','uploading','printing','paused'];
+      panel.innerHTML = '<div class="space-y-1">' + jobs.map(j => `
+        <div class="flex items-center justify-between gap-2 bg-zinc-950/60 rounded-xl px-3 py-2">
+          <div class="min-w-0">
+            <div class="text-sm truncate">${esc(j.file_name)}</div>
+            <div class="text-xs text-zinc-500">${timeAgo(j.created_at)}${j.error ? ' · <span class="text-red-400">'+esc(j.error)+'</span>' : ''}</div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-xs px-2 py-0.5 rounded-lg ${badge(j.status)}">${esc(j.status)}${j.status==='printing'?' '+(j.progress||0)+'%':''}</span>
+            ${active.includes(j.status) ? `<button onclick="cancelJob('${j.job_id}','${agentId}')" class="text-xs text-red-300 hover:underline">Cancel</button>` : ''}
+          </div>
+        </div>`).join("") + '</div>';
+    }
+
+    async function cancelJob(jobId, agentId) {
+      if (!(await showConfirm("Cancel this job? The agent will stop the print."))) return;
+      const r = await fetch(API + `/jobs/${jobId}/cancel`, { method: "POST", credentials: "include" });
+      if (r.ok) { showToast("Job canceled", "success"); toggleJobs(agentId, true); }
+      else { showToast("Failed: " + (await r.text()), "error"); }
+    }
+
+    async function revoke(agentId) {
+      if (!(await showConfirm("Revoke this agent? Its token stops working immediately and it must be re-registered."))) return;
+      const r = await fetch(API + `/agents/${agentId}/revoke`, { method: "POST", credentials: "include" });
+      if (r.ok) { showToast("Agent revoked", "success"); load(); }
+      else { showToast("Failed: " + (await r.text()), "error"); }
+    }
+
+    document.getElementById("createForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const r = await fetch(API + "/agents", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: fd.get("name"), printer_code: fd.get("printer_code") }),
+      });
+      if (!r.ok) { showToast("Failed: " + (await r.text()), "error"); return; }
+      const d = await r.json();
+      document.getElementById("newAgentId").value = d.agent_id;
+      document.getElementById("newClaimCode").value = d.claim_code;
+      document.getElementById("claimModal").classList.remove("hidden");
+      e.target.reset();
+      load();
+    });
+
+    load();
+    setInterval(load, 15000);  // refresh status periodically
+  </script>
+</body>
+</html>

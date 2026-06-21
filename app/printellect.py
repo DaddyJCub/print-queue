@@ -1165,6 +1165,7 @@ _ALLOWED_DOCS = {
     "printellect-device-control-roadmap.md",
     "printellect-user-api.md",
     "setup-my-printellect-base.md",
+    "lk5-pro-agent-integration.md",
 }
 
 

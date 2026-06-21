@@ -236,6 +236,27 @@ def test_ingest_gcode_rejects_bad_token(client):
     assert r.status_code == 401
 
 
+# ─────────────────────────── admin web UI ───────────────────────────
+
+def test_admin_agents_page_renders(admin_client):
+    r = admin_client.get("/admin/printer-agents")
+    assert r.status_code == 200
+    assert "Print Agents" in r.text
+
+
+def test_admin_agents_page_requires_admin(client):
+    r = client.get("/admin/printer-agents", follow_redirects=False)
+    assert r.status_code in (401, 302, 303, 307)
+
+
+def test_admin_gcode_files_list(client, admin_client):
+    _make_gcode_file(name="dispatchable.gcode")
+    r = admin_client.get(f"{ADMIN}/gcode-files")
+    assert r.status_code == 200
+    names = [f["original_filename"] for f in r.json()["files"]]
+    assert "dispatchable.gcode" in names
+
+
 # ─────────────────────────── one-click print (Cura plugin) ───────────────────────────
 
 def test_print_now_uploads_and_dispatches(client, admin_client):
