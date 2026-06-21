@@ -81,9 +81,13 @@ AGENT_COMMAND_ACTIONS = {
     "reload_config",   # re-read config.json
     "get_logs",        # return recent agent log lines in the command result
     "identify",        # blink/log so an operator can find the unit
+    "update_agent",    # download a new agent bundle, self-update, restart (OTA)
 }
 COMMAND_STATUSES = {"queued", "delivered", "executing", "completed", "failed"}
 COMMAND_TERMINAL = {"completed", "failed"}
+
+# Directory where uploaded agent OTA bundles (.zip) are stored.
+AGENT_RELEASES_DIR = os.getenv("AGENT_RELEASES_DIR", os.path.join("local_data", "agent_releases"))
 
 # Printer codes that are serviced by an agent rather than a direct LAN API.
 AGENT_PRINTER_CODES = {"LK5_PRO"}
@@ -209,6 +213,20 @@ def init_printer_agent_tables(cur: sqlite3.Cursor) -> None:
             delivered_at TEXT,
             completed_at TEXT,
             FOREIGN KEY(agent_id) REFERENCES printer_agents(agent_id)
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS printer_agent_releases (
+            version TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            created_by TEXT,
+            notes TEXT,
+            bundle_path TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            is_current INTEGER NOT NULL DEFAULT 0
         )
         """
     )
@@ -835,6 +853,122 @@ async def admin_list_commands(agent_id: str, admin=Depends(require_admin)):
         "error": r["error"], "result": _json_loads(r["result_json"]),
         "created_at": r["created_at"], "completed_at": r["completed_at"],
     } for r in rows]}
+
+
+# ──────────────────────────── agent OTA releases ────────────────────────────
+
+def _current_release(conn: sqlite3.Connection) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM printer_agent_releases ORDER BY is_current DESC, created_at DESC LIMIT 1"
+    ).fetchone()
+
+
+@router.post(ADMIN_PREFIX + "/agent-releases")
+async def admin_upload_agent_release(
+    version: str = Form(...),
+    notes: Optional[str] = Form(default=None),
+    file: UploadFile = File(...),
+    admin=Depends(require_admin),
+):
+    """Upload an agent OTA bundle (.zip containing the printqueue_agent package)."""
+    import hashlib
+    import io
+    import zipfile
+
+    version = version.strip()
+    if not version:
+        raise HTTPException(status_code=422, detail="version required")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="Empty bundle")
+    if len(data) > 64 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Bundle too large")
+
+    # Validate it's a zip that actually contains the agent package.
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            names = zf.namelist()
+    except Exception:
+        raise HTTPException(status_code=422, detail="Bundle must be a .zip")
+    if not any(n.endswith("printqueue_agent/__init__.py") or n == "printqueue_agent/__init__.py" for n in names):
+        raise HTTPException(status_code=422, detail="Bundle must contain the printqueue_agent/ package")
+
+    os.makedirs(AGENT_RELEASES_DIR, exist_ok=True)
+    safe_version = "".join(c for c in version if c.isalnum() or c in ".-_")
+    bundle_path = os.path.join(AGENT_RELEASES_DIR, f"agent-{safe_version}.zip")
+    with open(bundle_path, "wb") as fh:
+        fh.write(data)
+    sha = hashlib.sha256(data).hexdigest()
+
+    conn = db()
+    try:
+        conn.execute("UPDATE printer_agent_releases SET is_current = 0")
+        conn.execute(
+            "INSERT OR REPLACE INTO printer_agent_releases "
+            "(version, created_at, created_by, notes, bundle_path, sha256, size_bytes, is_current) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+            (version, now_iso(), getattr(admin, "id", None), notes, bundle_path, sha, len(data)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "version": version, "sha256": sha, "size_bytes": len(data)}
+
+
+@router.get(ADMIN_PREFIX + "/agent-releases")
+async def admin_list_agent_releases(admin=Depends(require_admin)):
+    conn = db()
+    try:
+        rows = conn.execute(
+            "SELECT version, created_at, notes, sha256, size_bytes, is_current FROM printer_agent_releases "
+            "ORDER BY created_at DESC LIMIT 50"
+        ).fetchall()
+    finally:
+        conn.close()
+    return {"releases": [dict(r) for r in rows]}
+
+
+@router.post(ADMIN_PREFIX + "/agents/{agent_id}/update")
+async def admin_push_update(agent_id: str, admin=Depends(require_admin)):
+    """Queue an update_agent command pointing the agent at the current release."""
+    conn = db()
+    try:
+        agent = conn.execute("SELECT agent_id FROM printer_agents WHERE agent_id = ? AND revoked = 0", (agent_id,)).fetchone()
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        rel = _current_release(conn)
+        if not rel:
+            raise HTTPException(status_code=404, detail="No agent release uploaded yet")
+        cmd_id = str(uuid.uuid4())
+        now = now_iso()
+        payload = {
+            "version": rel["version"],
+            "sha256": rel["sha256"],
+            "bundle_url": f"{API_PREFIX}/releases/agent/{rel['version']}/bundle",
+        }
+        conn.execute(
+            "INSERT INTO printer_agent_commands (cmd_id, agent_id, action, payload_json, status, created_at, updated_at, created_by) "
+            "VALUES (?, ?, 'update_agent', ?, 'queued', ?, ?, ?)",
+            (cmd_id, agent_id, _json_dumps(payload), now, now, getattr(admin, "id", None)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "cmd_id": cmd_id, "version": rel["version"]}
+
+
+@router.get(API_PREFIX + "/releases/agent/{version}/bundle")
+async def agent_download_bundle(version: str, request: Request):
+    """Agent downloads an OTA bundle (bearer-authenticated)."""
+    await _agent_from_bearer(request)
+    conn = db()
+    try:
+        rel = conn.execute("SELECT bundle_path FROM printer_agent_releases WHERE version = ?", (version,)).fetchone()
+    finally:
+        conn.close()
+    if not rel or not rel["bundle_path"] or not os.path.isfile(rel["bundle_path"]):
+        raise HTTPException(status_code=404, detail="Release not found")
+    return FileResponse(rel["bundle_path"], media_type="application/zip", filename=f"agent-{version}.zip")
 
 
 @router.post(ADMIN_PREFIX + "/agents/{agent_id}/jobs")

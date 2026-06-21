@@ -122,6 +122,17 @@ class PrintQueueClient:
         if r.status_code != 200:
             raise ServerError(f"update_command failed: {r.status_code} {r.text}")
 
+    def download_bundle(self, bundle_url: str, dest_path: str) -> None:
+        """Download an OTA agent bundle (bundle_url is a server-relative path)."""
+        url = f"{self.base}{bundle_url}" if bundle_url.startswith("/") else bundle_url
+        r = self._session.get(url, headers=self._headers, verify=self.verify_tls, timeout=180, stream=True)
+        if r.status_code != 200:
+            raise ServerError(f"bundle download failed: {r.status_code} {r.text}")
+        with open(dest_path, "wb") as fh:
+            for chunk in r.iter_content(chunk_size=64 * 1024):
+                if chunk:
+                    fh.write(chunk)
+
     def upload_snapshot(self, jpeg_bytes: bytes) -> None:
         r = self._request("POST", "/snapshot", data=jpeg_bytes,
                           headers={**self._headers, "Content-Type": "image/jpeg"})
