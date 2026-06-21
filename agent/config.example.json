@@ -25,5 +25,13 @@
     "programmer": "wiring",
     "baud": 115200,
     "extra_args": []
+  },
+
+  "local_ui": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 7130,
+    "api_key": "",
+    "spool_dir": ""
   }
 }

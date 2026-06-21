@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import threading
 import time
 from typing import Optional
 
@@ -41,9 +42,27 @@ class Agent:
         self.printer: Optional[SerialPrinter] = None
         self.camera = Camera(cfg.camera, verify_tls=cfg.verify_tls)
         self.commands = CommandExecutor(self)
+        # Set while a print is being started locally (device page), so the
+        # central-job loop doesn't grab the serial port at the same time.
+        self.print_active = threading.Event()
+        self._ui_server = None
         self._last_heartbeat = 0.0
         self._last_snapshot = 0.0
         install_log_ring()
+
+    def _maybe_start_local_ui(self) -> None:
+        """Start the ZMOD-style device-page web server (once)."""
+        if self._ui_server is not None or not self.cfg.local_ui.enabled:
+            return
+        try:
+            from .controller import AgentPrinterController
+            from .local_ui import start_in_thread
+            controller = AgentPrinterController(self)
+            self._ui_server = start_in_thread(
+                controller, self.cfg.local_ui.host, self.cfg.local_ui.port, self.cfg.local_ui.api_key,
+            )
+        except Exception as e:
+            log.warning("Could not start local device UI: %s", e)
 
     def reload_config(self) -> None:
         """Re-read config.json (used by the reload_config command)."""
@@ -85,6 +104,7 @@ class Agent:
     # ── main loop ─────────────────────────────────────────────────
     def run_forever(self) -> None:
         log.info("Starting agent %s -> %s", self.cfg.agent_id, self.cfg.server_url)
+        self._maybe_start_local_ui()
         self._provision_with_retry()
         while True:
             try:
@@ -124,8 +144,8 @@ class Agent:
         self._maybe_snapshot()
         self._poll_commands()
 
-        # Only pick up new work when connected and idle.
-        if connected and status.state == "idle":
+        # Only pick up central work when connected, idle, and not mid local print.
+        if connected and status.state == "idle" and not self.print_active.is_set():
             job = None
             try:
                 job = self.client.next_job()
@@ -165,6 +185,7 @@ class Agent:
         log.info("Claimed job %s (%s)", job_id, file_name)
 
         tmp_path = os.path.join(tempfile.gettempdir(), f"pq_{job_id}.gcode")
+        self.print_active.set()  # block the device page from racing for the port
         try:
             self.client.update_job(job_id, "claimed")
             self.client.download_job_file(job_id, tmp_path)
@@ -194,6 +215,7 @@ class Agent:
             except ServerError:
                 pass
         finally:
+            self.print_active.clear()
             try:
                 os.remove(tmp_path)
             except OSError:
