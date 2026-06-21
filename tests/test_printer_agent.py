@@ -420,6 +420,12 @@ def test_admin_agents_page_renders(admin_client):
     assert "Print Agents" in r.text
 
 
+def test_setup_guide_doc_accessible(admin_client):
+    r = admin_client.get("/admin/printellect/docs/lk5-pro-agent-setup.md")
+    assert r.status_code == 200
+    assert "setup guide" in r.text.lower()
+
+
 def test_admin_agents_page_requires_admin(client):
     r = client.get("/admin/printer-agents", follow_redirects=False)
     assert r.status_code in (401, 302, 303, 307)
