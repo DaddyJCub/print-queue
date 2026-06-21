@@ -33,16 +33,14 @@
     </section>
 
     <!-- Add agent -->
-    <section class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
-      <h2 class="text-sm font-semibold text-zinc-300 mb-3">➕ Register a new agent</h2>
-      <form id="createForm" class="grid md:grid-cols-3 gap-2">
-        <input name="name" required placeholder="Name (e.g. LK5 Pro – Garage)"
-               class="rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 text-sm" />
-        <select name="printer_code" class="rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 text-sm">
-          <option value="LK5_PRO">Longer LK5 Pro</option>
-        </select>
-        <button class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2.5 text-sm font-semibold">Create agent</button>
-      </form>
+    <section class="rounded-2xl border border-indigo-900/50 bg-indigo-950/10 p-4 mb-4">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 class="text-sm font-semibold text-zinc-200 mb-1">➕ Add a printer agent</h2>
+          <p class="text-xs text-zinc-500">Guided setup creates the agent and generates your ready-to-paste <code class="bg-zinc-800 px-1 rounded">config.json</code> and a one-shot install command for the Pi.</p>
+        </div>
+        <button onclick="openWizard()" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2.5 text-sm font-semibold whitespace-nowrap">🧭 Guided setup</button>
+      </div>
     </section>
 
     <!-- Agent software updates (OTA) -->
@@ -78,23 +76,19 @@
     </div>
   </div>
 
-  <!-- Claim-code modal (shown once after creating an agent) -->
-  <div id="claimModal" class="hidden fixed inset-0 bg-black/70 z-[9999] flex items-center justify-center p-4">
-    <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-md w-full shadow-2xl">
-      <h3 class="font-semibold text-lg mb-1">Agent created ✅</h3>
-      <p class="text-sm text-zinc-400 mb-4">Copy these into the agent's <code class="bg-zinc-800 px-1 rounded">config.json</code> now — the claim code is shown <strong>only once</strong>.</p>
-      <label class="text-xs text-zinc-500">Agent ID</label>
-      <div class="flex items-center gap-2 mb-3">
-        <input id="newAgentId" readonly class="flex-1 rounded-xl bg-zinc-950 border border-zinc-800 p-2 font-mono text-sm" />
-        <button onclick="copyVal('newAgentId')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-2 text-sm">Copy</button>
+  <!-- Guided setup wizard -->
+  <div id="wiz" class="hidden fixed inset-0 bg-black/70 z-[9999] flex items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-2xl w-full shadow-2xl max-h-[92vh] overflow-auto">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold text-lg">Set up a printer agent</h3>
+        <button onclick="closeWizard()" class="text-zinc-500 hover:text-zinc-200 text-xl leading-none">✕</button>
       </div>
-      <label class="text-xs text-zinc-500">Claim code</label>
-      <div class="flex items-center gap-2 mb-5">
-        <input id="newClaimCode" readonly class="flex-1 rounded-xl bg-zinc-950 border border-zinc-800 p-2 font-mono text-sm" />
-        <button onclick="copyVal('newClaimCode')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-2 text-sm">Copy</button>
+      <div id="wizSteps" class="flex gap-1.5 mb-5"></div>
+      <div id="wizBody" class="text-sm"></div>
+      <div class="flex justify-between mt-6">
+        <button id="wizBack" onclick="wizGo(-1)" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-4 py-2 text-sm">Back</button>
+        <button id="wizNext" onclick="wizGo(1)" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-5 py-2 text-sm font-semibold">Next</button>
       </div>
-      <button onclick="document.getElementById('claimModal').classList.add('hidden')"
-              class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2.5 text-sm font-semibold">Done</button>
     </div>
   </div>
 
@@ -122,6 +116,7 @@
       if (!r.ok) { document.getElementById("agentList").innerHTML = '<div class="text-red-400 p-4">Failed to load agents.</div>'; return; }
       const data = await r.json();
       document.getElementById("ingestToken").value = data.ingest_token || "(none)";
+      window.__ingestToken = data.ingest_token || "";
       renderAgents(data.agents || []);
     }
 
@@ -330,22 +325,187 @@
       else { showToast("Upload failed: " + (await r.text()), "error"); }
     });
 
-    document.getElementById("createForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      const r = await fetch(API + "/agents", {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: fd.get("name"), printer_code: fd.get("printer_code") }),
-      });
-      if (!r.ok) { showToast("Failed: " + (await r.text()), "error"); return; }
-      const d = await r.json();
-      document.getElementById("newAgentId").value = d.agent_id;
-      document.getElementById("newClaimCode").value = d.claim_code;
-      document.getElementById("claimModal").classList.remove("hidden");
-      e.target.reset();
+    // ───────────────────────── Guided setup wizard ─────────────────────────
+    const WIZ_STEPS = ["Basics", "Config", "Install", "Orca", "Finish"];
+    let WIZ = {};
+    let wizPoll = null;
+
+    function genKey() {
+      const a = new Uint8Array(18); crypto.getRandomValues(a);
+      return btoa(String.fromCharCode.apply(null, a)).replace(/[+/=]/g, "").slice(0, 24);
+    }
+    function copyText(text) { navigator.clipboard.writeText(text).then(() => showToast("Copied", "success", 1200)); }
+    function downloadText(name, text) {
+      const b = new Blob([text], { type: "text/plain" }); const u = URL.createObjectURL(b);
+      const a = document.createElement("a"); a.href = u; a.download = name; a.click(); URL.revokeObjectURL(u);
+    }
+
+    function openWizard() {
+      WIZ = { step: 0, name: "", host: "pi", serverUrl: location.origin, agentId: "", claimCode: "", apiKey: genKey() };
+      document.getElementById("wiz").classList.remove("hidden");
+      renderWiz();
+    }
+    function closeWizard() {
+      document.getElementById("wiz").classList.add("hidden");
+      if (wizPoll) { clearInterval(wizPoll); wizPoll = null; }
       load();
-    });
+    }
+
+    function buildConfig() {
+      return JSON.stringify({
+        server_url: WIZ.serverUrl, agent_id: WIZ.agentId, claim_code: WIZ.claimCode,
+        agent_version: "1.0.0", verify_tls: true,
+        serial_port: "auto", baud_rate: 115200, poll_interval_s: 5, heartbeat_interval_s: 15,
+        camera: { enabled: false, snapshot_url: "http://localhost:8080/?action=snapshot", device_index: null, interval_s: 10 },
+        firmware: { enabled: false, avrdude_path: "avrdude", mcu: "atmega2560", programmer: "wiring", baud: 115200, extra_args: [] },
+        local_ui: { enabled: true, host: "0.0.0.0", port: 7130, api_key: WIZ.apiKey, spool_dir: "" }
+      }, null, 2);
+    }
+    function buildInstall() {
+      const token = window.__ingestToken || document.getElementById("ingestToken").value || "YOUR_INGEST_TOKEN";
+      const cfg = buildConfig();
+      if (WIZ.host === "windows") {
+        return [
+          "# Run in PowerShell, in a folder where you want the agent:",
+          `Invoke-WebRequest "${WIZ.serverUrl}/api/printer-agent/v1/agent-package.tar.gz?token=${token}" -OutFile agent.tgz`,
+          "tar -xzf agent.tgz; cd agent",
+          "py -m pip install -r requirements.txt",
+          "@'", cfg, "'@ | Set-Content -Encoding utf8 config.json",
+          "py -m printqueue_agent --config config.json",
+          "# To run on boot, see install/windows-service.md"
+        ].join("\n");
+      }
+      return [
+        "# Paste this whole block into the Raspberry Pi terminal (over SSH):",
+        "sudo apt-get update && sudo apt-get -y install python3-pip curl",
+        "sudo usermod -aG dialout $USER",
+        "mkdir -p ~/printqueue && cd ~/printqueue",
+        `curl -fsSL "${WIZ.serverUrl}/api/printer-agent/v1/agent-package.tar.gz?token=${token}" | tar xz`,
+        "cd agent && INSTALL_DIR=\"$PWD\"",
+        "pip install -r requirements.txt --break-system-packages",
+        "cat > config.json <<'PQEOF'",
+        cfg,
+        "PQEOF",
+        "# Install + start the background service (auto-restarts, survives reboot):",
+        "sudo tee /etc/systemd/system/printqueue-agent.service >/dev/null <<UNIT",
+        "[Unit]",
+        "Description=Print Queue Printer Agent",
+        "After=network-online.target",
+        "Wants=network-online.target",
+        "",
+        "[Service]",
+        "Type=simple",
+        "User=$USER",
+        "WorkingDirectory=$INSTALL_DIR",
+        "ExecStart=/usr/bin/python3 -m printqueue_agent --config $INSTALL_DIR/config.json",
+        "Restart=always",
+        "RestartSec=5",
+        "",
+        "[Install]",
+        "WantedBy=multi-user.target",
+        "UNIT",
+        "sudo systemctl daemon-reload && sudo systemctl enable --now printqueue-agent",
+        "echo '✅ Agent installed. Check the Print Agents page — it should appear online shortly.'"
+      ].join("\n");
+    }
+
+    function pre(text) {
+      return `<pre class="bg-black/50 border border-zinc-800 rounded-xl p-3 text-[12px] leading-snug overflow-auto max-h-72 whitespace-pre-wrap font-mono">${esc(text)}</pre>`;
+    }
+    function renderWiz() {
+      const s = WIZ.step;
+      document.getElementById("wizSteps").innerHTML = WIZ_STEPS.map((n, i) =>
+        `<div class="flex-1 text-center text-[11px] py-1 rounded-lg ${i===s?'bg-indigo-600 text-white':i<s?'bg-emerald-900/40 text-emerald-300':'bg-zinc-800 text-zinc-500'}">${i+1}. ${n}</div>`
+      ).join("");
+      const back = document.getElementById("wizBack"), next = document.getElementById("wizNext");
+      back.style.visibility = s === 0 ? "hidden" : "visible";
+      next.textContent = s === 0 ? "Create agent" : (s === WIZ_STEPS.length - 1 ? "Done" : "Next");
+      const body = document.getElementById("wizBody");
+      const host = WIZ.host === "windows" ? "Windows PC" : "Raspberry Pi";
+
+      if (s === 0) {
+        body.innerHTML = `
+          <label class="text-xs text-zinc-400">Agent name</label>
+          <input id="wz-name" value="${esc(WIZ.name)}" placeholder="LK5 Pro – Garage" class="w-full mb-3 mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-2.5" />
+          <label class="text-xs text-zinc-400">Where will the agent run?</label>
+          <div class="flex gap-2 my-1 mb-3">
+            <label class="flex-1 rounded-xl border ${WIZ.host==='pi'?'border-indigo-500 bg-indigo-950/30':'border-zinc-800'} p-3 cursor-pointer">
+              <input type="radio" name="wz-host" value="pi" ${WIZ.host==='pi'?'checked':''} class="mr-2" onchange="WIZ.host='pi'">🍓 Raspberry Pi</label>
+            <label class="flex-1 rounded-xl border ${WIZ.host==='windows'?'border-indigo-500 bg-indigo-950/30':'border-zinc-800'} p-3 cursor-pointer">
+              <input type="radio" name="wz-host" value="windows" ${WIZ.host==='windows'?'checked':''} class="mr-2" onchange="WIZ.host='windows'">🪟 Windows PC</label>
+          </div>
+          <label class="text-xs text-zinc-400">Server URL <span class="text-zinc-600">(what the agent dials out to)</span></label>
+          <input id="wz-url" value="${esc(WIZ.serverUrl)}" class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 font-mono text-xs" />`;
+      } else if (s === 1) {
+        body.innerHTML = `
+          <p class="text-zinc-400 mb-1">Agent <b class="text-zinc-200">${esc(WIZ.name)}</b> created. This is its <code class="bg-zinc-800 px-1 rounded">config.json</code> — the claim code appears <b>only here</b>, so save it now.</p>
+          <p class="text-xs text-zinc-500 mb-3">Don't worry about pasting it manually — the next step's install command writes this file for you.</p>
+          ${pre(buildConfig())}
+          <div class="row" style="margin-top:10px">
+            <button onclick='copyText(buildConfig())' class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-2 text-sm">Copy config</button>
+            <button onclick='downloadText("config.json", buildConfig())' class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-2 text-sm">Download config.json</button>
+          </div>`;
+      } else if (s === 2) {
+        body.innerHTML = `
+          <p class="text-zinc-400 mb-1">Install on the <b>${host}</b>. This one block downloads the agent, writes your config, and starts it as a background service.</p>
+          <p class="text-xs text-zinc-500 mb-3">Requires SSH access to the Pi. (On the stock <code class="bg-zinc-800 px-1 rounded">pi</code> user it works as-is; the commands adapt to your username.)</p>
+          ${pre(buildInstall())}
+          <button onclick='copyText(buildInstall())' class="mt-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-semibold">Copy install command</button>`;
+      } else if (s === 3) {
+        body.innerHTML = `
+          <p class="text-zinc-400 mb-3">Point <b>Orca Slicer</b> at the agent so you can slice → send → manage on the on-device page. In Orca's printer <em>Connection</em> settings:</p>
+          <div class="stat"><span>Host Type</span><b>OctoPrint</b></div>
+          <div class="stat"><span>Hostname / IP</span><b>&lt;your-pi-ip&gt;:7130</b></div>
+          <div class="stat"><span>API Key</span><b class="font-mono text-xs">${esc(WIZ.apiKey)}</b></div>
+          <div class="row" style="margin-top:12px">
+            <button onclick='copyText(WIZ.apiKey)' class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-2 text-sm">Copy API key</button>
+          </div>
+          <p class="text-xs text-zinc-500 mt-3">Then open <code class="bg-zinc-800 px-1 rounded">http://&lt;your-pi-ip&gt;:7130</code> for the device page. Find the Pi's IP with <code class="bg-zinc-800 px-1 rounded">hostname -I</code> on the Pi.</p>`;
+      } else {
+        body.innerHTML = `
+          <div id="wz-wait" class="text-center py-6">
+            <div class="text-3xl mb-2">⏳</div>
+            <p class="text-zinc-300">Waiting for <b>${esc(WIZ.name)}</b> to check in…</p>
+            <p class="text-xs text-zinc-500 mt-1">Run the install command on the ${host}; this flips to ✅ when its first heartbeat arrives.</p>
+          </div>`;
+        startWizPoll();
+      }
+    }
+
+    function startWizPoll() {
+      if (wizPoll) clearInterval(wizPoll);
+      const check = async () => {
+        try {
+          const data = await (await fetch(API + "/agents", { credentials: "include" })).json();
+          const me = (data.agents || []).find(a => a.agent_id === WIZ.agentId);
+          if (me && me.online) {
+            clearInterval(wizPoll); wizPoll = null;
+            document.getElementById("wz-wait").innerHTML =
+              `<div class="text-4xl mb-2">✅</div><p class="text-emerald-300 font-semibold">${esc(WIZ.name)} is online!</p>
+               <p class="text-xs text-zinc-500 mt-1">You're all set. Close this and use the agent below.</p>`;
+          }
+        } catch (_) {}
+      };
+      wizPoll = setInterval(check, 3000); check();
+    }
+
+    async function wizGo(dir) {
+      if (dir < 0) { if (WIZ.step > 0) { WIZ.step--; renderWiz(); } return; }
+      if (WIZ.step === 0) {
+        WIZ.name = (document.getElementById("wz-name").value || "").trim();
+        WIZ.serverUrl = (document.getElementById("wz-url").value || "").trim().replace(/\/+$/, "");
+        if (!WIZ.name) { showToast("Give the agent a name", "error"); return; }
+        const r = await fetch(API + "/agents", {
+          method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: WIZ.name, printer_code: "LK5_PRO" }),
+        });
+        if (!r.ok) { showToast("Create failed: " + (await r.text()), "error"); return; }
+        const d = await r.json();
+        WIZ.agentId = d.agent_id; WIZ.claimCode = d.claim_code;
+      }
+      if (WIZ.step === WIZ_STEPS.length - 1) { closeWizard(); return; }
+      WIZ.step++; renderWiz();
+    }
 
     load();
     loadReleases();

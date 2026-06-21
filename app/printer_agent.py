@@ -1107,6 +1107,44 @@ async def agent_download_firmware(printer_code: str, version: str, request: Requ
     return FileResponse(fw["file_path"], media_type="text/plain", filename=fw["file_name"] or f"{version}.hex")
 
 
+@router.get(API_PREFIX + "/agent-package.tar.gz")
+async def download_agent_package(token: str = ""):
+    """Stream the agent source as a tarball so the guided setup is paste-and-go.
+
+    Authorized with the Cura ingest token (a shared setup secret) rather than an
+    admin session, since this runs on the Pi during first-time install.
+    """
+    import io
+    import tarfile
+
+    conn = db()
+    try:
+        expected = get_or_create_ingest_token(conn)
+    finally:
+        conn.close()
+    if not token or not secrets.compare_digest(token, expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing setup token")
+
+    agent_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "agent")
+    if not os.path.isdir(agent_dir):
+        raise HTTPException(status_code=404, detail="Agent source not found on server")
+    repo_root = os.path.dirname(agent_dir)
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for root, dirs, files in os.walk(agent_dir):
+            dirs[:] = [d for d in dirs if d != "__pycache__" and not d.endswith(".bak")]
+            for name in files:
+                if name.endswith(".pyc") or name == "config.json":
+                    continue
+                full = os.path.join(root, name)
+                tar.add(full, arcname=os.path.relpath(full, repo_root))  # keeps "agent/" prefix
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/gzip",
+        headers={"Content-Disposition": "attachment; filename=printqueue-agent.tar.gz"},
+    )
+
+
 @router.post(ADMIN_PREFIX + "/agents/{agent_id}/jobs")
 async def admin_enqueue_job(agent_id: str, body: EnqueueJobRequest, admin=Depends(require_admin)):
     """The 'Send to LK5' action: queue a sliced gcode file for the agent."""

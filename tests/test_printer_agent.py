@@ -412,6 +412,30 @@ def test_flash_without_firmware_404(admin_client):
     assert r.status_code == 404
 
 
+# ─────────────────────────── guided-setup agent package ───────────────────────────
+
+def test_agent_package_download(client, admin_client):
+    token = admin_client.get(f"{ADMIN}/agents").json()["ingest_token"]
+    r = client.get(f"{PREFIX}/agent-package.tar.gz", params={"token": token})
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/gzip"
+
+    import io
+    import tarfile
+    tf = tarfile.open(fileobj=io.BytesIO(r.content), mode="r:gz")
+    names = tf.getnames()
+    # The tarball ships the agent package and keeps the "agent/" prefix.
+    assert any(n.endswith("agent/printqueue_agent/__init__.py") for n in names)
+    assert any(n.endswith("agent/requirements.txt") for n in names)
+    # Never leaks a local config.json.
+    assert not any(n.endswith("config.json") for n in names)
+
+
+def test_agent_package_requires_token(client):
+    assert client.get(f"{PREFIX}/agent-package.tar.gz").status_code == 401
+    assert client.get(f"{PREFIX}/agent-package.tar.gz", params={"token": "wrong"}).status_code == 401
+
+
 # ─────────────────────────── admin web UI ───────────────────────────
 
 def test_admin_agents_page_renders(admin_client):

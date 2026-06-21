@@ -7,6 +7,13 @@ from a host on a separate network. For the architecture and security model, see
 The agent runs on either a **Raspberry Pi** (recommended) or the **Windows PC**.
 Same code; pick one.
 
+> **⚡ Fastest path — the Guided setup wizard.** On the **Print Agents** admin page,
+> click **🧭 Guided setup**. It creates the agent, fills in your `config.json`, and
+> gives you a **single copy-paste install command** for the Pi (it downloads the
+> agent, writes the config, and starts the service for you), plus the exact Orca
+> settings — then watches for the agent to come online. The manual steps below are
+> the reference if you'd rather do it by hand or need to customise.
+
 ---
 
 ## 0. Before you start — the 5 V back-power gotcha
