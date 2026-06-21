@@ -18,6 +18,8 @@ Restart=always
 RestartSec=5
 # The pi user must be in the 'dialout' group to access the serial port:
 #   sudo usermod -a -G dialout pi   (then reboot)
+# For the "Reboot Pi" remote command, allow passwordless reboot:
+#   echo 'pi ALL=(ALL) NOPASSWD: /sbin/reboot' | sudo tee /etc/sudoers.d/printqueue-agent
 
 [Install]
 WantedBy=multi-user.target

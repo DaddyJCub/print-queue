@@ -102,6 +102,26 @@ class PrintQueueClient:
         if r.status_code != 200:
             raise ServerError(f"update_job failed: {r.status_code} {r.text}")
 
+    def next_command(self) -> Optional[Dict[str, Any]]:
+        """Claim the next queued management command, or None."""
+        r = self._request("GET", "/commands/next")
+        if r.status_code == 204:
+            return None
+        if r.status_code != 200:
+            raise ServerError(f"commands/next failed: {r.status_code} {r.text}")
+        return r.json()
+
+    def update_command(self, cmd_id: str, status: str, *,
+                       result: Optional[Dict[str, Any]] = None, error: Optional[str] = None) -> None:
+        body: Dict[str, Any] = {"status": status}
+        if result is not None:
+            body["result"] = result
+        if error is not None:
+            body["error"] = error
+        r = self._request("POST", f"/commands/{cmd_id}/status", json=body)
+        if r.status_code != 200:
+            raise ServerError(f"update_command failed: {r.status_code} {r.text}")
+
     def upload_snapshot(self, jpeg_bytes: bytes) -> None:
         r = self._request("POST", "/snapshot", data=jpeg_bytes,
                           headers={**self._headers, "Content-Type": "image/jpeg"})

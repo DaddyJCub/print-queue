@@ -39,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Config error: {e}", file=sys.stderr)
         return 2
 
-    Agent(cfg).run_forever()
+    Agent(cfg, config_path=args.config).run_forever()
     return 0
 
 

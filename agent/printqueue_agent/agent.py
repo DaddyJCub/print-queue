@@ -23,6 +23,7 @@ from typing import Optional
 
 from .camera import Camera
 from .client import PrintQueueClient, ServerError
+from .commands import CommandExecutor, install_log_ring
 from .config import AgentConfig
 from .serial_printer import PrinterStatus, SerialPrinter, list_serial_ports
 
@@ -30,16 +31,26 @@ log = logging.getLogger("printqueue.agent")
 
 
 class Agent:
-    def __init__(self, cfg: AgentConfig):
+    def __init__(self, cfg: AgentConfig, config_path: Optional[str] = None):
         self.cfg = cfg
+        self.config_path = config_path
         self.client = PrintQueueClient(
             cfg.server_url, cfg.agent_id, cfg.claim_code,
             verify_tls=cfg.verify_tls,
         )
         self.printer: Optional[SerialPrinter] = None
         self.camera = Camera(cfg.camera, verify_tls=cfg.verify_tls)
+        self.commands = CommandExecutor(self)
         self._last_heartbeat = 0.0
         self._last_snapshot = 0.0
+        install_log_ring()
+
+    def reload_config(self) -> None:
+        """Re-read config.json (used by the reload_config command)."""
+        if not self.config_path:
+            return
+        self.cfg = AgentConfig.load(self.config_path)
+        self.camera = Camera(self.cfg.camera, verify_tls=self.cfg.verify_tls)
 
     # ── connection management ─────────────────────────────────────
     def _resolve_port(self) -> Optional[str]:
@@ -111,6 +122,7 @@ class Agent:
             self._last_heartbeat = now
 
         self._maybe_snapshot()
+        self._poll_commands()
 
         # Only pick up new work when connected and idle.
         if connected and status.state == "idle":
@@ -121,6 +133,16 @@ class Agent:
                 log.warning("Job poll failed: %s", e)
             if job:
                 self._run_job(job)
+
+    def _poll_commands(self) -> None:
+        """Pick up and run any queued remote-management commands."""
+        try:
+            cmd = self.client.next_command()
+        except ServerError as e:
+            log.warning("Command poll failed: %s", e)
+            return
+        if cmd:
+            self.commands.handle(cmd)
 
     def _maybe_snapshot(self) -> None:
         if not self.cfg.camera.enabled:
