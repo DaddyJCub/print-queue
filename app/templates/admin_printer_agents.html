@@ -341,7 +341,8 @@
     }
 
     function openWizard() {
-      WIZ = { step: 0, name: "", host: "pi", serverUrl: location.origin, agentId: "", claimCode: "", apiKey: genKey() };
+      WIZ = { step: 0, name: "", host: "pi", serverUrl: location.origin, agentId: "", claimCode: "", apiKey: genKey(),
+              ts: { enabled: true, loginServer: "https://headscale.jcubhub.com", authKey: "" } };
       document.getElementById("wiz").classList.remove("hidden");
       renderWiz();
     }
@@ -364,19 +365,36 @@
     function buildInstall() {
       const token = window.__ingestToken || document.getElementById("ingestToken").value || "YOUR_INGEST_TOKEN";
       const cfg = buildConfig();
+      const ts = WIZ.ts || { enabled: false };
+      const hostname = "pq-" + (WIZ.name || "agent").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30);
+      const tsUp = `sudo tailscale up --login-server ${ts.loginServer || "https://headscale.jcubhub.com"} --hostname ${hostname}` + (ts.authKey ? ` --authkey ${ts.authKey}` : "");
+
       if (WIZ.host === "windows") {
-        return [
-          "# Run in PowerShell, in a folder where you want the agent:",
+        const tsWin = ts.enabled ? [
+          "# Join your Tailscale (Headscale) network first:",
+          "winget install -e --id tailscale.tailscale",
+          tsUp.replace("sudo ", ""),
+          ts.authKey ? "" : "# ^ open the printed URL and approve this node in Headscale, then continue.",
+        ].filter(Boolean) : [];
+        return tsWin.concat([
+          "# Then, in PowerShell, in a folder where you want the agent:",
           `Invoke-WebRequest "${WIZ.serverUrl}/api/printer-agent/v1/agent-package.tar.gz?token=${token}" -OutFile agent.tgz`,
           "tar -xzf agent.tgz; cd agent",
           "py -m pip install -r requirements.txt",
           "@'", cfg, "'@ | Set-Content -Encoding utf8 config.json",
           "py -m printqueue_agent --config config.json",
-          "# To run on boot, see install/windows-service.md"
-        ].join("\n");
+          "# To run on boot, see install/windows-service.md",
+        ]).join("\n");
       }
-      return [
-        "# Paste this whole block into the Raspberry Pi terminal (over SSH):",
+
+      const tsPi = ts.enabled ? [
+        "# 1) Join your Tailscale (Headscale) network so the Pi can reach the server:",
+        "curl -fsSL https://tailscale.com/install.sh | sh",
+        tsUp,
+        ts.authKey ? "" : "# ^ open the printed URL and approve this node in Headscale, then re-run the rest.",
+      ].filter(Boolean) : [];
+      return tsPi.concat([
+        ts.enabled ? "# 2) Install the agent:" : "# Paste this whole block into the Raspberry Pi terminal (over SSH):",
         "sudo apt-get update && sudo apt-get -y install python3-pip curl",
         "sudo usermod -aG dialout $USER",
         "mkdir -p ~/printqueue && cd ~/printqueue",
@@ -390,7 +408,7 @@
         "sudo tee /etc/systemd/system/printqueue-agent.service >/dev/null <<UNIT",
         "[Unit]",
         "Description=Print Queue Printer Agent",
-        "After=network-online.target",
+        "After=network-online.target tailscaled.service",
         "Wants=network-online.target",
         "",
         "[Service]",
@@ -406,7 +424,7 @@
         "UNIT",
         "sudo systemctl daemon-reload && sudo systemctl enable --now printqueue-agent",
         "echo '✅ Agent installed. Check the Print Agents page — it should appear online shortly.'"
-      ].join("\n");
+      ]).join("\n");
     }
 
     function pre(text) {
@@ -434,8 +452,16 @@
             <label class="flex-1 rounded-xl border ${WIZ.host==='windows'?'border-indigo-500 bg-indigo-950/30':'border-zinc-800'} p-3 cursor-pointer">
               <input type="radio" name="wz-host" value="windows" ${WIZ.host==='windows'?'checked':''} class="mr-2" onchange="WIZ.host='windows'">🪟 Windows PC</label>
           </div>
-          <label class="text-xs text-zinc-400">Server URL <span class="text-zinc-600">(what the agent dials out to)</span></label>
-          <input id="wz-url" value="${esc(WIZ.serverUrl)}" class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 font-mono text-xs" />`;
+          <label class="text-xs text-zinc-400">Server URL <span class="text-zinc-600">(what the agent dials out to — use its Tailscale name/IP if only reachable on the tailnet)</span></label>
+          <input id="wz-url" value="${esc(WIZ.serverUrl)}" class="w-full mt-1 rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 font-mono text-xs" />
+          <div class="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="wz-ts" ${WIZ.ts.enabled?'checked':''} onchange="WIZ.ts.enabled=this.checked"> 🔗 Connect over Tailscale (Headscale)</label>
+            <div class="grid gap-2 mt-2">
+              <input id="wz-ts-server" value="${esc(WIZ.ts.loginServer)}" placeholder="https://headscale.jcubhub.com" class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-2 font-mono text-xs" />
+              <input id="wz-ts-key" value="${esc(WIZ.ts.authKey)}" placeholder="Headscale pre-auth key (optional — for unattended join)" class="w-full rounded-lg bg-zinc-950 border border-zinc-800 p-2 font-mono text-xs" />
+            </div>
+            <p class="text-xs text-zinc-600 mt-1">No key? The install prints a URL to approve the Pi in Headscale.</p>
+          </div>`;
       } else if (s === 1) {
         body.innerHTML = `
           <p class="text-zinc-400 mb-1">Agent <b class="text-zinc-200">${esc(WIZ.name)}</b> created. This is its <code class="bg-zinc-800 px-1 rounded">config.json</code> — the claim code appears <b>only here</b>, so save it now.</p>
@@ -460,7 +486,7 @@
           <div class="row" style="margin-top:12px">
             <button onclick='copyText(WIZ.apiKey)' class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-2 text-sm">Copy API key</button>
           </div>
-          <p class="text-xs text-zinc-500 mt-3">Then open <code class="bg-zinc-800 px-1 rounded">http://&lt;your-pi-ip&gt;:7130</code> for the device page. Find the Pi's IP with <code class="bg-zinc-800 px-1 rounded">hostname -I</code> on the Pi.</p>`;
+          <p class="text-xs text-zinc-500 mt-3">Then open <code class="bg-zinc-800 px-1 rounded">http://&lt;your-pi-ip&gt;:7130</code> for the device page. Find the Pi's IP with <code class="bg-zinc-800 px-1 rounded">hostname -I</code>${WIZ.ts.enabled ? ", or use its Tailscale IP (<code class=\"bg-zinc-800 px-1 rounded\">tailscale ip -4</code>) / MagicDNS name from any tailnet device" : ""}.</p>`;
       } else {
         body.innerHTML = `
           <div id="wz-wait" class="text-center py-6">
@@ -494,6 +520,9 @@
       if (WIZ.step === 0) {
         WIZ.name = (document.getElementById("wz-name").value || "").trim();
         WIZ.serverUrl = (document.getElementById("wz-url").value || "").trim().replace(/\/+$/, "");
+        WIZ.ts.enabled = document.getElementById("wz-ts").checked;
+        WIZ.ts.loginServer = (document.getElementById("wz-ts-server").value || "").trim().replace(/\/+$/, "");
+        WIZ.ts.authKey = (document.getElementById("wz-ts-key").value || "").trim();
         if (!WIZ.name) { showToast("Give the agent a name", "error"); return; }
         const r = await fetch(API + "/agents", {
           method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
