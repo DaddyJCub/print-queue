@@ -825,9 +825,10 @@ def authenticate_admin(username: str, password: str, ip_address: str = None) -> 
         )
         return None
     
-    # Create session
+    # Create session (30 days, matching unified account + user session lifetimes
+    # so an admin doesn't get logged out of the admin panel sooner than the user side)
     session_token = generate_session_token()
-    session_expires = (datetime.utcnow() + timedelta(days=7)).isoformat(timespec="seconds") + "Z"
+    session_expires = (datetime.utcnow() + timedelta(days=30)).isoformat(timespec="seconds") + "Z"
     now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     
     conn = db()
@@ -2330,10 +2331,16 @@ async def require_admin_account(request: Request) -> Account:
     account = await get_current_account(request)
     if not account:
         raise HTTPException(status_code=401, detail="Admin login required")
-    
+
     if not account.is_admin_level():
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
+    # Match get_current_admin() and Account.has_permission(): admin access requires
+    # an ACTIVE account, not merely a non-suspended one. Keeps all admin gates
+    # consistent so behavior doesn't differ by which dependency a route happens to use.
+    if account.status != UserStatus.ACTIVE:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     return account
 
 

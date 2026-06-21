@@ -602,18 +602,22 @@ async def admin_login_new_submit(
             samesite="lax",
             secure=os.getenv("BASE_URL", "").startswith("https"),
             path="/",
-            max_age=7 * 24 * 60 * 60  # 7 days
+            max_age=30 * 24 * 60 * 60  # 30 days (matches server-side session expiry)
         )
         return resp
     
     # Fall back to unified accounts table (owner/admin roles)
     account = authenticate_account(username, password)
     if account and account.role in (AccountRole.OWNER, AccountRole.ADMIN):
+        # remember_me=True → 30-day server session, matching the cookie below and
+        # the 30-day lifetime used for regular user logins, so admin and user
+        # sessions stay alive for the same duration.
         session = create_session(
             account_id=account.id,
             device_info=request.headers.get("User-Agent"),
             ip_address=get_client_ip(request),
             user_agent=request.headers.get("User-Agent"),
+            remember_me=True,
         )
         redirect_url = next if next and next.startswith("/admin") else "/admin"
         resp = RedirectResponse(url=redirect_url, status_code=303)
@@ -625,7 +629,7 @@ async def admin_login_new_submit(
             samesite="lax",
             secure=os.getenv("BASE_URL", "").startswith("https"),
             path="/",
-            max_age=7 * 24 * 60 * 60  # 7 days
+            max_age=30 * 24 * 60 * 60  # 30 days
         )
         return resp
     
@@ -2683,11 +2687,17 @@ async def oidc_callback(request: Request, code: str = None, state: str = None, e
             pass
         
         # ── Create session ──
+        # remember_me=True so the server-side session lasts 30 days, matching the
+        # 30-day session cookie set below. Without it the DB session expires after
+        # 7 days while the browser keeps sending the cookie — which silently logs
+        # the account out (admin and unified auth both break) even though the user
+        # still appears "logged in" via the separate 30-day My Requests token.
         session = create_session(
             account_id=account.id,
             device_info=request.headers.get("User-Agent"),
             ip_address=get_client_ip(request),
             user_agent=request.headers.get("User-Agent"),
+            remember_me=True,
         )
         
         # ── Audit log ──

@@ -516,9 +516,16 @@ def admin_account_change_role(
     account = get_account_by_id(account_id)
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
-    
+
     update_account(account_id, role=role)
-    
+
+    # Granting an admin-level role implies the account is approved. Admin auth and
+    # has_permission() both require status == ACTIVE, so activate any unverified
+    # account here — otherwise the promotion silently has no effect (the account
+    # can view the user-facing side but is rejected from every admin gate).
+    if role in ("owner", "admin", "staff") and account.status == UserStatus.UNVERIFIED:
+        update_account(account_id, status="active")
+
     return RedirectResponse(
         url=f"/admin/accounts?success=Role+updated+for+{account.name or account.email}",
         status_code=303
