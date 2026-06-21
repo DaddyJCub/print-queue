@@ -115,6 +115,36 @@ Details: [`agent/cura/PrintQueuePlugin/README.md`](../agent/cura/PrintQueuePlugi
 
 ---
 
+## 3b. Device page on the Pi + Orca Slicer (ZMOD-style)
+
+The agent also serves a **local device page** right on the Pi — a web UI for
+live status, camera, the file list, and full manual control (start/pause/cancel,
+temps, jog/home). It's on by default:
+
+```
+http://<pi-ip>:7130        (or http://printer.local:7130)
+```
+
+Set `local_ui.api_key` in `config.json` if you want to require a key (recommended
+if your LAN isn't fully trusted); leave it blank to keep the page open like
+Fluidd/Mainsail. You can change the port with `local_ui.port`.
+
+**Send from Orca Slicer** — the agent speaks the **OctoPrint** upload protocol, so
+Orca uploads straight to the Pi and can start the print, then you manage it on the
+device page:
+
+1. Orca → **Printer settings → Connection** (or the printer's *Physical Printer*
+   dialog) → **Host Type: OctoPrint**.
+2. **Hostname/IP:** `<pi-ip>:7130`. **API Key:** whatever you set in
+   `local_ui.api_key` (any non-empty value if you left it blank).
+3. Slice, then **Print** / **Send** — tick *“Upload and print”* to start
+   immediately, or just upload and press **Print** on the device page.
+4. Open `http://<pi-ip>:7130` to watch/manage it.
+
+> **Single-color note:** unlike the AD5X (which has a material station, hence its
+> color-assignment screen), the LK5 Pro is a **single-extruder** printer — there
+> are no spools/colors to map, so the device page goes straight from file → print.
+
 ## 4. Camera (optional)
 
 Plug a USB webcam into the Pi (auto-detected) or use a Pi Camera Module. Then in

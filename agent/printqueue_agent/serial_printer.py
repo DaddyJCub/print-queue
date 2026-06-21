@@ -24,6 +24,7 @@ agent backs off instead of interfering.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
@@ -82,6 +83,9 @@ class SerialPrinter:
         self.connect_timeout = connect_timeout
         self._ser: Optional["serial.Serial"] = None
         self._line_no = 0
+        # Re-entrant lock: the agent loop and the local-UI server thread share
+        # this one port, so every serial round-trip must be serialized.
+        self._lock = threading.RLock()
 
     # ── connection ────────────────────────────────────────────────
     def connect(self) -> None:
@@ -145,30 +149,32 @@ class SerialPrinter:
 
     def send_command(self, command: str, timeout: float = 30.0) -> str:
         """Send a single gcode command with line number + checksum, handling resends."""
-        for attempt in range(5):
-            self._line_no += 1
-            payload = f"N{self._line_no} {command}"
-            framed = f"{payload}*{_checksum(payload)}"
-            self._send_now(framed)
-            resp = self._wait_ok(timeout=timeout)
-            low = resp.lower()
-            if "resend" in low or low.startswith("rs"):
-                # Roll back the line number and retry.
-                self._line_no -= 1
-                time.sleep(0.05)
-                continue
-            return resp
-        raise RuntimeError(f"Repeated resend requests for: {command}")
+        with self._lock:
+            for attempt in range(5):
+                self._line_no += 1
+                payload = f"N{self._line_no} {command}"
+                framed = f"{payload}*{_checksum(payload)}"
+                self._send_now(framed)
+                resp = self._wait_ok(timeout=timeout)
+                low = resp.lower()
+                if "resend" in low or low.startswith("rs"):
+                    # Roll back the line number and retry.
+                    self._line_no -= 1
+                    time.sleep(0.05)
+                    continue
+                return resp
+            raise RuntimeError(f"Repeated resend requests for: {command}")
 
     # ── status ────────────────────────────────────────────────────
     def query_status(self) -> PrinterStatus:
         """One-shot status snapshot via M105 (temps) + M27 (SD progress)."""
         st = PrinterStatus(state="idle")
         try:
-            temp_resp = self.send_command("M105", timeout=8)
-            self._parse_temps(temp_resp, st)
-            sd_resp = self.send_command("M27", timeout=8)
-            self._parse_sd(sd_resp, st)
+            with self._lock:
+                temp_resp = self.send_command("M105", timeout=8)
+                self._parse_temps(temp_resp, st)
+                sd_resp = self.send_command("M27", timeout=8)
+                self._parse_sd(sd_resp, st)
         except Exception as e:
             log.warning("Status query failed: %s", e)
             st.state = "offline"
@@ -216,6 +222,8 @@ class SerialPrinter:
         last_pct = -1
 
         log.info("Uploading %s -> SD:%s (%d bytes)", gcode_path, SD_FILENAME, total)
+        # Hold the port for the whole transfer so nothing interleaves commands.
+        self._lock.acquire()
         self.send_command(f"M28 {SD_FILENAME}", timeout=30)
         try:
             with open(gcode_path, "r", errors="ignore") as fh:
@@ -244,6 +252,8 @@ class SerialPrinter:
                     self._wait_ok(timeout=30)
                 except Exception:
                     pass
+            finally:
+                self._lock.release()
         log.info("Upload complete: %s", SD_FILENAME)
 
     def start_sd_print(self) -> None:
@@ -286,3 +296,33 @@ class SerialPrinter:
                 self.send_command(cmd, timeout=8)
             except Exception:
                 pass
+
+    # ── manual controls (device page) ─────────────────────────────
+    def pause_print(self) -> None:
+        self.send_command("M25", timeout=15)   # pause SD print
+
+    def resume_print(self) -> None:
+        self.send_command("M24", timeout=15)   # resume SD print
+
+    def set_hotend_temp(self, celsius: float) -> None:
+        self.send_command(f"M104 S{int(celsius)}", timeout=8)
+
+    def set_bed_temp(self, celsius: float) -> None:
+        self.send_command(f"M140 S{int(celsius)}", timeout=8)
+
+    def home(self, axes: str = "") -> None:
+        axes = "".join(c for c in axes.upper() if c in "XYZ")
+        self.send_command(("G28 " + " ".join(axes)).strip() if axes else "G28", timeout=60)
+
+    def jog(self, axis: str, distance: float, feed: int = 3000) -> None:
+        axis = axis.upper()
+        if axis not in "XYZE":
+            raise ValueError(f"Bad jog axis: {axis}")
+        with self._lock:
+            self.send_command("G91", timeout=8)            # relative
+            self.send_command(f"G1 {axis}{distance} F{feed}", timeout=15)
+            self.send_command("G90", timeout=8)            # back to absolute
+
+    def set_fan(self, speed_0_255: int) -> None:
+        speed = max(0, min(255, int(speed_0_255)))
+        self.send_command(f"M106 S{speed}" if speed else "M107", timeout=8)

@@ -67,6 +67,16 @@ If you'd rather auto-upload on every slice (upload only, then dispatch from the
 admin panel), use the post-processing script
 [`cura/PrintQueueUploader.py`](cura/PrintQueueUploader.py) instead.
 
+## Device page on the Pi (ZMOD-style local UI)
+
+The agent serves a local web UI on the host at `http://<host-ip>:7130` (configurable
+under `local_ui` in `config.json`): live status, camera, file list, and full manual
+control — start/pause/resume/cancel, set temps, jog/home, fan. It also exposes an
+**OctoPrint-compatible** upload API, so **Orca Slicer** (Host Type: OctoPrint,
+`<host-ip>:7130`) can "Send to printer" straight to the Pi and optionally start the
+print. Set `local_ui.api_key` to require a key; leave blank for an open LAN page.
+Disable the whole thing with `local_ui.enabled: false`.
+
 ## Remote management & updates (from the app)
 
 Once an agent is registered, the **Print Agents** admin page can manage it

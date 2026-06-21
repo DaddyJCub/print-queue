@@ -19,6 +19,19 @@ class CameraConfig:
 
 
 @dataclass
+class LocalUIConfig:
+    # ZMOD-style device page served by the agent on the Pi/host LAN.
+    enabled: bool = True
+    host: str = "0.0.0.0"
+    port: int = 7130
+    # Optional API key. Required for slicer upload (Orca/OctoPrint) and for
+    # mutating control actions. Empty = open (fine on a trusted home LAN).
+    api_key: str = ""
+    # Where uploaded G-code is stored on the host before being sent to the SD.
+    spool_dir: str = ""
+
+
+@dataclass
 class FirmwareConfig:
     # Printer-firmware flashing is OFF by default — it can brick the board.
     enabled: bool = False
@@ -48,6 +61,7 @@ class AgentConfig:
 
     camera: CameraConfig = field(default_factory=CameraConfig)
     firmware: FirmwareConfig = field(default_factory=FirmwareConfig)
+    local_ui: LocalUIConfig = field(default_factory=LocalUIConfig)
 
     @staticmethod
     def load(path: str) -> "AgentConfig":
@@ -58,6 +72,7 @@ class AgentConfig:
 
         cam_data = data.get("camera", {}) or {}
         fw_data = data.get("firmware", {}) or {}
+        ui_data = data.get("local_ui", {}) or {}
         cfg = AgentConfig(
             server_url=os.getenv("PQ_SERVER_URL", data.get("server_url", AgentConfig.server_url)),
             agent_id=os.getenv("PQ_AGENT_ID", data.get("agent_id", "")),
@@ -81,6 +96,13 @@ class AgentConfig:
                 programmer=fw_data.get("programmer", "wiring"),
                 baud=int(fw_data.get("baud", 115200)),
                 extra_args=list(fw_data.get("extra_args", [])),
+            ),
+            local_ui=LocalUIConfig(
+                enabled=_as_bool(os.getenv("PQ_LOCAL_UI_ENABLED"), ui_data.get("enabled", True)),
+                host=ui_data.get("host", "0.0.0.0"),
+                port=int(os.getenv("PQ_LOCAL_UI_PORT", ui_data.get("port", 7130))),
+                api_key=os.getenv("PQ_LOCAL_UI_API_KEY", ui_data.get("api_key", "")),
+                spool_dir=ui_data.get("spool_dir", ""),
             ),
         )
         if not cfg.agent_id or not cfg.claim_code:
