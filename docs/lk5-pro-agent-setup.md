@@ -38,6 +38,28 @@ rely on one back-powering the other.
 
 ---
 
+## 1b. Tailscale / Headscale (network access)
+
+If the server is reachable only over your **Tailscale** network (Headscale control
+server at `https://headscale.jcubhub.com`), join the Pi to the tailnet **before**
+installing the agent, and point `server_url` at the server's Tailscale name/IP.
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up --login-server https://headscale.jcubhub.com --hostname pq-<name>
+#   add --authkey <KEY> for an unattended join (generate it on Headscale:
+#   `headscale preauthkeys create --user <user> --reusable --expiration 24h`)
+```
+
+Without an auth key, `tailscale up` prints a URL — approve the node in Headscale,
+then continue. The Pi's tailnet address (`tailscale ip -4`) is also how you'll
+reach its device page (`http://<tailscale-ip>:7130`) from other tailnet devices.
+The agent only makes outbound calls, so no inbound ports are needed either way.
+
+> The **Guided setup wizard** includes these steps automatically — tick *Connect
+> over Tailscale (Headscale)* and (optionally) paste a pre-auth key, and the
+> generated install command joins the tailnet for you.
+
 ## 2a. Raspberry Pi (recommended)
 
 **Hardware:** Pi 4 (2 GB is plenty) / Pi 3B / Zero 2 W, its official power supply,
