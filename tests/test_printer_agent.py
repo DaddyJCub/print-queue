@@ -285,6 +285,83 @@ def test_command_next_requires_bearer(client):
     assert client.get(f"{PREFIX}/commands/next").status_code == 401
 
 
+# ─────────────────────────── agent OTA ───────────────────────────
+
+def _make_agent_bundle() -> bytes:
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("printqueue_agent/__init__.py", "__version__ = '9.9.9'\n")
+        zf.writestr("printqueue_agent/agent.py", "# updated\n")
+    return buf.getvalue()
+
+
+def test_upload_and_push_agent_update(client, admin_client):
+    created = _create_agent(admin_client)
+    agent_id = created["agent_id"]
+    token = _provision(client, agent_id, created["claim_code"]).json()["agent_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    bundle = _make_agent_bundle()
+    up = admin_client.post(
+        f"{ADMIN}/agent-releases",
+        data={"version": "1.1.0"},
+        files={"file": ("agent.zip", bundle, "application/zip")},
+    )
+    assert up.status_code == 200, up.text
+
+    rels = admin_client.get(f"{ADMIN}/agent-releases").json()["releases"]
+    assert any(r["version"] == "1.1.0" and r["is_current"] for r in rels)
+
+    push = admin_client.post(f"{ADMIN}/agents/{agent_id}/update")
+    assert push.status_code == 200, push.text
+    assert push.json()["version"] == "1.1.0"
+
+    cmd = client.get(f"{PREFIX}/commands/next", headers=headers).json()
+    assert cmd["action"] == "update_agent"
+    assert cmd["payload"]["version"] == "1.1.0"
+
+    dl = client.get(cmd["payload"]["bundle_url"], headers=headers)
+    assert dl.status_code == 200
+    assert dl.content == bundle
+
+
+def test_push_update_without_release_404(admin_client):
+    # Releases are global; clear them so the "no release" path is deterministic.
+    conn = get_test_db()
+    conn.execute("DELETE FROM printer_agent_releases")
+    conn.commit()
+    conn.close()
+
+    created = _create_agent(admin_client)
+    r = admin_client.post(f"{ADMIN}/agents/{created['agent_id']}/update")
+    assert r.status_code == 404
+
+
+def test_upload_rejects_non_package_zip(admin_client):
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("random.txt", "nope")
+    r = admin_client.post(
+        f"{ADMIN}/agent-releases",
+        data={"version": "0.0.1"},
+        files={"file": ("x.zip", buf.getvalue(), "application/zip")},
+    )
+    assert r.status_code == 422
+
+
+def test_bundle_download_requires_bearer(client, admin_client):
+    admin_client.post(
+        f"{ADMIN}/agent-releases",
+        data={"version": "2.0.0"},
+        files={"file": ("a.zip", _make_agent_bundle(), "application/zip")},
+    )
+    assert client.get(f"{PREFIX}/releases/agent/2.0.0/bundle").status_code == 401
+
+
 # ─────────────────────────── admin web UI ───────────────────────────
 
 def test_admin_agents_page_renders(admin_client):

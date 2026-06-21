@@ -99,6 +99,34 @@ class CommandExecutor:
         _delayed_exit(1.0, code=0)
         return None  # already reported
 
+    def _do_update_agent(self, payload, cmd_id) -> Dict[str, Any]:
+        """OTA self-update: download a bundle, verify, swap the package, restart.
+
+        Refuses while a print is running. Requires the service manager (systemd /
+        NSSM) to auto-restart the process after we exit.
+        """
+        if self.agent.printer and self.agent.printer.is_busy():
+            raise RuntimeError("Refusing to update: a print is in progress")
+
+        version = payload.get("version", "?")
+        bundle_url = payload.get("bundle_url")
+        expected_sha = payload.get("sha256")
+        if not bundle_url:
+            raise RuntimeError("No bundle_url in update payload")
+
+        from . import apply_update  # local import keeps the dependency contained
+
+        log.info("Updating agent to %s", version)
+        apply_update.download_and_apply(self.agent.client, bundle_url, expected_sha)
+
+        # Report success before restarting; the new version reports via heartbeat.
+        try:
+            self.agent.client.update_command(cmd_id, "completed", result={"updated_to": version, "restarting": True})
+        except Exception:
+            pass
+        _delayed_exit(1.0, code=0)
+        return None
+
     def _do_reboot_host(self, payload, cmd_id) -> Dict[str, Any]:
         if self.agent.printer and self.agent.printer.is_busy():
             raise RuntimeError("Refusing to reboot: a print is in progress")

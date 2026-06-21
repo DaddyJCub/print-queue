@@ -67,6 +67,18 @@ If you'd rather auto-upload on every slice (upload only, then dispatch from the
 admin panel), use the post-processing script
 [`cura/PrintQueueUploader.py`](cura/PrintQueueUploader.py) instead.
 
+## Remote management & updates (from the app)
+
+Once an agent is registered, the **Print Agents** admin page can manage it
+remotely over the same outbound channel:
+
+- **Manage panel**: view logs, identify, reload config, restart the agent, reboot
+  the Pi (reboot/restart are refused while a print is running).
+- **OTA app updates**: build a bundle with `python build_bundle.py`, upload the
+  resulting `.zip` under "Agent software updates", then click **Update agent** —
+  the agent downloads it, verifies the checksum, swaps its package, and restarts.
+  (Requires the service manager — systemd/NSSM — to auto-restart the process.)
+
 ## Important notes
 
 - **Cura and the agent can't both be connected to the printer at once** (a USB

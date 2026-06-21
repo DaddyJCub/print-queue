@@ -36,6 +36,7 @@ def configure_test_environment():
     """Configure environment variables for testing."""
     os.environ["DB_PATH"] = str(DB_FILE)
     os.environ["UPLOAD_DIR"] = str(UPLOAD_DIR)
+    os.environ["AGENT_RELEASES_DIR"] = str(DATA_DIR / "agent_releases")  # OTA bundle store
     os.environ["DEMO_MODE"] = "1"  # Avoid external printer calls
     os.environ["ADMIN_PASSWORD"] = os.environ.get("ADMIN_PASSWORD", "admin-test-password")
     os.environ.setdefault("BASE_URL", "http://testserver")
