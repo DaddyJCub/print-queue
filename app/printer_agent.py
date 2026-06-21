@@ -34,7 +34,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 from app.auth import require_admin
@@ -798,6 +798,30 @@ async def admin_agent_snapshot(agent_id: str, admin=Depends(require_admin)):
     if not row or not row["image"]:
         raise HTTPException(status_code=404, detail="No snapshot available")
     return Response(content=row["image"], media_type=row["content_type"] or "image/jpeg")
+
+
+@router.get(ADMIN_PREFIX + "/gcode-files")
+async def admin_list_gcode_files(admin=Depends(require_admin)):
+    """Recent loose .gcode files (e.g. Cura uploads) available to dispatch."""
+    conn = db()
+    try:
+        rows = conn.execute(
+            "SELECT id, original_filename, size_bytes, created_at FROM files "
+            "WHERE (request_id IS NULL OR request_id = '') AND LOWER(original_filename) LIKE '%.gcode' "
+            "ORDER BY created_at DESC LIMIT 50"
+        ).fetchall()
+    finally:
+        conn.close()
+    return {"files": [dict(r) for r in rows]}
+
+
+# ──────────────────────────── admin web page ────────────────────────────
+
+@router.get("/admin/printer-agents", response_class=HTMLResponse)
+async def admin_printer_agents_page(request: Request, admin=Depends(require_admin)):
+    # Reuse the main app's Jinja env so shared globals (environment, csrf, …) resolve.
+    from app.main import templates
+    return templates.TemplateResponse("admin_printer_agents.html", {"request": request, "admin": admin})
 
 
 # ──────────────────────────── Cura ingest / one-click print ────────────────────────────
