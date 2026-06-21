@@ -815,6 +815,62 @@ async def admin_list_gcode_files(admin=Depends(require_admin)):
     return {"files": [dict(r) for r in rows]}
 
 
+class DispatchRequest(BaseModel):
+    file_id: str
+    request_id: Optional[str] = None
+    printer_code: str = "LK5_PRO"
+
+
+@router.post(ADMIN_PREFIX + "/dispatch")
+async def admin_dispatch(body: DispatchRequest, admin=Depends(require_admin)):
+    """Send a request's .gcode file to its printer's agent (the "Send to LK5"
+    button on the request page). Resolves the agent by printer_code so the admin
+    doesn't have to pick one."""
+    conn = db()
+    try:
+        agent = _resolve_target_agent(conn, None, body.printer_code or "LK5_PRO")
+        if not agent:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No agent registered for {body.printer_code}. Add one under Print Agents.",
+            )
+
+        file_row = conn.execute(
+            "SELECT id, original_filename, stored_filename, size_bytes, sha256 FROM files WHERE id = ?",
+            (body.file_id,),
+        ).fetchone()
+        if not file_row:
+            raise HTTPException(status_code=404, detail="File not found")
+        if not str(file_row["original_filename"]).lower().endswith(".gcode"):
+            raise HTTPException(status_code=422, detail="Only .gcode files can be sent to this printer")
+
+        job_id = str(uuid.uuid4())
+        now = now_iso()
+        conn.execute(
+            """
+            INSERT INTO printer_agent_jobs
+                (job_id, agent_id, request_id, file_id, file_name, stored_filename, sha256, size_bytes,
+                 status, progress, created_at, updated_at, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)
+            """,
+            (
+                job_id, agent["agent_id"], body.request_id, file_row["id"],
+                file_row["original_filename"], file_row["stored_filename"],
+                file_row["sha256"], file_row["size_bytes"], now, now, getattr(admin, "id", None),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {
+        "ok": True,
+        "job_id": job_id,
+        "agent_id": agent["agent_id"],
+        "agent_name": agent["name"] or agent["agent_id"],
+        "online": bool(agent["last_seen_at"]),
+    }
+
+
 # ──────────────────────────── admin web page ────────────────────────────
 
 @router.get("/admin/printer-agents", response_class=HTMLResponse)

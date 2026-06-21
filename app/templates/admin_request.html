@@ -1833,8 +1833,12 @@
                             </span>
                             <div class="flex items-center gap-0.5 flex-shrink-0">
                               {% if moonraker_available %}
-                                <button type="button" onclick="showSendToPrinterModal('{{ gc['id'] }}', '{{ gc['original_filename'] | e }}')" 
+                                <button type="button" onclick="showSendToPrinterModal('{{ gc['id'] }}', '{{ gc['original_filename'] | e }}')"
                                         class="p-1 rounded-md hover:bg-emerald-900/40 text-emerald-400 hover:text-emerald-300 transition" title="Send to AD5X">🖨</button>
+                              {% endif %}
+                              {% if req["printer"] == "LK5_PRO" %}
+                                <button type="button" onclick="sendToLk5('{{ gc['id'] }}', '{{ gc['original_filename'] | e }}')"
+                                        class="p-1 rounded-md hover:bg-indigo-900/40 text-indigo-400 hover:text-indigo-300 transition" title="Send to LK5 Pro">🛰️</button>
                               {% endif %}
                               <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ gc['id'] }}/link" class="inline">
                                 <input type="hidden" name="linked_file_id" value="" />
@@ -1908,10 +1912,14 @@
                       {% endif %}
                       <div class="flex items-center gap-0.5 flex-shrink-0">
                         {% if moonraker_available %}
-                          <button type="button" onclick="showSendToPrinterModal('{{ f['id'] }}', '{{ f['original_filename'] | e }}')" 
+                          <button type="button" onclick="showSendToPrinterModal('{{ f['id'] }}', '{{ f['original_filename'] | e }}')"
                                   class="p-1.5 rounded-md hover:bg-emerald-900/40 text-emerald-400 hover:text-emerald-300 transition" title="Send to AD5X">🖨</button>
                         {% endif %}
-                        <a href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}" 
+                        {% if req["printer"] == "LK5_PRO" %}
+                          <button type="button" onclick="sendToLk5('{{ f['id'] }}', '{{ f['original_filename'] | e }}')"
+                                  class="p-1.5 rounded-md hover:bg-indigo-900/40 text-indigo-400 hover:text-indigo-300 transition" title="Send to LK5 Pro">🛰️</button>
+                        {% endif %}
+                        <a href="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}"
                            class="p-1.5 rounded-md hover:bg-zinc-600/50 text-zinc-400 hover:text-zinc-200 transition" title="Download">⬇️</a>
                         <form method="POST" action="/admin/request/{{ req['id'] }}/file/{{ f['id'] }}/delete" class="inline" data-confirm="Delete {{ f.original_filename }}?">
                           <button type="submit" class="p-1.5 rounded-md hover:bg-red-900/40 text-zinc-500 hover:text-red-400 transition" title="Delete">🗑️</button>
@@ -2108,6 +2116,26 @@
       document.getElementById('send-to-printer-modal').addEventListener('click', (e) => {
         if (e.target.id === 'send-to-printer-modal') hideSendToPrinterModal();
       });
+
+      // Send a G-code file to the LK5 Pro via its print agent.
+      async function sendToLk5(fileId, fileName) {
+        if (!(await showConfirm('Send "' + fileName + '" to the LK5 Pro? It will print when the printer is idle.', { destructive: false, confirmText: 'Send' }))) return;
+        try {
+          const r = await fetch('/api/printer-agent/admin/dispatch', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_id: fileId, request_id: '{{ req["id"] }}', printer_code: 'LK5_PRO' }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (r.ok) {
+            showToast('Queued for ' + (d.agent_name || 'LK5 Pro') + (d.online ? '' : ' (agent offline — will print when it reconnects)'), 'success');
+          } else {
+            showToast('Failed: ' + (d.detail || r.status), 'error');
+          }
+        } catch (e) {
+          showToast('Failed: ' + e, 'error');
+        }
+      }
     </script>
     {% endif %}
 
