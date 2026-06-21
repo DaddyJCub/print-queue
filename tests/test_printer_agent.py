@@ -257,6 +257,53 @@ def test_admin_gcode_files_list(client, admin_client):
     assert "dispatchable.gcode" in names
 
 
+def test_admin_dispatch_to_lk5(client, admin_client):
+    """The request-page 'Send to LK5' button: resolves the agent by printer_code."""
+    code = f"LK5_{uuid.uuid4().hex[:8].upper()}"
+    created = _create_agent(admin_client, name="Bench LK5", printer_code=code)
+    file_id = _make_gcode_file(name="part.gcode")
+
+    r = admin_client.post(f"{ADMIN}/dispatch", json={"file_id": file_id, "request_id": "req-123", "printer_code": code})
+    assert r.status_code == 200, r.text
+    assert r.json()["agent_id"] == created["agent_id"]
+
+    jobs = admin_client.get(f"{ADMIN}/agents/{created['agent_id']}/jobs").json()["jobs"]
+    assert any(j["file_name"] == "part.gcode" and j["request_id"] == "req-123" for j in jobs)
+
+
+def test_admin_dispatch_no_agent_404(admin_client):
+    file_id = _make_gcode_file(name="orphan.gcode")
+    r = admin_client.post(f"{ADMIN}/dispatch", json={"file_id": file_id, "printer_code": "NO_SUCH_PRINTER"})
+    assert r.status_code == 404
+
+
+def test_admin_dispatch_requires_admin(client):
+    r = client.post(f"{ADMIN}/dispatch", json={"file_id": "x"})
+    assert r.status_code == 401
+
+
+def test_request_page_shows_lk5_button_only_for_lk5(admin_client):
+    """The 'Send to LK5 Pro' button appears on LK5 requests, not on others."""
+    from tests.conftest import create_test_request
+
+    lk5 = create_test_request(printer="LK5_PRO", status="QUEUED", with_file=True)
+    other = create_test_request(printer="AD5X", status="QUEUED", with_file=True)
+
+    # Make the attached files .gcode so they render in the G-code section.
+    conn = get_test_db()
+    for data in (lk5, other):
+        conn.execute("UPDATE files SET original_filename = 'p.gcode', stored_filename = 'p.gcode' WHERE id = ?",
+                     (data["file_ids"][0],))
+    conn.commit()
+    conn.close()
+
+    r_lk5 = admin_client.get(f"/admin/request/{lk5['request_id']}")
+    r_other = admin_client.get(f"/admin/request/{other['request_id']}")
+    assert r_lk5.status_code == 200 and r_other.status_code == 200
+    assert "Send to LK5 Pro" in r_lk5.text
+    assert "Send to LK5 Pro" not in r_other.text
+
+
 # ─────────────────────────── one-click print (Cura plugin) ───────────────────────────
 
 def test_print_now_uploads_and_dispatches(client, admin_client):
