@@ -35,6 +35,7 @@ Auto-generated docs (when server is running):
 | [Pico Final Implementation Guide](printellect-pico-final-implementation-guide.md) | v0.17.0+ rollout notes and manufacturing contract |
 | [Device Control Roadmap](printellect-device-control-roadmap.md) | Multi-phase implementation checklist and acceptance gates |
 | [LK5 Pro Agent Integration](lk5-pro-agent-integration.md) | Cross-network USB printer (LK5 Pro) via a Raspberry Pi / Windows agent |
+| [LK5 Pro Agent Setup Guide](lk5-pro-agent-setup.md) | Step-by-step Raspberry Pi / Windows setup, Cura plugin, camera, updates |
 
 ## Local development
 
