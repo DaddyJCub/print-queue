@@ -80,14 +80,14 @@
 
   <!-- Guided setup wizard -->
   <div id="wiz" class="hidden fixed inset-0 bg-black/70 z-[9999] flex items-center justify-center p-4">
-    <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-2xl w-full shadow-2xl max-h-[92vh] overflow-auto">
+    <div style="max-height:90vh" class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-2xl w-full shadow-2xl flex flex-col">
       <div class="flex items-center justify-between mb-3">
         <h3 class="font-semibold text-lg">Set up a printer agent</h3>
         <button onclick="closeWizard()" class="text-zinc-500 hover:text-zinc-200 text-xl leading-none">✕</button>
       </div>
       <div id="wizSteps" class="flex gap-1.5 mb-5"></div>
-      <div id="wizBody" class="text-sm"></div>
-      <div class="flex justify-between mt-6">
+      <div id="wizBody" style="overflow:auto" class="text-sm grow"></div>
+      <div class="flex justify-between mt-6 shrink-0">
         <button id="wizBack" onclick="wizGo(-1)" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-4 py-2 text-sm">Back</button>
         <button id="wizNext" onclick="wizGo(1)" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-5 py-2 text-sm font-semibold">Next</button>
       </div>
@@ -447,7 +447,8 @@
       if (g("wz-ts-key")) WIZ.ts.authKey = (g("wz-ts-key").value || "").trim();
     }
     function pre(text) {
-      return `<pre class="bg-black/50 border border-zinc-800 rounded-xl p-3 text-[12px] leading-snug overflow-auto max-h-72 whitespace-pre-wrap font-mono">${esc(text)}</pre>`;
+      // Inline max-height/overflow: the prebuilt tailwind.css lacks max-h-72.
+      return `<pre style="max-height:15rem;overflow:auto;white-space:pre-wrap" class="bg-black/50 border border-zinc-800 rounded-xl p-3 text-[12px] leading-snug font-mono">${esc(text)}</pre>`;
     }
     function renderWiz() {
       const s = WIZ.step;
