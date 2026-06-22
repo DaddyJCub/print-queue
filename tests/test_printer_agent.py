@@ -450,6 +450,12 @@ def test_setup_guide_doc_accessible(admin_client):
     assert "setup guide" in r.text.lower()
 
 
+def test_security_doc_accessible(admin_client):
+    r = admin_client.get("/admin/printellect/docs/agent-security.md")
+    assert r.status_code == 200
+    assert "security" in r.text.lower()
+
+
 def test_admin_agents_page_requires_admin(client):
     r = client.get("/admin/printer-agents", follow_redirects=False)
     assert r.status_code in (401, 302, 303, 307)

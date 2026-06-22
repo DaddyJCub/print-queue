@@ -36,6 +36,7 @@ Auto-generated docs (when server is running):
 | [Device Control Roadmap](printellect-device-control-roadmap.md) | Multi-phase implementation checklist and acceptance gates |
 | [LK5 Pro Agent Integration](lk5-pro-agent-integration.md) | Cross-network USB printer (LK5 Pro) via a Raspberry Pi / Windows agent |
 | [LK5 Pro Agent Setup Guide](lk5-pro-agent-setup.md) | Step-by-step Raspberry Pi / Windows setup, Cura plugin, camera, updates |
+| [Print Agent Security](agent-security.md) | Network isolation (Headscale ACL / pfSense), device-page auth, host hardening |
 
 ## Local development
 

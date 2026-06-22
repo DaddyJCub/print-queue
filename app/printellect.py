@@ -1167,6 +1167,7 @@ _ALLOWED_DOCS = {
     "setup-my-printellect-base.md",
     "lk5-pro-agent-integration.md",
     "lk5-pro-agent-setup.md",
+    "agent-security.md",
 }
 
 
