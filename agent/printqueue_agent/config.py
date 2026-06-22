@@ -58,6 +58,10 @@ class AgentConfig:
     # Loop timing
     poll_interval_s: int = 5
     heartbeat_interval_s: int = 15
+    # Long-poll: hold one connection open for near-instant command/job dispatch
+    # instead of polling every poll_interval_s. Falls back to polling if false.
+    long_poll: bool = True
+    stream_timeout_s: int = 20
 
     camera: CameraConfig = field(default_factory=CameraConfig)
     firmware: FirmwareConfig = field(default_factory=FirmwareConfig)
@@ -83,6 +87,8 @@ class AgentConfig:
             baud_rate=int(os.getenv("PQ_BAUD", data.get("baud_rate", 115200))),
             poll_interval_s=int(data.get("poll_interval_s", 5)),
             heartbeat_interval_s=int(data.get("heartbeat_interval_s", 15)),
+            long_poll=_as_bool(os.getenv("PQ_LONG_POLL"), data.get("long_poll", True)),
+            stream_timeout_s=int(data.get("stream_timeout_s", 20)),
             camera=CameraConfig(
                 enabled=_as_bool(os.getenv("PQ_CAMERA_ENABLED"), cam_data.get("enabled", False)),
                 snapshot_url=os.getenv("PQ_CAMERA_URL", cam_data.get("snapshot_url")),

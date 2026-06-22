@@ -114,7 +114,10 @@ class Agent:
                 break
             except Exception as e:
                 log.exception("Unexpected error in loop: %s", e)
-            time.sleep(self.cfg.poll_interval_s)
+            # In long-poll mode the events call blocks (its own pacing); in plain
+            # polling mode we wait poll_interval_s between ticks.
+            if not self.cfg.long_poll:
+                time.sleep(self.cfg.poll_interval_s)
         if self.printer:
             self.printer.close()
 
@@ -142,20 +145,44 @@ class Agent:
             self._last_heartbeat = now
 
         self._maybe_snapshot()
-        self._poll_commands()
 
-        # Only pick up central work when connected, idle, and not mid local print.
-        if connected and status.state == "idle" and not self.print_active.is_set():
-            job = None
-            try:
-                job = self.client.next_job()
-            except ServerError as e:
-                log.warning("Job poll failed: %s", e)
-            if job:
-                self._run_job(job)
+        # Jobs are only claimed when connected, idle and not mid local print;
+        # commands are always picked up (e.g. to manage an offline printer).
+        want_jobs = connected and status.state == "idle" and not self.print_active.is_set()
+        if self.cfg.long_poll:
+            self._poll_events(want_jobs)
+        else:
+            self._poll_commands()
+            if want_jobs:
+                try:
+                    job = self.client.next_job()
+                except ServerError as e:
+                    log.warning("Job poll failed: %s", e)
+                    job = None
+                if job:
+                    self._run_job(job)
+
+    def _poll_events(self, want_jobs: bool) -> None:
+        """Long-poll for the next command/job and act on it (low-latency path)."""
+        # Cap the hold so heartbeats/snapshots still happen on cadence.
+        timeout = max(1, min(self.cfg.stream_timeout_s, self.cfg.heartbeat_interval_s))
+        if self.cfg.camera.enabled:
+            timeout = min(timeout, self.cfg.camera.interval_s)
+        try:
+            ev = self.client.next_event(timeout, want_jobs=want_jobs)
+        except ServerError as e:
+            log.warning("Event poll failed: %s", e)
+            time.sleep(min(self.cfg.poll_interval_s, 5))  # back off; avoid hot loop on outage
+            return
+        if not ev:
+            return
+        if ev.get("type") == "command" and ev.get("command"):
+            self.commands.handle(ev["command"])
+        elif ev.get("type") == "job" and ev.get("job"):
+            self._run_job(ev["job"])
 
     def _poll_commands(self) -> None:
-        """Pick up and run any queued remote-management commands."""
+        """Pick up and run any queued remote-management commands (polling mode)."""
         try:
             cmd = self.client.next_command()
         except ServerError as e:
