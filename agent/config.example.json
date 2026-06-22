@@ -10,6 +10,8 @@
 
   "poll_interval_s": 5,
   "heartbeat_interval_s": 15,
+  "long_poll": true,
+  "stream_timeout_s": 20,
 
   "camera": {
     "enabled": false,

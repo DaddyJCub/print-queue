@@ -643,35 +643,72 @@ class CommandStatusRequest(BaseModel):
     error: Optional[str] = None
 
 
-@router.get(API_PREFIX + "/commands/next")
-async def commands_next(request: Request):
-    """Agent claims the next queued management command (204 if none)."""
-    agent = await _agent_from_bearer(request)
-    conn = db()
-    try:
-        row = conn.execute(
-            "SELECT * FROM printer_agent_commands WHERE agent_id = ? AND status = 'queued' ORDER BY created_at ASC LIMIT 1",
-            (agent["agent_id"],),
-        ).fetchone()
-        if not row:
-            return Response(status_code=204)
-        now = now_iso()
-        updated = conn.execute(
-            "UPDATE printer_agent_commands SET status = 'delivered', delivered_at = ?, updated_at = ? "
-            "WHERE cmd_id = ? AND status = 'queued'",
-            (now, now, row["cmd_id"]),
-        )
-        if updated.rowcount == 0:
-            return Response(status_code=204)
-        conn.commit()
-    finally:
-        conn.close()
+def _claim_next_command(conn: sqlite3.Connection, agent_id: str) -> Optional[Dict[str, Any]]:
+    """Atomically claim the oldest queued command for an agent, or return None."""
+    row = conn.execute(
+        "SELECT * FROM printer_agent_commands WHERE agent_id = ? AND status = 'queued' ORDER BY created_at ASC LIMIT 1",
+        (agent_id,),
+    ).fetchone()
+    if not row:
+        return None
+    now = now_iso()
+    updated = conn.execute(
+        "UPDATE printer_agent_commands SET status = 'delivered', delivered_at = ?, updated_at = ? "
+        "WHERE cmd_id = ? AND status = 'queued'",
+        (now, now, row["cmd_id"]),
+    )
+    if updated.rowcount == 0:
+        return None
+    conn.commit()
     return {
         "cmd_id": row["cmd_id"],
         "action": row["action"],
         "payload": _json_loads(row["payload_json"]),
         "created_at": row["created_at"],
     }
+
+
+@router.get(API_PREFIX + "/commands/next")
+async def commands_next(request: Request):
+    """Agent claims the next queued management command (204 if none)."""
+    agent = await _agent_from_bearer(request)
+    conn = db()
+    try:
+        cmd = _claim_next_command(conn, agent["agent_id"])
+    finally:
+        conn.close()
+    if not cmd:
+        return Response(status_code=204)
+    return cmd
+
+
+@router.get(API_PREFIX + "/events/next")
+async def events_next(request: Request, timeout_s: int = 20, want_jobs: int = 1):
+    """Unified long-poll: holds the connection until a command (or, when
+    want_jobs=1, a queued print) is ready — or until timeout (204).
+
+    One held connection replaces constant command+job polling: sub-second
+    dispatch with far fewer requests. Commands take priority over jobs.
+    """
+    agent = await _agent_from_bearer(request)
+    import asyncio
+
+    deadline = time.monotonic() + min(max(1, timeout_s), AGENT_STREAM_MAX_SECONDS)
+    while True:
+        conn = db()
+        try:
+            cmd = _claim_next_command(conn, agent["agent_id"])
+            if cmd:
+                return {"type": "command", "command": cmd}
+            if want_jobs:
+                job = _claim_next_job(conn, agent["agent_id"])
+                if job:
+                    return {"type": "job", "job": _job_payload(job)}
+        finally:
+            conn.close()
+        if time.monotonic() >= deadline:
+            return Response(status_code=204)
+        await asyncio.sleep(AGENT_STREAM_POLL_STEP_SECONDS)
 
 
 @router.post(API_PREFIX + "/commands/{cmd_id}/status")

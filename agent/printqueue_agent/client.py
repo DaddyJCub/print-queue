@@ -55,14 +55,15 @@ class PrintQueueClient:
     def _request(self, method: str, path: str, **kwargs) -> requests.Response:
         """Wrapper that re-provisions on 401 (token revoked/expired)."""
         url = f"{self.api}{path}"
+        timeout = kwargs.pop("timeout", self.timeout)  # callers may override (long-poll)
         r = self._session.request(method, url, headers=self._headers,
-                                  verify=self.verify_tls, timeout=self.timeout, **kwargs)
+                                  verify=self.verify_tls, timeout=timeout, **kwargs)
         if r.status_code == 401:
             log.warning("401 from server — re-provisioning")
             self._token = None
             self.provision(kwargs.pop("_agent_version", "unknown") or "unknown")
             r = self._session.request(method, url, headers=self._headers,
-                                      verify=self.verify_tls, timeout=self.timeout, **kwargs)
+                                      verify=self.verify_tls, timeout=timeout, **kwargs)
         return r
 
     # ── lifecycle ─────────────────────────────────────────────────
@@ -109,6 +110,20 @@ class PrintQueueClient:
             return None
         if r.status_code != 200:
             raise ServerError(f"commands/next failed: {r.status_code} {r.text}")
+        return r.json()
+
+    def next_event(self, timeout_s: int = 20, want_jobs: bool = True) -> Optional[Dict[str, Any]]:
+        """Long-poll for the next command or job. Returns None on timeout (204).
+
+        The HTTP read timeout is given a margin over the server's hold window so
+        the server, not the client, ends the long-poll.
+        """
+        params = {"timeout_s": int(timeout_s), "want_jobs": 1 if want_jobs else 0}
+        r = self._request("GET", "/events/next", params=params, timeout=timeout_s + 15)
+        if r.status_code == 204:
+            return None
+        if r.status_code != 200:
+            raise ServerError(f"events/next failed: {r.status_code} {r.text}")
         return r.json()
 
     def update_command(self, cmd_id: str, status: str, *,
