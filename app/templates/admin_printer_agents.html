@@ -18,6 +18,8 @@
         Raspberry Pi or Windows PC.
         <a class="text-indigo-400 hover:underline" href="/admin/printellect/docs/lk5-pro-agent-setup.md" target="_blank">📖 Setup guide</a>
         ·
+        <a class="text-indigo-400 hover:underline" href="/admin/printellect/docs/agent-security.md" target="_blank">🔒 Security</a>
+        ·
         <a class="text-indigo-400 hover:underline" href="/admin/printellect/docs/lk5-pro-agent-integration.md" target="_blank">Architecture</a>
       </p>
     </div>
@@ -367,7 +369,7 @@
       const cfg = buildConfig();
       const ts = WIZ.ts || { enabled: false };
       const hostname = "pq-" + (WIZ.name || "agent").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30);
-      const tsUp = `sudo tailscale up --login-server ${ts.loginServer || "https://headscale.jcubhub.com"} --hostname ${hostname}` + (ts.authKey ? ` --authkey ${ts.authKey}` : "");
+      const tsUp = `sudo tailscale up --login-server ${ts.loginServer || "https://headscale.jcubhub.com"} --hostname ${hostname} --advertise-tags=tag:print-agent` + (ts.authKey ? ` --authkey ${ts.authKey}` : "");
 
       if (WIZ.host === "windows") {
         const tsWin = ts.enabled ? [
@@ -418,6 +420,15 @@
         "ExecStart=/usr/bin/python3 -m printqueue_agent --config $INSTALL_DIR/config.json",
         "Restart=always",
         "RestartSec=5",
+        "# Hardening (defense in depth) — compatible with serial + remote reboot:",
+        "PrivateTmp=true",
+        "ProtectSystem=full",
+        "ProtectControlGroups=true",
+        "ProtectKernelTunables=true",
+        "ProtectKernelModules=true",
+        "RestrictRealtime=true",
+        "RestrictSUIDSGID=true",
+        "LockPersonality=true",
         "",
         "[Install]",
         "WantedBy=multi-user.target",
