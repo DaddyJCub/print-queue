@@ -111,3 +111,9 @@ remotely over the same outbound channel:
 - **Baud rate**: default `115200` (stock). Some community firmware uses
   `250000` — if the agent can't connect, set `"baud_rate": 250000` in
   `config.json`.
+- **Dispatch latency**: with `long_poll: true` (default) the agent holds one
+  connection open and the server returns commands/print jobs the instant they're
+  queued — sub-second, with far fewer requests than polling. Set
+  `long_poll: false` to fall back to plain polling every `poll_interval_s`.
+  (Heartbeats stay on `heartbeat_interval_s`; the on-Pi device page is always
+  instant regardless.)

@@ -285,6 +285,64 @@ def test_command_next_requires_bearer(client):
     assert client.get(f"{PREFIX}/commands/next").status_code == 401
 
 
+# ─────────────────────────── unified long-poll (events) ───────────────────────────
+
+def test_events_returns_command(client, admin_client):
+    created = _create_agent(admin_client)
+    agent_id = created["agent_id"]
+    token = _provision(client, agent_id, created["claim_code"]).json()["agent_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    admin_client.post(f"{ADMIN}/agents/{agent_id}/commands", json={"action": "identify"})
+    r = client.get(f"{PREFIX}/events/next", params={"timeout_s": 1, "want_jobs": 1}, headers=headers)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["type"] == "command"
+    assert body["command"]["action"] == "identify"
+
+
+def test_events_returns_job_and_prioritizes_commands(client, admin_client):
+    created = _create_agent(admin_client)
+    agent_id = created["agent_id"]
+    token = _provision(client, agent_id, created["claim_code"]).json()["agent_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    file_id = _make_gcode_file()
+    admin_client.post(f"{ADMIN}/agents/{agent_id}/jobs", json={"file_id": file_id})
+    admin_client.post(f"{ADMIN}/agents/{agent_id}/commands", json={"action": "identify"})
+
+    # Command first (priority), then the job on the next call.
+    first = client.get(f"{PREFIX}/events/next", params={"timeout_s": 1}, headers=headers).json()
+    assert first["type"] == "command"
+    second = client.get(f"{PREFIX}/events/next", params={"timeout_s": 1}, headers=headers).json()
+    assert second["type"] == "job"
+
+
+def test_events_want_jobs_zero_skips_jobs(client, admin_client):
+    created = _create_agent(admin_client)
+    agent_id = created["agent_id"]
+    token = _provision(client, agent_id, created["claim_code"]).json()["agent_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    file_id = _make_gcode_file()
+    admin_client.post(f"{ADMIN}/agents/{agent_id}/jobs", json={"file_id": file_id})
+    # want_jobs=0 → no command, no job claimed → 204 after the (short) hold.
+    r = client.get(f"{PREFIX}/events/next", params={"timeout_s": 1, "want_jobs": 0}, headers=headers)
+    assert r.status_code == 204
+
+
+def test_events_timeout_204(client, admin_client):
+    created = _create_agent(admin_client)
+    token = _provision(client, created["agent_id"], created["claim_code"]).json()["agent_token"]
+    r = client.get(f"{PREFIX}/events/next", params={"timeout_s": 1},
+                   headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 204
+
+
+def test_events_requires_bearer(client):
+    assert client.get(f"{PREFIX}/events/next").status_code == 401
+
+
 # ─────────────────────────── agent OTA ───────────────────────────
 
 def _make_agent_bundle() -> bytes:
