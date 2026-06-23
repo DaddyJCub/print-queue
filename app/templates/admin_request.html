@@ -1242,6 +1242,13 @@
                             🔄 Retry
                           </button>
                         </form>
+                      {% elif b.status == 'COMPLETED' %}
+                        <form action="/admin/build/{{ b.id }}/requeue" method="POST" class="inline">
+                          <button type="submit" class="text-xs px-2 py-1 rounded-md bg-zinc-700 hover:bg-zinc-600 text-zinc-100 transition"
+                                  data-confirm="Re-queue build #{{ b.build_number }}? This reverses its completion and puts it back in the queue.">
+                            ↩ Re-queue
+                          </button>
+                        </form>
                       {% endif %}
                     </div>
                   </div>

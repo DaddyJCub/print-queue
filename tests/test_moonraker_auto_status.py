@@ -158,6 +158,47 @@ def test_start_build_resets_printing_confirmed(client):
     assert row["printing_confirmed_at"] is None
 
 
+def test_requeue_completed_build_resets_to_ready(admin_client):
+    req = create_test_request(status="IN_PROGRESS", printer="AD5X", with_builds=2)
+    conn = db()
+    build_id = conn.execute(
+        "SELECT id FROM builds WHERE request_id = ? ORDER BY build_number LIMIT 1",
+        (req["request_id"],),
+    ).fetchone()["id"]
+    conn.execute(
+        "UPDATE builds SET status='COMPLETED', completed_at=?, printing_confirmed_at=?, "
+        "final_temperature='210C' WHERE id=?",
+        (now_iso(), now_iso(), build_id),
+    )
+    conn.commit()
+    conn.close()
+
+    resp = admin_client.post(f"/admin/build/{build_id}/requeue", follow_redirects=False)
+    assert resp.status_code in (302, 303)
+
+    conn = db()
+    row = conn.execute(
+        "SELECT status, completed_at, printing_confirmed_at FROM builds WHERE id=?",
+        (build_id,),
+    ).fetchone()
+    conn.close()
+    assert row["status"] == "READY"
+    assert row["completed_at"] is None
+    assert row["printing_confirmed_at"] is None
+
+
+def test_requeue_rejects_non_completed_build(admin_client):
+    req = create_test_request(status="APPROVED", printer="AD5X", with_builds=1)
+    conn = db()
+    build_id = conn.execute(
+        "SELECT id FROM builds WHERE request_id = ? LIMIT 1", (req["request_id"],)
+    ).fetchone()["id"]
+    conn.close()
+
+    resp = admin_client.post(f"/admin/build/{build_id}/requeue", follow_redirects=False)
+    assert resp.status_code == 400
+
+
 def test_multi_build_moonraker_cancelled_standby_not_auto_complete(client):
     api = MoonrakerAPI("http://localhost:7125")
     should_complete = _should_auto_complete_poll_result(

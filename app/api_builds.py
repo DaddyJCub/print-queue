@@ -1047,6 +1047,50 @@ def admin_set_build_status(
     return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
 
 
+@router.post("/admin/build/{build_id}/requeue")
+def admin_requeue_build(
+    request: Request,
+    build_id: str,
+    _=Depends(require_admin)
+):
+    """Re-queue a COMPLETED build back to READY (reverse a completion).
+
+    Recovery action for builds that were marked complete without actually
+    printing — e.g. a printer that held a stale 100%/"finished" state. Clears the
+    completion data (completed_at, printing_confirmed_at, final_temperature) and
+    re-syncs the parent request so its counts and status reflect reality.
+    """
+    conn = db()
+    build = conn.execute("SELECT * FROM builds WHERE id = ?", (build_id,)).fetchone()
+    if not build:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Build not found")
+
+    if build["status"] != "COMPLETED":
+        conn.close()
+        raise HTTPException(status_code=400, detail="Only completed builds can be re-queued")
+
+    now = now_iso()
+    conn.execute(
+        """UPDATE builds SET status = 'READY', completed_at = NULL,
+               printing_confirmed_at = NULL, final_temperature = NULL, updated_at = ?
+           WHERE id = ?""",
+        (now, build_id),
+    )
+    conn.execute(
+        "INSERT INTO build_status_events (id, build_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), build_id, now, "COMPLETED", "READY", "Re-queued by admin (completion reversed)")
+    )
+    conn.commit()
+    conn.close()
+
+    # Re-sync parent request (decrements completed count, moves it out of DONE)
+    sync_request_status_from_builds(build["request_id"])
+    print(f"[BUILD-STATUS] Re-queued build {build_id[:8]} (COMPLETED -> READY)")
+
+    return RedirectResponse(url=f"/admin/request/{build['request_id']}", status_code=303)
+
+
 @router.post("/admin/request/{rid}/start-next-build")
 def admin_start_next_build(
     request: Request,

@@ -9,6 +9,19 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.24.4
+### Overview / Highlights
+- Added a way to put a completed build back in the queue.
+
+### Enhancements
+- Admins can re-queue a completed build from the request page, reversing its completion and returning it to the queue — useful for recovering builds that were marked done without actually printing.
+
+### Bug Fixes
+- None; this is a small addition.
+
+### Notes / Things to Know
+- Re-queuing a build re-syncs the parent request so its progress and status reflect the change.
+
 ## 0.24.3
 ### Overview / Highlights
 - Stopped multi-build prints from marking later builds "done" before they actually printed.
