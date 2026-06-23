@@ -45,7 +45,12 @@ def test_auto_match_skips_in_progress_request_with_active_printing_build(client)
     assert not matches
 
 
-def test_start_build_blocks_when_printer_already_printing(client):
+def test_start_build_allows_start_despite_other_printing_build(client):
+    # A physical printer can only run one build at a time, so another build left
+    # flagged PRINTING on the same printer is treated as stale rather than a hard
+    # conflict. Starting a build is an explicit admin action and must not be wedged
+    # by a lingering PRINTING row (which previously returned a 400 with no UI
+    # recovery path). The same-request guard still prevents double-starts.
     req_a = create_test_request(status="APPROVED", printer="AD5X", with_builds=1)
     req_b = create_test_request(status="APPROVED", printer="AD5X", with_builds=1)
 
@@ -78,10 +83,9 @@ def test_start_build_blocks_when_printer_already_printing(client):
     conn.commit()
     conn.close()
 
-    result = start_build(build_b, "AD5X", "Test concurrent start prevention")
+    result = start_build(build_b, "AD5X", "Test start is not wedged by stale PRINTING row")
 
-    assert result["success"] is False
-    assert "already printing" in result["error"].lower()
+    assert result["success"] is True
 
 
 def test_multi_build_moonraker_standby_with_duration_is_treated_complete(client):
