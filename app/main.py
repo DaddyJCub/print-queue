@@ -7035,9 +7035,27 @@ async def poll_builds_status_worker():
                 request_id = build["request_id"]
                 build_num = build["build_number"]
                 total_builds = build["total_builds"] or 1
-                
-                # Auto-complete build if printer reports complete
-                should_complete = is_complete or ((not is_printing) and (percent_complete == 100))
+
+                # Auto-complete build if printer reports complete. Use the shared
+                # helper so multi-build prints get the same Moonraker "standby after
+                # completion" fallback as single-build requests — AD5X/Moonraker often
+                # returns to standby without ever reporting is_complete or exactly 100%,
+                # which previously left these builds stuck PRINTING forever.
+                extended_auto_complete_status = None
+                if isinstance(printer_api, MoonrakerAPI) and (not is_printing) and (not is_complete) and (percent_complete != 100):
+                    try:
+                        extended_auto_complete_status = await printer_api.get_extended_status()
+                    except Exception:
+                        extended_auto_complete_status = None
+
+                should_complete = _should_auto_complete_poll_result(
+                    is_printing=is_printing,
+                    is_complete=is_complete,
+                    percent_complete=percent_complete,
+                    printer_api=printer_api,
+                    started_at=build["started_at"],
+                    extended_status=extended_auto_complete_status,
+                )
                 
                 # Moonraker: write file-based slicer estimate to build for smart ETA
                 if isinstance(printer_api, MoonrakerAPI) and not should_complete and is_printing:
