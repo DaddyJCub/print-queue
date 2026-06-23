@@ -383,12 +383,16 @@ async def render_dashboard(request: Request, user=None):
 
     # ── Queue stats ──
     queue_stats = {"printing": 0, "queued": 0, "avg_wait": "1-2 days"}
+    pending_review = 0
     try:
         printing = conn.execute(
             "SELECT COUNT(*) FROM requests WHERE status IN ('PRINTING', 'IN_PROGRESS')"
         ).fetchone()[0]
         queued = conn.execute(
             "SELECT COUNT(*) FROM requests WHERE status IN ('PENDING', 'APPROVED', 'NEEDS_INFO')"
+        ).fetchone()[0]
+        pending_review = conn.execute(
+            "SELECT COUNT(*) FROM requests WHERE status = 'PENDING'"
         ).fetchone()[0]
         queue_stats = {
             "printing": printing,
@@ -399,15 +403,20 @@ async def render_dashboard(request: Request, user=None):
         pass
 
     # ── Fun stats ──
-    fun_stats = {"total_prints": 0, "est_hours": 0, "est_meters": 0}
+    fun_stats = {"total_prints": 0, "est_hours": 0, "est_meters": 0, "completed_week": 0}
     try:
         total_completed = conn.execute(
             "SELECT COUNT(*) FROM requests WHERE status IN ('DONE', 'PICKED_UP')"
+        ).fetchone()[0]
+        completed_week = conn.execute(
+            "SELECT COUNT(*) FROM requests WHERE status IN ('DONE', 'PICKED_UP') "
+            "AND updated_at >= datetime('now', '-7 days')"
         ).fetchone()[0]
         fun_stats = {
             "total_prints": total_completed,
             "est_hours": total_completed * 3,
             "est_meters": round(total_completed * 15, 0),
+            "completed_week": completed_week,
         }
     except Exception:
         pass
@@ -492,6 +501,14 @@ async def render_dashboard(request: Request, user=None):
     except Exception:
         pass
 
+    # ── Admin shortcuts (server-side, mirrors /api/admin/check) ──
+    is_admin = False
+    try:
+        from app.auth import get_current_admin
+        is_admin = bool(await get_current_admin(request))
+    except Exception:
+        pass
+
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "user": user,
@@ -504,6 +521,8 @@ async def render_dashboard(request: Request, user=None):
         "activity_feed": activity_feed,
         "announcements": announcements,
         "credits_enabled": credits_enabled,
+        "is_admin": is_admin,
+        "pending_review": pending_review,
         "version": APP_VERSION,
     })
 

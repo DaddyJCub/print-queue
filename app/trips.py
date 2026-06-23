@@ -42,6 +42,13 @@ logger = logging.getLogger("printellect.trips")
 router = APIRouter(prefix="/trips", tags=["trips"])
 templates = Jinja2Templates(directory="app/templates")
 
+# Cache-bust static assets (CSS) on each release (see app.main)
+try:
+    from app.main import APP_VERSION as _APP_VERSION
+    templates.env.globals["asset_version"] = _APP_VERSION
+except Exception:
+    templates.env.globals["asset_version"] = ""
+
 # Dashboard / nav globals (needed by pwa_base.html)
 def _dashboard_nav_enabled():
     try:

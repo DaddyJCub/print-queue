@@ -365,6 +365,8 @@ templates.env.globals["csrf_input"] = csrf_input
 templates.env.globals["get_csrf_token"] = get_csrf_token
 templates.env.globals["base_url"] = BASE_URL
 templates.env.globals["environment"] = ENVIRONMENT
+# Cache-bust static assets (CSS) on each release so returning users don't get stale styles
+templates.env.globals["asset_version"] = APP_VERSION
 
 # Dynamic callable so template checks feature flag at render time
 def _credits_nav_enabled():

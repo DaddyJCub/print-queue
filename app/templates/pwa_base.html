@@ -19,8 +19,8 @@
   <meta name="view-transition" content="same-origin" />
 
   <!-- Production Tailwind CSS (tree-shaken, minified) — replaces Play CDN -->
-  <link rel="preload" href="/static/css/tailwind.css" as="style" />
-  <link rel="stylesheet" href="/static/css/tailwind.css" />
+  <link rel="preload" href="/static/css/tailwind.css?v={{ asset_version|default('') }}" as="style" />
+  <link rel="stylesheet" href="/static/css/tailwind.css?v={{ asset_version|default('') }}" />
   <!-- Resource hints for third-party origins -->
   <link rel="preconnect" href="https://js.stripe.com" />
   <link rel="dns-prefetch" href="https://js.stripe.com" />

@@ -35,6 +35,13 @@ router = APIRouter(tags=["printellect"])
 logger = logging.getLogger("printellect.devices")
 templates = Jinja2Templates(directory="app/templates")
 
+# Cache-bust static assets (CSS) on each release (see app.main)
+try:
+    from app.main import APP_VERSION as _APP_VERSION
+    templates.env.globals["asset_version"] = _APP_VERSION
+except Exception:
+    templates.env.globals["asset_version"] = ""
+
 # Credits nav global (callable, evaluated at render time)
 def _credits_nav_enabled():
     try:

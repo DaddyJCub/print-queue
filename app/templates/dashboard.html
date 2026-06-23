@@ -6,219 +6,338 @@
 {% block bnav_home %}text-indigo-400{% endblock %}
 
 {% block content %}
-<div class="max-w-2xl mx-auto px-4 py-6 space-y-6">
+<div class="max-w-6xl mx-auto px-1 sm:px-2 py-2 space-y-5">
 
-  <!-- Greeting -->
-  <div>
-    {% if user %}
-    <h1 class="text-2xl font-bold">
-      Hey{{ ', ' + user.display_name.split(' ')[0] if user.display_name else '' }}! 👋
-    </h1>
-    <p class="text-zinc-400 text-sm mt-1">Here's what's happening with the print queue.</p>
-    {% else %}
-    <h1 class="text-2xl font-bold">Welcome to the Print Queue 👋</h1>
-    <p class="text-zinc-400 text-sm mt-1">Submit 3D print requests and track their progress.</p>
-    {% endif %}
-  </div>
-
-  <!-- Quick Actions (2×2 grid) -->
-  <div class="grid grid-cols-2 gap-3">
-    <a href="{{ new_request_url() }}" class="flex flex-col items-center gap-2 p-4 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-2xl transition tap-highlight text-center">
-      <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
-      </svg>
-      <span class="text-sm font-semibold">New Request</span>
-    </a>
-    <a href="/queue" class="flex flex-col items-center gap-2 p-4 bg-zinc-800/80 hover:bg-zinc-700/80 active:bg-zinc-900 rounded-2xl border border-zinc-700/50 transition tap-highlight text-center">
-      <svg class="w-7 h-7 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
-      </svg>
-      <span class="text-sm font-medium text-zinc-300">View Queue</span>
-    </a>
-    {% if user %}
-    <a href="/my-requests" class="flex flex-col items-center gap-2 p-4 bg-zinc-800/80 hover:bg-zinc-700/80 active:bg-zinc-900 rounded-2xl border border-zinc-700/50 transition tap-highlight text-center">
-      <svg class="w-7 h-7 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-      </svg>
-      <span class="text-sm font-medium text-zinc-300">My Requests</span>
-    </a>
-    {% if credits_enabled %}
-    <a href="/store" class="flex flex-col items-center gap-2 p-4 bg-zinc-800/80 hover:bg-zinc-700/80 active:bg-zinc-900 rounded-2xl border border-zinc-700/50 transition tap-highlight text-center">
-      <svg class="w-7 h-7 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-      </svg>
-      <span class="text-sm font-medium text-zinc-300">Store</span>
-    </a>
-    {% else %}
-    <a href="/auth/profile" class="flex flex-col items-center gap-2 p-4 bg-zinc-800/80 hover:bg-zinc-700/80 active:bg-zinc-900 rounded-2xl border border-zinc-700/50 transition tap-highlight text-center">
-      <svg class="w-7 h-7 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-      </svg>
-      <span class="text-sm font-medium text-zinc-300">Profile</span>
-    </a>
-    {% endif %}
-    {% else %}
-    <a href="/auth/login" class="flex flex-col items-center gap-2 p-4 bg-zinc-800/80 hover:bg-zinc-700/80 active:bg-zinc-900 rounded-2xl border border-zinc-700/50 transition tap-highlight col-span-1 text-center">
-      <svg class="w-7 h-7 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/>
-      </svg>
-      <span class="text-sm font-medium text-zinc-300">Sign In</span>
-    </a>
-    <div></div>
-    {% endif %}
-  </div>
-
-  {% if user and active_requests %}
-  <!-- Active Requests -->
-  <div>
-    <div class="flex items-center justify-between mb-3">
-      <h2 class="text-lg font-semibold">🖨️ Active Requests</h2>
-      <a href="/my-requests" class="text-xs text-indigo-400 hover:underline">View all →</a>
-    </div>
-    <div class="space-y-2">
-      {% for req in active_requests %}
-      <a href="/status/{{ req.access_token }}" class="block bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-3.5 hover:bg-zinc-700/60 transition tap-highlight">
-        <div class="flex items-center justify-between gap-3">
-          <div class="min-w-0 flex-1">
-            <p class="font-medium text-sm truncate">{{ req.print_name or 'Untitled' }}</p>
-            <div class="flex items-center gap-2 mt-1">
-              {% set status = req.status|upper %}
-              {% if status in ('PRINTING', 'IN_PROGRESS') %}
-              <span class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
-              <span class="text-xs text-blue-300">Printing</span>
-              {% elif status == 'PENDING' %}
-              <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-              <span class="text-xs text-amber-300">Pending Review</span>
-              {% elif status == 'APPROVED' %}
-              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-              <span class="text-xs text-emerald-300">Approved</span>
-              {% elif status == 'NEEDS_INFO' %}
-              <span class="w-2 h-2 rounded-full bg-orange-400"></span>
-              <span class="text-xs text-orange-300">Needs Info</span>
-              {% else %}
-              <span class="w-2 h-2 rounded-full bg-zinc-400"></span>
-              <span class="text-xs text-zinc-400">{{ status|title }}</span>
-              {% endif %}
-            </div>
-          </div>
-          {% if req.total_builds and req.total_builds > 1 %}
-          <div class="text-right flex-shrink-0">
-            <p class="text-xs text-zinc-400">Build</p>
-            <p class="text-sm font-medium">{{ req.completed_builds or 0 }}/{{ req.total_builds }}</p>
-          </div>
-          {% endif %}
-          <svg class="w-4 h-4 text-zinc-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
-          </svg>
-        </div>
-      </a>
-      {% endfor %}
-    </div>
-  </div>
-  {% endif %}
-
-  <!-- Stats Row -->
-  <div class="grid grid-cols-3 gap-3">
-    <div class="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-3 text-center">
-      <p class="text-2xl font-bold text-indigo-400">{{ queue_stats.printing }}</p>
-      <p class="text-xs text-zinc-400 mt-0.5">Printing Now</p>
-    </div>
-    <div class="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-3 text-center">
-      <p class="text-2xl font-bold text-amber-400">{{ queue_stats.queued }}</p>
-      <p class="text-xs text-zinc-400 mt-0.5">In Queue</p>
-    </div>
-    <div class="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-3 text-center">
-      <p class="text-2xl font-bold text-emerald-400">{{ fun_stats.total_prints }}</p>
-      <p class="text-xs text-zinc-400 mt-0.5">Completed</p>
-    </div>
-  </div>
-
-  {% if user and user_stats %}
-  <!-- Your Stats -->
-  <div class="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-4">
-    <h3 class="text-sm font-semibold text-zinc-300 mb-3">📊 Your Stats</h3>
-    <div class="grid grid-cols-3 gap-3 text-center">
-      <div>
-        <p class="text-xl font-bold">{{ user_stats.total_requests }}</p>
-        <p class="text-xs text-zinc-400">Requests</p>
-      </div>
-      <div>
-        <p class="text-xl font-bold">{{ user_stats.total_prints }}</p>
-        <p class="text-xs text-zinc-400">Prints</p>
-      </div>
-      {% if credits_enabled %}
-      <div>
-        <p class="text-xl font-bold text-amber-400">{{ user_stats.credits }}</p>
-        <p class="text-xs text-zinc-400">Credits</p>
-      </div>
+  <!-- ── Header bar: greeting + primary action ── -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div class="min-w-0">
+      {% if user %}
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">
+        Hey{{ ', ' + user.display_name.split(' ')[0] if user.display_name else '' }}! 👋
+      </h1>
+      <p class="text-zinc-400 text-sm mt-1">Here's what's happening with the print queue.</p>
       {% else %}
-      <div>
-        <p class="text-xl font-bold text-emerald-400">~{{ fun_stats.est_hours }}h</p>
-        <p class="text-xs text-zinc-400">Print Time</p>
-      </div>
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">Welcome to the Print Queue 👋</h1>
+      <p class="text-zinc-400 text-sm mt-1">Submit 3D print requests and track their progress.</p>
       {% endif %}
     </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+      {% if is_admin %}
+      <a href="/admin" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm font-medium hover:bg-amber-500/20 transition tap-highlight">
+        <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+        Admin
+      </a>
+      {% endif %}
+      <a href="{{ new_request_url() }}" class="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-xl font-semibold text-sm shadow-lg shadow-indigo-600/20 transition tap-highlight">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        New Request
+      </a>
+    </div>
   </div>
-  {% endif %}
 
-  <!-- Printer Status -->
-  {% if printer_status %}
-  <div>
-    <h2 class="text-lg font-semibold mb-3">🖨️ Printers</h2>
-    <div class="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 snap-x snap-mandatory scrollbar-hide">
-      {% for code, status in printer_status.items() %}
-      <div class="min-w-[200px] flex-shrink-0 bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4 snap-start">
-        <p class="font-medium text-sm">{{ printer_labels.get(code, code) }}</p>
-        <div class="flex items-center gap-2 mt-2">
-          {% if status.is_printing %}
-          <span class="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse"></span>
-          <span class="text-xs text-blue-300">Printing{% if status.progress %} · {{ status.progress }}%{% endif %}</span>
-          {% elif status.is_offline or status.status is none %}
-          <span class="w-2.5 h-2.5 rounded-full bg-zinc-500"></span>
-          <span class="text-xs text-zinc-400">Offline</span>
+  <!-- ── Metrics band ── -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <!-- Printing Now -->
+    <a href="/queue" class="group bg-zinc-800/70 border border-zinc-700/50 rounded-2xl p-4 hover:border-indigo-500/50 hover:bg-zinc-800 transition tap-highlight">
+      <div class="flex items-center justify-between">
+        <span class="w-9 h-9 rounded-xl bg-indigo-500/15 flex items-center justify-center">
+          <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zM7 9V5a2 2 0 012-2h6a2 2 0 012 2v4"/>
+          </svg>
+        </span>
+        {% if queue_stats.printing > 0 %}<span class="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>{% endif %}
+      </div>
+      <p class="text-3xl font-bold text-indigo-400 mt-3 leading-none">{{ queue_stats.printing }}</p>
+      <p class="text-xs text-zinc-400 mt-1.5">Printing Now</p>
+    </a>
+
+    <!-- In Queue -->
+    <a href="/queue" class="group bg-zinc-800/70 border border-zinc-700/50 rounded-2xl p-4 hover:border-amber-500/50 hover:bg-zinc-800 transition tap-highlight">
+      <div class="flex items-center justify-between">
+        <span class="w-9 h-9 rounded-xl bg-amber-500/15 flex items-center justify-center">
+          <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h10M4 18h6"/>
+          </svg>
+        </span>
+      </div>
+      <p class="text-3xl font-bold text-amber-400 mt-3 leading-none">{{ queue_stats.queued }}</p>
+      <p class="text-xs text-zinc-400 mt-1.5">In Queue</p>
+    </a>
+
+    <!-- Completed -->
+    <div class="bg-zinc-800/70 border border-zinc-700/50 rounded-2xl p-4">
+      <div class="flex items-center justify-between">
+        <span class="w-9 h-9 rounded-xl bg-emerald-500/15 flex items-center justify-center">
+          <svg class="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </span>
+      </div>
+      <p class="text-3xl font-bold text-emerald-400 mt-3 leading-none">{{ fun_stats.total_prints }}</p>
+      <p class="text-xs text-zinc-400 mt-1.5">
+        Completed
+        {% if fun_stats.completed_week and fun_stats.completed_week > 0 %}
+        <span class="text-emerald-500/80">· +{{ fun_stats.completed_week }} this week</span>
+        {% endif %}
+      </p>
+    </div>
+
+    <!-- 4th tile: role-aware -->
+    {% if is_admin %}
+    <a href="/admin" class="group bg-zinc-800/70 border border-orange-500/30 rounded-2xl p-4 hover:bg-orange-500/10 transition tap-highlight">
+      <div class="flex items-center justify-between">
+        <span class="w-9 h-9 rounded-xl bg-orange-500/15 flex items-center justify-center">
+          <svg class="w-5 h-5 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"/>
+          </svg>
+        </span>
+        <svg class="w-4 h-4 text-zinc-500 group-hover:text-orange-400 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+      </div>
+      <p class="text-3xl font-bold text-orange-400 mt-3 leading-none">{{ pending_review }}</p>
+      <p class="text-xs text-zinc-400 mt-1.5">Pending Review</p>
+    </a>
+    {% elif user %}
+    <div class="bg-zinc-800/70 border border-zinc-700/50 rounded-2xl p-4">
+      <div class="flex items-center justify-between">
+        <span class="w-9 h-9 rounded-xl bg-purple-500/15 flex items-center justify-center">
+          {% if credits_enabled %}
+          <svg class="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.66 0-3 .9-3 2s1.34 2 3 2 3 .9 3 2-1.34 2-3 2m0-8c1.11 0 2.08.4 2.6 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.4-2.6-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
           {% else %}
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-          <span class="text-xs text-emerald-300">Ready</span>
+          <svg class="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          {% endif %}
+        </span>
+      </div>
+      {% if credits_enabled %}
+      <p class="text-3xl font-bold text-purple-400 mt-3 leading-none">{{ user_stats.credits }}</p>
+      <p class="text-xs text-zinc-400 mt-1.5">Your Credits</p>
+      {% else %}
+      <p class="text-3xl font-bold text-purple-400 mt-3 leading-none">~{{ fun_stats.est_hours }}h</p>
+      <p class="text-xs text-zinc-400 mt-1.5">Total Print Time</p>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="bg-zinc-800/70 border border-zinc-700/50 rounded-2xl p-4">
+      <div class="flex items-center justify-between">
+        <span class="w-9 h-9 rounded-xl bg-purple-500/15 flex items-center justify-center">
+          <svg class="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </span>
+      </div>
+      <p class="text-2xl font-bold text-purple-400 mt-3 leading-none">{{ queue_stats.avg_wait }}</p>
+      <p class="text-xs text-zinc-400 mt-1.5">Avg Wait</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Quick actions ── -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <a href="/queue" class="flex items-center gap-3 p-3.5 bg-zinc-800/60 hover:bg-zinc-700/60 rounded-xl border border-zinc-700/50 transition tap-highlight">
+      <span class="w-9 h-9 rounded-lg bg-zinc-700/60 flex items-center justify-center flex-shrink-0">
+        <svg class="w-5 h-5 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+      </span>
+      <span class="text-sm font-medium text-zinc-200">View Queue</span>
+    </a>
+    {% if user %}
+    <a href="/my-requests" class="flex items-center gap-3 p-3.5 bg-zinc-800/60 hover:bg-zinc-700/60 rounded-xl border border-zinc-700/50 transition tap-highlight">
+      <span class="w-9 h-9 rounded-lg bg-zinc-700/60 flex items-center justify-center flex-shrink-0">
+        <svg class="w-5 h-5 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      </span>
+      <span class="text-sm font-medium text-zinc-200">My Requests</span>
+    </a>
+    {% if credits_enabled %}
+    <a href="/store" class="flex items-center gap-3 p-3.5 bg-zinc-800/60 hover:bg-zinc-700/60 rounded-xl border border-zinc-700/50 transition tap-highlight">
+      <span class="w-9 h-9 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0">
+        <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+      </span>
+      <span class="text-sm font-medium text-zinc-200">Store</span>
+    </a>
+    {% else %}
+    <a href="/auth/profile" class="flex items-center gap-3 p-3.5 bg-zinc-800/60 hover:bg-zinc-700/60 rounded-xl border border-zinc-700/50 transition tap-highlight">
+      <span class="w-9 h-9 rounded-lg bg-zinc-700/60 flex items-center justify-center flex-shrink-0">
+        <svg class="w-5 h-5 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+      </span>
+      <span class="text-sm font-medium text-zinc-200">Profile</span>
+    </a>
+    {% endif %}
+    {% if is_admin %}
+    <a href="/admin" class="flex items-center gap-3 p-3.5 bg-amber-500/5 hover:bg-amber-500/10 rounded-xl border border-amber-500/30 transition tap-highlight">
+      <span class="w-9 h-9 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0">
+        <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.32 4.32c.43-1.76 2.93-1.76 3.36 0a1.72 1.72 0 002.57 1.07c1.54-.94 3.31.83 2.37 2.37a1.72 1.72 0 001.07 2.57c1.76.43 1.76 2.92 0 3.35a1.72 1.72 0 00-1.07 2.57c.94 1.54-.83 3.31-2.37 2.37a1.72 1.72 0 00-2.57 1.07c-.43 1.76-2.93 1.76-3.36 0a1.72 1.72 0 00-2.57-1.07c-1.54.94-3.31-.83-2.37-2.37a1.72 1.72 0 00-1.07-2.57c-1.76-.43-1.76-2.92 0-3.35a1.72 1.72 0 001.07-2.57c-.94-1.54.83-3.31 2.37-2.37 1 .61 2.3.07 2.57-1.07z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      </span>
+      <span class="text-sm font-medium text-amber-300">Manage Queue</span>
+    </a>
+    {% else %}
+    <a href="/store" class="flex items-center gap-3 p-3.5 bg-zinc-800/60 hover:bg-zinc-700/60 rounded-xl border border-zinc-700/50 transition tap-highlight">
+      <span class="w-9 h-9 rounded-lg bg-zinc-700/60 flex items-center justify-center flex-shrink-0">
+        <svg class="w-5 h-5 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+      </span>
+      <span class="text-sm font-medium text-zinc-200">Store</span>
+    </a>
+    {% endif %}
+    {% else %}
+    <a href="/auth/login" class="flex items-center gap-3 p-3.5 bg-zinc-800/60 hover:bg-zinc-700/60 rounded-xl border border-zinc-700/50 transition tap-highlight">
+      <span class="w-9 h-9 rounded-lg bg-zinc-700/60 flex items-center justify-center flex-shrink-0">
+        <svg class="w-5 h-5 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/></svg>
+      </span>
+      <span class="text-sm font-medium text-zinc-200">Sign In</span>
+    </a>
+    <a href="/store" class="flex items-center gap-3 p-3.5 bg-zinc-800/60 hover:bg-zinc-700/60 rounded-xl border border-zinc-700/50 transition tap-highlight">
+      <span class="w-9 h-9 rounded-lg bg-zinc-700/60 flex items-center justify-center flex-shrink-0">
+        <svg class="w-5 h-5 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+      </span>
+      <span class="text-sm font-medium text-zinc-200">Store</span>
+    </a>
+    {% endif %}
+  </div>
+
+  <!-- ── Bento grid 1: Printers + Active Requests ── -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+    <!-- Live Printers -->
+    <section class="lg:col-span-2 bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4 sm:p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          Live Printers
+        </h2>
+        <span class="text-xs text-zinc-500" data-dash-updated>updates live</span>
+      </div>
+      {% if printer_status %}
+      <div class="space-y-3">
+        {% for code, status in printer_status.items() %}
+        <div class="bg-zinc-900/40 border border-zinc-700/40 rounded-xl p-3.5">
+          <div class="flex items-center justify-between gap-3">
+            <p class="font-medium text-sm truncate">{{ printer_labels.get(code, code) }}</p>
+            {% if status.is_printing %}
+            <span class="inline-flex items-center gap-1.5 text-xs text-blue-300 flex-shrink-0">
+              <span class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
+              Printing{% if status.progress %} · {{ status.progress }}%{% endif %}
+            </span>
+            {% elif status.is_offline or status.status is none %}
+            <span class="inline-flex items-center gap-1.5 text-xs text-zinc-400 flex-shrink-0">
+              <span class="w-2 h-2 rounded-full bg-zinc-500"></span>
+              Offline
+            </span>
+            {% else %}
+            <span class="inline-flex items-center gap-1.5 text-xs text-emerald-300 flex-shrink-0">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+              Ready
+            </span>
+            {% endif %}
+          </div>
+          {% if status.is_printing and status.progress %}
+          <div class="mt-3 h-2 bg-zinc-700/70 rounded-full overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-700" style="width: {{ status.progress }}%"></div>
+          </div>
           {% endif %}
         </div>
-        {% if status.is_printing and status.progress %}
-        <div class="mt-3 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
-          <div class="h-full bg-blue-500 rounded-full transition-all" style="width: {{ status.progress }}%"></div>
-        </div>
-        {% endif %}
+        {% endfor %}
       </div>
-      {% endfor %}
-    </div>
-  </div>
-  {% endif %}
+      {% else %}
+      <div class="flex flex-col items-center justify-center py-10 text-center">
+        <svg class="w-10 h-10 text-zinc-600 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zM7 9V5a2 2 0 012-2h6a2 2 0 012 2v4"/></svg>
+        <p class="text-sm text-zinc-500">No printers connected</p>
+      </div>
+      {% endif %}
+    </section>
 
-  <!-- Activity Feed -->
-  {% if activity_feed %}
-  <div>
-    <div class="flex items-center justify-between mb-3">
-      <h2 class="text-lg font-semibold">⚡ Recent Activity</h2>
-      <a href="/queue" class="text-xs text-indigo-400 hover:underline">Full queue →</a>
-    </div>
-    <div class="space-y-1">
-      {% for item in activity_feed %}
-      <div class="flex items-start gap-3 py-2.5 border-b border-zinc-800/80 last:border-0">
-        {% set st = item.to_status|upper %}
-        {% if st in ('PRINTING', 'IN_PROGRESS') %}
-        <span class="mt-0.5 w-2 h-2 rounded-full bg-blue-400 flex-shrink-0"></span>
-        {% elif st == 'DONE' %}
-        <span class="mt-0.5 w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0"></span>
-        {% elif st == 'PICKED_UP' %}
-        <span class="mt-0.5 w-2 h-2 rounded-full bg-green-500 flex-shrink-0"></span>
-        {% elif st == 'APPROVED' %}
-        <span class="mt-0.5 w-2 h-2 rounded-full bg-teal-400 flex-shrink-0"></span>
-        {% elif st == 'REJECTED' %}
-        <span class="mt-0.5 w-2 h-2 rounded-full bg-red-400 flex-shrink-0"></span>
-        {% else %}
-        <span class="mt-0.5 w-2 h-2 rounded-full bg-zinc-500 flex-shrink-0"></span>
-        {% endif %}
-        <div class="min-w-0 flex-1">
+    <!-- Active Requests / logged-out CTA -->
+    <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4 sm:p-5">
+      {% if user %}
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold">Your Active Requests</h2>
+        {% if active_requests %}<a href="/my-requests" class="text-xs text-indigo-400 hover:underline">All →</a>{% endif %}
+      </div>
+      {% if active_requests %}
+      <div class="space-y-2.5">
+        {% for req in active_requests %}
+        <a href="/status/{{ req.access_token }}" class="block bg-zinc-900/40 border border-zinc-700/40 rounded-xl p-3 hover:border-indigo-500/40 hover:bg-zinc-900/70 transition tap-highlight">
+          <div class="flex items-center justify-between gap-2">
+            <p class="font-medium text-sm truncate">{{ req.print_name or 'Untitled' }}</p>
+            <svg class="w-4 h-4 text-zinc-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </div>
+          <div class="flex items-center gap-2 mt-1.5">
+            {% set status = req.status|upper %}
+            {% if status in ('PRINTING', 'IN_PROGRESS') %}
+            <span class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span><span class="text-xs text-blue-300">Printing</span>
+            {% elif status == 'PENDING' %}
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span><span class="text-xs text-amber-300">Pending Review</span>
+            {% elif status == 'APPROVED' %}
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span><span class="text-xs text-emerald-300">Approved</span>
+            {% elif status == 'NEEDS_INFO' %}
+            <span class="w-2 h-2 rounded-full bg-orange-400"></span><span class="text-xs text-orange-300">Needs Info</span>
+            {% else %}
+            <span class="w-2 h-2 rounded-full bg-zinc-400"></span><span class="text-xs text-zinc-400">{{ status|title }}</span>
+            {% endif %}
+          </div>
+          {% if req.total_builds and req.total_builds > 1 %}
+          {% set pct = ((req.completed_builds or 0) / req.total_builds * 100) | round(0, 'common') %}
+          <div class="mt-2.5">
+            <div class="flex items-center justify-between text-xs text-zinc-500 mb-1">
+              <span>Builds</span><span>{{ req.completed_builds or 0 }}/{{ req.total_builds }}</span>
+            </div>
+            <div class="h-1.5 bg-zinc-700/70 rounded-full overflow-hidden">
+              <div class="h-full bg-indigo-500 rounded-full transition-all" style="width: {{ pct }}%"></div>
+            </div>
+          </div>
+          {% endif %}
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="flex flex-col items-center justify-center py-8 text-center">
+        <svg class="w-10 h-10 text-zinc-600 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        <p class="text-sm text-zinc-400 font-medium">No active requests</p>
+        <a href="{{ new_request_url() }}" class="mt-3 inline-flex items-center gap-1.5 text-sm text-indigo-400 hover:text-indigo-300">
+          Start a print <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        </a>
+      </div>
+      {% endif %}
+      {% else %}
+      <!-- Logged-out CTA -->
+      <div class="flex flex-col h-full justify-center bg-gradient-to-br from-indigo-600/15 to-purple-600/15 -m-4 sm:-m-5 p-6 rounded-2xl text-center">
+        <h2 class="text-lg font-bold">Track Your Prints</h2>
+        <p class="text-sm text-zinc-300 mt-2">Create a free account to track requests, get notifications, and earn credits.</p>
+        <a href="/auth/register" class="inline-flex items-center justify-center gap-2 mt-4 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold text-sm transition tap-highlight">
+          Create Account
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        </a>
+      </div>
+      {% endif %}
+    </section>
+  </div>
+
+  <!-- ── Bento grid 2: Activity + Announcements ── -->
+  {% if activity_feed or announcements %}
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+    <!-- Recent Activity timeline -->
+    {% if activity_feed %}
+    <section class="lg:col-span-2 bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4 sm:p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold">⚡ Recent Activity</h2>
+        <a href="/queue" class="text-xs text-indigo-400 hover:underline">Full queue →</a>
+      </div>
+      <ol class="relative ml-1.5 border-l border-zinc-700/60 space-y-4">
+        {% for item in activity_feed %}
+        <li class="ml-4">
+          {% set st = item.to_status|upper %}
+          <span class="absolute -left-[5px] mt-1.5 w-2.5 h-2.5 rounded-full ring-4 ring-zinc-900
+            {% if st in ('PRINTING', 'IN_PROGRESS') %}bg-blue-400
+            {% elif st == 'DONE' %}bg-emerald-400
+            {% elif st == 'PICKED_UP' %}bg-green-500
+            {% elif st == 'APPROVED' %}bg-teal-400
+            {% elif st == 'REJECTED' %}bg-red-400
+            {% else %}bg-zinc-500{% endif %}"></span>
           <p class="text-sm">
-            <span class="font-medium truncate">{{ item.print_name or 'Untitled' }}</span>
+            <span class="font-medium">{{ item.print_name or 'Untitled' }}</span>
             <span class="text-zinc-500">→</span>
             <span class="text-zinc-300">{{ item.to_status|replace('_', ' ')|title }}</span>
           </p>
@@ -226,46 +345,59 @@
           <p class="text-xs text-zinc-500 mt-0.5 truncate">{{ item.comment }}</p>
           {% endif %}
           <p class="text-xs text-zinc-600 mt-0.5">{{ item.created_at[:16] if item.created_at else '' }}</p>
+        </li>
+        {% endfor %}
+      </ol>
+    </section>
+    {% endif %}
+
+    <!-- Announcements -->
+    {% if announcements %}
+    <section class="{% if not activity_feed %}lg:col-span-3{% endif %} bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4 sm:p-5">
+      <h2 class="text-base font-semibold mb-4">📢 Announcements</h2>
+      <div class="space-y-2.5">
+        {% for ann in announcements %}
+        <div class="bg-zinc-900/40 border border-zinc-700/40 rounded-xl p-3.5">
+          <p class="font-medium text-sm">{{ ann.title }}</p>
+          {% if ann.body %}<p class="text-xs text-zinc-400 mt-1 line-clamp-2">{{ ann.body }}</p>{% endif %}
+          <p class="text-xs text-zinc-600 mt-2">{{ ann.sent_at[:10] if ann.sent_at else '' }}</p>
         </div>
+        {% endfor %}
       </div>
-      {% endfor %}
+    </section>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- ── Your Stats strip (logged-in) ── -->
+  {% if user and user_stats %}
+  <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4">
+    <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">📊 Your Stats</h3>
+    <div class="grid grid-cols-3 gap-3 text-center divide-x divide-zinc-700/50">
+      <div>
+        <p class="text-xl font-bold">{{ user_stats.total_requests }}</p>
+        <p class="text-xs text-zinc-400 mt-0.5">Requests</p>
+      </div>
+      <div>
+        <p class="text-xl font-bold">{{ user_stats.total_prints }}</p>
+        <p class="text-xs text-zinc-400 mt-0.5">Prints</p>
+      </div>
+      {% if credits_enabled %}
+      <div>
+        <p class="text-xl font-bold text-amber-400">{{ user_stats.credits }}</p>
+        <p class="text-xs text-zinc-400 mt-0.5">Credits</p>
+      </div>
+      {% else %}
+      <div>
+        <p class="text-xl font-bold text-emerald-400">~{{ fun_stats.est_meters }}m</p>
+        <p class="text-xs text-zinc-400 mt-0.5">Filament</p>
+      </div>
+      {% endif %}
     </div>
   </div>
   {% endif %}
 
-  <!-- Announcements -->
-  {% if announcements %}
-  <div>
-    <h2 class="text-lg font-semibold mb-3">📢 Announcements</h2>
-    <div class="space-y-2">
-      {% for ann in announcements %}
-      <div class="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-4">
-        <p class="font-medium text-sm">{{ ann.title }}</p>
-        {% if ann.body %}
-        <p class="text-xs text-zinc-400 mt-1 line-clamp-2">{{ ann.body }}</p>
-        {% endif %}
-        <p class="text-xs text-zinc-600 mt-2">{{ ann.sent_at[:10] if ann.sent_at else '' }}</p>
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-  {% endif %}
-
-  <!-- Logged-out CTA -->
-  {% if not user %}
-  <div class="bg-gradient-to-br from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-2xl p-6 text-center">
-    <h2 class="text-lg font-bold">Track Your Prints</h2>
-    <p class="text-sm text-zinc-300 mt-2">Create a free account to track your print requests, get notifications, and earn credits.</p>
-    <a href="/auth/register" class="inline-flex items-center gap-2 mt-4 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition tap-highlight">
-      Create Account
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
-      </svg>
-    </a>
-  </div>
-  {% endif %}
-
-  <!-- Version / Changelog footer -->
+  <!-- ── Version / Changelog footer ── -->
   <div class="pt-4 mt-2 border-t border-zinc-800/60 text-center">
     <a href="/changelog" class="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-indigo-400 transition tap-highlight">
       <span>📋</span>
@@ -275,4 +407,31 @@
   </div>
 
 </div>
+
+{% if printer_status %}
+<script>
+  // Live feel: when a printer is actively printing, refresh the page periodically
+  // so progress advances — but only while the tab is visible, and pause when hidden.
+  (function () {
+    var isPrinting = {{ 'true' if printer_status.values()|selectattr('is_printing')|list else 'false' }};
+    if (!isPrinting) return;
+    var INTERVAL = 45000;
+    var timer = null;
+    function schedule() {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        if (document.visibilityState === 'visible' && navigator.onLine) {
+          window.location.reload();
+        } else {
+          schedule(); // try again later without reloading
+        }
+      }, INTERVAL);
+    }
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') schedule();
+    });
+    schedule();
+  })();
+</script>
+{% endif %}
 {% endblock %}
