@@ -2288,15 +2288,14 @@ def start_build(build_id: str, printer: str, comment: Optional[str] = None) -> D
         conn.close()
         return {"success": False, "error": f"Build {already_printing['build_number']} is already printing for this request. Complete or fail it first."}
 
-    # Block starting if this printer is already actively printing another build.
-    printer_busy = conn.execute(
-        "SELECT id, request_id FROM builds WHERE printer = ? AND status = 'PRINTING' AND id != ? LIMIT 1",
-        (printer, build_id),
-    ).fetchone()
-    if printer_busy:
-        conn.close()
-        return {"success": False, "error": f"Printer {printer} is already printing another build."}
-    
+    # Note: we intentionally do NOT hard-block when another request's build is
+    # still flagged PRINTING on this printer. A physical printer can only run one
+    # build at a time, so any other build left in PRINTING is stale (e.g. a print
+    # that finished or was abandoned without being reconciled). Hard-blocking on it
+    # permanently wedged the printer with no UI recovery path. Starting a build is
+    # an explicit admin action, so we allow it; the same-request guard above still
+    # prevents double-starting builds within the same request.
+
     now = now_iso()
     old_status = build["status"]
     
