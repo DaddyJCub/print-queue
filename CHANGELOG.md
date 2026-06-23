@@ -9,6 +9,20 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.24.2
+### Overview / Highlights
+- Reliability fixes so builds can always be started and finished prints clear themselves from the queue.
+
+### Enhancements
+- None; this is a patch release.
+
+### Bug Fixes
+- Starting a build no longer fails when the printer still shows a leftover "printing" job from an earlier print — a stale job can no longer wedge the printer.
+- Multi-build prints on Moonraker printers (e.g. AD5X) now auto-complete when the printer finishes and returns to standby, instead of staying stuck in progress.
+
+### Notes / Things to Know
+- Finished prints clear automatically and the next queued build starts on its own.
+
 ## 0.24.1
 ### Overview / Highlights
 - Stabilization patch following the print-agent remote-management release.
