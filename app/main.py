@@ -32,7 +32,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.24.2"
+APP_VERSION = "0.24.3"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -1194,6 +1194,7 @@ def init_db():
             total_layers INTEGER,
             notes TEXT,
             colors TEXT,
+            printing_confirmed_at TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY(request_id) REFERENCES requests(id)
@@ -1732,6 +1733,12 @@ def ensure_migrations():
         cur.execute("ALTER TABLE builds ADD COLUMN notes TEXT")
     if builds_cols and "colors" not in builds_cols:
         cur.execute("ALTER TABLE builds ADD COLUMN colors TEXT")
+    if builds_cols and "printing_confirmed_at" not in builds_cols:
+        # Timestamp of the first poll that observed the printer actually running this
+        # build. Auto-complete is gated on this so a printer that holds a "completed"
+        # state (e.g. FlashForge at 100% until OK is pressed) can't falsely complete
+        # builds that were auto-started but never physically printed.
+        cur.execute("ALTER TABLE builds ADD COLUMN printing_confirmed_at TEXT")
 
     # Migrate existing approved/printing/done requests that don't have builds yet
     existing_without_builds = cur.execute("""
@@ -2309,10 +2316,11 @@ def start_build(build_id: str, printer: str, comment: Optional[str] = None) -> D
         pass
     
     conn.execute("""
-        UPDATE builds SET 
+        UPDATE builds SET
             status = 'PRINTING',
             printer = ?,
             started_at = ?,
+            printing_confirmed_at = NULL,
             updated_at = ?
         WHERE id = ?
     """, (printer, now, now, build_id))
@@ -5981,6 +5989,31 @@ def _should_auto_complete_poll_result(
     return False
 
 
+def _apply_observed_printing_gate(
+    printing_confirmed_at: Optional[str],
+    is_printing: bool,
+    should_complete: bool,
+) -> "tuple[bool, bool]":
+    """Gate auto-completion on having observed the printer actually run the build.
+
+    A build may only auto-complete after the poller has seen the printer actively
+    printing it at least once. This prevents a printer that holds a stale
+    "completed" state (e.g. FlashForge stays at 100% until OK is pressed) from
+    cascading false completions onto builds that were auto-started in the database
+    but never physically printed.
+
+    Returns ``(newly_confirmed, allow_complete)``:
+      - ``newly_confirmed``: the printer is currently printing an as-yet
+        unconfirmed build, so the caller should persist a confirmation timestamp.
+      - ``allow_complete``: whether the build may be auto-completed now.
+    """
+    confirmed = bool(printing_confirmed_at)
+    newly_confirmed = is_printing and not confirmed
+    if newly_confirmed:
+        confirmed = True
+    return newly_confirmed, (should_complete and confirmed)
+
+
 def get_printer_api(printer_code: str):
     """Get printer API instance for a printer (ADVENTURER_4 or AD5X).
     
@@ -7056,7 +7089,45 @@ async def poll_builds_status_worker():
                     started_at=build["started_at"],
                     extended_status=extended_auto_complete_status,
                 )
-                
+
+                # Observed-printing guard. Only allow auto-complete once the poller has
+                # actually seen the printer running THIS build. start_build only flips
+                # the DB row (it does not push a file to the printer), and FlashForge
+                # holds a "completed"/100% state until OK is pressed on the machine. So
+                # without this guard, completing build N and auto-starting build N+1
+                # would immediately re-complete N+1 from the same stale state, cascading
+                # through the whole queue. A build that is auto-started but never
+                # physically run keeps is_printing == False, so it is never confirmed
+                # and never falsely completes.
+                newly_confirmed, allow_complete = _apply_observed_printing_gate(
+                    build["printing_confirmed_at"], is_printing, should_complete
+                )
+                if newly_confirmed:
+                    conn_pc = db()
+                    conn_pc.execute(
+                        "UPDATE builds SET printing_confirmed_at = ? WHERE id = ?",
+                        (now_iso(), build_id),
+                    )
+                    conn_pc.commit()
+                    conn_pc.close()
+
+                if should_complete and not allow_complete:
+                    # Printer reports complete, but we never observed this build actually
+                    # printing — treat as a stale/held completion from a previous job.
+                    print(f"[BUILD-POLL] Suppressing completion for build {build_id[:8]} — "
+                          f"not yet observed printing (stale printer state)")
+                    add_poll_debug_log({
+                        "type": "complete_suppressed",
+                        "build_id": build_id[:8],
+                        "request_id": request_id[:8],
+                        "printer": build["printer"],
+                        "is_printing": is_printing,
+                        "is_complete": is_complete,
+                        "percent_complete": percent_complete,
+                        "message": "Completion suppressed — build not yet observed printing (stale printer state)",
+                    })
+                should_complete = allow_complete
+
                 # Moonraker: write file-based slicer estimate to build for smart ETA
                 if isinstance(printer_api, MoonrakerAPI) and not should_complete and is_printing:
                     try:

@@ -1,5 +1,6 @@
 from app.main import (
     MoonrakerAPI,
+    _apply_observed_printing_gate,
     _should_auto_complete_poll_result,
     db,
     find_matching_requests_for_file,
@@ -99,6 +100,62 @@ def test_multi_build_moonraker_standby_with_duration_is_treated_complete(client)
         extended_status={"state": "standby", "message": "", "print_duration": 42},
     )
     assert should_complete is True
+
+
+def test_observed_printing_gate_suppresses_unconfirmed_completion():
+    # Printer reports complete but the build was never observed printing (e.g. it was
+    # auto-started in the DB while FlashForge still held the previous print's 100%
+    # state). Completion must be suppressed so the cascade can't happen.
+    newly_confirmed, allow_complete = _apply_observed_printing_gate(
+        printing_confirmed_at=None, is_printing=False, should_complete=True
+    )
+    assert newly_confirmed is False
+    assert allow_complete is False
+
+
+def test_observed_printing_gate_confirms_when_printer_running():
+    # Poller sees the printer actively running an as-yet unconfirmed build.
+    newly_confirmed, allow_complete = _apply_observed_printing_gate(
+        printing_confirmed_at=None, is_printing=True, should_complete=False
+    )
+    assert newly_confirmed is True
+    assert allow_complete is False
+
+
+def test_observed_printing_gate_allows_completion_once_confirmed():
+    # Build was previously observed printing; printer now reports complete.
+    newly_confirmed, allow_complete = _apply_observed_printing_gate(
+        printing_confirmed_at=now_iso(), is_printing=False, should_complete=True
+    )
+    assert newly_confirmed is False
+    assert allow_complete is True
+
+
+def test_start_build_resets_printing_confirmed(client):
+    req = create_test_request(status="APPROVED", printer="AD5X", with_builds=1)
+    conn = db()
+    build_id = conn.execute(
+        "SELECT id FROM builds WHERE request_id = ? ORDER BY build_number LIMIT 1",
+        (req["request_id"],),
+    ).fetchone()["id"]
+    # Simulate a stale confirmation left over from a prior run.
+    conn.execute(
+        "UPDATE builds SET status = 'READY', printer = 'AD5X', printing_confirmed_at = ? WHERE id = ?",
+        (now_iso(), build_id),
+    )
+    conn.commit()
+    conn.close()
+
+    result = start_build(build_id, "AD5X", "Test confirmation reset")
+    assert result["success"] is True
+
+    conn = db()
+    row = conn.execute(
+        "SELECT status, printing_confirmed_at FROM builds WHERE id = ?", (build_id,)
+    ).fetchone()
+    conn.close()
+    assert row["status"] == "PRINTING"
+    assert row["printing_confirmed_at"] is None
 
 
 def test_multi_build_moonraker_cancelled_standby_not_auto_complete(client):

@@ -9,6 +9,20 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.24.3
+### Overview / Highlights
+- Stopped multi-build prints from marking later builds "done" before they actually printed.
+
+### Enhancements
+- None; this is a patch release.
+
+### Bug Fixes
+- A build now only auto-completes after the printer has actually been seen running it. Previously, a printer that holds its "finished" state (such as the Adventurer 4 staying at 100% until OK is pressed) could rapidly mark several queued builds complete without printing them.
+
+### Notes / Things to Know
+- Hands-free queue progression still works; the operator still starts each physical print as before.
+- A very short print that starts and finishes within a single status check may need to be marked done manually.
+
 ## 0.24.2
 ### Overview / Highlights
 - Reliability fixes so builds can always be started and finished prints clear themselves from the queue.
