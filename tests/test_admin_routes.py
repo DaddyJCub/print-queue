@@ -578,3 +578,52 @@ class TestAdminErrorHandling:
         )
         # Should be rejected with 400 - invalid status
         assert response.status_code == 400
+
+
+class TestBroadcastDelete:
+    """Deleting a past broadcast/announcement."""
+
+    def _insert_broadcast(self):
+        from app.main import db, now_iso
+        import uuid
+        bid = str(uuid.uuid4())
+        conn = db()
+        conn.execute(
+            """INSERT INTO broadcast_notifications
+                   (id, title, body, broadcast_type, sent_at, total_sent, total_failed)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (bid, "Test Announcement", "Body text", "custom", now_iso(), 3, 0),
+        )
+        conn.commit()
+        conn.close()
+        return bid
+
+    def test_delete_broadcast_removes_it(self, admin_client):
+        from app.main import db
+        bid = self._insert_broadcast()
+
+        resp = admin_client.post(f"/admin/broadcast/{bid}/delete", follow_redirects=False)
+        assert resp.status_code in (302, 303)
+
+        conn = db()
+        row = conn.execute(
+            "SELECT id FROM broadcast_notifications WHERE id = ?", (bid,)
+        ).fetchone()
+        conn.close()
+        assert row is None
+
+    def test_delete_requires_admin(self, client):
+        from app.main import db
+        bid = self._insert_broadcast()
+        resp = client.post(f"/admin/broadcast/{bid}/delete", follow_redirects=False)
+        # Unauthenticated callers must not be able to delete
+        assert resp.status_code in (401, 403, 302, 303)
+        if resp.status_code in (302, 303):
+            assert "/admin/broadcast?deleted" not in resp.headers.get("location", "")
+        # The record must survive an unauthenticated attempt
+        conn = db()
+        row = conn.execute(
+            "SELECT id FROM broadcast_notifications WHERE id = ?", (bid,)
+        ).fetchone()
+        conn.close()
+        assert row is not None

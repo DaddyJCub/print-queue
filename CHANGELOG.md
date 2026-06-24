@@ -9,6 +9,19 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.24.5
+### Overview / Highlights
+- Admins can now delete announcements.
+
+### Enhancements
+- Added a delete button to each past broadcast on the Broadcast page. Deleting one removes it from the broadcast history and from the dashboard Announcements feed.
+
+### Bug Fixes
+- None; this is a small addition.
+
+### Notes / Things to Know
+- Deleting an announcement does not recall push or email notifications that were already delivered.
+
 ## 0.24.4
 ### Overview / Highlights
 - Added a way to put a completed build back in the queue.

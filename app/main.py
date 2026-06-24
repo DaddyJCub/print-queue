@@ -32,7 +32,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.24.4"
+APP_VERSION = "0.24.5"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -8144,12 +8144,24 @@ def get_broadcast_history(limit: int = 20) -> List[Dict]:
     """Get recent broadcast notification history."""
     conn = db()
     rows = conn.execute("""
-        SELECT * FROM broadcast_notifications 
-        ORDER BY sent_at DESC 
+        SELECT * FROM broadcast_notifications
+        ORDER BY sent_at DESC
         LIMIT ?
     """, (limit,)).fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+
+def delete_broadcast_notification(broadcast_id: str) -> bool:
+    """Delete a broadcast/announcement record. Removes it from the broadcast
+    history and from the dashboard Announcements feed. Returns True if a row was
+    deleted."""
+    conn = db()
+    cur = conn.execute("DELETE FROM broadcast_notifications WHERE id = ?", (broadcast_id,))
+    conn.commit()
+    deleted = cur.rowcount > 0
+    conn.close()
+    return deleted
 
 
 def safe_ext(filename: str) -> str:

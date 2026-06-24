@@ -12,6 +12,7 @@ from app.main import (
     require_admin,
     send_broadcast_notification,
     get_broadcast_history,
+    delete_broadcast_notification,
     APP_VERSION,
     send_email,
     VAPID_PUBLIC_KEY,
@@ -128,6 +129,18 @@ def admin_broadcast_send(
     return RedirectResponse(
         url=f"/admin/broadcast?sent=1&total={result['total_sent']}&failed={result['total_failed']}&emails={result.get('emails_sent', 0)}",
         status_code=303
+    )
+
+
+@router.post("/admin/broadcast/{broadcast_id}/delete")
+def admin_broadcast_delete(request: Request, broadcast_id: str, _=Depends(require_admin)):
+    """Delete a past broadcast/announcement. Removes it from the broadcast history
+    and from the dashboard Announcements feed. Already-delivered push/email
+    notifications are not affected."""
+    deleted = delete_broadcast_notification(broadcast_id)
+    return RedirectResponse(
+        url=f"/admin/broadcast?deleted={1 if deleted else 0}",
+        status_code=303,
     )
 
 
