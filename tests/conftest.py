@@ -77,6 +77,7 @@ def clear_all_test_data():
         "request_shipping_events", "request_shipping_rate_snapshots", "request_shipping",
         "request_assignments", "request_messages", "request_templates",
         "status_events", "build_status_events", "build_snapshots", "builds",
+        "external_source_files", "external_sources",
         "store_item_files", "store_items", "files",
         "requests", "feedback", "notification_prefs",
         "push_subscriptions", "email_lookup_tokens",

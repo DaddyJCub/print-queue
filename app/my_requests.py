@@ -369,7 +369,11 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
     files = conn.execute(
         "SELECT * FROM files WHERE request_id = ? ORDER BY created_at DESC", (rid,)
     ).fetchall()
-    
+
+    # Get external provider sources (Printables, etc.)
+    from app.public import load_request_external_sources
+    external_sources = load_request_external_sources(conn, rid)
+
     # Get status history
     history = conn.execute(
         "SELECT * FROM status_events WHERE request_id = ? ORDER BY created_at DESC", (rid,)
@@ -524,6 +528,7 @@ async def requester_portal(request: Request, rid: str, token: str, report: Optio
         "request": request,
         "req": req,
         "files": files,
+        "external_sources": external_sources,
         "history": history,
         "messages": messages,
         "token": token,

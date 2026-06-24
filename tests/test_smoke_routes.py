@@ -390,3 +390,77 @@ def test_build_start_requires_specific_printer(client):
     )
     assert response.status_code == 400
     assert "printer must be selected" in response.text.lower()
+
+
+# ─────────────── External source schema migration safety (TASK-024 / TEST-007) ───────────────
+
+def _table_names(conn):
+    return {
+        r[0]
+        for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+
+
+def _index_names(conn, table):
+    return {r[1] for r in conn.execute(f"PRAGMA index_list('{table}')").fetchall()}
+
+
+def test_external_source_tables_created_on_fresh_db():
+    """Fresh DB gains external_sources/external_source_files with indexes."""
+    init_sandbox_db()
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        tables = _table_names(conn)
+        assert "external_sources" in tables
+        assert "external_source_files" in tables
+        src_idx = _index_names(conn, "external_sources")
+        assert "idx_external_sources_request" in src_idx
+        assert "idx_external_sources_provider" in src_idx
+        assert "idx_external_sources_source_id" in src_idx
+        file_idx = _index_names(conn, "external_source_files")
+        assert "idx_external_source_files_request" in file_idx
+        assert "idx_external_source_files_source_id" in file_idx
+    finally:
+        conn.close()
+
+
+def test_external_source_migration_is_additive_on_existing_db():
+    """Dropping the tables (simulating an older DB) and re-running init_db
+    re-creates them without touching existing data — additive + idempotent."""
+    init_sandbox_db()
+    conn = sqlite3.connect(DB_FILE)
+    # Seed a request so we can prove existing data survives the migration.
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    rid = str(uuid.uuid4())
+    conn.execute(
+        "INSERT INTO requests (id, created_at, updated_at, requester_name, requester_email, "
+        "printer, material, colors, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (rid, now, now, "Mig User", "mig@test.com", "ANY", "PLA", "black", "NEW"),
+    )
+    # Simulate an existing DB that predates the feature.
+    conn.execute("DROP TABLE IF EXISTS external_source_files")
+    conn.execute("DROP TABLE IF EXISTS external_sources")
+    conn.commit()
+    conn.close()
+
+    # Re-run init_db twice to confirm idempotency (CREATE TABLE IF NOT EXISTS).
+    init_db()
+    init_db()
+
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        tables = _table_names(conn)
+        assert "external_sources" in tables
+        assert "external_source_files" in tables
+        # Pre-existing request row is untouched.
+        kept = conn.execute("SELECT COUNT(*) FROM requests WHERE id = ?", (rid,)).fetchone()[0]
+        assert kept == 1
+        # New tables are usable.
+        conn.execute(
+            "INSERT INTO external_sources (id, request_id, created_at, provider, source_id) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), rid, now, "printables", "258431"),
+        )
+        conn.commit()
+    finally:
+        conn.close()

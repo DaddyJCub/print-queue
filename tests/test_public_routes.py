@@ -7,6 +7,7 @@ Covers:
 - Edge cases and error scenarios
 - Response content verification
 """
+import os
 import pytest
 from io import BytesIO
 
@@ -526,3 +527,343 @@ class TestMyRequestsAccess:
         fake_id = "00000000-0000-0000-0000-000000000000"
         response = client.get(f"/my/{fake_id}?token=anytoken")
         assert response.status_code == 404
+
+
+# ─────────────── Printables source ingest (TASK-022/023, TEST-003..005) ───────────────
+
+import json as _json
+import app.public as _public
+from app.integrations import printables_client as _pc
+
+
+_FAKE_MODEL = {
+    "id": "258431",
+    "name": "Rugged Box",
+    "summary": "A parametric box",
+    "description": "<p>desc</p>",
+    "filesCount": 2,
+    "premium": False,
+    "price": None,
+    "excludeCommercialUsage": False,
+    "license": {"name": "CC-BY", "abbreviation": "CC-BY"},
+    "user": {"publicUsername": "Whity"},
+    "stls": [
+        {"id": "1", "name": "box.stl", "fileSize": 100, "folder": "A"},
+        {"id": "2", "name": "lid.stl", "fileSize": 200, "folder": "A"},
+    ],
+    "gcodes": [], "slas": [], "otherFiles": [],
+    "downloadPacks": [{"id": "9", "name": "", "fileSize": 999, "fileType": "MODEL_FILES"}],
+}
+
+
+def _make_authed_account(client, email="ingest@test.com"):
+    from app.auth import create_account, create_session
+    from app.models import AccountRole
+    acct = create_account(email, "Ingest User", role=AccountRole.USER)
+    sess = create_session(acct.id)
+    client.cookies.set("session", sess.token)
+    return acct
+
+
+def _enable_printables_flag():
+    from app.auth import invalidate_feature_flag_cache
+    conn = get_test_db()
+    conn.execute(
+        "INSERT OR REPLACE INTO feature_flags (key, enabled, rollout_percentage, allowed_users, allowed_emails) "
+        "VALUES ('printables_fetch', 1, 100, '[]', '[]')"
+    )
+    conn.commit()
+    conn.close()
+    invalidate_feature_flag_cache()
+
+
+class TestFetchProviderFiles:
+    URL = "/submit/fetch-provider-files"
+    GOOD_LINK = "https://www.printables.com/model/258431-rugged-box"
+
+    def test_guest_denied(self, client):
+        """TEST-003A: unauthenticated call is denied."""
+        r = client.post(self.URL, json={"link_url": self.GOOD_LINK})
+        assert r.status_code in (401, 403)
+        assert r.json()["ok"] is False
+
+    def test_flag_disabled_denied(self, client):
+        from app.auth import invalidate_feature_flag_cache
+        _make_authed_account(client)
+        # Deterministically disable (the feature_flags table persists on disk).
+        conn = get_test_db()
+        conn.execute(
+            "INSERT OR REPLACE INTO feature_flags (key, enabled, rollout_percentage, allowed_users, allowed_emails) "
+            "VALUES ('printables_fetch', 0, 0, '[]', '[]')"
+        )
+        conn.commit()
+        conn.close()
+        invalidate_feature_flag_cache()
+        r = client.post(self.URL, json={"link_url": self.GOOD_LINK})
+        assert r.status_code == 403
+        assert r.json()["error"] == "feature_disabled"
+
+    def test_success(self, client, monkeypatch):
+        _make_authed_account(client)
+        _enable_printables_flag()
+        monkeypatch.setattr(_public.printables_client, "fetch_printables_model", lambda pid, **k: _FAKE_MODEL)
+        r = client.post(self.URL, json={"link_url": self.GOOD_LINK})
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["ok"] is True
+        assert data["provider"] == "printables"
+        assert data["model"]["title"] == "Rugged Box"
+        assert len(data["candidates"]) == 3  # 2 stl (direct) + 1 pack (package)
+        assert data["model"]["description"] == "desc"  # HTML stripped (SEC-003)
+
+    def test_invalid_url(self, client):
+        _make_authed_account(client)
+        _enable_printables_flag()
+        r = client.post(self.URL, json={"link_url": "https://www.printables.com/collections/1"})
+        assert r.status_code == 400
+        assert r.json()["error"] == "invalid_url"
+
+    def test_unsupported_host(self, client):
+        _make_authed_account(client)
+        _enable_printables_flag()
+        r = client.post(self.URL, json={"link_url": "https://www.thingiverse.com/thing:1"})
+        assert r.status_code == 400
+
+    def test_not_found(self, client, monkeypatch):
+        _make_authed_account(client)
+        _enable_printables_flag()
+
+        def _raise(pid, **k):
+            raise _pc.PrintablesNotFound("nope")
+
+        monkeypatch.setattr(_public.printables_client, "fetch_printables_model", _raise)
+        r = client.post(self.URL, json={"link_url": self.GOOD_LINK})
+        assert r.status_code == 404
+
+    def test_provider_timeout(self, client, monkeypatch):
+        _make_authed_account(client)
+        _enable_printables_flag()
+
+        def _raise(pid, **k):
+            raise _pc.PrintablesUnavailable("timeout")
+
+        monkeypatch.setattr(_public.printables_client, "fetch_printables_model", _raise)
+        r = client.post(self.URL, json={"link_url": self.GOOD_LINK})
+        assert r.status_code == 502
+        assert r.json()["error"] == "provider_unavailable"
+
+    def test_empty_candidates(self, client, monkeypatch):
+        _make_authed_account(client)
+        _enable_printables_flag()
+        empty = dict(_FAKE_MODEL, stls=[], downloadPacks=[], filesCount=0)
+        monkeypatch.setattr(_public.printables_client, "fetch_printables_model", lambda pid, **k: empty)
+        r = client.post(self.URL, json={"link_url": self.GOOD_LINK})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["candidates"] == []
+        assert data.get("warning") == "no_files"
+
+
+def _submit_form(**overrides):
+    base = {
+        "requester_name": "Test User",
+        "requester_email": "ingest@test.com",
+        "print_name": "Box",
+        "printer": "ANY",
+        "material": "PLA",
+        "colors": "black",
+    }
+    base.update(overrides)
+    return base
+
+
+class TestSubmitWithExternalFiles:
+    def _selection(self, attachment_mode="reference-only", quantity=2):
+        return _json.dumps({
+            "provider": "printables",
+            "source_id": "258431",
+            "source_url": "https://www.printables.com/model/258431-rugged-box",
+            "model": {"title": "Rugged Box", "license": "CC-BY", "author": "Whity"},
+            "files": [{
+                "file_id": "1", "file_type": "stl", "name": "box.stl",
+                "size_bytes": 100, "folder": "A",
+                "attachment_mode": attachment_mode, "quantity": quantity,
+            }],
+        })
+
+    def test_selection_only_submit(self, client, monkeypatch):
+        """TEST-004: selection-only submit creates request + external rows, no local files."""
+        _make_authed_account(client)
+        _enable_printables_flag()
+        monkeypatch.setenv("PRINTABLES_FETCH_MODE", "reference_only")
+        r = client.post(
+            "/submit",
+            data=_submit_form(selected_external_files_json=self._selection()),
+            follow_redirects=False,
+        )
+        assert r.status_code == 303, r.text
+        conn = get_test_db()
+        sources = conn.execute("SELECT * FROM external_sources").fetchall()
+        files_rows = conn.execute("SELECT * FROM external_source_files").fetchall()
+        local_files = conn.execute("SELECT * FROM files").fetchall()
+        conn.close()
+        assert len(sources) == 1
+        assert sources[0]["title"] == "Rugged Box"
+        assert sources[0]["fetch_mode"] == "reference_only"
+        assert len(files_rows) == 1
+        assert files_rows[0]["quantity"] == 2
+        assert files_rows[0]["imported_file_id"] is None
+        assert len(local_files) == 0
+
+    def test_mixed_upload_and_external(self, client, monkeypatch):
+        """TEST-005: upload + external selection both persist."""
+        _make_authed_account(client)
+        _enable_printables_flag()
+        monkeypatch.setenv("PRINTABLES_FETCH_MODE", "reference_only")
+        files = {"upload": ("part.stl", BytesIO(b"solid x\nendsolid x\n"), "application/octet-stream")}
+        r = client.post(
+            "/submit",
+            data=_submit_form(selected_external_files_json=self._selection()),
+            files=files,
+            follow_redirects=False,
+        )
+        assert r.status_code == 303, r.text
+        conn = get_test_db()
+        ext_files = conn.execute("SELECT * FROM external_source_files").fetchall()
+        local_files = conn.execute("SELECT * FROM files").fetchall()
+        conn.close()
+        assert len(ext_files) == 1
+        assert len(local_files) == 1  # the uploaded part.stl
+
+    def test_direct_import_downloads(self, client, monkeypatch):
+        """direct_import mode fetches the binary and links it as a request file."""
+        _make_authed_account(client)
+        _enable_printables_flag()
+        monkeypatch.setenv("PRINTABLES_FETCH_MODE", "direct_import")
+        monkeypatch.setattr(
+            _public.printables_client, "get_download_links",
+            lambda sid, files, **k: [{"id": "1", "link": "https://files.printables.com/box.stl", "ttl": 1, "fileType": "stl"}],
+        )
+        monkeypatch.setattr(
+            _public.printables_client, "download_file",
+            lambda url, **k: b"solid box\nendsolid box\n",
+        )
+        r = client.post(
+            "/submit",
+            data=_submit_form(selected_external_files_json=self._selection(attachment_mode="direct", quantity=1)),
+            follow_redirects=False,
+        )
+        assert r.status_code == 303, r.text
+        conn = get_test_db()
+        ext_files = conn.execute("SELECT * FROM external_source_files").fetchall()
+        local_files = conn.execute("SELECT * FROM files").fetchall()
+        conn.close()
+        assert len(ext_files) == 1
+        assert ext_files[0]["imported_file_id"] is not None
+        assert len(local_files) == 1
+        assert local_files[0]["original_filename"] == "box.stl"
+
+    def test_external_selection_requires_auth(self, client):
+        """Guest cannot attach external files even if they post the hidden field."""
+        r = client.post(
+            "/submit",
+            data=_submit_form(selected_external_files_json=self._selection()),
+            follow_redirects=False,
+        )
+        assert r.status_code == 400  # re-renders form with error (render_form)
+        conn = get_test_db()
+        sources = conn.execute("SELECT * FROM external_sources").fetchall()
+        conn.close()
+        assert len(sources) == 0
+
+
+class TestRequestFormPrintablesUI:
+    def test_button_shown_for_authed_enabled_user(self, client):
+        _make_authed_account(client, email="uiuser@test.com")
+        _enable_printables_flag()
+        r = client.get("/new-request")
+        assert r.status_code == 200
+        # Assert on the gated button element, not the JS string literal.
+        assert 'id="pf-fetch-btn"' in r.text
+        assert 'id="selected-external-files-json"' in r.text
+
+    def test_button_hidden_for_guest_when_flag_off(self, client):
+        # Default: flag off -> whole block absent (no button, no CTA)
+        conn = get_test_db()
+        conn.execute(
+            "INSERT OR REPLACE INTO feature_flags (key, enabled, rollout_percentage, allowed_users, allowed_emails) "
+            "VALUES ('printables_fetch', 0, 0, '[]', '[]')"
+        )
+        conn.commit()
+        conn.close()
+        from app.auth import invalidate_feature_flag_cache
+        invalidate_feature_flag_cache()
+        r = client.get("/new-request")
+        assert r.status_code == 200
+        assert 'id="pf-fetch-btn"' not in r.text
+        assert "fetch and select files directly from a Printables" not in r.text
+
+    def test_guest_sees_signin_cta_when_globally_enabled(self, client):
+        # Globally enabled (rollout 100) but guest -> sign-in CTA, no controls
+        conn = get_test_db()
+        conn.execute(
+            "INSERT OR REPLACE INTO feature_flags (key, enabled, rollout_percentage, allowed_users, allowed_emails) "
+            "VALUES ('printables_fetch', 1, 100, '[]', '[]')"
+        )
+        conn.commit()
+        conn.close()
+        from app.auth import invalidate_feature_flag_cache
+        invalidate_feature_flag_cache()
+        r = client.get("/new-request")
+        assert r.status_code == 200
+        assert "fetch and select files directly from a Printables" in r.text  # CTA
+        assert 'id="pf-fetch-btn"' not in r.text  # controls require auth (TASK-012A)
+
+
+class TestExternalSourceDetailViews:
+    """TASK-019/020: external sources surface in requester + admin detail views."""
+
+    def _create_with_source(self, client):
+        _make_authed_account(client)
+        _enable_printables_flag()
+        import os as _os
+        _os.environ["PRINTABLES_FETCH_MODE"] = "reference_only"
+        sel = _json.dumps({
+            "provider": "printables",
+            "source_id": "258431",
+            "source_url": "https://www.printables.com/model/258431-rugged-box",
+            "model": {"title": "Rugged Box", "license": "CC-BY-NC-SA", "author": "Whity"},
+            "files": [{
+                "file_id": "1", "file_type": "stl", "name": "box.stl",
+                "size_bytes": 100, "folder": "Size A",
+                "attachment_mode": "reference-only", "quantity": 3,
+            }],
+        })
+        r = client.post(
+            "/submit",
+            data=_submit_form(selected_external_files_json=sel),
+            follow_redirects=False,
+        )
+        assert r.status_code == 303, r.text
+        conn = get_test_db()
+        row = conn.execute("SELECT id, access_token FROM requests ORDER BY created_at DESC LIMIT 1").fetchone()
+        conn.close()
+        _os.environ.pop("PRINTABLES_FETCH_MODE", None)
+        return row["id"], row["access_token"]
+
+    def test_requester_view_shows_source(self, client):
+        rid, token = self._create_with_source(client)
+        r = client.get(f"/my/{rid}?token={token}")
+        assert r.status_code == 200
+        assert "Rugged Box" in r.text
+        assert "box.stl" in r.text
+        assert "Qty 3" in r.text
+
+    def test_admin_view_shows_source_and_mode(self, client):
+        rid, _ = self._create_with_source(client)
+        client.cookies.set("admin_pw", os.environ["ADMIN_PASSWORD"])
+        r = client.get(f"/admin/request/{rid}")
+        assert r.status_code == 200
+        assert "Rugged Box" in r.text
+        assert "box.stl" in r.text
+        assert "reference-only" in r.text

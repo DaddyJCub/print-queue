@@ -9,6 +9,24 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.25.0
+### Overview / Highlights
+- Import 3D files directly from a Printables model link on the request form.
+
+### Enhancements
+- Added a "Fetch Files" action to the request form: paste a Printables model link, fetch its metadata (title, description, license, author) and file list, then multi-select files with a per-file quantity (1–50). The selection is persisted with the request.
+- Individual files (`stl`/`gcode`/`sla`/`other`) are imported automatically and attached to the request; multi-file download packs and premium/paid models are recorded as reference links instead of binaries.
+- The selected model, files, quantities, attachment mode, and license now render on both the requester's request page and the admin request view.
+- New provider abstraction under `app/integrations/` (Printables client + parser) designed to support additional providers later.
+
+### Bug Fixes
+- Fixed an `UnboundLocalError` in the database migration step that could occur (via a redundant local `import secrets`) when backfilling request access tokens on certain databases.
+
+### Notes / Things to Know
+- The feature is gated behind the new `printables_fetch` feature flag (off by default in production) and requires a signed-in account.
+- Runtime behavior is controlled by `PRINTABLES_FETCH_MODE` (`metadata_only`, `reference_only`, or `direct_import`). See [docs/printables-integration.md](docs/printables-integration.md) for the compliance matrix; model rights remain governed by the original creator's license.
+- New `external_sources` and `external_source_files` tables are created additively on startup; no manual migration is needed.
+
 ## 0.24.5
 ### Overview / Highlights
 - Redesigned the home dashboard into a modern, at-a-glance layout.

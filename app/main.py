@@ -32,7 +32,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.24.5"
+APP_VERSION = "0.25.0"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -1036,6 +1036,58 @@ def init_db():
     );
     """)
 
+    # External provider sources (e.g. Printables) selected on the request form.
+    # One row per fetched model linked to a request; files live in
+    # external_source_files. Created additively so fresh + existing DBs converge
+    # (CON-003 / TASK-009).
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS external_sources (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      source_url TEXT,
+      title TEXT,
+      summary TEXT,
+      license TEXT,
+      license_abbreviation TEXT,
+      author TEXT,
+      attachment_mode TEXT,
+      fetch_mode TEXT,
+      raw_metadata TEXT,
+      FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE
+    );
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_external_sources_request ON external_sources(request_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_external_sources_provider ON external_sources(provider)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_external_sources_source_id ON external_sources(source_id)")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS external_source_files (
+      id TEXT PRIMARY KEY,
+      external_source_id TEXT NOT NULL,
+      request_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      file_id TEXT NOT NULL,
+      file_type TEXT,
+      name TEXT,
+      size_bytes INTEGER,
+      folder TEXT,
+      attachment_mode TEXT,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      imported_file_id TEXT,
+      download_url TEXT,
+      FOREIGN KEY(external_source_id) REFERENCES external_sources(id) ON DELETE CASCADE,
+      FOREIGN KEY(request_id) REFERENCES requests(id) ON DELETE CASCADE
+    );
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_external_source_files_request ON external_source_files(request_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_external_source_files_provider ON external_source_files(provider)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_external_source_files_source_id ON external_source_files(source_id)")
+
     # Settings table (key/value)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS settings (
@@ -1820,7 +1872,6 @@ def ensure_migrations():
             cur.execute("ALTER TABLE trips ADD COLUMN budget_cents INTEGER DEFAULT 0")
         # Backfill share tokens for existing trips
         existing_without_share = cur.execute("SELECT id FROM trips WHERE share_token IS NULL OR share_token = ''").fetchall()
-        import secrets
         for row in existing_without_share:
             cur.execute("UPDATE trips SET share_token = ? WHERE id = ?", (secrets.token_urlsafe(16), row[0]))
 
@@ -8312,6 +8363,13 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any], us
     
     # Check if user accounts feature is enabled
     user_accounts_enabled = is_feature_enabled("user_accounts")
+    # Printables fetch feature (per-user gate + global visibility for guest CTA)
+    printables_fetch_enabled = is_feature_enabled(
+        "printables_fetch",
+        user_id=getattr(user, "id", None),
+        email=getattr(user, "email", None),
+    )
+    printables_fetch_visible = printables_fetch_enabled or is_feature_enabled("printables_fetch")
     shipping_enabled = get_bool_setting("shipping_enabled", False)
     shipping_default_country = get_setting("shipping_default_country", "US")
     
@@ -8390,6 +8448,8 @@ def render_form(request: Request, error: Optional[str], form: Dict[str, Any], us
         "saved_templates": saved_templates,
         "user": user,
         "user_accounts_enabled": user_accounts_enabled,
+        "printables_fetch_enabled": printables_fetch_enabled,
+        "printables_fetch_visible": printables_fetch_visible,
         "shipping_enabled": shipping_enabled,
         "shipping_default_country": shipping_default_country,
         "queue_stats": queue_stats,
