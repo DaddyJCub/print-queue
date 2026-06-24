@@ -867,3 +867,12 @@ class TestExternalSourceDetailViews:
         assert "Rugged Box" in r.text
         assert "box.stl" in r.text
         assert "reference-only" in r.text
+
+
+class TestAdminFeaturesPagePrintables:
+    def test_printables_flag_listed_on_admin_features(self, admin_client):
+        r = admin_client.get("/admin/features")
+        assert r.status_code == 200
+        assert "Printables File Import" in r.text
+        # Allow-list editor input is rendered for the flag
+        assert 'id="printables_fetch-new-email"' in r.text

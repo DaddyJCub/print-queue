@@ -9,6 +9,16 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.25.1
+### Overview / Highlights
+- Surface the new Printables import toggle in the admin Feature Flags page.
+
+### Bug Fixes
+- The `printables_fetch` feature flag was registered but did not appear on the admin Feature Flags page, because that page only renders a curated, hardcoded list of flags. Added it to the "Private Features (User-Gated)" section so admins can enable it and manage the allowed-email list from the UI.
+
+### Notes / Things to Know
+- Behavior is unchanged; this only makes the existing flag manageable in the UI. Runtime mode is still controlled by the `PRINTABLES_FETCH_MODE` env var.
+
 ## 0.25.0
 ### Overview / Highlights
 - Import 3D files directly from a Printables model link on the request form.

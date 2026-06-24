@@ -235,9 +235,14 @@
             'icon': '🕹️',
             'title': 'Printellect Device Control',
             'desc': 'Device onboarding/control pages and API access for the Printellect base workflow.'
+          },
+          'printables_fetch': {
+            'icon': '🔗',
+            'title': 'Printables File Import',
+            'desc': 'Let signed-in users paste a Printables model link on the request form to fetch and select files. Toggle on, then add allowed emails. Runtime behavior is controlled by the PRINTABLES_FETCH_MODE env var (metadata_only / reference_only / direct_import).'
           }
         } %}
-        {% for key in ['trips', 'printellect_device_control'] %}
+        {% for key in ['trips', 'printellect_device_control', 'printables_fetch'] %}
         {% set private_flag = flags.get(key) %}
         {% set details = private_flag_details.get(key, {}) %}
         {% if private_flag %}
