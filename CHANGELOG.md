@@ -11,15 +11,20 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 ## 0.24.5
 ### Overview / Highlights
+- Redesigned the home dashboard into a modern, at-a-glance layout.
 - Admins can now delete announcements.
 
 ### Enhancements
+- Redesigned the home dashboard with a responsive "bento" layout: a prominent New Request action, an at-a-glance metrics band (Printing Now, In Queue, Completed with a this-week count), a live Printers panel with real-time progress bars, your active requests with build progress, and recent activity shown as a timeline. It fills the screen on desktop and reflows to a single column on mobile.
+- Admins now get dashboard shortcuts: a "Pending Review" count and a Manage Queue quick action.
 - Added a delete button to each past broadcast on the Broadcast page. Deleting one removes it from the broadcast history and from the dashboard Announcements feed.
 
 ### Bug Fixes
-- None; this is a small addition.
+- None.
 
 ### Notes / Things to Know
+- The dashboard appears at `/` when the `dashboard_home` feature is enabled; the request form remains at `/new-request`.
+- The stylesheet is now cache-busted per release, so style updates apply without a hard refresh.
 - Deleting an announcement does not recall push or email notifications that were already delivered.
 
 ## 0.24.4
