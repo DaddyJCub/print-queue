@@ -1753,6 +1753,56 @@
           </div>
         {% endif %}
 
+        <!-- External Source Card (Printables, etc.) -->
+        {% if external_sources %}
+        {% for src in external_sources %}
+        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 sm:p-6">
+          <div class="flex items-start justify-between gap-3 mb-2">
+            <div class="min-w-0">
+              <h2 class="text-lg font-semibold">🔗 {{ src.title or 'Model source' }}</h2>
+              <p class="text-xs text-zinc-500 mt-0.5">
+                {{ src.provider|capitalize }}{% if src.author %} • by {{ src.author }}{% endif %}
+                {% if src.fetch_mode %} • mode: {{ src.fetch_mode }}{% endif %}
+              </p>
+            </div>
+            {% if src.license %}
+              <span class="shrink-0 text-[11px] px-2 py-1 rounded bg-zinc-800 text-zinc-300">{{ src.license_abbreviation or src.license }}</span>
+            {% endif %}
+          </div>
+          {% if src.summary %}<p class="text-sm text-zinc-400 mb-2">{{ src.summary }}</p>{% endif %}
+          {% if src.source_url %}
+            <a href="{{ src.source_url }}" target="_blank" rel="noopener" class="block text-indigo-400 hover:underline truncate text-sm mb-3">{{ src.source_url }}</a>
+          {% endif %}
+          <div class="space-y-2">
+            {% for f in src.files %}
+              <div class="bg-zinc-950/60 border border-zinc-800 rounded-lg p-3 flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="font-mono text-sm text-zinc-100 break-all leading-snug">{{ f.name }}</div>
+                  <div class="text-xs text-zinc-500 mt-0.5">
+                    {% if f.folder %}{{ f.folder }} • {% endif %}{{ f.file_type }} •
+                    {% if f.attachment_mode == 'direct' %}
+                      <span class="text-emerald-400">{% if f.imported_file_id %}imported{% else %}direct (not imported){% endif %}</span>
+                    {% elif f.attachment_mode == 'package' %}
+                      <span class="text-sky-400">package</span>
+                    {% else %}
+                      <span class="text-zinc-400">reference-only</span>
+                    {% endif %}
+                    {% if f.size_bytes %} • {{ (f.size_bytes / 1024)|round(1) }} KB{% endif %}
+                  </div>
+                </div>
+                <div class="shrink-0 flex items-center gap-2">
+                  <span class="text-xs text-zinc-400">Qty {{ f.quantity }}</span>
+                  {% if f.download_url %}
+                    <a href="{{ f.download_url }}" target="_blank" rel="noopener" class="text-xs text-indigo-400 hover:underline">link</a>
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+
         <!-- Files Card -->
         <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 sm:p-6">
           <h2 class="text-lg font-semibold mb-3">📁 Files <span class="text-sm font-normal text-zinc-500">({{ files|length }})</span></h2>

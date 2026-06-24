@@ -3083,6 +3083,8 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         conn.close()
         raise HTTPException(status_code=404, detail="Not found")
     files = conn.execute("SELECT * FROM files WHERE request_id = ? ORDER BY created_at DESC", (rid,)).fetchall()
+    from app.public import load_request_external_sources
+    external_sources = load_request_external_sources(conn, rid)
     events = conn.execute("SELECT * FROM status_events WHERE request_id = ? ORDER BY created_at DESC", (rid,)).fetchall()
     messages = conn.execute("SELECT * FROM request_messages WHERE request_id = ? ORDER BY created_at ASC", (rid,)).fetchall()
     shipping_row = conn.execute("SELECT * FROM request_shipping WHERE request_id = ?", (rid,)).fetchone()
@@ -3252,6 +3254,7 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         "request": request,
         "req": req,
         "files": enriched_files,
+        "external_sources": external_sources,
         "model_files": model_files,
         "standalone_gcodes": standalone_gcodes,
         "other_files": other_files,

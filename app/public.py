@@ -4,9 +4,12 @@ from typing import Optional, Dict, Any, List
 
 from fastapi import APIRouter, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
+from pydantic import BaseModel, Field, ValidationError
 
 from app.auth import optional_user, create_request_assignment, get_current_account
 from app.models import AssignmentRole
+from app.security import check_rate_limit
+from app.integrations import printables_client, printables_parser
 from app.main import (
     templates,
     db,
@@ -350,6 +353,365 @@ def _strip_html(text: str) -> str:
     """Remove HTML tags from user-submitted text."""
     return _HTML_TAG_RE.sub("", text)
 
+
+# ─────────────────── External provider fetch (Printables) ───────────────────
+
+# Runtime compliance modes (PRINTABLES_FETCH_MODE / TASK-027). Operator default
+# is direct_import for this deployment; see docs/printables-integration.md for
+# the compliance matrix and legal caveats (LEG-001/002).
+MODE_METADATA_ONLY = "metadata_only"
+MODE_REFERENCE_ONLY = "reference_only"
+MODE_DIRECT_IMPORT = "direct_import"
+_VALID_FETCH_MODES = {MODE_METADATA_ONLY, MODE_REFERENCE_ONLY, MODE_DIRECT_IMPORT}
+
+SUPPORTED_PROVIDERS = {printables_parser.PROVIDER}
+MAX_EXTERNAL_SOURCES = 5
+MAX_EXTERNAL_FILES = 50
+_VALID_ATTACH_MODES = {
+    printables_parser.ATTACH_DIRECT,
+    printables_parser.ATTACH_PACKAGE,
+    printables_parser.ATTACH_REFERENCE,
+}
+
+
+def _get_printables_fetch_mode() -> str:
+    """Resolve the active fetch mode from env (read per-call so it is testable)."""
+    mode = (os.getenv("PRINTABLES_FETCH_MODE") or MODE_DIRECT_IMPORT).strip().lower()
+    return mode if mode in _VALID_FETCH_MODES else MODE_REFERENCE_ONLY
+
+
+async def _resolve_request_user(request: Request):
+    """Resolve the acting account, preferring legacy User then unified Account."""
+    try:
+        user = await optional_user(request)
+        if not user:
+            user = await get_current_account(request)
+        return user
+    except Exception:
+        return None
+
+
+class FetchProviderFilesRequest(BaseModel):
+    """Strict request contract for POST /submit/fetch-provider-files (TASK-007)."""
+    link_url: str = Field(..., min_length=1, max_length=2048)
+
+
+class ExternalSelectedFile(BaseModel):
+    file_id: str = Field(..., min_length=1, max_length=128)
+    file_type: str = "other"
+    name: str = ""
+    size_bytes: int = 0
+    folder: Optional[str] = None
+    attachment_mode: str = printables_parser.ATTACH_DIRECT
+    quantity: int = Field(default=1, ge=1, le=50)  # REQ-005
+
+
+class ExternalSelectedModelMeta(BaseModel):
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    license: Optional[str] = None
+    license_abbreviation: Optional[str] = None
+    author: Optional[str] = None
+
+
+class ExternalSelectedSource(BaseModel):
+    provider: str = Field(..., min_length=1, max_length=64)
+    source_id: str = Field(..., min_length=1, max_length=128)
+    source_url: Optional[str] = Field(default=None, max_length=2048)
+    attachment_mode: Optional[str] = None
+    model: ExternalSelectedModelMeta = Field(default_factory=ExternalSelectedModelMeta)
+    files: List[ExternalSelectedFile] = Field(default_factory=list)
+
+
+def _dominant_attachment_mode(files: List[Dict[str, Any]]) -> str:
+    modes = {f["attachment_mode"] for f in files}
+    if len(modes) == 1:
+        return next(iter(modes))
+    if printables_parser.ATTACH_DIRECT in modes:
+        return "mixed"
+    if printables_parser.ATTACH_PACKAGE in modes:
+        return printables_parser.ATTACH_PACKAGE
+    return printables_parser.ATTACH_REFERENCE
+
+
+def _parse_selected_external_files_json(raw: Optional[str]) -> List[Dict[str, Any]]:
+    """Validate the hidden ``selected_external_files_json`` field into sanitized
+    source dicts (TASK-008). Enforces provider allowlist and quantity bounds and
+    strips HTML from any free-text carried from the provider (SEC-003)."""
+    if not raw or not raw.strip():
+        return []
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        raise ValueError("Invalid external file selection.")
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        raise ValueError("Invalid external file selection.")
+    if len(parsed) > MAX_EXTERNAL_SOURCES:
+        raise ValueError("Too many external sources selected.")
+
+    out: List[Dict[str, Any]] = []
+    total_files = 0
+    for item in parsed:
+        try:
+            src = ExternalSelectedSource.model_validate(item)
+        except ValidationError:
+            raise ValueError("Invalid external file selection.")
+        if src.provider not in SUPPORTED_PROVIDERS:
+            raise ValueError(f"Unsupported provider: {src.provider}")
+        if not src.files:
+            continue
+        total_files += len(src.files)
+        if total_files > MAX_EXTERNAL_FILES:
+            raise ValueError("Too many external files selected.")
+
+        files: List[Dict[str, Any]] = []
+        for f in src.files:
+            ft = f.file_type if f.file_type in printables_parser._VALID_FILE_TYPES else "other"
+            am = f.attachment_mode if f.attachment_mode in _VALID_ATTACH_MODES else printables_parser.ATTACH_DIRECT
+            clean_name = _strip_html(f.name or "")[:255] or f"{ft}-{f.file_id}"
+            clean_folder = (_strip_html(f.folder)[:255] if f.folder else None) or None
+            files.append({
+                "file_id": f.file_id,
+                "file_type": ft,
+                "name": clean_name,
+                "size_bytes": max(0, int(f.size_bytes or 0)),
+                "folder": clean_folder,
+                "attachment_mode": am,
+                "quantity": int(f.quantity),
+            })
+
+        out.append({
+            "provider": src.provider,
+            "source_id": src.source_id,
+            "source_url": (src.source_url or None),
+            "attachment_mode": src.attachment_mode or _dominant_attachment_mode(files),
+            "model": {
+                "title": (_strip_html(src.model.title)[:300] if src.model.title else None),
+                "summary": (_strip_html(src.model.summary)[:2000] if src.model.summary else None),
+                "license": (src.model.license or None),
+                "license_abbreviation": (src.model.license_abbreviation or None),
+                "author": (src.model.author or None),
+            },
+            "files": files,
+        })
+    return out
+
+
+def _external_files_summary(sources: List[Dict[str, Any]]) -> List[str]:
+    """Flat list of human labels for emails/notifications (TASK-021)."""
+    labels: List[str] = []
+    for src in sources:
+        for f in src["files"]:
+            qty = f["quantity"]
+            suffix = f" x{qty}" if qty > 1 else ""
+            labels.append(f"{f['name']}{suffix}")
+    return labels
+
+
+def load_request_external_sources(conn, request_id: str) -> List[Dict[str, Any]]:
+    """Hydrate persisted external sources + their files for a request (TASK-018).
+
+    Shared by the requester and admin detail views. Returns a list of source
+    dicts, each with a ``files`` list ordered by folder then name.
+    """
+    try:
+        source_rows = conn.execute(
+            "SELECT * FROM external_sources WHERE request_id = ? ORDER BY created_at ASC",
+            (request_id,),
+        ).fetchall()
+    except Exception:
+        return []
+
+    sources: List[Dict[str, Any]] = []
+    for row in source_rows:
+        src = dict(row)
+        file_rows = conn.execute(
+            "SELECT * FROM external_source_files WHERE external_source_id = ? "
+            "ORDER BY (folder IS NULL), folder, name",
+            (src["id"],),
+        ).fetchall()
+        src["files"] = [dict(f) for f in file_rows]
+        sources.append(src)
+    return sources
+
+
+async def _persist_external_sources(conn, request_id: str, sources: List[Dict[str, Any]], user, mode: str) -> Dict[str, int]:
+    """Persist selected external sources/files for a request (TASK-010).
+
+    In ``direct_import`` mode, ``direct`` candidates are resolved to a download
+    link and fetched server-side into the ``files`` table. Any failure (link
+    error, disallowed extension, size cap) degrades gracefully to a stored
+    reference link so the submission never fails because of a provider hiccup.
+    """
+    upload_limit_mb = get_upload_limit_mb_for_user(user)
+    max_bytes = upload_limit_mb * 1024 * 1024
+    created = now_iso()
+    loop = asyncio.get_event_loop()
+    stats = {"imported": 0, "references": 0}
+
+    for src in sources:
+        provider = src["provider"]
+        source_id = src["source_id"]
+        es_id = str(uuid.uuid4())
+        meta = src.get("model") or {}
+        conn.execute(
+            """INSERT INTO external_sources
+               (id, request_id, created_at, provider, source_id, source_url, title, summary,
+                license, license_abbreviation, author, attachment_mode, fetch_mode, raw_metadata)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                es_id, request_id, created, provider, source_id, src.get("source_url"),
+                meta.get("title"), meta.get("summary"), meta.get("license"),
+                meta.get("license_abbreviation"), meta.get("author"),
+                src.get("attachment_mode"), mode, safe_json_dumps(meta),
+            ),
+        )
+
+        # Resolve direct-download links in bulk (one mutation per source).
+        link_by_fileid: Dict[str, str] = {}
+        if mode == MODE_DIRECT_IMPORT and provider == printables_parser.PROVIDER:
+            groups: Dict[str, List[str]] = {}
+            for f in src["files"]:
+                if f["attachment_mode"] == printables_parser.ATTACH_DIRECT:
+                    groups.setdefault(f["file_type"], []).append(f["file_id"])
+            if groups:
+                files_arg = [{"fileType": ft, "ids": ids} for ft, ids in groups.items()]
+                try:
+                    links = await loop.run_in_executor(
+                        None, lambda fa=files_arg: printables_client.get_download_links(source_id, fa)
+                    )
+                    for link in links:
+                        link_by_fileid[str(link.get("id"))] = link.get("link")
+                except printables_client.PrintablesError as exc:
+                    logger.warning(f"[FETCH] download-link resolve failed source={source_id}: {exc}")
+
+        for f in src["files"]:
+            imported_file_id: Optional[str] = None
+            download_url: Optional[str] = None
+
+            if mode == MODE_DIRECT_IMPORT and f["attachment_mode"] == printables_parser.ATTACH_DIRECT:
+                link = link_by_fileid.get(f["file_id"])
+                download_url = link
+                ext = safe_ext(f["name"])
+                if link and ext in ALLOWED_EXTS:
+                    try:
+                        data = await loop.run_in_executor(
+                            None, lambda lk=link: printables_client.download_file(lk, max_bytes=max_bytes)
+                        )
+                        stored = f"{uuid.uuid4()}{ext}"
+                        out_path = os.path.join(UPLOAD_DIR, stored)
+                        with open(out_path, "wb") as fh:
+                            fh.write(data)
+                        sha = hashlib.sha256(data).hexdigest()
+                        file_metadata = await loop.run_in_executor(
+                            None, parse_3d_file_metadata, out_path, f["name"]
+                        )
+                        file_metadata_json = safe_json_dumps(file_metadata) if file_metadata else None
+                        imported_file_id = str(uuid.uuid4())
+                        conn.execute(
+                            """INSERT INTO files (id, request_id, created_at, original_filename, stored_filename, size_bytes, sha256, file_metadata)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (imported_file_id, request_id, now_iso(), f["name"], stored, len(data), sha, file_metadata_json),
+                        )
+                        stats["imported"] += 1
+                    except printables_client.PrintablesError as exc:
+                        logger.warning(f"[FETCH] direct import failed file={f['name']!r}: {exc}")
+                        imported_file_id = None
+                        stats["references"] += 1
+                    except Exception as exc:  # noqa: BLE001 - never fail the submit on import
+                        logger.error(f"[FETCH] unexpected import error file={f['name']!r}: {exc}", exc_info=True)
+                        stats["references"] += 1
+                else:
+                    stats["references"] += 1
+            else:
+                stats["references"] += 1
+
+            conn.execute(
+                """INSERT INTO external_source_files
+                   (id, external_source_id, request_id, created_at, provider, source_id, file_id, file_type,
+                    name, size_bytes, folder, attachment_mode, quantity, imported_file_id, download_url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    str(uuid.uuid4()), es_id, request_id, created, provider, source_id,
+                    f["file_id"], f["file_type"], f["name"], f["size_bytes"], f.get("folder"),
+                    f["attachment_mode"], f["quantity"], imported_file_id, download_url,
+                ),
+            )
+
+    return stats
+
+
+@router.post("/submit/fetch-provider-files")
+async def fetch_provider_files(request: Request, payload: FetchProviderFilesRequest):
+    """Fetch + normalize a provider model's files for the request form.
+
+    Auth-only (TASK-007A / SEC-006), feature-flagged (GUD-001), rate-limited
+    per IP+requester (SEC-005). Returns ``{provider, model, candidates}``.
+    """
+    import time as _time
+
+    user = await _resolve_request_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"ok": False, "error": "auth_required", "detail": "Sign in to fetch model files."})
+
+    if not is_feature_enabled("printables_fetch", user_id=getattr(user, "id", None), email=getattr(user, "email", None)):
+        return JSONResponse(status_code=403, content={"ok": False, "error": "feature_disabled", "detail": "This feature is not available for your account."})
+
+    client_ip = request.client.host if request.client else "unknown"
+    email = (getattr(user, "email", "") or "").lower()
+    allowed, _ = check_rate_limit(f"fetch-provider:{client_ip}:{email}", 20, 60)
+    if not allowed:
+        logger.warning(f"[FETCH] rate limited ip={client_ip} email={email}")
+        return JSONResponse(status_code=429, content={"ok": False, "error": "rate_limited", "detail": "Too many fetch attempts. Please wait a moment and try again."})
+
+    link_url = (payload.link_url or "").strip()
+    try:
+        print_id = printables_parser.parse_printables_url(link_url)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "invalid_url", "detail": str(exc)})
+
+    mode = _get_printables_fetch_mode()
+    t0 = _time.monotonic()
+    try:
+        model_raw = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: printables_client.fetch_printables_model(print_id)
+        )
+    except printables_client.PrintablesNotFound:
+        logger.info(f"[FETCH] not_found pid={print_id} ip={client_ip}")
+        return JSONResponse(status_code=404, content={"ok": False, "error": "not_found", "detail": "That Printables model could not be found."})
+    except printables_client.PrintablesUnavailable as exc:
+        logger.warning(f"[FETCH] provider_unavailable pid={print_id}: {exc}")
+        return JSONResponse(status_code=502, content={"ok": False, "error": "provider_unavailable", "detail": "Printables is unavailable right now. Please try again shortly."})
+    except printables_client.PrintablesError as exc:
+        logger.warning(f"[FETCH] provider_error pid={print_id}: {exc}")
+        return JSONResponse(status_code=502, content={"ok": False, "error": "provider_error", "detail": "Could not read that Printables model."})
+
+    latency_ms = int((_time.monotonic() - t0) * 1000)
+    summary = printables_parser.model_summary(model_raw)
+    # SEC-003: store/return plain-text summary; strip any HTML from description.
+    summary["summary"] = _strip_html(summary.get("summary") or "")
+    summary["description"] = _strip_html(summary.get("description") or "")[:4000]
+
+    candidates = [] if mode == MODE_METADATA_ONLY else printables_parser.normalize_file_candidates(model_raw)
+    logger.info(
+        f"[FETCH] ok pid={print_id} candidates={len(candidates)} mode={mode} latency_ms={latency_ms} email={email}"
+    )
+
+    body = {
+        "ok": True,
+        "provider": printables_parser.PROVIDER,
+        "model": summary,
+        "candidates": candidates,
+        "mode": mode,
+    }
+    if not candidates and mode != MODE_METADATA_ONLY:
+        body["warning"] = "no_files"
+        body["detail"] = "No downloadable files were found for this model."
+    return JSONResponse(status_code=200, content=body)
+
+
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     user = await optional_user(request)
@@ -551,6 +913,7 @@ async def submit(
     rush_request: Optional[str] = Form(None),
     rush_payment_confirmed: Optional[str] = Form(None),
     uploaded_file_ids_json: Optional[str] = Form(None),
+    selected_external_files_json: Optional[str] = Form(None),
     turnstile_token: Optional[str] = Form(None, alias="cf-turnstile-response"),
     website_url: Optional[str] = Form(None),  # Honeypot field — should always be empty
     upload: List[UploadFile] = File(default=[]),
@@ -621,6 +984,19 @@ async def submit(
         name_by_id = {row["id"]: row["original_filename"] for row in pre_rows}
         preuploaded_names = [name_by_id[fid] for fid in preuploaded_file_ids if fid in name_by_id]
 
+    # Parse + validate any selected external provider files (Printables).
+    try:
+        external_sources = _parse_selected_external_files_json(selected_external_files_json)
+    except ValueError as e:
+        return render_form(request, str(e), form_state)
+    if external_sources:
+        # Mirror the fetch endpoint's gating: external selection requires an
+        # authenticated account with the feature enabled (SEC-006 / GUD-001).
+        if not user:
+            return render_form(request, "Please sign in to attach files from a model link.", form_state)
+        if not is_feature_enabled("printables_fetch", user_id=getattr(user, "id", None), email=getattr(user, "email", None)):
+            return render_form(request, "Fetching files from a model link is not available for your account.", form_state)
+
     fulfillment_method = (fulfillment_method or "pickup").strip().lower()
     if fulfillment_method not in {"pickup", "shipping"}:
         return render_form(request, "Invalid fulfillment selection.", form_state)
@@ -683,7 +1059,8 @@ async def submit(
     has_link = bool(link_url and link_url.strip())
     # Filter to only valid files with actual filenames
     valid_files = [f for f in upload if f and f.filename]
-    has_file = len(valid_files) > 0 or len(preuploaded_file_ids) > 0
+    has_external = len(external_sources) > 0
+    has_file = len(valid_files) > 0 or len(preuploaded_file_ids) > 0 or has_external
     if not has_link and not has_file:
         return render_form(request, "Please provide either a link OR upload a file (one is required).", form_state)
 
@@ -941,10 +1318,29 @@ async def submit(
                 return render_form(request, "Error saving your file. Please try again.", form_state)
             
             uploaded_names.append(file.filename)
-        
+
         conn.commit()
 
+    # Persist selected external provider sources/files (Printables). Imports run
+    # inside this connection; failures degrade to references and never abort the
+    # submission (the request row already exists).
+    external_labels: List[str] = []
+    if external_sources:
+        fetch_mode = _get_printables_fetch_mode()
+        try:
+            ext_stats = await _persist_external_sources(conn, rid, external_sources, user, fetch_mode)
+            conn.commit()
+            external_labels = _external_files_summary(external_sources)
+            logger.info(
+                f"[SUBMIT] external sources persisted rid={rid[:8]} sources={len(external_sources)} "
+                f"imported={ext_stats['imported']} references={ext_stats['references']} mode={fetch_mode}"
+            )
+        except Exception as e:
+            logger.error(f"[SUBMIT] Error persisting external sources for {rid[:8]}: {e}", exc_info=True)
+
     conn.close()
+
+    uploaded_names.extend(external_labels)
 
     # --- EMAIL SETTINGS FROM DB ---
     admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))

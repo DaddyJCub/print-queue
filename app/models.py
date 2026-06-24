@@ -923,6 +923,13 @@ DEFAULT_FEATURE_FLAGS = {
         enabled=True,
         description="Enable designer role, design assignments, and design queue",
     ),
+    "printables_fetch": FeatureFlag(
+        key="printables_fetch",
+        enabled=False,  # GUD-001: default off in production
+        description="Fetch model files from a Printables link on the request form (authenticated users only)",
+        rollout_percentage=0,  # Explicit allow-list / staged rollout only
+        allowed_emails=[],
+    ),
     
     # UI features
     "dark_mode_toggle": FeatureFlag(

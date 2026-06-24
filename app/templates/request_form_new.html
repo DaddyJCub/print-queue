@@ -633,10 +633,40 @@
   <!-- Link -->
   <div class="mb-4">
     <label class="block text-sm font-medium text-zinc-300 mb-1.5">Model Link <span class="text-zinc-500 font-normal">(optional)</span></label>
-    <input name="link_url" placeholder="https://printables.com/model/..."
+    <input name="link_url" id="link-url-input" placeholder="https://printables.com/model/..."
            value="{{ (form.link_url if form is defined else '') }}"
            class="w-full rounded-xl bg-zinc-950 border border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-4 py-3 transition" />
   </div>
+
+  {% if printables_fetch_visible %}
+  <!-- Printables fetch & file selection -->
+  <div class="mb-4">
+    {% if user and printables_fetch_enabled %}
+    <input type="hidden" name="selected_external_files_json" id="selected-external-files-json" value="" />
+    <div class="flex items-center justify-between gap-3 mb-1.5">
+      <label class="block text-sm font-medium text-zinc-300">Fetch files from a Printables link</label>
+      <button type="button" id="pf-fetch-btn" onclick="fetchProviderFiles()"
+        class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-2 text-sm font-medium transition tap-highlight">
+        <svg id="pf-spinner" class="hidden w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+        </svg>
+        <span id="pf-fetch-label">Fetch Files</span>
+      </button>
+    </div>
+    <p class="text-xs text-zinc-500 mb-2">Paste a Printables model link above, then fetch it to pick the exact files you need.</p>
+    <div id="pf-status" class="hidden text-sm rounded-lg px-3 py-2 mb-2"></div>
+    <div id="pf-model" class="hidden rounded-xl border border-zinc-700 bg-zinc-950 p-3 mb-2"></div>
+    <div id="pf-candidates" class="hidden space-y-3"></div>
+    <p id="pf-license-note" class="hidden text-[11px] text-zinc-500 mt-2"></p>
+    {% else %}
+    <div class="rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-400">
+      <a href="/auth/login" class="text-indigo-400 hover:text-indigo-300 font-medium">Sign in</a>
+      to fetch and select files directly from a Printables model link.
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
 
   <!-- File Upload -->
   <div class="mb-4">
@@ -1646,6 +1676,221 @@
       });
     }
   });
+</script>
+
+<!-- Printables fetch & file-selection logic -->
+<script>
+(function(){
+  const linkInput = document.getElementById('link-url-input');
+  const fetchBtn  = document.getElementById('pf-fetch-btn');
+  const hidden    = document.getElementById('selected-external-files-json');
+  if (!fetchBtn || !hidden) return; // UI not rendered (guest or feature off)
+
+  const spinner     = document.getElementById('pf-spinner');
+  const fetchLabel  = document.getElementById('pf-fetch-label');
+  const statusEl    = document.getElementById('pf-status');
+  const modelEl     = document.getElementById('pf-model');
+  const candEl      = document.getElementById('pf-candidates');
+  const licenseNote = document.getElementById('pf-license-note');
+
+  let lastModel = null, lastProvider = 'printables', lastSourceUrl = '';
+
+  const MODE_LABELS = {
+    'direct':         { t: 'Direct',    c: 'bg-emerald-500/15 text-emerald-300' },
+    'package':        { t: 'Pack',      c: 'bg-sky-500/15 text-sky-300' },
+    'reference-only': { t: 'Reference', c: 'bg-zinc-600/40 text-zinc-300' },
+  };
+
+  function setStatus(msg, kind){
+    if (!statusEl) return;
+    if (!msg){ statusEl.classList.add('hidden'); return; }
+    statusEl.textContent = msg;
+    statusEl.className = 'text-sm rounded-lg px-3 py-2 mb-2 ' + (
+      kind === 'error' ? 'bg-red-500/10 text-red-300 border border-red-500/30'
+      : kind === 'warn' ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
+      : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30');
+    statusEl.classList.remove('hidden');
+  }
+
+  function setLoading(on){
+    fetchBtn.disabled = on;
+    if (spinner) spinner.classList.toggle('hidden', !on);
+    if (fetchLabel) fetchLabel.textContent = on ? 'Fetching…' : 'Fetch Files';
+  }
+
+  function fmtSize(bytes){
+    bytes = Number(bytes) || 0;
+    if (bytes <= 0) return '';
+    const u = ['B','KB','MB','GB']; let i = 0, n = bytes;
+    while (n >= 1024 && i < u.length - 1){ n /= 1024; i++; }
+    return (n >= 10 ? n.toFixed(0) : n.toFixed(1)) + ' ' + u[i];
+  }
+
+  window.fetchProviderFiles = async function(){
+    const url = (linkInput && linkInput.value || '').trim();
+    if (!url){ setStatus('Enter a Printables model link above first.', 'error'); return; }
+    setLoading(true); setStatus('', null);
+    candEl.classList.add('hidden'); candEl.innerHTML = '';
+    modelEl.classList.add('hidden'); modelEl.innerHTML = '';
+    licenseNote.classList.add('hidden');
+    hidden.value = '';
+    try {
+      const resp = await fetch('/submit/fetch-provider-files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ link_url: url }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data.ok === false){
+        setStatus(data.detail || 'Could not fetch that model. Check the link and try again.', 'error');
+        return;
+      }
+      lastModel = data.model || {};
+      lastProvider = data.provider || 'printables';
+      lastSourceUrl = url;
+      renderFetchedCandidates(data);
+      if (data.warning === 'no_files'){
+        setStatus(data.detail || 'No downloadable files were found for this model.', 'warn');
+      } else {
+        setStatus('Fetched ' + (data.candidates || []).length + ' file(s). Select what you want printed.', 'ok');
+      }
+    } catch (err){
+      setStatus('Network error while fetching. Please try again.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  window.renderFetchedCandidates = function(data){
+    const model = data.model || {};
+    const candidates = data.candidates || [];
+
+    // Model header
+    if (model.title){
+      modelEl.innerHTML = '';
+      const head = document.createElement('div');
+      head.className = 'flex items-start justify-between gap-3';
+      const left = document.createElement('div'); left.className = 'min-w-0';
+      const t = document.createElement('div'); t.className = 'text-sm font-semibold text-zinc-100'; t.textContent = model.title; left.appendChild(t);
+      if (model.author){ const a = document.createElement('div'); a.className = 'text-xs text-zinc-500'; a.textContent = 'by ' + model.author; left.appendChild(a); }
+      if (model.summary){ const s = document.createElement('div'); s.className = 'text-xs text-zinc-400 mt-1 line-clamp-2'; s.textContent = model.summary; left.appendChild(s); }
+      head.appendChild(left);
+      if (model.license){ const lic = document.createElement('span'); lic.className = 'shrink-0 text-[11px] px-2 py-1 rounded bg-zinc-800 text-zinc-300'; lic.textContent = model.license_abbreviation || model.license; head.appendChild(lic); }
+      modelEl.appendChild(head);
+      modelEl.classList.remove('hidden');
+    }
+
+    // Rights / license notice (LEG-004)
+    licenseNote.textContent = 'Model rights and commercial permissions remain governed by the original creator’s license'
+      + (model.license ? ' (' + model.license + ')' : '') + '.';
+    licenseNote.classList.remove('hidden');
+
+    // Candidates grouped by folder
+    candEl.innerHTML = '';
+    if (!candidates.length){ candEl.classList.add('hidden'); syncSelectedExternalFilesHiddenInput(); return; }
+
+    const groups = {};
+    candidates.forEach(c => { const f = c.folder || 'Files'; (groups[f] = groups[f] || []).push(c); });
+
+    const bar = document.createElement('div');
+    bar.className = 'flex items-center justify-between text-xs text-zinc-400';
+    const lbl = document.createElement('span'); lbl.textContent = 'Select files to include'; bar.appendChild(lbl);
+    const selAll = document.createElement('button');
+    selAll.type = 'button'; selAll.className = 'text-indigo-400 hover:text-indigo-300';
+    selAll.textContent = 'Select all';
+    selAll.onclick = function(){ candEl.querySelectorAll('input[type=checkbox][data-pf]').forEach(cb => { cb.checked = true; cb.dispatchEvent(new Event('change')); }); };
+    bar.appendChild(selAll);
+    candEl.appendChild(bar);
+
+    Object.keys(groups).forEach(folder => {
+      const wrap = document.createElement('div');
+      wrap.className = 'rounded-xl border border-zinc-800 overflow-hidden';
+      const fhead = document.createElement('div');
+      fhead.className = 'px-3 py-2 bg-zinc-900 text-xs font-medium text-zinc-400'; fhead.textContent = folder;
+      wrap.appendChild(fhead);
+      groups[folder].forEach(c => wrap.appendChild(renderRow(c)));
+      candEl.appendChild(wrap);
+    });
+
+    // Attachment-mode legend (TASK-017)
+    const legend = document.createElement('p');
+    legend.className = 'text-[11px] text-zinc-500';
+    legend.innerHTML = '<span class="text-emerald-300">Direct</span> files are imported automatically. '
+      + '<span class="text-sky-300">Pack</span> and <span class="text-zinc-300">Reference</span> items are attached as a link for the admin to retrieve.';
+    candEl.appendChild(legend);
+
+    candEl.classList.remove('hidden');
+    syncSelectedExternalFilesHiddenInput();
+  };
+
+  function renderRow(c){
+    const row = document.createElement('div');
+    row.className = 'pf-row flex items-center gap-3 px-3 py-2 border-t border-zinc-800';
+
+    const lab = document.createElement('label');
+    lab.className = 'flex items-center gap-3 flex-1 min-w-0 cursor-pointer';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.setAttribute('data-pf', '1');
+    cb.className = 'w-4 h-4 rounded border-zinc-600 text-indigo-500 focus:ring-indigo-500';
+    cb.dataset.fileId = c.file_id; cb.dataset.fileType = c.file_type; cb.dataset.name = c.name;
+    cb.dataset.size = c.size_bytes || 0; cb.dataset.folder = c.folder || ''; cb.dataset.mode = c.attachment_mode;
+
+    const mid = document.createElement('div'); mid.className = 'flex-1 min-w-0';
+    const nm = document.createElement('div'); nm.className = 'text-sm text-zinc-200 truncate'; nm.textContent = c.name; mid.appendChild(nm);
+    const meta = document.createElement('div'); meta.className = 'flex items-center gap-2 mt-0.5';
+    const ml = MODE_LABELS[c.attachment_mode] || MODE_LABELS['reference-only'];
+    const badge = document.createElement('span'); badge.className = 'text-[10px] px-1.5 py-0.5 rounded ' + ml.c; badge.textContent = ml.t; meta.appendChild(badge);
+    const sz = fmtSize(c.size_bytes); if (sz){ const s = document.createElement('span'); s.className = 'text-[11px] text-zinc-500'; s.textContent = sz; meta.appendChild(s); }
+    mid.appendChild(meta);
+    lab.appendChild(cb); lab.appendChild(mid);
+
+    const qty = document.createElement('input');
+    qty.type = 'number'; qty.min = '1'; qty.max = '50'; qty.value = '1'; qty.setAttribute('data-pf-qty', '1');
+    qty.className = 'w-16 rounded-lg bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm text-center disabled:opacity-40';
+    qty.disabled = true; qty.setAttribute('aria-label', 'Quantity');
+    qty.oninput = function(){ let v = parseInt(qty.value || '1', 10); if (isNaN(v) || v < 1) v = 1; if (v > 50) v = 50; qty.value = v; syncSelectedExternalFilesHiddenInput(); };
+
+    cb.addEventListener('change', function(){
+      qty.disabled = !cb.checked;
+      if (cb.checked && (!qty.value || Number(qty.value) < 1)) qty.value = '1';
+      syncSelectedExternalFilesHiddenInput();
+    });
+
+    row.appendChild(lab); row.appendChild(qty);
+    return row;
+  }
+
+  window.collectSelectedExternalFiles = function(){
+    if (!candEl || !lastModel) return null;
+    const files = [];
+    candEl.querySelectorAll('input[type=checkbox][data-pf]').forEach(cb => {
+      if (!cb.checked) return;
+      const qtyEl = cb.closest('.pf-row').querySelector('input[data-pf-qty]');
+      let q = parseInt(qtyEl && qtyEl.value || '1', 10); if (isNaN(q) || q < 1) q = 1; if (q > 50) q = 50;
+      files.push({
+        file_id: cb.dataset.fileId, file_type: cb.dataset.fileType, name: cb.dataset.name,
+        size_bytes: Number(cb.dataset.size) || 0, folder: cb.dataset.folder || null,
+        attachment_mode: cb.dataset.mode, quantity: q,
+      });
+    });
+    if (!files.length) return null;
+    return {
+      provider: lastProvider || 'printables',
+      source_id: lastModel.source_id,
+      source_url: lastSourceUrl,
+      model: {
+        title: lastModel.title, summary: lastModel.summary, license: lastModel.license,
+        license_abbreviation: lastModel.license_abbreviation, author: lastModel.author,
+      },
+      files,
+    };
+  };
+
+  window.syncSelectedExternalFilesHiddenInput = function(){
+    const src = collectSelectedExternalFiles();
+    hidden.value = src ? JSON.stringify(src) : '';
+  };
+})();
 </script>
 
 {% from '_components/confirm_modal.html' import confirm_modal %}
