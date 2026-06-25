@@ -839,6 +839,28 @@
   </div>
 </form>
 
+<!-- Sticky submit bar (mobile) — appears when the main submit button is scrolled off-screen -->
+<div id="sticky-submit" class="sm:hidden fixed left-0 right-0 z-40 px-4 opacity-0 translate-y-6 pointer-events-none transition-all duration-200"
+     style="bottom: calc(var(--nav-height) + var(--safe-area-bottom) + 8px);">
+  <button type="button"
+          onclick="var f=document.getElementById('request-form'); f.requestSubmit ? f.requestSubmit(document.getElementById('submit-btn')) : document.getElementById('submit-btn').click();"
+          class="w-full rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 active:from-indigo-700 transition py-3.5 text-base font-bold shadow-2xl shadow-indigo-900/50 flex items-center justify-center gap-2 tap-highlight">
+    🖨️ Submit Request
+  </button>
+</div>
+<script>
+(function(){
+  var bar = document.getElementById('sticky-submit');
+  var realBtn = document.getElementById('submit-btn');
+  if (!bar || !realBtn || !('IntersectionObserver' in window)) return;
+  var io = new IntersectionObserver(function(entries){
+    if (entries[0].isIntersecting) bar.classList.add('opacity-0','translate-y-6','pointer-events-none');
+    else bar.classList.remove('opacity-0','translate-y-6','pointer-events-none');
+  }, { threshold: 0.1 });
+  io.observe(realBtn);
+})();
+</script>
+
 <!-- Embedded Rush Checkout Container -->
 {% if rush_settings and rush_settings.enabled and payments_enabled is defined and payments_enabled %}
 <div id="rush-checkout-container" class="hidden mt-6">

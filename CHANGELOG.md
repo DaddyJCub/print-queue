@@ -9,6 +9,19 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.26.1
+### Overview / Highlights
+- Easier submitting on mobile: a sticky "Submit Request" button follows you down the request form.
+
+### Enhancements
+- On phones, once the main submit button scrolls out of view, a sticky Submit Request bar appears above the bottom navigation so you can submit from anywhere on the form. It reuses the normal submit flow (including rush checkout), so nothing about submitting changes.
+
+### Bug Fixes
+- None.
+
+### Notes / Things to Know
+- The sticky bar is mobile-only and hides itself whenever the main submit button is on screen.
+
 ## 0.26.0
 ### Overview / Highlights
 - Unified the admin area into the same look and feel as the rest of the app — it no longer feels like a separate product.
