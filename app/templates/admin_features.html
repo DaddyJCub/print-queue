@@ -1,15 +1,11 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Feature Flags | Printellect</title>
-  <link rel="stylesheet" href="/static/css/tailwind.css" />
-</head>
-<body class="bg-zinc-950 text-zinc-100">
+{% extends "admin_base.html" %}
+
+{% block admin_title %}Feature Flags{% endblock %}
+{% block active_page %}{{ 'features' }}{% endblock %}
+
+{% block content %}
   <div class="max-w-7xl mx-auto p-6">
     {% set active_page = 'features' %}
-    {% include 'admin_nav.html' %}
 
     <!-- Settings Tabs -->
     {% set active_settings_tab = 'features' %}
@@ -393,5 +389,4 @@
     }
   }
   </script>
-</body>
-</html>
+{% endblock %}

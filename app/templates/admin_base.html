@@ -1,0 +1,66 @@
+{#
+  Unified admin shell. Extends the same PWA chrome as the rest of the app so
+  admin no longer feels like a separate product: shared header, mobile
+  bottom-nav, cache-busted CSS, and the showToast / showConfirm / showAlert
+  helpers from pwa_base.html, plus an admin section pill-bar under the header.
+
+  Admin pages should: extend this template; override the admin_title and
+  active_page blocks (active_page renders just a section key like "queue" to
+  highlight the matching pill); put markup in the content block; and use the
+  head_styles / scripts blocks for any page-specific CSS or JS.
+#}
+{% extends "pwa_base.html" %}
+
+{% block title %}{% block admin_title %}Admin{% endblock %} · Admin | Printellect{% endblock %}
+
+{# Admin uses the wider container for dense tables #}
+{% block content_width %}max-w-7xl{% endblock %}
+
+{# Admin section nav. Pages declare their section via {% block active_page %}key{% endblock %} #}
+{% block subnav %}
+{% set ap = self.active_page()|trim %}
+{% if credits_nav_enabled is callable %}{% set _credits_on = credits_nav_enabled() %}{% else %}{% set _credits_on = credits_nav_enabled %}{% endif %}
+{% set ops = [
+  ('Queue', '/admin', 'queue'),
+  ('Shipping', '/admin/shipping', 'shipping'),
+  ('Store', '/admin/store', 'store'),
+  ('Stats', '/admin/analytics', 'analytics'),
+  ('Payments', '/admin/payments', 'payments'),
+  ('Users', '/admin/accounts', 'accounts'),
+  ('Feedback', '/admin/feedback', 'feedback'),
+  ('Broadcast', '/admin/broadcast', 'broadcast')
+] %}
+{% set sys = [
+  ('Settings', '/admin/settings', 'settings'),
+  ('Features', '/admin/features', 'features'),
+  ('Admins', '/admin/admins', 'admins'),
+  ('Printers', '/admin/printer-settings', 'printers'),
+  ('Agents', '/admin/printer-agents', 'printer-agents'),
+  ('Devices', '/admin/printellect/devices', 'printellect-devices'),
+  ('Releases', '/admin/printellect/releases', 'printellect-releases'),
+  ('Audit', '/admin/audit', 'audit'),
+  ('Debug', '/admin/debug', 'debug')
+] %}
+<div class="sticky z-30 bg-zinc-950/90 backdrop-blur-lg border-b border-zinc-800/60" style="top: calc(3.5rem + var(--safe-area-top));">
+  <div class="max-w-6xl mx-auto px-2 sm:px-4">
+    <div class="flex items-center gap-1 overflow-x-auto hide-scrollbar py-2">
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 mr-1 text-xs font-semibold rounded-lg bg-amber-500/15 text-amber-300 flex-shrink-0">
+        <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Admin
+      </span>
+      {% for label, href, key in ops %}
+      <a href="{{ href }}" class="flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition tap-highlight {% if ap == key %}text-white bg-indigo-500/20 ring-1 ring-indigo-500/30{% else %}text-zinc-400 hover:text-white hover:bg-zinc-800{% endif %}">{{ label }}</a>
+      {% endfor %}
+      {% if _credits_on %}
+      <a href="/admin/credits" class="flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition tap-highlight {% if ap == 'credits' %}text-white bg-indigo-500/20 ring-1 ring-indigo-500/30{% else %}text-zinc-400 hover:text-white hover:bg-zinc-800{% endif %}">Credits</a>
+      {% endif %}
+      <span class="w-px h-5 bg-zinc-800 mx-1 flex-shrink-0"></span>
+      {% for label, href, key in sys %}
+      <a href="{{ href }}" class="flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition tap-highlight {% if ap == key %}text-white bg-indigo-500/20 ring-1 ring-indigo-500/30{% else %}text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{# Default: no section highlighted. Pages override this. #}
+{% block active_page %}{% endblock %}

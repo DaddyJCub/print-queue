@@ -1,0 +1,125 @@
+{#
+  Shared UI design-system macros — codify the app's existing look so pages
+  stop re-implementing cards / heroes / stat tiles / pills / buttons inline.
+
+  Canonical surfaces (match the 0.24.5 dashboard, which is the reference look):
+    panel  : bg-zinc-800/40 border border-zinc-700/50 rounded-2xl
+    nested : bg-zinc-900/40 border border-zinc-700/40 rounded-xl
+
+  IMPORTANT: Tailwind is tree-shaken, so dynamic class names (e.g. bg-{{c}}-500/15)
+  are NOT generated. All color variants are written as literal strings in the dicts
+  below so the scanner picks them up. Add a color here before using it.
+
+  Usage:
+    {% from '_components/ui.html' import section_card, stat_tile, page_hero, pill, btn %}
+#}
+
+{# ── Accent color → literal Tailwind classes ─────────────────────────────── #}
+{% set _ACCENTS = {
+  'indigo':  {'chip': 'bg-indigo-500/15',  'text': 'text-indigo-400',  'border': 'hover:border-indigo-500/50',  'dot': 'bg-indigo-400',  'grad': 'from-indigo-500 to-indigo-600',  'soft': 'from-indigo-950/50'},
+  'amber':   {'chip': 'bg-amber-500/15',   'text': 'text-amber-400',   'border': 'hover:border-amber-500/50',   'dot': 'bg-amber-400',   'grad': 'from-amber-500 to-amber-600',   'soft': 'from-amber-950/50'},
+  'emerald': {'chip': 'bg-emerald-500/15', 'text': 'text-emerald-400', 'border': 'hover:border-emerald-500/50', 'dot': 'bg-emerald-400', 'grad': 'from-emerald-500 to-emerald-600', 'soft': 'from-emerald-950/50'},
+  'orange':  {'chip': 'bg-orange-500/15',  'text': 'text-orange-400',  'border': 'hover:border-orange-500/50',  'dot': 'bg-orange-400',  'grad': 'from-orange-500 to-orange-600',  'soft': 'from-orange-950/50'},
+  'purple':  {'chip': 'bg-purple-500/15',  'text': 'text-purple-400',  'border': 'hover:border-purple-500/50',  'dot': 'bg-purple-400',  'grad': 'from-purple-500 to-pink-600',    'soft': 'from-purple-950/50'},
+  'blue':    {'chip': 'bg-blue-500/15',    'text': 'text-blue-400',    'border': 'hover:border-blue-500/50',    'dot': 'bg-blue-400',    'grad': 'from-blue-500 to-indigo-600',    'soft': 'from-blue-950/50'},
+  'zinc':    {'chip': 'bg-zinc-700/60',    'text': 'text-zinc-200',    'border': 'hover:border-zinc-600',       'dot': 'bg-zinc-400',    'grad': 'from-zinc-600 to-zinc-700',      'soft': 'from-zinc-900/50'}
+} %}
+
+{# ── Shared icon set (stroke paths) ──────────────────────────────────────── #}
+{% set _ICONS = {
+  'printer':  '<path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zM7 9V5a2 2 0 012-2h6a2 2 0 012 2v4"/>',
+  'queue':    '<path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h10M4 18h6"/>',
+  'check':    '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>',
+  'clock':    '<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>',
+  'alert':    '<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"/>',
+  'cart':     '<path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>',
+  'user':     '<path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>',
+  'chart':    '<path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6m4 6V5m4 14v-9M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z"/>',
+  'box':      '<path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>',
+  'cog':      '<path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>',
+  'arrow':    '<path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/>',
+  'bolt':     '<path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>'
+} %}
+
+{% macro icon_svg(name, cls='w-5 h-5') -%}
+<svg class="{{ cls }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">{{ _ICONS.get(name, '')|safe }}</svg>
+{%- endmacro %}
+
+
+{# ── panel: bare canonical surface (call block) ──────────────────────────── #}
+{% macro panel(extra='') -%}
+<div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4 sm:p-5 {{ extra }}">{{ caller() }}</div>
+{%- endmacro %}
+
+
+{# ── section_card: titled panel with optional action link (call block) ───── #}
+{% macro section_card(title, icon='', action_href='', action_text='', accent='indigo', live=false, extra='') -%}
+{% set a = _ACCENTS.get(accent, _ACCENTS.indigo) %}
+<section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4 sm:p-5 {{ extra }}">
+  <div class="flex items-center justify-between mb-4 gap-3">
+    <h2 class="text-base font-semibold flex items-center gap-2 min-w-0">
+      {% if live %}<span class="w-2 h-2 rounded-full {{ a.dot }} animate-pulse flex-shrink-0"></span>{% endif %}
+      {% if icon %}<span class="{{ a.text }} flex-shrink-0">{{ icon_svg(icon, 'w-4 h-4') }}</span>{% endif %}
+      <span class="truncate">{{ title }}</span>
+    </h2>
+    {% if action_href and action_text %}<a href="{{ action_href }}" class="text-xs text-indigo-400 hover:underline flex-shrink-0">{{ action_text }} →</a>{% endif %}
+  </div>
+  {{ caller() }}
+</section>
+{%- endmacro %}
+
+
+{# ── stat_tile: metric tile (icon chip + big number + label) ─────────────── #}
+{% macro stat_tile(value, label, accent='indigo', icon='', href='', sub='') -%}
+{% set a = _ACCENTS.get(accent, _ACCENTS.indigo) %}
+{% set tag = 'a' if href else 'div' %}
+<{{ tag }} {% if href %}href="{{ href }}"{% endif %} class="block bg-zinc-800/70 border border-zinc-700/50 rounded-2xl p-4 transition {% if href %}{{ a.border }} hover:bg-zinc-800 tap-highlight{% endif %}">
+  {% if icon %}
+  <span class="w-9 h-9 rounded-xl {{ a.chip }} flex items-center justify-center mb-3">{{ icon_svg(icon, 'w-5 h-5 ' + a.text) }}</span>
+  {% endif %}
+  <p class="text-3xl font-bold {{ a.text }} leading-none">{{ value }}</p>
+  <p class="text-xs text-zinc-400 mt-1.5">{{ label }}{% if sub %} <span class="text-zinc-500">· {{ sub }}</span>{% endif %}</p>
+</{{ tag }}>
+{%- endmacro %}
+
+
+{# ── page_hero: gradient hero header (store / queue pattern) ──────────────── #}
+{% macro page_hero(title, subtitle='', emoji='', accent='indigo', extra='') -%}
+{% set a = _ACCENTS.get(accent, _ACCENTS.indigo) %}
+<div class="relative mb-6 -mx-4 -mt-4 px-4 pt-8 pb-6 bg-gradient-to-br {{ a.soft }} via-zinc-900 to-zinc-900 border-b border-zinc-800 overflow-hidden {{ extra }}">
+  <div class="absolute inset-0 overflow-hidden pointer-events-none">
+    <div class="absolute -top-24 -right-24 w-64 h-64 {{ a.chip }} rounded-full blur-3xl"></div>
+    <div class="absolute -bottom-24 -left-24 w-64 h-64 {{ a.chip }} rounded-full blur-3xl"></div>
+  </div>
+  <div class="relative">
+    <div class="flex items-center gap-3">
+      {% if emoji %}<div class="w-11 h-11 rounded-2xl bg-gradient-to-br {{ a.grad }} flex items-center justify-center shadow-lg text-xl flex-shrink-0">{{ emoji }}</div>{% endif %}
+      <div class="min-w-0">
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight truncate">{{ title }}</h1>
+        {% if subtitle %}<p class="text-zinc-400 text-sm mt-0.5">{{ subtitle }}</p>{% endif %}
+      </div>
+    </div>
+    {% if caller is defined %}<div class="mt-4">{{ caller() }}</div>{% endif %}
+  </div>
+</div>
+{%- endmacro %}
+
+
+{# ── pill: filter / tab chip ─────────────────────────────────────────────── #}
+{% macro pill(text, href='#', active=false) -%}
+<a href="{{ href }}" class="flex-shrink-0 rounded-xl px-4 py-2 text-sm font-medium transition tap-highlight {% if active %}bg-indigo-600 text-white{% else %}bg-zinc-800 text-zinc-300 hover:bg-zinc-700{% endif %}">{{ text }}</a>
+{%- endmacro %}
+
+
+{# ── btn: link styled as a button ────────────────────────────────────────── #}
+{% macro btn(text, href='#', variant='primary', icon='', extra='') -%}
+{% set variants = {
+  'primary':   'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20',
+  'secondary': 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700',
+  'ghost':     'bg-transparent hover:bg-zinc-800 text-zinc-300',
+  'danger':    'bg-red-600 hover:bg-red-500 text-white'
+} %}
+<a href="{{ href }}" class="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-sm transition tap-highlight {{ variants.get(variant, variants.primary) }} {{ extra }}">
+  {% if icon %}{{ icon_svg(icon, 'w-4 h-4') }}{% endif %}{{ text }}
+</a>
+{%- endmacro %}

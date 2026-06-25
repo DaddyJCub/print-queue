@@ -1,16 +1,11 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Broadcast Notifications | Printellect</title>
-  <link rel="stylesheet" href="/static/css/tailwind.css" />
-</head>
-<body class="bg-zinc-950 text-zinc-100">
+{% extends "admin_base.html" %}
+
+{% block admin_title %}Broadcast Notifications{% endblock %}
+{% block active_page %}{{ 'broadcast' }}{% endblock %}
+
+{% block content %}
   <div class="max-w-7xl mx-auto p-6">
-    <!-- Navigation -->
     {% set active_page = 'broadcast' %}
-    {% include 'admin_nav.html' %}
     
     <!-- Settings Tabs -->
     {% set active_settings_tab = 'broadcast' %}
@@ -450,5 +445,4 @@
     document.getElementById('admin-progress-toggle').addEventListener('change', saveAdminProgressToggle);
   });
   </script>
-</body>
-</html>
+{% endblock %}

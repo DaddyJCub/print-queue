@@ -212,32 +212,48 @@
       {% if printer_status %}
       <div class="space-y-3">
         {% for code, status in printer_status.items() %}
-        <div class="bg-zinc-900/40 border border-zinc-700/40 rounded-xl p-3.5">
+        <a href="/queue" class="block bg-zinc-900/40 border border-zinc-700/40 rounded-xl p-3.5 hover:border-indigo-500/40 hover:bg-zinc-900/70 transition tap-highlight">
           <div class="flex items-center justify-between gap-3">
-            <p class="font-medium text-sm truncate">{{ printer_labels.get(code, code) }}</p>
-            {% if status.is_printing %}
-            <span class="inline-flex items-center gap-1.5 text-xs text-blue-300 flex-shrink-0">
-              <span class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
-              Printing{% if status.progress %} · {{ status.progress }}%{% endif %}
-            </span>
-            {% elif status.is_offline or status.status is none %}
-            <span class="inline-flex items-center gap-1.5 text-xs text-zinc-400 flex-shrink-0">
-              <span class="w-2 h-2 rounded-full bg-zinc-500"></span>
-              Offline
-            </span>
-            {% else %}
-            <span class="inline-flex items-center gap-1.5 text-xs text-emerald-300 flex-shrink-0">
-              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-              Ready
-            </span>
-            {% endif %}
+            <div class="min-w-0">
+              <p class="font-medium text-sm truncate">{{ printer_labels.get(code, code) }}</p>
+              {% if status.is_printing and status.current_file %}
+              <p class="text-xs text-zinc-500 truncate mt-0.5">{{ status.current_file }}</p>
+              {% endif %}
+            </div>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              {% if status.is_printing %}
+              <span class="inline-flex items-center gap-1.5 text-xs text-blue-300">
+                <span class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
+                Printing{% if status.progress %} · {{ status.progress }}%{% endif %}
+              </span>
+              {% elif status.is_offline or status.status is none %}
+              <span class="inline-flex items-center gap-1.5 text-xs text-zinc-400">
+                <span class="w-2 h-2 rounded-full bg-zinc-500"></span>
+                Offline
+              </span>
+              {% else %}
+              <span class="inline-flex items-center gap-1.5 text-xs text-emerald-300">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                Ready
+              </span>
+              {% endif %}
+              <svg class="w-4 h-4 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </div>
           </div>
-          {% if status.is_printing and status.progress %}
+          {% if status.is_printing %}
+          {% if status.progress %}
           <div class="mt-3 h-2 bg-zinc-700/70 rounded-full overflow-hidden">
             <div class="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-700" style="width: {{ status.progress }}%"></div>
           </div>
           {% endif %}
-        </div>
+          {% if (status.current_layer and status.total_layers) or status.temp %}
+          <div class="flex items-center justify-between text-[11px] text-zinc-500 mt-1.5">
+            <span>{% if status.current_layer and status.total_layers %}Layer {{ status.current_layer }}/{{ status.total_layers }}{% endif %}</span>
+            <span>{% if status.temp %}🌡 {{ status.temp }}°{% endif %}</span>
+          </div>
+          {% endif %}
+          {% endif %}
+        </a>
         {% endfor %}
       </div>
       {% else %}
@@ -258,7 +274,7 @@
       {% if active_requests %}
       <div class="space-y-2.5">
         {% for req in active_requests %}
-        <a href="/status/{{ req.access_token }}" class="block bg-zinc-900/40 border border-zinc-700/40 rounded-xl p-3 hover:border-indigo-500/40 hover:bg-zinc-900/70 transition tap-highlight">
+        <a href="/my/{{ req.id }}?token={{ req.access_token }}" class="block bg-zinc-900/40 border border-zinc-700/40 rounded-xl p-3 hover:border-indigo-500/40 hover:bg-zinc-900/70 transition tap-highlight">
           <div class="flex items-center justify-between gap-2">
             <p class="font-medium text-sm truncate">{{ req.print_name or 'Untitled' }}</p>
             <svg class="w-4 h-4 text-zinc-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>

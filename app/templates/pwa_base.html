@@ -408,7 +408,7 @@
 
   <!-- Main Content -->
   <main id="main-content" role="main" class="page-content has-bottom-nav sm:pb-6" tabindex="-1">
-    <div class="max-w-6xl mx-auto px-4 py-4">
+    <div class="{% block content_width %}max-w-6xl{% endblock %} mx-auto px-4 py-4">
       {% block content %}{% endblock %}
     </div>
   </main>

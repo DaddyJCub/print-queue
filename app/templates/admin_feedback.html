@@ -1,23 +1,21 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Feedback | Admin | Printellect</title>
-  <link rel="stylesheet" href="/static/css/tailwind.css" />
-  <style>
+{% extends "admin_base.html" %}
+
+{% block admin_title %}Feedback{% endblock %}
+{% block active_page %}{{ 'feedback' }}{% endblock %}
+
+{% block head_extra %}
+<style>
     .feedback-card { transition: all 0.2s ease; }
     .feedback-card:hover { transform: translateX(2px); }
     .quick-action { opacity: 0; transition: opacity 0.15s; }
     .feedback-card:hover .quick-action { opacity: 1; }
     @media (max-width: 640px) { .quick-action { opacity: 1; } }
   </style>
-</head>
-<body class="bg-zinc-950 text-zinc-100">
+{% endblock %}
+
+{% block content %}
   <div class="max-w-7xl mx-auto p-6">
-    <!-- Navigation -->
     {% set active_page = 'feedback' %}
-    {% include 'admin_nav.html' %}
     
     <!-- Settings Tabs -->
     {% set active_settings_tab = 'feedback' %}
@@ -288,5 +286,4 @@
       }
     }
   </script>
-</body>
-</html>
+{% endblock %}

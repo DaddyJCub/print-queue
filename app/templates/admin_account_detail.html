@@ -1,16 +1,11 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{{ account.name or account.email }} | Account Management | Admin</title>
-  <link rel="stylesheet" href="/static/css/tailwind.css" />
-</head>
-<body class="bg-zinc-950 text-zinc-100">
+{% extends "admin_base.html" %}
+
+{% block admin_title %}{{ account.name or account.email }}{% endblock %}
+{% block active_page %}{{ 'accounts' }}{% endblock %}
+
+{% block content %}
   <div class="max-w-7xl mx-auto p-6">
-    <!-- Navigation -->
     {% set active_page = 'accounts' %}
-    {% include 'admin_nav.html' %}
 
     <!-- Breadcrumb -->
     {% set breadcrumbs = [
@@ -667,5 +662,4 @@
     }
   });
   </script>
-</body>
-</html>
+{% endblock %}

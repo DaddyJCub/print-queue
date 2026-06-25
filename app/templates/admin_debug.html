@@ -1,11 +1,10 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Polling Debug | Admin</title>
-  <link rel="stylesheet" href="/static/css/tailwind.css" />
-  <style>
+{% extends "admin_base.html" %}
+
+{% block admin_title %}Polling Debug{% endblock %}
+{% block active_page %}{{ 'debug' }}{% endblock %}
+
+{% block head_extra %}
+<style>
     .log-error { background-color: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; }
     .log-auto_complete { background-color: rgba(34, 197, 94, 0.1); border-left: 3px solid #22c55e; }
     .log-auto_match { background-color: rgba(34, 197, 94, 0.1); border-left: 3px solid #22c55e; }
@@ -14,11 +13,11 @@
     .log-poll_paused { background-color: rgba(245, 158, 11, 0.1); border-left: 3px solid #f59e0b; }
     .log-match_suggestion { background-color: rgba(139, 92, 246, 0.1); border-left: 3px solid #8b5cf6; }
   </style>
-</head>
-<body class="bg-zinc-950 text-zinc-100">
+{% endblock %}
+
+{% block content %}
   <div class="max-w-7xl mx-auto p-6">
     {% set active_page = 'debug' %}
-    {% include "admin_nav.html" %}
     
     <!-- Settings Tabs -->
     {% set active_settings_tab = 'debug' %}
@@ -426,5 +425,4 @@
     // Load logs on page load
     fetchLogs();
   </script>
-</body>
-</html>
+{% endblock %}

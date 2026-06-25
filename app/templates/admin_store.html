@@ -1,15 +1,11 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Store Management - Admin</title>
-  <link rel="stylesheet" href="/static/css/tailwind.css" />
-</head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+{% extends "admin_base.html" %}
+
+{% block admin_title %}Store Management - Admin{% endblock %}
+{% block active_page %}{{ 'store' }}{% endblock %}
+
+{% block content %}
   <div class="max-w-7xl mx-auto p-6">
     {% set active_page = 'store' %}
-    {% include 'admin_nav.html' %}
     
     <div class="flex items-center justify-between mb-6">
       <div>
@@ -199,5 +195,4 @@
       if (e.key === 'Escape') hideAddModal();
     });
   </script>
-</body>
-</html>
+{% endblock %}

@@ -1,15 +1,11 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Audit Log | Printellect</title>
-  <link rel="stylesheet" href="/static/css/tailwind.css" />
-</head>
-<body class="bg-zinc-950 text-zinc-100">
+{% extends "admin_base.html" %}
+
+{% block admin_title %}Audit Log{% endblock %}
+{% block active_page %}{{ 'audit' }}{% endblock %}
+
+{% block content %}
   <div class="max-w-7xl mx-auto p-6">
     {% set active_page = 'audit' %}
-    {% include 'admin_nav.html' %}
 
     <!-- Settings Tabs -->
     {% set active_settings_tab = 'audit' %}
@@ -96,5 +92,4 @@
   function showDetails(btn) { const details = JSON.parse(btn.dataset.details); document.querySelector('#details-content pre').textContent = JSON.stringify(details, null, 2); document.getElementById('details-modal').classList.remove('hidden'); }
   function hideDetails() { document.getElementById('details-modal').classList.add('hidden'); }
   </script>
-</body>
-</html>
+{% endblock %}

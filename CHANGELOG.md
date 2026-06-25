@@ -9,6 +9,24 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.26.0
+### Overview / Highlights
+- Unified the admin area into the same look and feel as the rest of the app — it no longer feels like a separate product.
+- Dashboard fixes: active requests now open correctly, and the Live Printers card shows live print detail.
+
+### Enhancements
+- Admin pages now share the same header, navigation, and mobile bottom-nav as the user-facing app, with an admin section pill-bar under the header. Every admin screen (queue, shipping, store, analytics, payments, users, settings, features, audit, devices, and all the rest) was moved onto a single shared shell.
+- Introduced a shared UI component library (cards, page headers, stat tiles, pills, buttons) so pages stop re-implementing the same patterns and stay visually consistent.
+- The dashboard Live Printers card is now clickable (opens the queue) and, while printing, shows the current file, layer progress, and nozzle temperature alongside the progress bar.
+- Admin pages now get cache-busted CSS, so style updates apply without a hard refresh.
+
+### Bug Fixes
+- Fixed a 404 when opening one of your active requests from the dashboard — it now links to the correct request page.
+
+### Notes / Things to Know
+- This is an internal/visual refactor; admin functionality is unchanged. The de-duplicated admin shell reuses the app's shared toast and confirm/alert dialogs.
+- Admin still uses a wider layout for dense tables.
+
 ## 0.25.1
 ### Overview / Highlights
 - Surface the new Printables import toggle in the admin Feature Flags page.

@@ -1,15 +1,11 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Print Agents | Printellect</title>
-  <link rel="stylesheet" href="/static/css/tailwind.css" />
-</head>
-<body class="bg-zinc-950 text-zinc-100">
+{% extends "admin_base.html" %}
+
+{% block admin_title %}Print Agents{% endblock %}
+{% block active_page %}{{ 'printer-agents' }}{% endblock %}
+
+{% block content %}
   <div class="max-w-7xl mx-auto p-6">
     {% set active_page = 'printer-agents' %}
-    {% include 'admin_nav.html' %}
 
     <div class="mb-5 rounded-2xl border border-indigo-900/60 bg-gradient-to-r from-indigo-950/30 to-zinc-900/80 p-4">
       <h1 class="text-2xl font-bold">🛰️ Print Agents</h1>
@@ -567,5 +563,4 @@
     loadFirmware();
     setInterval(load, 15000);  // refresh status periodically
   </script>
-</body>
-</html>
+{% endblock %}
