@@ -34,12 +34,15 @@
   ('Settings', '/admin/settings', 'settings'),
   ('Features', '/admin/features', 'features'),
   ('Admins', '/admin/admins', 'admins'),
+  ('Audit', '/admin/audit', 'audit'),
+  ('File Sync', '/admin/file-sync', 'file-sync'),
+  ('Debug', '/admin/debug', 'debug'),
   ('Printers', '/admin/printer-settings', 'printers'),
   ('Agents', '/admin/printer-agents', 'printer-agents'),
   ('Devices', '/admin/printellect/devices', 'printellect-devices'),
   ('Releases', '/admin/printellect/releases', 'printellect-releases'),
-  ('Audit', '/admin/audit', 'audit'),
-  ('Debug', '/admin/debug', 'debug')
+  ('OTA', '/admin/printellect/ota-status', 'printellect-ota'),
+  ('Docs', '/admin/printellect/docs', 'printellect-docs')
 ] %}
 <div class="sticky z-30 bg-zinc-950/90 backdrop-blur-lg border-b border-zinc-800/60" style="top: calc(3.5rem + var(--safe-area-top));">
   <div class="max-w-6xl mx-auto px-2 sm:px-4">
@@ -52,6 +55,9 @@
       {% endfor %}
       {% if _credits_on %}
       <a href="/admin/credits" class="flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition tap-highlight {% if ap == 'credits' %}text-white bg-indigo-500/20 ring-1 ring-indigo-500/30{% else %}text-zinc-400 hover:text-white hover:bg-zinc-800{% endif %}">Credits</a>
+      {% endif %}
+      {% if design_enabled is defined and design_enabled %}
+      <a href="/admin?design=1" class="flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition tap-highlight {% if ap == 'design' %}text-white bg-indigo-500/20 ring-1 ring-indigo-500/30{% else %}text-zinc-400 hover:text-white hover:bg-zinc-800{% endif %}">Design</a>
       {% endif %}
       <span class="w-px h-5 bg-zinc-800 mx-1 flex-shrink-0"></span>
       {% for label, href, key in sys %}

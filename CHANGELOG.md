@@ -9,6 +9,16 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.26.2
+### Overview / Highlights
+- Restored admin navigation links that went missing in the 0.26.0 admin redesign.
+
+### Bug Fixes
+- The unified admin nav was missing several sections — File Sync, OTA Status, Printellect Docs, and the Design queue view. All admin sections are reachable again from the admin pill-bar.
+
+### Notes / Things to Know
+- The admin pill-bar scrolls horizontally; the new sections appear at the end of the system group.
+
 ## 0.26.1
 ### Overview / Highlights
 - Easier submitting on mobile: a sticky "Submit Request" button follows you down the request form.
