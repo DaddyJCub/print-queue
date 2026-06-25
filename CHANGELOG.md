@@ -9,6 +9,16 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.26.3
+### Overview / Highlights
+- Admin navigation no longer scrolls sideways on desktop.
+
+### Bug Fixes
+- The admin nav pill-bar overflowed and required horizontal scrolling (awkward/impossible with a mouse on desktop). The primary sections now stay on one row and the system/hardware sections (Settings, Features, Admins, Audit, File Sync, Debug, Printers, Print Agents, Devices, Releases, OTA, Docs) live in a grouped "More" dropdown.
+
+### Notes / Things to Know
+- "More" highlights when you're on one of its sections, and closes on outside-click or Escape.
+
 ## 0.26.2
 ### Overview / Highlights
 - Restored admin navigation links that went missing in the 0.26.0 admin redesign.
