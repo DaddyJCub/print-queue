@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#6366f1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
-  <link rel="stylesheet" href="/static/css/tailwind.css" />
+  <link rel="stylesheet" href="/static/css/tailwind.css?v={{ asset_version|default('') }}" />
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js', {scope: '/'})
@@ -74,12 +74,27 @@
         </p>
       </div>
 
+      <!-- v0.26.6 -->
+      <div id="v0.26.6" class="bg-gradient-to-br from-zinc-900/80 via-amber-900/20 to-zinc-900/80 border border-amber-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-amber-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.26.6" class="px-3 py-1 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-500 transition">v0.26.6</a>
+          <span class="text-zinc-400 text-sm">June 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Fresh styles everywhere on release</h3>
+        <p class="text-sm text-zinc-400 mb-4">The last few standalone pages now cache-bust their styles like the rest of the app.</p>
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🐞 Bug Fixes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-1">•</span><span>The 3D file-preview pages, "Open in App" page, and this changelog page could show stale styling after an update; they now use the same versioned stylesheet link as every other page.</span></li>
+        </ul>
+      </div>
+
       <!-- v0.26.5 -->
       <div id="v0.26.5" class="bg-gradient-to-br from-zinc-900/80 via-blue-900/20 to-zinc-900/80 border border-blue-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-blue-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.26.5" class="px-3 py-1 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-500 transition">v0.26.5</a>
           <span class="text-zinc-400 text-sm">June 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Admin matches the rest of the app</h3>

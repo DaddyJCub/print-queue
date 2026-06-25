@@ -9,6 +9,13 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.26.6
+### Overview / Highlights
+- The remaining standalone pages now get fresh styles on each release like the rest of the app.
+
+### Bug Fixes
+- The 3D file-preview pages, the "Open in App" page, and the changelog page linked the stylesheet without a version, so they could show stale styling after an update. They now use the same cache-busted stylesheet link as every other page.
+
 ## 0.26.5
 ### Overview / Highlights
 - Admin pages now use the same card surface as the rest of the app, completing the visual unification.

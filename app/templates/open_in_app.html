@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#6366f1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
-  <link rel="stylesheet" href="/static/css/tailwind.css" />
+  <link rel="stylesheet" href="/static/css/tailwind.css?v={{ asset_version|default('') }}" />
   <script>
     const targetUrl = "{{ target_url }}";
     const isReport = {{ 'true' if report_mode else 'false' }};
