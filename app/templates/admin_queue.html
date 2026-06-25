@@ -15,7 +15,7 @@
     <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
       <h1 class="text-2xl font-bold">Queue</h1>
       {% if current_admin_can_manage_designs and design_enabled %}
-      <div class="flex items-center gap-1 bg-zinc-900/50 rounded-lg p-0.5 border border-zinc-800">
+      <div class="flex items-center gap-1 bg-zinc-800/40 rounded-lg p-0.5 border border-zinc-800">
         <button type="button" class="design-filter-btn px-3 py-1.5 rounded-md text-xs font-medium transition"
                 data-filter="all">All</button>
         <button type="button" class="design-filter-btn px-3 py-1.5 rounded-md text-xs font-medium transition"
@@ -438,7 +438,7 @@
 
     <!-- Printer Status - Collapsible -->
     <details class="mb-4 group" open>
-      <summary class="flex items-center justify-between cursor-pointer p-3 bg-zinc-900/40 rounded-xl border border-zinc-800 hover:bg-zinc-900/60 transition">
+      <summary class="flex items-center justify-between cursor-pointer p-3 bg-zinc-900/40 rounded-xl border border-zinc-800 hover:bg-zinc-800/40 transition">
         <div class="flex items-center gap-3">
           <span class="text-sm font-semibold">🖨 Printers</span>
           <div class="flex items-center gap-2">
@@ -1448,7 +1448,7 @@
 
     <!-- Recently Closed - Collapsible -->
     <details class="mt-8 bg-zinc-900/40 border border-zinc-800 rounded-2xl group">
-      <summary class="p-6 cursor-pointer hover:bg-zinc-900/60 rounded-2xl transition list-none">
+      <summary class="p-6 cursor-pointer hover:bg-zinc-800/40 rounded-2xl transition list-none">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <h2 class="text-lg font-semibold">📦 Recently Closed</h2>
@@ -1472,7 +1472,7 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" id="closed-list">
             {% for r in closed[:4] %}
               <a href="/admin/request/{{ r['id'] }}" 
-                 class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3 hover:bg-zinc-900/60 hover:border-zinc-700 transition group/card"
+                 class="request-item bg-zinc-950/60 border border-zinc-800 rounded-xl p-3 hover:bg-zinc-800/40 hover:border-zinc-700 transition group/card"
                  data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
                  data-designer="{{ r['designer_admin_id'] or '' }}"
                  data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">
@@ -1497,7 +1497,7 @@
             {% endfor %}
             {% for r in closed[4:] %}
               <a href="/admin/request/{{ r['id'] }}" 
-                 class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3 hover:bg-zinc-900/60 hover:border-zinc-700 transition group/card"
+                 class="request-item hidden bg-zinc-950/60 border border-zinc-800 rounded-xl p-3 hover:bg-zinc-800/40 hover:border-zinc-700 transition group/card"
                  data-requires-design="{{ 1 if r['requires_design'] else 0 }}"
                  data-designer="{{ r['designer_admin_id'] or '' }}"
                  data-design-complete="{{ 1 if r['design_completed_at'] else 0 }}">

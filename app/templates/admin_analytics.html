@@ -12,25 +12,25 @@
 
     <!-- Summary Stats -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
         <div class="text-sm text-zinc-400 uppercase tracking-wide mb-2">Total Requests</div>
         <div class="text-3xl font-bold">{{ stats.total_requests }}</div>
         <div class="text-xs text-zinc-500 mt-2">All time</div>
       </div>
 
-      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
         <div class="text-sm text-zinc-400 uppercase tracking-wide mb-2">Completed</div>
         <div class="text-3xl font-bold text-green-400">{{ stats.completed }}</div>
         <div class="text-xs text-zinc-500 mt-2">{% if stats.total_requests > 0 %}{{ ((stats.completed / stats.total_requests * 100) | round(1)) }}{% else %}0{% endif %}% success rate</div>
       </div>
 
-      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
         <div class="text-sm text-zinc-400 uppercase tracking-wide mb-2">Avg Print Time</div>
         <div class="text-3xl font-bold">{{ stats.avg_print_time_hours }}h</div>
         <div class="text-xs text-zinc-500 mt-2">{{ stats.avg_print_time_mins }}m average</div>
       </div>
 
-      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
         <div class="text-sm text-zinc-400 uppercase tracking-wide mb-2">Active This Month</div>
         <div class="text-3xl font-bold text-indigo-400">{{ stats.month_requests }}</div>
         <div class="text-xs text-zinc-500 mt-2">Last 30 days</div>
@@ -39,7 +39,7 @@
 
     <!-- Status Distribution -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
         <h2 class="text-lg font-semibold mb-4">📈 Status Distribution</h2>
         <div class="space-y-3">
           {% for status, count in stats.by_status.items() %}
@@ -57,7 +57,7 @@
         </div>
       </div>
 
-      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
         <h2 class="text-lg font-semibold mb-4">🖨 Printer Usage</h2>
         <div class="space-y-3">
           {% for printer, count in stats.by_printer.items() %}
@@ -75,7 +75,7 @@
         </div>
       </div>
 
-      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
         <h2 class="text-lg font-semibold mb-4">📦 Material Usage</h2>
         <div class="space-y-3">
           {% for material, count in stats.by_material.items() %}
@@ -93,7 +93,7 @@
         </div>
       </div>
 
-      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
         <h2 class="text-lg font-semibold mb-4">📅 Recent Activity</h2>
         <div class="space-y-2 max-h-64 overflow-y-auto">
           {% for event in stats.recent_events %}
@@ -107,7 +107,7 @@
     </div>
 
     <!-- Top Requesters -->
-    <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
       <h2 class="text-lg font-semibold mb-4">👥 Top Requesters</h2>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -136,7 +136,7 @@
     </div>
 
     <!-- Print History Learning (ETA) -->
-    <div class="mt-6 bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+    <div class="mt-6 bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
       <h2 class="text-lg font-semibold mb-4">🧠 ETA Learning Data</h2>
       <p class="text-sm text-zinc-400 mb-4">
         The system learns from completed prints to estimate completion times. ETAs are calculated using <strong>layer progress</strong> (most accurate) with percent fallback.

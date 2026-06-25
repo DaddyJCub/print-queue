@@ -54,7 +54,7 @@
       <!-- Main Edit Form -->
       <div class="lg:col-span-2 space-y-6">
         <form method="POST" action="/admin/store/item/{{ item.id }}/update" enctype="multipart/form-data" 
-              class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+              class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5">
           <h2 class="font-semibold mb-4">Edit Item Details</h2>
           
           <div class="space-y-4">
@@ -150,7 +150,7 @@
         </form>
         
         <!-- Files Section -->
-        <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5">
           <h2 class="font-semibold mb-4">Print Files</h2>
           
           {% if files %}
@@ -187,7 +187,7 @@
       <!-- Sidebar Preview -->
       <div class="space-y-6">
         <!-- Image Preview -->
-        <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5">
           <h2 class="font-semibold mb-4">Thumbnail Preview</h2>
           <div class="aspect-square bg-zinc-800 rounded-xl flex items-center justify-center overflow-hidden">
             {% if item.image_data %}
@@ -201,7 +201,7 @@
         </div>
         
         <!-- Quick Stats -->
-        <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5">
           <h2 class="font-semibold mb-4">Info</h2>
           <div class="space-y-3 text-sm">
             <div class="flex justify-between">

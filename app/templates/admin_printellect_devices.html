@@ -12,7 +12,7 @@
       <p class="text-sm text-zinc-300 mt-1">Auto-generate device IDs/claim codes, print QR labels, and track activation.</p>
     </div>
 
-    <form id="createDeviceForm" class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4 space-y-3">
+    <form id="createDeviceForm" class="rounded-2xl border border-zinc-800 bg-zinc-800/40 p-4 mb-4 space-y-3">
       <div class="grid md:grid-cols-4 gap-2">
         <input name="device_id" placeholder="device_id (blank = auto)" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-mono" />
         <input name="name" placeholder="display name (optional)" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
@@ -28,7 +28,7 @@
       </div>
     </form>
 
-    <section id="labelPanel" class="hidden rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
+    <section id="labelPanel" class="hidden rounded-2xl border border-zinc-800 bg-zinc-800/40 p-4 mb-4">
       <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
         <h2 class="font-semibold">Ready-to-Print Device Label</h2>
         <div class="flex gap-2">
@@ -57,7 +57,7 @@
       </div>
     </section>
 
-    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+    <div class="rounded-2xl border border-zinc-800 bg-zinc-800/40 p-4">
       <h2 class="font-semibold mb-3">Devices</h2>
       <p id="manageStatus" class="text-xs text-zinc-400 mb-2 min-h-4"></p>
       <div id="devices" class="space-y-2"></div>

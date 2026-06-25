@@ -23,7 +23,7 @@
     {% endif %}
 
     <form class="mt-6 space-y-6" method="POST" action="/admin/settings">
-      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+      <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-6">
         <h2 class="text-xl font-semibold">Admin notification recipients</h2>
         <p class="text-sm text-zinc-400 mt-1">Comma-separated list. Example: you@domain.com, other@domain.com</p>
 
@@ -33,7 +33,7 @@
                placeholder="you@beeptool.shop, other@beeptool.shop" />
       </section>
 
-      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+      <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-6">
         <h2 class="text-xl font-semibold">📍 Pickup Location</h2>
         <p class="text-sm text-zinc-400 mt-1">Shown to users when their print is complete and ready to pick up. Leave blank to hide this message.</p>
 
@@ -43,7 +43,7 @@
                placeholder="e.g. Room 204, Building A — available Mon–Fri 9am–5pm" />
       </section>
 
-      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+      <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-6">
         <h2 class="text-xl font-semibold">Email toggles</h2>
         <p class="text-sm text-zinc-400 mt-1">Control who gets notifications and when.</p>
 
@@ -77,7 +77,7 @@
       </section>
       
       <!-- Fine-grain notification controls -->
-      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+      <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-6">
         <h2 class="text-lg font-semibold">📧 Per-Status Email Controls</h2>
         <p class="text-sm text-zinc-400 mt-1">Fine-tune which status changes trigger emails. Only applies if the master toggle above is enabled.</p>
 
@@ -284,7 +284,7 @@
       </section>
 
       <!-- Rush Payment Settings -->
-      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+      <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-6">
         <h2 class="text-xl font-semibold mb-4">🚀 Priority Rush Settings</h2>
         
         <div class="space-y-4">
@@ -314,7 +314,7 @@
       </section>
 
       <!-- Shipping Settings -->
-      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+      <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-6">
         <h2 class="text-xl font-semibold mb-4">📦 Shipping Settings</h2>
         <p class="text-sm text-zinc-400 mb-4">Enable shipping requests, configure rate defaults, and set ship-from profile used for live rate suggestions and label purchase.</p>
 
@@ -575,7 +575,7 @@
       </section>
 
       <!-- Stripe / Payment section -->
-      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mt-6">
+      <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-6 mt-6">
         <h2 class="text-xl font-semibold flex items-center gap-2">
           💳 Stripe Payments
           {% if s.stripe_secret_key_configured and s.stripe_publishable_key %}
@@ -625,7 +625,7 @@
 
       <!-- Credits & Rewards -->
       {% if credits_feature_on %}
-      <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mt-6">
+      <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-6 mt-6">
         <h2 class="text-xl font-semibold flex items-center gap-2">
           Credits &amp; Rewards
           {% if s.credits_enabled == '1' %}

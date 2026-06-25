@@ -33,7 +33,7 @@
     </div>
 
     <!-- Printer Status Cache -->
-    <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 mb-6">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6 mb-6">
       <h2 class="text-lg font-semibold mb-4">🖨️ Printer Status Cache</h2>
       {% if printer_cache %}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -56,7 +56,7 @@
 
     <!-- Moonraker Connection Test -->
     {% if moonraker_enabled %}
-    <div class="bg-zinc-900/50 border border-indigo-800/50 rounded-xl p-6 mb-6">
+    <div class="bg-zinc-800/40 border border-indigo-800/50 rounded-xl p-6 mb-6">
       <h2 class="text-lg font-semibold mb-4">🌙 Moonraker Connection</h2>
       <p class="text-sm text-zinc-400 mb-4">Test connectivity to the AD5X Moonraker API.</p>
       <div class="flex gap-3">
@@ -163,7 +163,7 @@
     {% endif %}
 
     <!-- Polling Control -->
-    <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 mb-6">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6 mb-6">
       <h2 class="text-lg font-semibold mb-4">⏸️ Polling Control</h2>
       <p class="text-sm text-zinc-400 mb-4">Pause polling when manually sending files to the printer to prevent connection conflicts.</p>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -230,7 +230,7 @@
     </script>
 
     <!-- Failure Counts -->
-    <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 mb-6">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6 mb-6">
       <h2 class="text-lg font-semibold mb-4">⚠️ Printer Failure Counts</h2>
       {% if failure_counts %}
         <div class="flex flex-wrap gap-4">
@@ -247,7 +247,7 @@
     </div>
 
     <!-- Debug Logs -->
-    <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold">📋 Recent Poll Logs</h2>
         <span class="text-xs text-zinc-500">Last {{ logs|length }} entries (newest first)</span>
@@ -331,7 +331,7 @@
     </div>
     
     <!-- Application Logs -->
-    <div class="mt-6 bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+    <div class="mt-6 bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold">📝 Application Logs</h2>
         <div class="flex gap-2">

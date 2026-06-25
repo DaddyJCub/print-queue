@@ -31,7 +31,7 @@
     {% endif %}
 
     <!-- Filters -->
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 mb-6">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4 mb-6">
       <form method="GET" action="/admin/accounts" class="flex flex-col sm:flex-row gap-3">
         <input type="text" name="search" value="{{ search or '' }}" placeholder="Search by name or email..."
                class="flex-1 rounded-xl bg-zinc-950 border border-zinc-700 px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" />
@@ -56,26 +56,26 @@
 
     <!-- Role Stats -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
         <div class="text-2xl font-bold text-purple-400">{{ role_counts.get('owner', 0) }}</div>
         <div class="text-xs text-zinc-400 uppercase tracking-wider mt-1">Owners</div>
       </div>
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
         <div class="text-2xl font-bold text-indigo-400">{{ role_counts.get('admin', 0) }}</div>
         <div class="text-xs text-zinc-400 uppercase tracking-wider mt-1">Admins</div>
       </div>
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
         <div class="text-2xl font-bold text-cyan-400">{{ role_counts.get('staff', 0) }}</div>
         <div class="text-xs text-zinc-400 uppercase tracking-wider mt-1">Staff</div>
       </div>
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
         <div class="text-2xl font-bold text-emerald-400">{{ role_counts.get('user', 0) }}</div>
         <div class="text-xs text-zinc-400 uppercase tracking-wider mt-1">Users</div>
       </div>
     </div>
 
     <!-- Accounts Table -->
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl overflow-hidden">
       {% if accounts %}
       <div class="overflow-x-auto">
         <table class="w-full">

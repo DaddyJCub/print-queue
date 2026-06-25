@@ -9,6 +9,19 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.26.5
+### Overview / Highlights
+- Admin pages now use the same card surface as the rest of the app, completing the visual unification.
+
+### Enhancements
+- Applied the canonical card surface (matching the dashboard and user-facing pages) to every admin page, so admin and the public app look like one product end-to-end.
+
+### Bug Fixes
+- None.
+
+### Notes / Things to Know
+- Visual-only: verified no form, input, button, link, or handler changed on any admin page (every interactive element byte-for-byte identical across 25 admin pages).
+
 ## 0.26.4
 ### Overview / Highlights
 - Unified the card look across all user-facing pages so the whole app matches the dashboard.

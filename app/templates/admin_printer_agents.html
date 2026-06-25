@@ -21,7 +21,7 @@
     </div>
 
     <!-- Ingest token (for the Cura plugin) -->
-    <section class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
+    <section class="rounded-2xl border border-zinc-800 bg-zinc-800/40 p-4 mb-4">
       <h2 class="text-sm font-semibold text-zinc-300 mb-2">🔑 Cura ingest token</h2>
       <p class="text-xs text-zinc-500 mb-2">Paste this into the Cura plugin's <code class="bg-zinc-800 px-1 rounded">config.json</code> (and the post-processing uploader). It lets Cura send sliced G-code to the queue.</p>
       <div class="flex items-center gap-2">
@@ -42,7 +42,7 @@
     </section>
 
     <!-- Agent software updates (OTA) -->
-    <section class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 mb-4">
+    <section class="rounded-2xl border border-zinc-800 bg-zinc-800/40 p-4 mb-4">
       <h2 class="text-sm font-semibold text-zinc-300 mb-2">⬆️ Agent software updates</h2>
       <p class="text-xs text-zinc-500 mb-3">Upload a new agent bundle (a <code class="bg-zinc-800 px-1 rounded">.zip</code> of the <code class="bg-zinc-800 px-1 rounded">printqueue_agent/</code> package — build with <code class="bg-zinc-800 px-1 rounded">python build_bundle.py</code>). Then use <strong>Update agent</strong> under each agent's Manage panel — it self-updates and restarts.</p>
       <form id="releaseForm" class="grid md:grid-cols-3 gap-2 items-center">
@@ -132,7 +132,7 @@
       const wrap = document.getElementById("agentList");
       if (!agents.length) { wrap.innerHTML = '<div class="text-center text-zinc-500 py-10 border border-dashed border-zinc-800 rounded-2xl">No agents yet. Register one above.</div>'; return; }
       wrap.innerHTML = agents.map(a => `
-        <div class="rounded-2xl border ${a.revoked ? 'border-red-900/50 opacity-60' : 'border-zinc-800'} bg-zinc-900/60 p-4">
+        <div class="rounded-2xl border ${a.revoked ? 'border-red-900/50 opacity-60' : 'border-zinc-800'} bg-zinc-800/40 p-4">
           <div class="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <div class="flex items-center gap-2">

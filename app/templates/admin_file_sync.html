@@ -46,26 +46,26 @@
 
 <!-- Sync Stats -->
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+  <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
     <div class="text-2xl font-bold text-white">{{ stats.total_folders }}</div>
     <div class="text-xs text-zinc-400 mt-1">Synced Folders</div>
   </div>
-  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+  <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
     <div class="text-2xl font-bold text-emerald-400">{{ stats.total_files }}</div>
     <div class="text-xs text-zinc-400 mt-1">Files Indexed</div>
   </div>
-  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+  <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
     <div class="text-2xl font-bold text-indigo-400">{{ stats.pending_matches }}</div>
     <div class="text-xs text-zinc-400 mt-1">Pending Matches</div>
   </div>
-  <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+  <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
     <div class="text-2xl font-bold text-amber-400">{{ stats.auto_matched }}</div>
     <div class="text-xs text-zinc-400 mt-1">Auto-Matched</div>
   </div>
 </div>
 
 <!-- Add Folder Form -->
-<div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 mb-6">
+<div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-6 mb-6">
   <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
     <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
       <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -132,7 +132,7 @@
 </div>
 
 <!-- Synced Folders List -->
-<div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden mb-6">
+<div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl overflow-hidden mb-6">
   <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
     <h2 class="text-lg font-semibold">Synced Folders</h2>
     <span class="text-xs text-zinc-500">{{ folders|length }} folder(s)</span>
@@ -219,7 +219,7 @@
 </div>
 
 <!-- Pending Matches -->
-<div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+<div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl overflow-hidden">
   <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
     <h2 class="text-lg font-semibold">Pending Matches</h2>
     <button onclick="processMatches()" class="text-xs px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium transition">

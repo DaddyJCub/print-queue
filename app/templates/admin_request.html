@@ -286,7 +286,7 @@
             </button>
             <div id="step-dest" class="{% if dest_done and step_index > 1 %}hidden{% endif %} px-3 pb-3 space-y-3">
               {% if shipping %}
-                <div class="text-sm text-zinc-300 p-2 rounded bg-zinc-900/60">
+                <div class="text-sm text-zinc-300 p-2 rounded bg-zinc-800/40">
                   <p class="font-medium text-zinc-200">{{ shipping.recipient_name or req["requester_name"] }}</p>
                   <p>{{ shipping.address_line1 or "—" }}{% if shipping.address_line2 %}, {{ shipping.address_line2 }}{% endif %}</p>
                   <p>{{ shipping.city or "—" }}, {{ shipping.state or "—" }} {{ shipping.postal_code or "" }} {{ shipping.country or "US" }}</p>
@@ -453,7 +453,7 @@
             <div id="step-label" class="{% if label_done and step_index > 4 %}hidden{% elif step_index < 2 and not label_done %}hidden{% endif %} px-3 pb-3 space-y-3">
               {% if label_done %}
                 {# Existing tracking info #}
-                <div class="rounded-lg bg-zinc-900/60 p-3 space-y-1.5 text-sm">
+                <div class="rounded-lg bg-zinc-800/40 p-3 space-y-1.5 text-sm">
                   <div class="flex items-center justify-between">
                     <span class="text-zinc-400">Carrier</span>
                     <span class="text-zinc-200 font-medium">{{ shipping.carrier or '—' }}</span>
@@ -571,7 +571,7 @@
                   </div>
                 </div>
               {% elif ship_status in ['IN_TRANSIT', 'PRE_TRANSIT'] %}
-                <div class="flex items-center gap-3 p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/40">
+                <div class="flex items-center gap-3 p-3 rounded-xl bg-zinc-800/40 border border-zinc-700/50/40">
                   <div class="w-10 h-10 rounded-full bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-lg shrink-0">📦</div>
                   <div>
                     <p class="text-sm font-semibold text-sky-200">{{ ship_status.replace('_', ' ').title() }}</p>
@@ -583,22 +583,22 @@
               {# ── Info grid ── #}
               {% if shipping and shipping.tracking_number %}
                 <div class="grid grid-cols-2 gap-2 text-xs">
-                  <div class="rounded-lg bg-zinc-900/60 border border-zinc-800/60 px-3 py-2">
+                  <div class="rounded-lg bg-zinc-800/40 border border-zinc-700/50/60 px-3 py-2">
                     <div class="text-zinc-500 mb-0.5">Tracking</div>
                     <div class="font-mono text-zinc-200 break-all text-[11px]">{{ shipping.tracking_number }}</div>
                   </div>
-                  <div class="rounded-lg bg-zinc-900/60 border border-zinc-800/60 px-3 py-2">
+                  <div class="rounded-lg bg-zinc-800/40 border border-zinc-700/50/60 px-3 py-2">
                     <div class="text-zinc-500 mb-0.5">Carrier</div>
                     <div class="text-zinc-200">{{ shipping.carrier or 'USPS' }}{% if shipping.service %} · {{ shipping.service }}{% endif %}</div>
                   </div>
                   {% if tracking_detail.get('estimatedDeliveryDate') or shipping.estimated_delivery_date %}
-                    <div class="rounded-lg bg-zinc-900/60 border border-zinc-800/60 px-3 py-2">
+                    <div class="rounded-lg bg-zinc-800/40 border border-zinc-700/50/60 px-3 py-2">
                       <div class="text-zinc-500 mb-0.5">Est. Delivery</div>
                       <div class="text-zinc-200 font-medium">{{ tracking_detail.get('estimatedDeliveryDate') or shipping.estimated_delivery_date }}</div>
                     </div>
                   {% endif %}
                   {% if tracking_detail.get('lastLocation') %}
-                    <div class="rounded-lg bg-zinc-900/60 border border-zinc-800/60 px-3 py-2">
+                    <div class="rounded-lg bg-zinc-800/40 border border-zinc-700/50/60 px-3 py-2">
                       <div class="text-zinc-500 mb-0.5">Last Location</div>
                       <div class="text-zinc-200">{{ tracking_detail['lastLocation'] }}</div>
                     </div>
@@ -695,7 +695,7 @@
 
         <!-- Camera Feed Card (shows when printing and camera is configured) -->
         {% if req["status"] == "PRINTING" and req["printer"] in ["ADVENTURER_4", "AD5X"] and camera_url %}
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-semibold">📷 Live Camera Feed</h2>
             <div class="flex items-center gap-2">
@@ -906,7 +906,7 @@
 
         <!-- Completion Snapshot Card (shows when DONE/PICKED_UP and has snapshot) -->
         {% if req["status"] in ["DONE", "PICKED_UP"] and req["completion_snapshot"] %}
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
           <h2 class="text-lg font-semibold mb-4">📸 Completion Snapshot</h2>
           <div class="relative bg-zinc-950 rounded-lg overflow-hidden">
             <img src="/api/request/{{ req['id'] }}/completion-snapshot" 
@@ -925,7 +925,7 @@
         {% endif %}
 
         <!-- Admin Tools (Status, Print Time, Edit) -->
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
           <h2 class="text-lg font-semibold mb-4">⚙️ Admin Tools</h2>
           
           <!-- Status Change - Compact -->
@@ -1107,7 +1107,7 @@
         </div>
 
         <!-- Build Configuration -->
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-semibold">🔧 Builds <span class="text-sm font-normal text-zinc-500">({{ builds|length if builds else 0 }})</span></h2>
             <div class="flex items-center gap-2">
@@ -1391,7 +1391,7 @@
         </div>
 
         <!-- Notes Card (Combined Work + Special) -->
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
           <h2 class="text-lg font-semibold mb-4">📝 Notes</h2>
           
           <!-- Work Notes (Private) -->
@@ -1416,7 +1416,7 @@
 
         {% if design_enabled %}
         <!-- Design Panel -->
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
           <div class="flex items-start justify-between gap-2 mb-2">
             <h2 class="text-lg font-semibold">🎨 Design</h2>
             {% if req["requires_design"] %}
@@ -1491,7 +1491,7 @@
         {% endif %}
 
         <!-- Assignees Card -->
-        <div id="assignees" class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div id="assignees" class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
           <h2 class="text-lg font-semibold mb-4">👥 Assignees</h2>
           
           {% if assignments and assignments|length > 0 %}
@@ -1567,7 +1567,7 @@
 
         <!-- Build Progress Card (ONLY for multi-build requests with 2+ builds) -->
         {% if builds and builds|length > 1 %}
-          <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+          <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
             <h2 class="text-lg font-semibold mb-4">🔧 Multi-Build Progress</h2>
             
             <!-- Progress summary -->
@@ -1754,7 +1754,7 @@
         <!-- External Source Card (Printables, etc.) -->
         {% if external_sources %}
         {% for src in external_sources %}
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 sm:p-6">
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4 sm:p-6">
           <div class="flex items-start justify-between gap-3 mb-2">
             <div class="min-w-0">
               <h2 class="text-lg font-semibold">🔗 {{ src.title or 'Model source' }}</h2>
@@ -1802,7 +1802,7 @@
         {% endif %}
 
         <!-- Files Card -->
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 sm:p-6">
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4 sm:p-6">
           <h2 class="text-lg font-semibold mb-3">📁 Files <span class="text-sm font-normal text-zinc-500">({{ files|length }})</span></h2>
           
           <form id="admin-add-file-form" class="mb-4" method="POST" action="/admin/request/{{ req['id'] }}/add-file" enctype="multipart/form-data" data-rid="{{ req['id'] }}">
@@ -1878,7 +1878,7 @@
                   {# Nested linked G-code files — build inherited from model #}
                   {% if f.linked_gcodes %}
                     {% for gc in f.linked_gcodes %}
-                      <div class="border-t border-zinc-700/40 bg-zinc-900/50">
+                      <div class="border-t border-zinc-700/40 bg-zinc-800/40">
                         <div class="ml-4 border-l-2 border-indigo-500/30 pl-3 py-2 pr-3">
                           <div class="flex items-center gap-2">
                             <span class="text-sm flex-shrink-0">⚙️</span>
@@ -2065,7 +2065,7 @@
         </script>
 
         <!-- Messages Card -->
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
           <h2 class="text-lg font-semibold mb-4">💬 Messages</h2>
           
           {% if messages|length > 0 %}
@@ -2104,7 +2104,7 @@
         </div>
 
         <!-- History Card -->
-        <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
           <h2 class="text-lg font-semibold mb-4">⏰ History</h2>
           <div class="space-y-2 max-h-96 overflow-y-auto">
             {% for e in events %}

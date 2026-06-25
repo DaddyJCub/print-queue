@@ -43,7 +43,7 @@
     {% endif %}
 
     <!-- Filters -->
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 mb-6">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4 mb-6">
       <form method="GET" action="/admin/users" class="flex flex-col sm:flex-row gap-3">
         <div class="flex-1">
           <input type="text" name="search" value="{{ search or '' }}" placeholder="Search by name or email..."
@@ -65,7 +65,7 @@
     </div>
 
     <!-- Users Table -->
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl overflow-hidden">
       {% if users %}
       <div class="overflow-x-auto">
         <table class="w-full">
