@@ -66,7 +66,7 @@
 
 <!-- PWA Install (collapsed, non-intrusive) -->
 <div id="pwa-promo" class="hidden mb-4">
-  <button onclick="installPWA()" class="w-full flex items-center justify-between bg-zinc-900/50 border border-zinc-700 rounded-xl px-3 py-2 tap-highlight">
+  <button onclick="installPWA()" class="w-full flex items-center justify-between bg-zinc-800/40 border border-zinc-700 rounded-xl px-3 py-2 tap-highlight">
     <div class="flex items-center gap-2">
       <span>📲</span>
       <span class="text-sm">Install for notifications</span>
@@ -85,7 +85,7 @@
 
 <!-- Printer Status - Compact -->
 <details class="mb-4 group" open>
-  <summary class="flex items-center justify-between cursor-pointer p-3 bg-zinc-900/40 rounded-xl border border-zinc-800 hover:bg-zinc-900/60 transition">
+  <summary class="flex items-center justify-between cursor-pointer p-3 bg-zinc-900/40 rounded-xl border border-zinc-800 hover:bg-zinc-800/40 transition">
     <div class="flex items-center gap-2">
       <span class="text-sm font-medium">🖨 Printers</span>
       <div class="flex gap-1.5">
@@ -338,7 +338,7 @@
   <div id="queue-mobile" class="sm:hidden space-y-3">
   {% if active_queue %}
     {% for r in active_queue %}
-    <div class="stagger-item bg-zinc-900/60 border {% if r.is_mine %}border-indigo-500/50 bg-indigo-900/20{% elif r.status in ['PRINTING', 'IN_PROGRESS'] %}border-emerald-500/50 bg-emerald-900/10{% else %}border-zinc-800{% endif %} rounded-xl p-4 card-interactive">
+    <div class="stagger-item bg-zinc-800/40 border {% if r.is_mine %}border-indigo-500/50 bg-indigo-900/20{% elif r.status in ['PRINTING', 'IN_PROGRESS'] %}border-emerald-500/50 bg-emerald-900/10{% else %}border-zinc-800{% endif %} rounded-xl p-4 card-interactive">
       <div class="flex items-start justify-between mb-2">
         <div class="flex items-center gap-2">
           <span class="text-lg font-bold text-zinc-500">#{{ r.queue_pos }}</span>
@@ -395,7 +395,7 @@
   </div>
   
   <!-- Desktop Table View -->
-  <div id="queue-desktop" class="hidden sm:block overflow-x-auto bg-zinc-900/60 rounded-2xl border border-zinc-800">
+  <div id="queue-desktop" class="hidden sm:block overflow-x-auto bg-zinc-800/40 rounded-2xl border border-zinc-800">
     <table class="w-full text-sm">
       <thead class="text-zinc-400 bg-zinc-950/40 text-xs">
         <tr class="border-b border-zinc-800">
@@ -608,7 +608,7 @@
     const statsEl = document.getElementById('queue-stats');
     if (statsEl) {
       statsEl.innerHTML = `
-        <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 text-center">
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-3 text-center">
           <div class="text-xl font-bold text-zinc-200">${counts.NEW || 0}</div>
           <div class="text-xs text-zinc-500">New</div>
         </div>
@@ -758,7 +758,7 @@
     mobileEl.innerHTML = activeQueue.map(r => {
       const isPrinting = r.status === 'PRINTING' || r.status === 'IN_PROGRESS';
       return `
-      <div class="bg-zinc-900/60 border ${r.is_mine ? 'border-indigo-500/50 bg-indigo-900/20' : isPrinting ? 'border-emerald-500/50 bg-emerald-900/10' : 'border-zinc-800'} rounded-xl p-4 card-interactive">
+      <div class="bg-zinc-800/40 border ${r.is_mine ? 'border-indigo-500/50 bg-indigo-900/20' : isPrinting ? 'border-emerald-500/50 bg-emerald-900/10' : 'border-zinc-800'} rounded-xl p-4 card-interactive">
         <div class="flex items-start justify-between mb-2">
           <div class="flex items-center gap-2">
             <span class="text-lg font-bold text-zinc-500">#${r.queue_pos}</span>

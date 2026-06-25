@@ -9,6 +9,20 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.26.4
+### Overview / Highlights
+- Unified the card look across all user-facing pages so the whole app matches the dashboard.
+
+### Enhancements
+- Every user-facing page (queue, request detail, my prints, store, sign-in/up, profile, credits, devices, trips, legal pages, etc.) now uses the same card surface as the dashboard, for a consistent feel across the app.
+- The Store now uses the shared page header and category pills from the design-system component library.
+
+### Bug Fixes
+- None.
+
+### Notes / Things to Know
+- This is a visual-consistency pass only — verified that no form, button, link, or behavior changed on any page (every interactive element is byte-for-byte identical; only card background/border styling was updated).
+
 ## 0.26.3
 ### Overview / Highlights
 - Admin navigation no longer scrolls sideways on desktop.

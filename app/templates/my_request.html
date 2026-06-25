@@ -155,7 +155,7 @@
     if (reportMode) {
       window.addEventListener('load', () => {
         setTimeout(() => {
-          const msgSection = document.querySelector('[data-section=\"messages\"]') || document.querySelector('.bg-zinc-900/60.border.border-zinc-800.rounded-2xl.p-5.mb-6');
+          const msgSection = document.querySelector('[data-section=\"messages\"]') || document.querySelector('.bg-zinc-800/40.border.border-zinc-800.rounded-2xl.p-5.mb-6');
           const textarea = document.getElementById('reply-textarea');
           if (msgSection && msgSection.scrollIntoView) msgSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
           if (textarea) {
@@ -486,7 +486,7 @@
             </div>
           </div>
         {% elif ss == 'IN_TRANSIT' %}
-          <div class="flex items-center gap-3 p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/40">
+          <div class="flex items-center gap-3 p-3 rounded-xl bg-zinc-800/40 border border-zinc-700/50/40">
             <div class="w-10 h-10 rounded-full bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-lg shrink-0">📦</div>
             <div>
               <p class="text-sm font-semibold text-sky-200">Your package is on the way</p>
@@ -494,7 +494,7 @@
             </div>
           </div>
         {% elif shipping.tracking_number %}
-          <div class="flex items-center gap-3 p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/40">
+          <div class="flex items-center gap-3 p-3 rounded-xl bg-zinc-800/40 border border-zinc-700/50/40">
             <div class="w-10 h-10 rounded-full bg-zinc-700/40 border border-zinc-600/40 flex items-center justify-center text-lg shrink-0">📦</div>
             <div>
               <p class="text-sm font-semibold text-zinc-200">Shipment created</p>
@@ -592,7 +592,7 @@
     
     <!-- Multi-Build Progress Summary (for IN_PROGRESS or multi-build requests not actively printing) -->
     {% if build_eta_info and build_eta_info.is_multi_build and req.status not in ['PRINTING', 'DONE', 'PICKED_UP', 'CANCELLED', 'REJECTED'] %}
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 mb-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4 mb-6">
         <h3 class="font-medium mb-3 flex items-center gap-2">
           📦 Build Progress
         </h3>
@@ -645,7 +645,7 @@
 
     <!-- Live Printer View (when PRINTING or IN_PROGRESS with active build) -->
     {% if (req.status == 'PRINTING' or req.status == 'IN_PROGRESS') and printer_status %}
-      <div class="bg-zinc-900/60 border {% if printer_status.is_offline %}border-amber-500/30{% else %}border-indigo-500/25{% endif %} rounded-2xl overflow-hidden mb-5">
+      <div class="bg-zinc-800/40 border {% if printer_status.is_offline %}border-amber-500/30{% else %}border-indigo-500/25{% endif %} rounded-2xl overflow-hidden mb-5">
         <div class="{% if printer_status.is_offline %}bg-amber-950/30 border-b border-amber-700/20{% else %}bg-indigo-950/30 border-b border-indigo-700/20{% endif %} px-4 pt-3.5 pb-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -678,7 +678,7 @@
         
         <!-- Build Progress (multi-build only) -->
         {% if build_eta_info and build_eta_info.is_multi_build %}
-          <div class="mb-4 p-3 bg-zinc-900/50 rounded-xl">
+          <div class="mb-4 p-3 bg-zinc-800/40 rounded-xl">
             <div class="flex items-center justify-between text-sm mb-2">
               <span class="text-zinc-400">Overall Progress</span>
               <span class="font-semibold">
@@ -846,7 +846,7 @@
     
     <!-- Completion Snapshot (for DONE status) -->
     {% if req.status == 'DONE' and req.completion_snapshot %}
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5 mb-6">
         <h2 class="font-semibold mb-4">📸 Completion Snapshot</h2>
         <img src="data:image/jpeg;base64,{{ req.completion_snapshot }}" 
              alt="Print completion snapshot"
@@ -858,7 +858,7 @@
     <!-- Build Photos Gallery (for multi-build or completed builds) -->
     {% set completed_builds_with_photos = builds_with_snapshots|selectattr('snapshot_data')|list if builds_with_snapshots else [] %}
     {% if completed_builds_with_photos|length > 0 %}
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5 mb-6">
         <h2 class="font-semibold mb-4 flex items-center gap-2">
           📸 Build Photos
           <span class="text-xs text-zinc-500 font-normal">({{ completed_builds_with_photos|length }} of {{ builds_with_snapshots|length }} builds)</span>
@@ -903,7 +903,7 @@
       </div>
     {% elif builds_with_snapshots|length > 0 and req.status not in ['DONE', 'PICKED_UP', 'CANCELLED', 'REJECTED'] %}
       <!-- Placeholder for builds without photos yet -->
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5 mb-6">
         <div class="flex items-center gap-3 text-zinc-500">
           <span class="text-2xl opacity-50">📷</span>
           <div>
@@ -916,7 +916,7 @@
     
     <!-- Detailed Build Progress (for multi-build requests OR single build with active printing) -->
     {% if builds_with_snapshots|length > 1 or (builds_with_snapshots|length == 1 and builds_with_snapshots[0].status == 'PRINTING') %}
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6" id="build-details">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5 mb-6" id="build-details">
         <h2 class="font-semibold mb-4">🔧 Build Details</h2>
         <div class="space-y-3">
           {% for b in builds_with_snapshots %}
@@ -976,7 +976,7 @@
               
               <!-- Build details grid -->
               {% if b.material or b.colors or b.slicer_estimate_minutes or b.print_time_minutes or b.total_layers or b.file_name %}
-                <div class="grid grid-cols-2 gap-2 text-xs mb-3 bg-zinc-900/50 rounded-lg p-2">
+                <div class="grid grid-cols-2 gap-2 text-xs mb-3 bg-zinc-800/40 rounded-lg p-2">
                   {% if b.material %}
                     <div class="flex items-center gap-1.5">
                       <span class="text-zinc-500">🧵</span>
@@ -1118,7 +1118,7 @@
     {% endif %}
     
     <!-- Request Details -->
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5 mb-6">
       <h2 class="font-semibold mb-4">Request Details</h2>
       <div class="grid grid-cols-2 gap-4 text-sm">
         <div>
@@ -1156,7 +1156,7 @@
     
     <!-- Files -->
     {% if files %}
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5 mb-6">
         <h2 class="font-semibold mb-4">📁 Files</h2>
         <p class="text-xs text-zinc-500 mb-3">.3mf, .fpp, .gcode, .obj, .step, .stl, .stp, .zip • 200MB max</p>
         <div class="space-y-2">
@@ -1206,7 +1206,7 @@
     <!-- External model sources (Printables, etc.) -->
     {% if external_sources %}
       {% for src in external_sources %}
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5 mb-6">
         <div class="flex items-start justify-between gap-3 mb-3">
           <div class="min-w-0">
             <h2 class="font-semibold">🔗 {{ src.title or 'Model source' }}</h2>
@@ -1242,7 +1242,7 @@
     {% endif %}
 
     <!-- Messages / Communication -->
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6" data-section="messages">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5 mb-6" data-section="messages">
       <h2 class="font-semibold mb-4">💬 Messages</h2>
       
       {% if messages %}
@@ -1285,7 +1285,7 @@
     
     <!-- Add Files Section (for NEEDS_INFO or NEW status) -->
     {% if req.status in ['NEW', 'NEEDS_INFO'] %}
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5 mb-6">
         <h2 class="font-semibold mb-4">📎 Add More Files</h2>
         <form method="POST" action="/my/{{ req.id }}/upload?token={{ token }}" enctype="multipart/form-data" class="space-y-3" id="multi-upload-form">
           <div id="multi-drop-zone" 
@@ -1478,7 +1478,7 @@
     
     <!-- Edit Request -->
     {% if req.status in ['NEW', 'NEEDS_INFO'] %}
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5 mb-6">
         <h2 class="font-semibold mb-4">✏️ Edit Request</h2>
         <form method="POST" action="/my/{{ req.id }}/edit?token={{ token }}" class="space-y-4">
           <div>
@@ -1504,7 +1504,7 @@
       </div>
     {% elif req.status in ['APPROVED', 'PRINTING', 'DONE'] %}
       <!-- Read-only details for in-progress requests -->
-      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-6">
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5 mb-6">
         <div class="flex items-center justify-between mb-4">
           <h2 class="font-semibold">✏️ Request Details</h2>
           <span class="text-xs text-zinc-500">Editing disabled while {{ req.status|lower }}</span>
@@ -1531,7 +1531,7 @@
     {% endif %}
     
     <!-- Status History -->
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5">
       <h2 class="font-semibold mb-4">📜 Status History</h2>
       <div class="space-y-2">
         {% for evt in history %}
@@ -1550,7 +1550,7 @@
     </div>
     
     <!-- Actions Section -->
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mt-6">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5 mt-6">
       <h2 class="font-semibold mb-4">⚡ Actions</h2>
       <div class="flex flex-wrap gap-3">
         <!-- Cancel (for active requests not yet printing) -->
@@ -1666,19 +1666,19 @@
       </div>
       
       <div class="grid grid-cols-2 gap-3 text-xs">
-        <div class="bg-zinc-900/50 rounded-lg p-2">
+        <div class="bg-zinc-800/40 rounded-lg p-2">
           <span class="text-zinc-500">Permission</span>
           <p id="diag-permission" class="font-mono">-</p>
         </div>
-        <div class="bg-zinc-900/50 rounded-lg p-2">
+        <div class="bg-zinc-800/40 rounded-lg p-2">
           <span class="text-zinc-500">SW State</span>
           <p id="diag-sw-state" class="font-mono">-</p>
         </div>
-        <div class="bg-zinc-900/50 rounded-lg p-2">
+        <div class="bg-zinc-800/40 rounded-lg p-2">
           <span class="text-zinc-500">Subscription</span>
           <p id="diag-subscription" class="font-mono truncate">-</p>
         </div>
-        <div class="bg-zinc-900/50 rounded-lg p-2">
+        <div class="bg-zinc-800/40 rounded-lg p-2">
           <span class="text-zinc-500">Server Subs</span>
           <p id="diag-server-subs" class="font-mono">-</p>
         </div>

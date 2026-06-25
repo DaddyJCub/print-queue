@@ -172,7 +172,7 @@
   </div>
   <div class="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 hide-scrollbar">
     {% for print in recent_prints %}
-    <div class="flex-shrink-0 px-3 py-2 bg-zinc-900/60 border border-zinc-800 rounded-xl text-sm">
+    <div class="flex-shrink-0 px-3 py-2 bg-zinc-800/40 border border-zinc-700/50 rounded-xl text-sm">
       <span class="text-zinc-300">{{ print.name[:20] }}{% if print.name|length > 20 %}...{% endif %}</span>
       {% if print.colors %}
       <span class="ml-2 text-xs text-zinc-500">{{ print.colors.split(',')[0] }}</span>
@@ -365,7 +365,7 @@
 
 <!-- Saved Templates -->
 {% if saved_templates and saved_templates|length > 0 %}
-<div class="mb-4 bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+<div class="mb-4 bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
   <div class="flex items-center justify-between mb-3">
     <span class="text-sm font-medium text-zinc-300 flex items-center gap-2">
       <span>📁</span> Saved Templates

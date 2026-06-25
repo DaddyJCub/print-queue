@@ -144,7 +144,7 @@
 
   {% if user_accounts_enabled %}
   <!-- Login Form (for user accounts) - SHOWN FIRST -->
-  <div id="form-login" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+  <div id="form-login" class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5">
     {% if oidc_enabled %}
     <!-- SSO Login Button -->
     <a href="/auth/oidc/login?next=/my-requests" 
@@ -201,7 +201,7 @@
   {% endif %}
 
   <!-- Email Login Form (Magic Link) -->
-  <div id="form-email" class="{% if user_accounts_enabled %}hidden{% endif %} bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+  <div id="form-email" class="{% if user_accounts_enabled %}hidden{% endif %} bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5">
     <p class="text-sm text-zinc-400 mb-4">Enter your email to receive a magic link</p>
     <form method="POST" action="/my-requests">
       <div class="mb-4">
@@ -224,7 +224,7 @@
   </div>
 
   <!-- Code Entry Form (for PWA sync) -->
-  <div id="form-code" class="hidden bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+  <div id="form-code" class="hidden bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-5">
     <p class="text-sm text-zinc-400 mb-4">Already logged in on another device? Enter the 6-digit sync code shown there.</p>
     
     <div class="flex gap-2 mb-4 justify-center">

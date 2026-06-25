@@ -32,7 +32,7 @@
 <div class="max-w-6xl mx-auto space-y-4">
 
   <!-- Device Header Card -->
-  <section class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+  <section class="rounded-2xl border border-zinc-800 bg-zinc-800/40 p-4">
     <div class="flex items-start justify-between gap-3 flex-wrap">
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2 flex-wrap">
@@ -82,7 +82,7 @@
   </div>
 
   <!-- ── Playback ─────────────────────────────────────────────────────────── -->
-  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 space-y-3">
+  <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4 space-y-3">
     <div class="flex items-center justify-between">
       <h2 class="font-semibold">Playback</h2>
       <button class="help-tip-btn text-zinc-600 hover:text-zinc-300 transition-colors p-1 rounded" data-tip="playback-tip" aria-label="Help for Playback" title="What is this?">
@@ -117,7 +117,7 @@
   <div class="grid lg:grid-cols-3 gap-4">
 
     <!-- Volume -->
-    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+    <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4">
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-semibold">Volume</h2>
         <button class="help-tip-btn text-zinc-600 hover:text-zinc-300 transition-colors p-1 rounded" data-tip="volume-tip" aria-label="Help for Volume">
@@ -140,7 +140,7 @@
     </section>
 
     <!-- Brightness -->
-    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+    <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4">
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-semibold">Brightness</h2>
         <button class="help-tip-btn text-zinc-600 hover:text-zinc-300 transition-colors p-1 rounded" data-tip="brightness-tip" aria-label="Help for Brightness">
@@ -163,7 +163,7 @@
     </section>
 
     <!-- Idle + System -->
-    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+    <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4">
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-semibold">Idle + System</h2>
         <button class="help-tip-btn text-zinc-600 hover:text-zinc-300 transition-colors p-1 rounded" data-tip="idle-tip" aria-label="Help for Idle mode">
@@ -189,7 +189,7 @@
   </div>
 
   <!-- ── Device Status ──────────────────────────────────────────────────── -->
-  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+  <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4">
     <div class="flex items-center justify-between mb-3">
       <h2 class="font-semibold">Device Status</h2>
       <div class="flex items-center gap-2">
@@ -256,7 +256,7 @@
 
   <!-- ── Shipping Status ────────────────────────────────────────────────── -->
   {% if active_shipments %}
-  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+  <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4">
     <div class="flex items-center justify-between mb-3">
       <h2 class="font-semibold flex items-center gap-2">📦 Shipment Tracking
         <span class="text-xs bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">{{ active_shipments|length }}</span>
@@ -311,7 +311,7 @@
   {% endif %}
 
   <!-- ── Diagnostics ────────────────────────────────────────────────────── -->
-  <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+  <section class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4">
     <div class="flex items-center justify-between mb-3">
       <h2 class="font-semibold">Diagnostics</h2>
       <button class="help-tip-btn text-zinc-600 hover:text-zinc-300 transition-colors p-1 rounded" data-tip="diag-tip" aria-label="Help for Diagnostics">
@@ -407,7 +407,7 @@
 
   <!-- ── OTA (admins only) ──────────────────────────────────────────────── -->
   {% if is_admin %}
-  <section class="bg-zinc-900/60 border border-amber-700/30 rounded-2xl p-4">
+  <section class="bg-zinc-800/40 border border-amber-700/30 rounded-2xl p-4">
     <div class="flex items-center justify-between mb-3">
       <div class="flex items-center gap-2">
         <h2 class="font-semibold">Firmware Update (OTA)</h2>

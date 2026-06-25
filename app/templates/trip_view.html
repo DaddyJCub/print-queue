@@ -162,7 +162,7 @@
     <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Coming Up</h2>
     <div class="space-y-2">
       {% for event in coming_up %}
-      <a href="/trips/{{ trip.id }}/events/{{ event.id }}" class="flex items-center gap-3 p-3 bg-zinc-900/60 border border-zinc-800 rounded-xl hover:border-zinc-700 transition tap-highlight">
+      <a href="/trips/{{ trip.id }}/events/{{ event.id }}" class="flex items-center gap-3 p-3 bg-zinc-800/40 border border-zinc-700/50 rounded-xl hover:border-zinc-700 transition tap-highlight">
         <div class="w-8 h-8 rounded-lg flex items-center justify-center text-sm
           {% if event.category.value == 'flight' %}bg-blue-600/20 text-blue-300
           {% elif event.category.value == 'hotel' %}bg-purple-600/20 text-purple-300
@@ -202,7 +202,7 @@
       {% for day in trip_dates %}
       <button onclick="scrollToDay('{{ day.date }}')" 
               class="day-chip flex-shrink-0 flex flex-col items-center px-3 py-2 rounded-xl border transition
-                     {% if day.is_today %}bg-indigo-600/30 border-indigo-500 text-white{% else %}bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700{% endif %}"
+                     {% if day.is_today %}bg-indigo-600/30 border-indigo-500 text-white{% else %}bg-zinc-800/40 border-zinc-800 text-zinc-400 hover:border-zinc-700{% endif %}"
               data-date="{{ day.date }}">
         <span class="text-xs">{{ day.day_name }}</span>
         <span class="text-lg font-bold">{{ day.day_num }}</span>
@@ -241,7 +241,7 @@
         <div class="space-y-2 pl-1 border-l-2 border-zinc-800 ml-4">
           {% for event in day.events %}
           <a href="/trips/{{ trip.id }}/events/{{ event.id }}" class="block ml-4 -translate-x-[1.125rem]">
-            <div class="flex items-start gap-3 p-3 bg-zinc-900/60 border border-zinc-800 rounded-xl hover:border-zinc-700 transition tap-highlight">
+            <div class="flex items-start gap-3 p-3 bg-zinc-800/40 border border-zinc-700/50 rounded-xl hover:border-zinc-700 transition tap-highlight">
               <!-- Timeline dot -->
               <div class="w-2 h-2 rounded-full mt-2 flex-shrink-0
                 {% if event.category.value == 'flight' %}bg-blue-400
@@ -332,10 +332,10 @@
       document.querySelectorAll('.day-chip').forEach(chip => {
         if (chip.dataset.date === date) {
           chip.classList.add('bg-indigo-600/30', 'border-indigo-500', 'text-white');
-          chip.classList.remove('bg-zinc-900/60', 'border-zinc-800', 'text-zinc-400');
+          chip.classList.remove('bg-zinc-800/40', 'border-zinc-800', 'text-zinc-400');
         } else {
           chip.classList.remove('bg-indigo-600/30', 'border-indigo-500', 'text-white');
-          chip.classList.add('bg-zinc-900/60', 'border-zinc-800', 'text-zinc-400');
+          chip.classList.add('bg-zinc-800/40', 'border-zinc-800', 'text-zinc-400');
         }
       });
     }

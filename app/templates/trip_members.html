@@ -21,7 +21,7 @@
   
   <!-- Add Member Form (Owner only) -->
   {% if can_manage %}
-  <form action="/trips/{{ trip.id }}/members/add" method="POST" class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 mb-6">
+  <form action="/trips/{{ trip.id }}/members/add" method="POST" class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4 mb-6">
     <h3 class="font-medium mb-3">Invite Member</h3>
     <div class="flex gap-2">
       <input type="email" name="email" required placeholder="Email address"
@@ -41,7 +41,7 @@
   <!-- Members List -->
   <div class="space-y-2">
     {% for member in members %}
-    <div class="flex items-center gap-3 p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+    <div class="flex items-center gap-3 p-4 bg-zinc-800/40 border border-zinc-700/50 rounded-xl">
       <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white
         {% if member.role.value == 'owner' %}bg-gradient-to-br from-amber-500 to-orange-600
         {% elif member.role.value == 'editor' %}bg-gradient-to-br from-indigo-500 to-purple-600

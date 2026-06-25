@@ -60,7 +60,7 @@
   <div class="space-y-4">
     
     <!-- Date/Time -->
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
       <div class="flex items-center gap-3">
         <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
@@ -80,7 +80,7 @@
     
     <!-- Reminder (only shown for timed events with reminder set) -->
     {% if not event.is_all_day and event.reminder_minutes and event.reminder_minutes > 0 %}
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
       <div class="flex items-center gap-3">
         <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
@@ -106,7 +106,7 @@
     
     <!-- Flight Info -->
     {% if event.flight_number or event.departure_location %}
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
       <div class="flex items-center gap-3">
         <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
@@ -125,7 +125,7 @@
     
     <!-- Location -->
     {% if event.location_name or event.address %}
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
       <div class="flex items-start gap-3">
         <svg class="w-5 h-5 text-zinc-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
@@ -153,7 +153,7 @@
     
     <!-- Confirmation Number -->
     {% if event.confirmation_number %}
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -175,7 +175,7 @@
     
     <!-- Notes -->
     {% if event.notes %}
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
       <h3 class="text-sm font-medium text-zinc-400 mb-2">Notes</h3>
       <p class="whitespace-pre-wrap">{{ event.notes }}</p>
     </div>
@@ -193,7 +193,7 @@
     
     <!-- Cost -->
     {% if event.cost_cents %}
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
       <div class="flex items-center gap-3">
         <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-12v2m0 10v2m-7-6h14"/>
@@ -207,7 +207,7 @@
     {% endif %}
     
     <!-- Comments -->
-    <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+    <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-medium text-zinc-300">Comments</h3>
         {% if not comments %}

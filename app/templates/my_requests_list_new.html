@@ -615,7 +615,7 @@
     </div>
     <div class="space-y-2" id="done-list">
       {% for req in done_requests[:3] %}
-      <a href="/my/{{ req.id }}?token={{ req.access_token }}" class="request-item stagger-item flex items-center gap-3 bg-zinc-900/60 border border-emerald-500/20 rounded-2xl p-4 tap-highlight hover:bg-zinc-900 transition card-interactive">
+      <a href="/my/{{ req.id }}?token={{ req.access_token }}" class="request-item stagger-item flex items-center gap-3 bg-zinc-800/40 border border-emerald-500/20 rounded-2xl p-4 tap-highlight hover:bg-zinc-900 transition card-interactive">
         <div class="flex-1 min-w-0">
           <div class="flex items-start justify-between gap-2 mb-1">
             <h3 class="font-semibold truncate">{{ req.print_name or 'Untitled' }}</h3>
@@ -640,7 +640,7 @@
       </a>
       {% endfor %}
       {% for req in done_requests[3:] %}
-      <a href="/my/{{ req.id }}?token={{ req.access_token }}" class="request-item hidden flex items-center gap-3 bg-zinc-900/60 border border-emerald-500/20 rounded-2xl p-4 tap-highlight hover:bg-zinc-900 transition card-interactive">
+      <a href="/my/{{ req.id }}?token={{ req.access_token }}" class="request-item hidden flex items-center gap-3 bg-zinc-800/40 border border-emerald-500/20 rounded-2xl p-4 tap-highlight hover:bg-zinc-900 transition card-interactive">
         <div class="flex-1 min-w-0">
           <div class="flex items-start justify-between gap-2 mb-1">
             <h3 class="font-semibold truncate">{{ req.print_name or 'Untitled' }}</h3>
@@ -678,7 +678,7 @@
     <div class="space-y-2" id="printing-list">
       {% for req in printing_requests[:3] %}
       <a href="/my/{{ req.id }}?token={{ req.access_token }}"
-         class="request-item stagger-item block bg-zinc-900/60 border {% if req.printer_status and req.printer_status.is_offline %}border-amber-500/30{% else %}border-indigo-500/20{% endif %} rounded-2xl overflow-hidden tap-highlight card-interactive">
+         class="request-item stagger-item block bg-zinc-800/40 border {% if req.printer_status and req.printer_status.is_offline %}border-amber-500/30{% else %}border-indigo-500/20{% endif %} rounded-2xl overflow-hidden tap-highlight card-interactive">
         {% if req.printer_status %}
         <div class="{% if req.printer_status.is_offline %}bg-amber-950/20{% else %}bg-indigo-950/20{% endif %} px-4 pt-3 pb-2 border-b {% if req.printer_status.is_offline %}border-amber-700/20{% else %}border-indigo-700/20{% endif %}">
           <div class="flex items-center justify-between mb-1.5">
@@ -710,7 +710,7 @@
       {% endfor %}
       {% for req in printing_requests[3:] %}
       <a href="/my/{{ req.id }}?token={{ req.access_token }}"
-         class="request-item hidden block bg-zinc-900/60 border border-indigo-500/20 rounded-2xl overflow-hidden tap-highlight card-interactive">
+         class="request-item hidden block bg-zinc-800/40 border border-indigo-500/20 rounded-2xl overflow-hidden tap-highlight card-interactive">
         <div class="p-4 flex items-center gap-3">
           <div class="flex-1 min-w-0">
             <div class="flex items-start justify-between gap-2 mb-1">
@@ -750,7 +750,7 @@
     <div class="space-y-2" id="active-list">
       {% for req in active_requests[:3] %}
       <a href="/my/{{ req.id }}?token={{ req.access_token }}"
-         class="request-item stagger-item flex items-center gap-3 bg-zinc-900/60 border {% if req.status == 'NEEDS_INFO' %}border-orange-500/30{% else %}border-zinc-800{% endif %} rounded-2xl p-4 tap-highlight hover:bg-zinc-900 transition card-interactive">
+         class="request-item stagger-item flex items-center gap-3 bg-zinc-800/40 border {% if req.status == 'NEEDS_INFO' %}border-orange-500/30{% else %}border-zinc-800{% endif %} rounded-2xl p-4 tap-highlight hover:bg-zinc-900 transition card-interactive">
         <div class="flex-1 min-w-0">
           <div class="flex items-start justify-between gap-2 mb-1">
             <h3 class="font-semibold truncate">{{ req.print_name or 'Untitled' }}</h3>
@@ -770,7 +770,7 @@
       {% endfor %}
       {% for req in active_requests[3:] %}
       <a href="/my/{{ req.id }}?token={{ req.access_token }}"
-         class="request-item hidden flex items-center gap-3 bg-zinc-900/60 border {% if req.status == 'NEEDS_INFO' %}border-orange-500/30{% else %}border-zinc-800{% endif %} rounded-2xl p-4 tap-highlight hover:bg-zinc-900 transition card-interactive">
+         class="request-item hidden flex items-center gap-3 bg-zinc-800/40 border {% if req.status == 'NEEDS_INFO' %}border-orange-500/30{% else %}border-zinc-800{% endif %} rounded-2xl p-4 tap-highlight hover:bg-zinc-900 transition card-interactive">
         <div class="flex-1 min-w-0">
           <div class="flex items-start justify-between gap-2 mb-1">
             <h3 class="font-semibold truncate">{{ req.print_name or 'Untitled' }}</h3>
