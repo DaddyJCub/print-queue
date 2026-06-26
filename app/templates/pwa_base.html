@@ -1134,5 +1134,28 @@
   </script>
 
   {% block scripts %}{% endblock %}
+
+  <!-- JCubHub Sentinel: client-side error beacon (posts to /client-error → CM) -->
+  <script>
+  (function () {
+    function send(payload) {
+      try {
+        var body = JSON.stringify(payload);
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon('/client-error', new Blob([body], {type: 'application/json'}));
+        } else {
+          fetch('/client-error', {method:'POST', headers:{'Content-Type':'application/json'}, body: body, keepalive: true});
+        }
+      } catch (e) {}
+    }
+    window.addEventListener('error', function (e) {
+      send({message: (e && e.message) || 'window.onerror', stack: e && e.error && e.error.stack, route: location.pathname, type: 'error'});
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e && e.reason;
+      send({message: (r && r.message) || String(r) || 'unhandledrejection', stack: r && r.stack, route: location.pathname, type: 'error'});
+    });
+  })();
+  </script>
 </body>
 </html>

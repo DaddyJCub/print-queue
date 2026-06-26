@@ -2185,7 +2185,23 @@ async def feedback_submit(
     )
     conn.commit()
     conn.close()
-    
+
+    # Forward manual feedback to JCubHub CM (centralized triage). Fail-open.
+    try:
+        from app.bug_reporter import report as bug_report
+        bug_report(
+            message=message.strip(),
+            report_type=feedback_type if feedback_type in ("bug", "suggestion") else "bug",
+            severity="medium",
+            route=page_url,
+            user_agent=user_agent,
+            reporter="manual",
+            reporter_email=email,
+            context={"name": name} if name else None,
+        )
+    except Exception:
+        pass
+
     # Send admin notification email
     admin_emails = parse_email_list(get_setting("admin_notify_emails", ""))
     if admin_emails:
