@@ -220,6 +220,42 @@ def admin_feedback_delete(fid: str, _=Depends(require_admin)):
     return RedirectResponse(url="/admin/feedback", status_code=303)
 
 
+# ─────────────────────── Bug Reporting (JCubHub CM) ───────────────────────
+
+@router.get("/admin/bug-reporting", response_class=HTMLResponse)
+def admin_bug_reporting(request: Request, _=Depends(require_admin), saved: Optional[str] = None):
+    """Configure forwarding of errors/bugs to JCubHub Central Management."""
+    secret = get_setting("bug_report_secret", "")
+    model = {
+        "bug_report_enabled": get_setting("bug_report_enabled", "0") in ("1", "true", "on", "yes"),
+        "bug_report_url": get_setting("bug_report_url", ""),
+        "bug_app_id": get_setting("bug_app_id", "printellect"),
+        "bug_report_secret_set": bool((secret or "").strip()),
+        "saved": saved == "1",
+    }
+    return templates.TemplateResponse("admin_bug_reporting.html", {
+        "request": request, "s": model, "version": APP_VERSION,
+    })
+
+
+@router.post("/admin/bug-reporting")
+def admin_bug_reporting_post(
+    request: Request,
+    bug_report_enabled: Optional[str] = Form(None),
+    bug_report_url: str = Form(""),
+    bug_app_id: str = Form("printellect"),
+    bug_report_secret: str = Form(""),
+    _=Depends(require_admin),
+):
+    set_setting("bug_report_enabled", "1" if bug_report_enabled else "0")
+    set_setting("bug_report_url", bug_report_url.strip())
+    set_setting("bug_app_id", (bug_app_id.strip() or "printellect"))
+    # Only overwrite the secret when a new value is supplied (write-only field).
+    if bug_report_secret.strip():
+        set_setting("bug_report_secret", bug_report_secret.strip())
+    return RedirectResponse(url="/admin/bug-reporting?saved=1", status_code=303)
+
+
 @router.get("/admin/login", response_class=HTMLResponse)
 def admin_login(request: Request, next: Optional[str] = None, bad: Optional[str] = None, legacy: Optional[str] = None):
     # If multi_admin is enabled and not explicitly requesting legacy, redirect to new login

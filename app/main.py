@@ -3087,7 +3087,10 @@ def _startup():
     seed_default_settings()
 
     # Forward ERROR+ logs (incl. background printer/build workers) to JCubHub CM.
+    # Config (URL/secret/enabled) is read from DB settings via the admin UI.
     try:
+        import app.bug_reporter as _br
+        _br.configure(get_setting)
         bug_install_log_handler()
     except Exception:
         pass
