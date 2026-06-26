@@ -16,6 +16,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Resp
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
+# JCubHub Sentinel bug reporter (fail-open; no-op unless BUG_REPORT_URL/SECRET set)
+from app.bug_reporter import (
+    report as bug_report,
+    report_exception as bug_report_exception,
+    install_log_handler as bug_install_log_handler,
+)
+
 # Demo mode for local testing with fake data
 from app.demo_data import (
     DEMO_MODE, seed_demo_data, reset_demo_data, get_demo_status,
@@ -533,6 +540,22 @@ Traceback:
         logger.info(f"Error report saved to feedback table with ID: {feedback_id}")
     except Exception as save_err:
         logger.error(f"Failed to save error report: {save_err}")
+
+    # Also forward to JCubHub CM (centralized triage). Fail-open.
+    try:
+        bug_report_exception(
+            exc,
+            severity="high",
+            route=request.url.path,
+            http_method=request.method,
+            status_code=500,
+            user_agent=request.headers.get("user-agent"),
+            app_version=APP_VERSION,
+            environment=ENVIRONMENT,
+            context={"error_id": error_id},
+        )
+    except Exception:
+        pass
     
     error_info = ERROR_MESSAGES[500]
     
@@ -3031,11 +3054,43 @@ def _parse_obj_file(file_path: str) -> Optional[Dict[str, Any]]:
         return {"type": "obj", "is_valid": False, "error": str(e)}
 
 
+@app.post("/client-error")
+async def client_error_beacon(request: Request):
+    """Receive client-side JS errors (window.onerror / unhandledrejection) and
+    forward to JCubHub CM. The browser never sees the CM secret. Fail-open."""
+    try:
+        data = await request.json()
+    except Exception:
+        return Response(status_code=204)
+    try:
+        msg = str(data.get("message") or "client error")[:1000]
+        bug_report(
+            message=msg,
+            report_type="error" if data.get("type") != "suggestion" else "suggestion",
+            severity="low",
+            stack_trace=(str(data.get("stack")) if data.get("stack") else None),
+            route=str(data.get("route") or "")[:1024] or None,
+            user_agent=request.headers.get("user-agent"),
+            app_version=APP_VERSION,
+            environment=ENVIRONMENT,
+            context={"source": "client_js"},
+        )
+    except Exception:
+        pass
+    return Response(status_code=204)
+
+
 @app.on_event("startup")
 def _startup():
     init_db()
     ensure_migrations()
     seed_default_settings()
+
+    # Forward ERROR+ logs (incl. background printer/build workers) to JCubHub CM.
+    try:
+        bug_install_log_handler()
+    except Exception:
+        pass
     
     # Initialize new auth system (multi-admin, user accounts, feature flags)
     init_auth_tables()
