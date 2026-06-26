@@ -1,0 +1,67 @@
+{% extends "admin_base.html" %}
+
+{% block admin_title %}Bug Reporting{% endblock %}
+{% block active_page %}{{ 'bug-reporting' }}{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto p-6">
+  {% set active_page = 'bug-reporting' %}
+
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold">🐛 Bug Reporting</h1>
+    <p class="text-zinc-400 mt-1 text-sm">
+      Forward errors, crashes, and feedback to JCubHub Central Management for
+      AI triage. Configured here — no environment variables or redeploy needed.
+    </p>
+  </div>
+
+  {% if s.saved %}
+  <div class="bg-emerald-900/30 border border-emerald-600/50 rounded-xl p-4 mb-6 text-emerald-200 text-sm">
+    ✅ Saved. Changes take effect immediately.
+  </div>
+  {% endif %}
+
+  <form method="POST" action="/admin/bug-reporting"
+        class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-6 space-y-5">
+
+    <label class="flex items-center gap-3 text-sm">
+      <input type="checkbox" name="bug_report_enabled" value="1"
+             {% if s.bug_report_enabled %}checked{% endif %}
+             class="h-4 w-4 rounded border-zinc-600 bg-zinc-900" />
+      <span class="font-medium">Enable reporting to Central Management</span>
+    </label>
+
+    <div>
+      <label class="block text-sm font-medium mb-1">CM report URL</label>
+      <input type="url" name="bug_report_url" value="{{ s.bug_report_url }}"
+             placeholder="https://mgmt.jcubhub.com/api/reports"
+             class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
+      <p class="text-xs text-zinc-500 mt-1">The <code>/api/reports</code> endpoint on Central Management.</p>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium mb-1">App ID</label>
+      <input type="text" name="bug_app_id" value="{{ s.bug_app_id }}"
+             placeholder="printellect"
+             class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
+      <p class="text-xs text-zinc-500 mt-1">Must match a key in CM's per-app secrets map.</p>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium mb-1">
+        Shared secret
+        {% if s.bug_report_secret_set %}<span class="text-emerald-400 text-xs">(set — leave blank to keep)</span>{% endif %}
+      </label>
+      <input type="password" name="bug_report_secret" autocomplete="new-password"
+             placeholder="{% if s.bug_report_secret_set %}••••••••  leave blank to keep current{% else %}paste the secret for this app{% endif %}"
+             class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
+      <p class="text-xs text-zinc-500 mt-1">Must equal the value stored for this app in CM's Bug Reporting settings.</p>
+    </div>
+
+    <button type="submit"
+            class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 py-3 font-semibold transition">
+      Save
+    </button>
+  </form>
+</div>
+{% endblock %}
