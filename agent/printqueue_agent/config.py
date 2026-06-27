@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -74,6 +75,16 @@ class AgentConfig:
             with open(path, "r") as fh:
                 data = json.load(fh)
 
+        runtime_version = _read_package_version()
+        env_version = os.getenv("PQ_AGENT_VERSION")
+        file_version = data.get("agent_version")
+        if env_version:
+            resolved_version = env_version
+        elif file_version and not (str(file_version).strip() == "1.0.0" and runtime_version != "1.0.0"):
+            resolved_version = str(file_version)
+        else:
+            resolved_version = runtime_version
+
         cam_data = data.get("camera", {}) or {}
         fw_data = data.get("firmware", {}) or {}
         ui_data = data.get("local_ui", {}) or {}
@@ -81,7 +92,7 @@ class AgentConfig:
             server_url=os.getenv("PQ_SERVER_URL", data.get("server_url", AgentConfig.server_url)),
             agent_id=os.getenv("PQ_AGENT_ID", data.get("agent_id", "")),
             claim_code=os.getenv("PQ_CLAIM_CODE", data.get("claim_code", "")),
-            agent_version=data.get("agent_version", AgentConfig.agent_version),
+            agent_version=resolved_version,
             verify_tls=_as_bool(os.getenv("PQ_VERIFY_TLS"), data.get("verify_tls", True)),
             serial_port=os.getenv("PQ_SERIAL_PORT", data.get("serial_port", "auto")),
             baud_rate=int(os.getenv("PQ_BAUD", data.get("baud_rate", 115200))),
@@ -120,3 +131,16 @@ def _as_bool(env_val: Optional[str], default: bool) -> bool:
     if env_val is None:
         return bool(default)
     return env_val.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _read_package_version() -> str:
+    try:
+        init_py = os.path.join(os.path.dirname(__file__), "__init__.py")
+        with open(init_py, "r", encoding="utf-8") as fh:
+            text = fh.read()
+        m = re.search(r"__version__\s*=\s*['\"]([^'\"]+)['\"]", text)
+        if m:
+            return m.group(1).strip()
+    except Exception:
+        pass
+    return AgentConfig.agent_version

@@ -30,6 +30,8 @@ _PAGE = r"""<!doctype html>
   header .dot.on { background:#34d399; }
   header h1 { font-size:17px; margin:0; font-weight:650; }
   header .sub { font-size:12px; color:#8a8a93; }
+  .head-actions { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  .head-badge { font-size:12px; color:#8a8a93; }
   .wrap { max-width:1100px; margin:0 auto; padding:16px; display:grid; gap:16px;
           grid-template-columns: 1fr 1fr; }
   .card { background:#141417; border:1px solid #232327; border-radius:16px; padding:16px; }
@@ -80,6 +82,11 @@ _PAGE = r"""<!doctype html>
   <div>
     <h1 id="pname">Printer</h1>
     <div class="sub" id="psub"></div>
+  </div>
+  <div class="head-actions">
+    <span id="u-head-badge" class="head-badge">checking...</span>
+    <button id="b-update-check-top">Check now</button>
+    <button class="primary" id="b-update-start-top" disabled>Update</button>
   </div>
 </header>
 <div class="wrap">
@@ -196,19 +203,34 @@ async function api(path, opts={}){
   return r.headers.get("content-type","").includes("json") ? r.json() : r;
 }
 function fmtBytes(n){ if(!n) return "0"; const u=["B","KB","MB"]; let i=0,v=n; while(v>=1024&&i<2){v/=1024;i++;} return v.toFixed(1)+u[i]; }
+function renderSub(d){
+  const localV = BOOT.info.agent_version || "?";
+  if (!d) {
+    document.getElementById("psub").textContent = (BOOT.info.printer_code||"") + " · local v" + localV;
+    return;
+  }
+  const serverV = d.current_agent_version || "?";
+  const availV = d.available_agent_version || serverV;
+  const mode = d.agent_upgrade_available ? `update v${availV} available` : "up to date";
+  document.getElementById("psub").textContent = `${BOOT.info.printer_code||""} · local v${localV} · server v${serverV} · ${mode}`;
+}
 function setUpdateUi(available, badge, detail){
   const badgeEl = document.getElementById("u-badge");
+  const headBadgeEl = document.getElementById("u-head-badge");
   const detailEl = document.getElementById("u-detail");
   const startBtn = document.getElementById("b-update-start");
+  const startTopBtn = document.getElementById("b-update-start-top");
   if (badgeEl) badgeEl.textContent = badge || "—";
+  if (headBadgeEl) headBadgeEl.textContent = badge || "—";
   if (detailEl) detailEl.textContent = detail || "";
   if (startBtn) startBtn.disabled = !available;
+  if (startTopBtn) startTopBtn.disabled = !available;
 }
 function describeUpdateState(d){
   const bits = [];
   if (d.agent_upgrade_available) bits.push(`agent ${d.current_agent_version || "?"} -> ${d.available_agent_version || "?"}`);
   if (d.firmware_upgrade_available) bits.push(`fw ${d.current_firmware_version || "?"} -> ${d.available_firmware_version || "?"}`);
-  if (!bits.length) return "Agent and firmware are up to date.";
+  if (!bits.length) return `Agent and firmware are up to date. (agent v${d.current_agent_version || "?"}${d.current_firmware_version ? `, fw ${d.current_firmware_version}` : ""})`;
   return "Available: " + bits.join("  |  ");
 }
 async function refreshUpdateState(silent){
@@ -216,8 +238,13 @@ async function refreshUpdateState(silent){
     const d = await api("/api/update-state");
     const available = !!(d.agent_upgrade_available || d.firmware_upgrade_available);
     setUpdateUi(available, available ? "update available" : "up to date", describeUpdateState(d));
+    renderSub(d);
+    if (!silent) {
+      toast(available ? "Update available" : "No updates available");
+    }
   } catch(e) {
     setUpdateUi(false, "offline", "Could not check central update service right now.");
+    renderSub(null);
     if (!silent) toast("Could not check updates");
   }
 }
@@ -293,7 +320,7 @@ function hideNewFileModal(){
 }
 
 document.getElementById("pname").textContent = BOOT.info.name || "Printer";
-document.getElementById("psub").textContent = (BOOT.info.printer_code||"") + " · agent v" + (BOOT.info.agent_version||"");
+renderSub(null);
 
 async function refresh(){
   let s; try { s = await api("/api/state"); } catch(e){ document.getElementById("dot").classList.remove("on"); return; }
@@ -383,6 +410,8 @@ document.getElementById("nf-preheat-start").onclick = async()=>{
 };
 document.getElementById("b-update-check").onclick = ()=>refreshUpdateState(false);
 document.getElementById("b-update-start").onclick = ()=>startSelfUpdate();
+document.getElementById("b-update-check-top").onclick = ()=>refreshUpdateState(false);
+document.getElementById("b-update-start-top").onclick = ()=>startSelfUpdate();
 function tickCam(){
   const img = document.getElementById("cam");
   fetch("/api/snapshot",{headers:H}).then(r=>{

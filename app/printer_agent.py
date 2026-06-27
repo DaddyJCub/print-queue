@@ -29,8 +29,10 @@ import os
 import re
 import secrets
 import sqlite3
+import hashlib
 import time
 import uuid
+import zipfile
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -1071,6 +1073,96 @@ def _current_release(conn: sqlite3.Connection) -> Optional[sqlite3.Row]:
     ).fetchone()
 
 
+def _workspace_agent_package_dir() -> str:
+    # app/printer_agent.py -> repo_root/agent/printqueue_agent
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "agent", "printqueue_agent"))
+
+
+def _read_workspace_agent_version() -> str:
+    init_py = os.path.join(_workspace_agent_package_dir(), "__init__.py")
+    try:
+        with open(init_py, "r", encoding="utf-8") as fh:
+            text = fh.read()
+        m = re.search(r"__version__\s*=\s*['\"]([^'\"]+)['\"]", text)
+        if m:
+            return m.group(1).strip()
+    except Exception:
+        pass
+    return "1.0.0"
+
+
+def _build_workspace_agent_bundle(version: str) -> Dict[str, Any]:
+    pkg_dir = _workspace_agent_package_dir()
+    if not os.path.isdir(pkg_dir):
+        raise HTTPException(status_code=500, detail="Server agent source is not available")
+
+    os.makedirs(AGENT_RELEASES_DIR, exist_ok=True)
+    safe_version = "".join(c for c in version if c.isalnum() or c in ".-_")
+    bundle_path = os.path.join(AGENT_RELEASES_DIR, f"agent-{safe_version}.zip")
+
+    with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for root, _dirs, files in os.walk(pkg_dir):
+            for name in files:
+                if name.endswith(".pyc"):
+                    continue
+                src = os.path.join(root, name)
+                rel = os.path.relpath(src, pkg_dir).replace("\\", "/")
+                arc = f"printqueue_agent/{rel}"
+                # Keep the release version explicit inside the bundle.
+                if rel == "__init__.py":
+                    with open(src, "r", encoding="utf-8") as fh:
+                        init_text = fh.read()
+                    patched = re.sub(
+                        r"__version__\s*=\s*['\"][^'\"]+['\"]",
+                        f"__version__ = '{version}'",
+                        init_text,
+                    )
+                    if patched == init_text:
+                        patched = init_text + f"\n__version__ = '{version}'\n"
+                    zf.writestr(arc, patched)
+                else:
+                    zf.write(src, arc)
+
+    with open(bundle_path, "rb") as fh:
+        data = fh.read()
+    return {
+        "bundle_path": bundle_path,
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "size_bytes": len(data),
+    }
+
+
+def _ensure_current_release(conn: sqlite3.Connection, created_by: Optional[str]) -> sqlite3.Row:
+    rel = _current_release(conn)
+    if rel and rel["bundle_path"] and os.path.isfile(rel["bundle_path"]):
+        return rel
+
+    base_version = _read_workspace_agent_version()
+    auto_version = f"{base_version}+auto.{int(time.time())}"
+    built = _build_workspace_agent_bundle(auto_version)
+
+    conn.execute("UPDATE printer_agent_releases SET is_current = 0")
+    conn.execute(
+        "INSERT OR REPLACE INTO printer_agent_releases "
+        "(version, created_at, created_by, notes, bundle_path, sha256, size_bytes, is_current) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+        (
+            auto_version,
+            now_iso(),
+            created_by,
+            "Auto-generated from server bundled agent source",
+            built["bundle_path"],
+            built["sha256"],
+            built["size_bytes"],
+        ),
+    )
+    conn.commit()
+    rel = _current_release(conn)
+    if not rel:
+        raise HTTPException(status_code=500, detail="Could not create default agent release")
+    return rel
+
+
 def _load_update_agent_row(conn: sqlite3.Connection, agent_id: str) -> Optional[sqlite3.Row]:
     return conn.execute(
         "SELECT agent_id, printer_code, agent_version, status_json FROM printer_agents WHERE agent_id = ? AND revoked = 0",
@@ -1079,7 +1171,7 @@ def _load_update_agent_row(conn: sqlite3.Connection, agent_id: str) -> Optional[
 
 
 def _build_update_plan(conn: sqlite3.Connection, agent: sqlite3.Row) -> Dict[str, Any]:
-    rel = _current_release(conn)
+    rel = _ensure_current_release(conn, created_by="system-auto")
     fw = _current_firmware(conn, agent["printer_code"])
     current_fw = _extract_firmware_version(_json_loads(agent["status_json"]))
     return {

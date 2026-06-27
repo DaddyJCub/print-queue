@@ -385,7 +385,7 @@ def test_upload_and_push_agent_update(client, admin_client):
     assert dl.content == bundle
 
 
-def test_push_update_without_release_404(admin_client):
+def test_push_update_without_manual_release_autogenerates(client, admin_client):
     # Releases are global; clear them so the "no release" path is deterministic.
     conn = get_test_db()
     conn.execute("DELETE FROM printer_agent_releases")
@@ -393,8 +393,17 @@ def test_push_update_without_release_404(admin_client):
     conn.close()
 
     created = _create_agent(admin_client)
+    token = _provision(client, created["agent_id"], created["claim_code"]).json()["agent_token"]
     r = admin_client.post(f"{ADMIN}/agents/{created['agent_id']}/update")
-    assert r.status_code == 404
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body.get("queued")
+    assert any(q.get("action") == "update_agent" for q in body["queued"])
+
+    # The queued command should be fetchable by the agent.
+    nxt = client.get(f"{PREFIX}/commands/next", headers={"Authorization": f"Bearer {token}"})
+    assert nxt.status_code == 200
+    assert nxt.json()["action"] == "update_agent"
 
 
 def test_upload_rejects_non_package_zip(admin_client):

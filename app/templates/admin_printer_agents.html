@@ -417,7 +417,7 @@
       }
       else {
         const detail = String(d.detail || r.status || "");
-        if (detail.toLowerCase().includes("no agent release uploaded yet")) {
+        if (r.status === 404 || detail.toLowerCase().includes("no agent release uploaded yet")) {
           showToast("Upload an agent bundle first in Agent software updates.", "error");
         } else if (detail.toLowerCase().includes("already up to date")) {
           showToast("Agent and firmware are already up to date.", "success");
