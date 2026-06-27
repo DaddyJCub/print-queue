@@ -15,7 +15,7 @@ import secrets
 import hashlib
 import sqlite3
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Dict, Any, List
 from functools import wraps
 import json
@@ -60,7 +60,10 @@ def _parse_iso_utc(iso_value: Optional[str]) -> Optional[datetime]:
     if not iso_value:
         return None
     try:
-        return datetime.fromisoformat(iso_value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(iso_value.replace("Z", "+00:00"))
+        if parsed.tzinfo is not None:
+            return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
     except (TypeError, ValueError):
         return None
 
