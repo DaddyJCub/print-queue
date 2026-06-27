@@ -26,6 +26,7 @@ The Windows agent implementation lives under ``windows-agent/``.
 
 import json
 import os
+import re
 import secrets
 import sqlite3
 import time
@@ -80,6 +81,10 @@ AGENT_COMMAND_ACTIONS = {
     "reload_config",   # re-read config.json
     "get_logs",        # return recent agent log lines in the command result
     "identify",        # blink/log so an operator can find the unit
+    "get_host_info",   # host/network diagnostics from the Pi/PC
+    "set_hostname",    # set host name (Linux via hostnamectl)
+    "set_timezone",    # set host timezone (Linux via timedatectl)
+    "set_wifi",        # configure Wi-Fi on Linux (nmcli)
     "update_agent",    # download a new agent bundle, self-update, restart (OTA)
     "flash_firmware",  # flash printer firmware (.hex) via avrdude — opt-in on agent
 }
@@ -108,6 +113,27 @@ def now_iso() -> str:
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
 
+def _version_key(v: Optional[str]) -> tuple:
+    """Best-effort sortable key for versions like 1.0.0, v1.2.3, 1.2.3-beta."""
+    if not v:
+        return (0,)
+    s = str(v).strip().lower()
+    if s.startswith("v"):
+        s = s[1:]
+    parts = [int(x) for x in re.findall(r"\d+", s)]
+    if not parts:
+        return (0,)
+    return tuple(parts)
+
+
+def _is_version_newer(candidate: Optional[str], current: Optional[str]) -> bool:
+    if not candidate:
+        return False
+    if not current:
+        return True
+    return _version_key(candidate) > _version_key(current)
+
+
 def upload_dir() -> str:
     return os.getenv("UPLOAD_DIR", "/uploads")
 
@@ -127,6 +153,23 @@ def _json_loads(value: Optional[str]) -> Dict[str, Any]:
         return loaded if isinstance(loaded, dict) else {}
     except Exception:
         return {}
+
+
+def _redact_sensitive(value: Any) -> Any:
+    """Recursively redact common secret fields for admin UI payload/result display."""
+    secret_markers = ("pass", "password", "psk", "secret", "token", "apikey", "api_key")
+    if isinstance(value, dict):
+        out: Dict[str, Any] = {}
+        for k, v in value.items():
+            key = str(k).lower()
+            if any(m in key for m in secret_markers):
+                out[k] = "***"
+            else:
+                out[k] = _redact_sensitive(v)
+        return out
+    if isinstance(value, list):
+        return [_redact_sensitive(v) for v in value]
+    return value
 
 
 # ──────────────────────────── schema ────────────────────────────
@@ -805,9 +848,23 @@ async def admin_list_agents(admin=Depends(require_admin)):
     try:
         rows = conn.execute("SELECT * FROM printer_agents ORDER BY created_at DESC").fetchall()
         ingest_token = get_or_create_ingest_token(conn)
+        rel = _current_release(conn)
+        current_release_version = rel["version"] if rel else None
+        agents: List[Dict[str, Any]] = []
+        for r in rows:
+            a = _agent_view(r)
+            a["upgrade_available"] = _is_version_newer(current_release_version, a.get("agent_version"))
+            a["available_version"] = current_release_version if a["upgrade_available"] else None
+            fw = _current_firmware(conn, a.get("printer_code") or "LK5_PRO")
+            a["available_firmware_version"] = fw["version"] if fw else None
+            agents.append(a)
     finally:
         conn.close()
-    return {"agents": [_agent_view(r) for r in rows], "ingest_token": ingest_token}
+    return {
+        "agents": agents,
+        "ingest_token": ingest_token,
+        "current_release_version": current_release_version,
+    }
 
 
 @router.post(ADMIN_PREFIX + "/agents")
@@ -923,9 +980,9 @@ async def admin_list_commands(agent_id: str, admin=Depends(require_admin)):
         "cmd_id": r["cmd_id"],
         "action": r["action"],
         "status": r["status"],
-        "payload": _json_loads(r["payload_json"]),
+        "payload": _redact_sensitive(_json_loads(r["payload_json"])),
         "error": r["error"],
-        "result": _json_loads(r["result_json"]),
+        "result": _redact_sensitive(_json_loads(r["result_json"])),
         "created_at": r["created_at"],
         "delivered_at": r["delivered_at"],
         "updated_at": r["updated_at"],

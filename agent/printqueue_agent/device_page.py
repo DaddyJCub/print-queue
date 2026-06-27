@@ -62,6 +62,15 @@ _PAGE = r"""<!doctype html>
            border:1px solid #3a3a42; padding:10px 16px; border-radius:10px; opacity:0; transition:opacity .2s;
            pointer-events:none; font-size:14px; }
   #toast.show { opacity:1; }
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:20; }
+  .modal.show { display:flex; }
+  .modal .box { width:min(560px, calc(100% - 24px)); background:#141417; border:1px solid #2b2b31; border-radius:14px; padding:14px; }
+  .modal .ttl { font-size:15px; font-weight:650; margin-bottom:8px; }
+  .modal .sub { color:#a1a1aa; font-size:13px; margin-bottom:10px; }
+  .modal .opts { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; margin-bottom:12px; }
+  .modal label { color:#c7c7d0; font-size:13px; }
+  .modal input[type=number] { width:90px; }
+  .modal .actions { display:flex; gap:8px; justify-content:flex-end; }
   @media (max-width:760px){ .wrap{ grid-template-columns:1fr; } }
 </style>
 </head>
@@ -139,11 +148,31 @@ _PAGE = r"""<!doctype html>
   </div>
 </div>
 <div id="toast"></div>
+<div id="newfile-modal" class="modal" aria-hidden="true">
+  <div class="box">
+    <div class="ttl">New file received</div>
+    <div class="sub" id="newfile-name">A new file is ready.</div>
+    <div class="opts">
+      <label for="nf-noz">Preheat nozzle</label>
+      <input type="number" id="nf-noz" min="0" max="300" value="210" />
+      <label for="nf-bed">Preheat bed</label>
+      <input type="number" id="nf-bed" min="0" max="120" value="60" />
+    </div>
+    <div class="actions">
+      <button id="nf-dismiss">Dismiss</button>
+      <button id="nf-start" class="primary">Start now</button>
+      <button id="nf-preheat-start" class="warn">Preheat + Start</button>
+    </div>
+  </div>
+</div>
 <script>
 const BOOT = /*__BOOT__*/;
 const KEY = BOOT.apiKey || "";
 const H = KEY ? { "X-Api-Key": KEY } : {};
 let camFails = 0;
+let knownFiles = new Set();
+let initializedFiles = false;
+let pendingFile = null;
 
 function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.classList.add("show");
   clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("show"),2200); }
@@ -154,6 +183,21 @@ async function api(path, opts={}){
   return r.headers.get("content-type","").includes("json") ? r.json() : r;
 }
 function fmtBytes(n){ if(!n) return "0"; const u=["B","KB","MB"]; let i=0,v=n; while(v>=1024&&i<2){v/=1024;i++;} return v.toFixed(1)+u[i]; }
+function showNewFileModal(name){
+  pendingFile = name;
+  document.getElementById("newfile-name").textContent = "File ready: " + name;
+  document.getElementById("nf-noz").value = document.getElementById("t-noz").value || 210;
+  document.getElementById("nf-bed").value = document.getElementById("t-bed").value || 60;
+  const m = document.getElementById("newfile-modal");
+  m.classList.add("show");
+  m.setAttribute("aria-hidden", "false");
+}
+function hideNewFileModal(){
+  const m = document.getElementById("newfile-modal");
+  m.classList.remove("show");
+  m.setAttribute("aria-hidden", "true");
+  pendingFile = null;
+}
 
 document.getElementById("pname").textContent = BOOT.info.name || "Printer";
 document.getElementById("psub").textContent = (BOOT.info.printer_code||"") + " · agent v" + (BOOT.info.agent_version||"");
@@ -177,6 +221,18 @@ async function refresh(){
 async function loadFiles(){
   let d; try { d = await api("/api/files"); } catch(e){ return; }
   const box = document.getElementById("files");
+  const currentNames = new Set((d.files || []).map(f => f.name));
+  if (!initializedFiles) {
+    knownFiles = new Set(currentNames);
+    initializedFiles = true;
+  } else {
+    const newcomers = (d.files || []).filter(f => !knownFiles.has(f.name));
+    if (newcomers.length) {
+      // list is newest-first from backend; prefer first newcomer for prompt.
+      showNewFileModal(newcomers[0].name);
+    }
+    knownFiles = new Set(currentNames);
+  }
   if(!d.files.length){ box.innerHTML = '<div class="muted">No files yet — upload one or send from Orca.</div>'; return; }
   box.innerHTML = "";
   d.files.forEach(f=>{
@@ -195,7 +251,11 @@ function post(path, body){ return api(path,{method:"POST",headers:body?{"Content
 document.getElementById("b-upload").onclick = async()=>{
   const f = document.getElementById("up").files[0]; if(!f){ toast("Pick a file"); return; }
   const fd = new FormData(); fd.append("file", f);
-  await api("/api/files",{method:"POST",body:fd}); toast("Uploaded"); document.getElementById("up").value=""; loadFiles();
+  const res = await api("/api/files",{method:"POST",body:fd});
+  toast("Uploaded");
+  document.getElementById("up").value="";
+  if (res && res.name) showNewFileModal(res.name);
+  loadFiles();
 };
 document.getElementById("b-pause").onclick = ()=>post("/api/pause").then(()=>toast("Paused"));
 document.getElementById("b-resume").onclick = ()=>post("/api/resume").then(()=>toast("Resumed"));
@@ -209,6 +269,25 @@ document.getElementById("b-homexy").onclick = ()=>post("/api/home",{axes:"XY"}).
 document.querySelectorAll(".jog button[data-ax]").forEach(b=>{
   b.onclick = ()=>{ const step=+document.getElementById("step").value; post("/api/jog",{axis:b.dataset.ax,distance:(+b.dataset.s)*step}); };
 });
+document.getElementById("nf-dismiss").onclick = ()=>hideNewFileModal();
+document.getElementById("nf-start").onclick = async()=>{
+  if (!pendingFile) return;
+  await api("/api/print",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({file:pendingFile})});
+  toast("Print started");
+  hideNewFileModal();
+  refresh();
+};
+document.getElementById("nf-preheat-start").onclick = async()=>{
+  if (!pendingFile) return;
+  const noz = +document.getElementById("nf-noz").value || 0;
+  const bed = +document.getElementById("nf-bed").value || 0;
+  if (noz > 0) await post("/api/temp",{target:"nozzle",value:noz});
+  if (bed > 0) await post("/api/temp",{target:"bed",value:bed});
+  await api("/api/print",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({file:pendingFile})});
+  toast("Preheat commands sent, print started");
+  hideNewFileModal();
+  refresh();
+};
 function tickCam(){
   const img = document.getElementById("cam");
   fetch("/api/snapshot",{headers:H}).then(r=>{

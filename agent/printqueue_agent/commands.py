@@ -10,9 +10,12 @@ from __future__ import annotations
 import collections
 import logging
 import os
+import re
+import shutil
 import subprocess
 import sys
 import threading
+import platform
 from typing import Any, Dict, Optional
 
 log = logging.getLogger("printqueue.commands")
@@ -84,6 +87,114 @@ class CommandExecutor:
     def _do_identify(self, payload, cmd_id) -> Dict[str, Any]:
         log.info("👋 IDENTIFY — this is agent %s", self.agent.cfg.agent_id)
         return {"identified": True}
+
+    def _do_get_host_info(self, payload, cmd_id) -> Dict[str, Any]:
+        def _run(args, timeout=8):
+            try:
+                p = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+                return p.returncode, (p.stdout or "").strip(), (p.stderr or "").strip()
+            except Exception as e:
+                return 1, "", str(e)
+
+        info: Dict[str, Any] = {
+            "platform": platform.platform(),
+            "python": sys.version.split()[0],
+            "hostname": platform.node(),
+            "agent_id": self.agent.cfg.agent_id,
+        }
+
+        rc, out, err = _run(["hostname", "-I"])
+        if rc == 0 and out:
+            info["ip_addrs"] = [x for x in out.split() if x]
+
+        if shutil.which("iwgetid"):
+            rc, out, err = _run(["iwgetid", "-r"])
+            info["wifi_ssid"] = out if rc == 0 and out else None
+
+        if shutil.which("timedatectl"):
+            rc, out, err = _run(["timedatectl", "show", "-p", "Timezone", "--value"])
+            if rc == 0:
+                info["timezone"] = out
+
+        if shutil.which("free"):
+            rc, out, err = _run(["free", "-m"])
+            if rc == 0:
+                info["memory"] = out
+
+        if shutil.which("df"):
+            rc, out, err = _run(["df", "-h", "/"])
+            if rc == 0:
+                info["disk_root"] = out
+
+        return info
+
+    def _do_set_hostname(self, payload, cmd_id) -> Dict[str, Any]:
+        hostname = str(payload.get("hostname") or "").strip()
+        if not hostname:
+            raise RuntimeError("hostname is required")
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9\-]{0,62}", hostname):
+            raise RuntimeError("invalid hostname (letters/numbers/hyphen, max 63)")
+        if sys.platform.startswith("win"):
+            raise RuntimeError("set_hostname is not supported on Windows agent hosts")
+        if not shutil.which("hostnamectl"):
+            raise RuntimeError("hostnamectl not available on host")
+
+        proc = subprocess.run(
+            ["sudo", "hostnamectl", "set-hostname", hostname],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError((proc.stderr or proc.stdout or "hostnamectl failed").strip())
+        return {"hostname": hostname, "changed": True}
+
+    def _do_set_timezone(self, payload, cmd_id) -> Dict[str, Any]:
+        tz = str(payload.get("timezone") or "").strip()
+        if not tz:
+            raise RuntimeError("timezone is required")
+        if sys.platform.startswith("win"):
+            raise RuntimeError("set_timezone is not supported on Windows agent hosts")
+        if not shutil.which("timedatectl"):
+            raise RuntimeError("timedatectl not available on host")
+
+        proc = subprocess.run(
+            ["sudo", "timedatectl", "set-timezone", tz],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError((proc.stderr or proc.stdout or "timedatectl failed").strip())
+        return {"timezone": tz, "changed": True}
+
+    def _do_set_wifi(self, payload, cmd_id) -> Dict[str, Any]:
+        if sys.platform.startswith("win"):
+            raise RuntimeError("set_wifi is not supported on Windows agent hosts")
+        ssid = str(payload.get("ssid") or "").strip()
+        psk = str(payload.get("psk") or "")
+        iface = str(payload.get("iface") or "wlan0").strip() or "wlan0"
+        hidden = bool(payload.get("hidden"))
+        if not ssid:
+            raise RuntimeError("ssid is required")
+        if not psk:
+            raise RuntimeError("psk is required")
+        if not shutil.which("nmcli"):
+            raise RuntimeError("nmcli not available; cannot set Wi-Fi on this host")
+
+        args = ["nmcli", "dev", "wifi", "connect", ssid, "password", psk, "ifname", iface]
+        if hidden:
+            args.extend(["hidden", "yes"])
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=30)
+        if proc.returncode != 0:
+            raise RuntimeError((proc.stderr or proc.stdout or "nmcli wifi connect failed").strip())
+        return {
+            "ssid": ssid,
+            "iface": iface,
+            "hidden": hidden,
+            "changed": True,
+            "note": "Wi-Fi profile applied via nmcli",
+        }
 
     def _do_reload_config(self, payload, cmd_id) -> Dict[str, Any]:
         self.agent.reload_config()
