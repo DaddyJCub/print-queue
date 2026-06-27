@@ -134,6 +134,17 @@ def _is_version_newer(candidate: Optional[str], current: Optional[str]) -> bool:
     return _version_key(candidate) > _version_key(current)
 
 
+def _extract_firmware_version(status: Dict[str, Any]) -> Optional[str]:
+    """Best-effort extraction of firmware version from heartbeat printer status."""
+    if not isinstance(status, dict):
+        return None
+    for key in ("firmware_version", "fw_version", "firmware", "version"):
+        v = status.get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+
+
 def upload_dir() -> str:
     return os.getenv("UPLOAD_DIR", "/uploads")
 
@@ -857,6 +868,9 @@ async def admin_list_agents(admin=Depends(require_admin)):
             a["available_version"] = current_release_version if a["upgrade_available"] else None
             fw = _current_firmware(conn, a.get("printer_code") or "LK5_PRO")
             a["available_firmware_version"] = fw["version"] if fw else None
+            current_fw = _extract_firmware_version(a.get("status") or {})
+            a["current_firmware_version"] = current_fw
+            a["firmware_upgrade_available"] = bool(fw and _is_version_newer(fw["version"], current_fw))
             agents.append(a)
     finally:
         conn.close()
@@ -1065,31 +1079,174 @@ async def admin_list_agent_releases(admin=Depends(require_admin)):
 
 @router.post(ADMIN_PREFIX + "/agents/{agent_id}/update")
 async def admin_push_update(agent_id: str, admin=Depends(require_admin)):
-    """Queue an update_agent command pointing the agent at the current release."""
+    """Queue one-click updates for this agent.
+
+    This queues:
+    - update_agent when a newer/current agent release exists
+    - flash_firmware when a newer firmware exists for the agent printer model
+    """
     conn = db()
     try:
-        agent = conn.execute("SELECT agent_id FROM printer_agents WHERE agent_id = ? AND revoked = 0", (agent_id,)).fetchone()
+        agent = conn.execute(
+            "SELECT agent_id, printer_code, agent_version, status_json FROM printer_agents WHERE agent_id = ? AND revoked = 0",
+            (agent_id,),
+        ).fetchone()
         if not agent:
             raise HTTPException(status_code=404, detail="Agent not found")
         rel = _current_release(conn)
-        if not rel:
-            raise HTTPException(status_code=404, detail="No agent release uploaded yet")
-        cmd_id = str(uuid.uuid4())
+        fw = _current_firmware(conn, agent["printer_code"])
+
+        queued: List[Dict[str, str]] = []
         now = now_iso()
-        payload = {
-            "version": rel["version"],
-            "sha256": rel["sha256"],
-            "bundle_url": f"{API_PREFIX}/releases/agent/{rel['version']}/bundle",
-        }
-        conn.execute(
-            "INSERT INTO printer_agent_commands (cmd_id, agent_id, action, payload_json, status, created_at, updated_at, created_by) "
-            "VALUES (?, ?, 'update_agent', ?, 'queued', ?, ?, ?)",
-            (cmd_id, agent_id, _json_dumps(payload), now, now, getattr(admin, "id", None)),
-        )
+
+        if rel and _is_version_newer(rel["version"], agent["agent_version"]):
+            cmd_id = str(uuid.uuid4())
+            payload = {
+                "version": rel["version"],
+                "sha256": rel["sha256"],
+                "bundle_url": f"{API_PREFIX}/releases/agent/{rel['version']}/bundle",
+            }
+            conn.execute(
+                "INSERT INTO printer_agent_commands (cmd_id, agent_id, action, payload_json, status, created_at, updated_at, created_by) "
+                "VALUES (?, ?, 'update_agent', ?, 'queued', ?, ?, ?)",
+                (cmd_id, agent_id, _json_dumps(payload), now, now, getattr(admin, "id", None)),
+            )
+            queued.append({"action": "update_agent", "cmd_id": cmd_id, "version": rel["version"]})
+
+        current_fw = _extract_firmware_version(_json_loads(agent["status_json"]))
+        if fw and _is_version_newer(fw["version"], current_fw):
+            cmd_id = str(uuid.uuid4())
+            payload = {
+                "version": fw["version"],
+                "sha256": fw["sha256"],
+                "file_name": fw["file_name"],
+                "firmware_url": f"{API_PREFIX}/firmware/{agent['printer_code']}/{fw['version']}/file",
+            }
+            conn.execute(
+                "INSERT INTO printer_agent_commands (cmd_id, agent_id, action, payload_json, status, created_at, updated_at, created_by) "
+                "VALUES (?, ?, 'flash_firmware', ?, 'queued', ?, ?, ?)",
+                (cmd_id, agent_id, _json_dumps(payload), now, now, getattr(admin, "id", None)),
+            )
+            queued.append({"action": "flash_firmware", "cmd_id": cmd_id, "version": fw["version"]})
+
+        if not queued:
+            raise HTTPException(status_code=409, detail="Agent and firmware are already up to date")
+
         conn.commit()
     finally:
         conn.close()
-    return {"ok": True, "cmd_id": cmd_id, "version": rel["version"]}
+    return {"ok": True, "queued": queued}
+
+
+@router.get(ADMIN_PREFIX + "/agents/{agent_id}/update-verification")
+async def admin_verify_update(agent_id: str, cmd_ids: str = "", admin=Depends(require_admin)):
+    """Verify one-click update outcomes for a specific set of command IDs.
+
+    Returns a deterministic state:
+    - pending: commands still in-flight
+    - failed: a command failed OR target versions were not reached
+    - verified: all queued update commands completed and versions reached
+    """
+    ids = [x.strip() for x in (cmd_ids or "").split(",") if x.strip()]
+    if not ids:
+        raise HTTPException(status_code=422, detail="cmd_ids required")
+
+    conn = db()
+    try:
+        agent = conn.execute(
+            "SELECT agent_id, agent_version, status_json FROM printer_agents WHERE agent_id = ?",
+            (agent_id,),
+        ).fetchone()
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+
+        qmarks = ",".join(["?"] * len(ids))
+        rows = conn.execute(
+            f"SELECT cmd_id, action, status, error, payload_json, result_json, completed_at FROM printer_agent_commands "
+            f"WHERE agent_id = ? AND cmd_id IN ({qmarks})",
+            [agent_id, *ids],
+        ).fetchall()
+    finally:
+        conn.close()
+
+    by_id = {r["cmd_id"]: r for r in rows}
+    missing = [cid for cid in ids if cid not in by_id]
+    if missing:
+        return {"state": "failed", "detail": f"Missing commands: {', '.join(missing)}", "commands": []}
+
+    current_agent_version = agent["agent_version"]
+    current_fw_version = _extract_firmware_version(_json_loads(agent["status_json"]))
+
+    command_views: List[Dict[str, Any]] = []
+    has_pending = False
+    has_failed = False
+    version_pending: List[str] = []
+
+    for cid in ids:
+        r = by_id[cid]
+        payload = _json_loads(r["payload_json"])
+        result = _json_loads(r["result_json"])
+        status = r["status"]
+        action = r["action"]
+        target = payload.get("version") if isinstance(payload, dict) else None
+
+        if status in ("queued", "delivered", "executing"):
+            has_pending = True
+        if status == "failed":
+            has_failed = True
+
+        if status == "completed" and target:
+            if action == "update_agent" and not _is_version_newer(current_agent_version, target) and _version_key(current_agent_version) != _version_key(target):
+                version_pending.append(f"agent_version {current_agent_version} not yet at {target}")
+            if action == "flash_firmware":
+                # Prefer version match when heartbeat reports firmware version.
+                # Fall back to a positive flash result when the firmware version
+                # is not exposed by printer status yet.
+                flashed_ok = bool(result.get("flashed") or result.get("ok") or result.get("updated"))
+                fw_matches = _is_version_newer(current_fw_version, target) or _version_key(current_fw_version) == _version_key(target)
+                if not fw_matches and not flashed_ok:
+                    version_pending.append(f"firmware_version {current_fw_version} not yet at {target}")
+
+        command_views.append({
+            "cmd_id": cid,
+            "action": action,
+            "status": status,
+            "target_version": target,
+            "error": r["error"],
+            "completed_at": r["completed_at"],
+        })
+
+    if has_failed:
+        return {
+            "state": "failed",
+            "detail": "One or more update commands failed",
+            "agent_version": current_agent_version,
+            "firmware_version": current_fw_version,
+            "commands": command_views,
+        }
+    if has_pending:
+        return {
+            "state": "pending",
+            "detail": "Update commands still running",
+            "agent_version": current_agent_version,
+            "firmware_version": current_fw_version,
+            "commands": command_views,
+        }
+    if version_pending:
+        return {
+            "state": "pending",
+            "detail": "; ".join(version_pending),
+            "agent_version": current_agent_version,
+            "firmware_version": current_fw_version,
+            "commands": command_views,
+        }
+    return {
+        "state": "verified",
+        "detail": "All update commands completed and target versions are reached",
+        "agent_version": current_agent_version,
+        "firmware_version": current_fw_version,
+        "commands": command_views,
+    }
 
 
 @router.get(API_PREFIX + "/releases/agent/{version}/bundle")

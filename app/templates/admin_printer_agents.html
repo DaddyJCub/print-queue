@@ -170,7 +170,7 @@
                 <span class="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-lg">${esc(a.printer_code)}</span>
                 ${a.revoked ? '<span class="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded-lg">revoked</span>' : ''}
                 ${a.upgrade_available ? `<span class="text-xs bg-indigo-900/40 text-indigo-200 px-2 py-0.5 rounded-lg">upgrade: v${esc(a.available_version || "?")}</span>` : ''}
-                ${a.available_firmware_version ? `<span class="text-xs bg-amber-900/40 text-amber-200 px-2 py-0.5 rounded-lg">firmware ready: v${esc(a.available_firmware_version)}</span>` : ''}
+                ${a.firmware_upgrade_available ? `<span class="text-xs bg-amber-900/40 text-amber-200 px-2 py-0.5 rounded-lg">firmware upgrade: v${esc(a.available_firmware_version)}</span>` : ''}
               </div>
               <div class="text-xs text-zinc-500 mt-1 font-mono">${esc(a.agent_id)}</div>
               <div class="text-xs text-zinc-400 mt-1">${a.online ? 'Online' : 'Offline'} · last seen ${timeAgo(a.last_seen_at)}${a.agent_version ? ' · v'+esc(a.agent_version) : ''}</div>
@@ -293,10 +293,12 @@
         </div>
         <div id="cmdlog-${agentId}" class="text-xs"></div>`;
       refreshCommands(agentId);
+      // Pull latest host/network details into settings fields on open.
+      cmd(agentId, "get_host_info", false, null, true);
       commandPollers[agentId] = setInterval(() => refreshCommands(agentId), 2000);
     }
 
-    async function cmd(agentId, action, confirmFirst, payload) {
+    async function cmd(agentId, action, confirmFirst, payload, silent) {
       const labels = {
         restart_agent: "Restart the agent process?",
         reboot_host: "Reboot the Pi/host? (refused if a print is running)",
@@ -309,8 +311,25 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload ? { action, payload } : { action }),
       });
-      if (r.ok) { showToast("Command queued — runs on next agent poll", "success"); setTimeout(() => refreshCommands(agentId), 1500); }
+      if (r.ok) {
+        if (!silent) showToast("Command queued — runs on next agent poll", "success");
+        setTimeout(() => refreshCommands(agentId), 1500);
+      }
       else { showToast("Failed: " + (await r.text()), "error"); }
+    }
+
+    function hydrateHostSettings(agentId, cmds) {
+      const hostCmd = (cmds || []).find(c => c.action === "get_host_info" && c.status === "completed" && c.result);
+      if (!hostCmd) return;
+      const r = hostCmd.result || {};
+      const hostEl = document.getElementById(`host-${agentId}`);
+      const tzEl = document.getElementById(`tz-${agentId}`);
+      const ssidEl = document.getElementById(`wifi-ssid-${agentId}`);
+      const ifaceEl = document.getElementById(`wifi-iface-${agentId}`);
+      if (hostEl && r.hostname && !hostEl.value) hostEl.value = r.hostname;
+      if (tzEl && r.timezone) tzEl.value = r.timezone;
+      if (ssidEl && r.wifi_ssid && !ssidEl.value) ssidEl.value = r.wifi_ssid;
+      if (ifaceEl && r.wifi_iface && !ifaceEl.value) ifaceEl.value = r.wifi_iface;
     }
 
     async function setHostname(agentId) {
@@ -341,6 +360,7 @@
       if (!box) return;
       const r = await fetch(API + `/agents/${agentId}/commands`, { credentials: "include" });
       const cmds = (await r.json()).commands || [];
+      hydrateHostSettings(agentId, cmds);
       if (!cmds.length) { box.innerHTML = '<div class="text-zinc-500">No commands yet.</div>'; return; }
       box.innerHTML = cmds.map(c => {
         const logs = c.result && c.result.logs;
@@ -360,9 +380,13 @@
           ${c.payload ? '<pre class="mt-2 max-h-40 overflow-auto bg-black/40 rounded p-2 text-[11px] leading-snug whitespace-pre-wrap"><span class="text-zinc-400">payload:</span>\n'+escJson(c.payload)+'</pre>' : ''}
           ${c.error ? '<div class="text-red-400 mt-1">'+esc(c.error)+'</div>' : ''}
           ${c.result && !logs ? '<pre class="mt-2 max-h-48 overflow-auto bg-black/40 rounded p-2 text-[11px] leading-snug whitespace-pre-wrap"><span class="text-zinc-400">result:</span>\n'+escJson(c.result)+'</pre>' : ''}
-          ${logs ? '<pre class="mt-2 max-h-64 overflow-auto bg-black/40 rounded p-2 text-[11px] leading-snug whitespace-pre-wrap">'+esc(logs)+'</pre>' : ''}
+          ${logs ? '<pre data-kind="logs" class="mt-2 max-h-64 overflow-auto bg-black/40 rounded p-2 text-[11px] leading-snug whitespace-pre-wrap">'+esc(logs)+'</pre>' : ''}
         </div>`;
       }).join("");
+      // Always pin log viewer to newest lines (bottom).
+      box.querySelectorAll('pre[data-kind="logs"]').forEach(el => {
+        el.scrollTop = el.scrollHeight;
+      });
     }
 
     async function revoke(agentId) {
@@ -384,8 +408,47 @@
       if (!(await showConfirm("Push the current agent bundle to this agent? It will self-update and restart.", { destructive: false, confirmText: "Update" }))) return;
       const r = await fetch(API + `/agents/${agentId}/update`, { method: "POST", credentials: "include" });
       const d = await r.json().catch(() => ({}));
-      if (r.ok) { showToast("Update queued (v" + (d.version || "?") + ")", "success"); setTimeout(() => refreshCommands(agentId), 1500); }
-      else { showToast("Failed: " + (d.detail || r.status), "error"); }
+      if (r.ok) {
+        const queued = d.queued || [];
+        const labels = queued.map(x => `${x.action}${x.version ? ' v'+x.version : ''}`).join(", ");
+        showToast(`Update queued: ${labels || 'commands'}`, "success");
+        setTimeout(() => refreshCommands(agentId), 1500);
+        pollUpdateVerification(agentId, queued.map(x => x.cmd_id).filter(Boolean));
+      }
+      else {
+        const detail = String(d.detail || r.status || "");
+        if (detail.toLowerCase().includes("no agent release uploaded yet")) {
+          showToast("Upload an agent bundle first in Agent software updates.", "error");
+        } else if (detail.toLowerCase().includes("already up to date")) {
+          showToast("Agent and firmware are already up to date.", "success");
+        } else {
+          showToast("Failed: " + detail, "error");
+        }
+      }
+    }
+
+    async function pollUpdateVerification(agentId, cmdIds) {
+      if (!cmdIds || !cmdIds.length) return;
+      const deadline = Date.now() + 180000; // 3 min
+      const query = encodeURIComponent(cmdIds.join(","));
+      while (Date.now() < deadline) {
+        try {
+          const r = await fetch(API + `/agents/${agentId}/update-verification?cmd_ids=${query}`, { credentials: "include" });
+          const d = await r.json().catch(() => ({}));
+          if (r.ok && d.state === "verified") {
+            showToast(`Update verified · agent ${d.agent_version || "?"}${d.firmware_version ? ' · fw '+d.firmware_version : ''}`, "success");
+            await load();
+            return;
+          }
+          if (r.ok && d.state === "failed") {
+            showToast("Update verification failed: " + (d.detail || "unknown error"), "error");
+            await refreshCommands(agentId);
+            return;
+          }
+        } catch (_) {}
+        await new Promise(res => setTimeout(res, 3000));
+      }
+      showToast("Update verification timeout — check command log for details.", "error");
     }
     async function loadReleases() {
       try {
