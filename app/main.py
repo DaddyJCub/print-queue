@@ -527,6 +527,7 @@ Traceback:
 {tb_str[:2000]}"""
         
         conn = sqlite3.connect(DB_PATH, timeout=30)
+        conn.execute("PRAGMA busy_timeout=30000")
         conn.row_factory = sqlite3.Row
         feedback_id = str(uuid.uuid4())
         conn.execute(
@@ -881,6 +882,7 @@ MATERIALS = [
 
 def db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+    conn.execute("PRAGMA busy_timeout=30000")
     conn.row_factory = sqlite3.Row
     return conn
 

@@ -181,6 +181,7 @@ class DeviceCommandResponse(BaseModel):
 
 def db() -> sqlite3.Connection:
     conn = sqlite3.connect(os.getenv("DB_PATH", "/data/app.db"), timeout=30)
+    conn.execute("PRAGMA busy_timeout = 30000")
     conn.row_factory = sqlite3.Row
     return conn
 

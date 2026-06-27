@@ -35,6 +35,8 @@ from app.models import (
 
 logger = logging.getLogger("printellect.auth")
 
+_SESSION_LAST_ACTIVE_UPDATE_INTERVAL_SECONDS = 60
+
 # ─────────────────────────── DATABASE HELPERS ───────────────────────────
 
 def get_db_path():
@@ -45,8 +47,30 @@ def get_db_path():
 def db():
     """Get database connection."""
     conn = sqlite3.connect(get_db_path(), timeout=30)
+    conn.execute("PRAGMA busy_timeout = 30000")
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _is_db_locked_error(exc: sqlite3.OperationalError) -> bool:
+    return "database is locked" in str(exc).lower()
+
+
+def _parse_iso_utc(iso_value: Optional[str]) -> Optional[datetime]:
+    if not iso_value:
+        return None
+    try:
+        return datetime.fromisoformat(iso_value.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _should_touch_session_last_active(last_active: Optional[str], now: datetime) -> bool:
+    """Avoid write-on-every-request to reduce SQLite write lock contention."""
+    parsed = _parse_iso_utc(last_active)
+    if not parsed:
+        return True
+    return (now - parsed).total_seconds() >= _SESSION_LAST_ACTIVE_UPDATE_INTERVAL_SECONDS
 
 
 # ─────────────────────────── FEATURE FLAG CACHE ─────────────────────────────
@@ -435,38 +459,45 @@ def create_user_session(user_id: str, device_info: str = None, ip_address: str =
 
 def get_user_by_session(token: str) -> Optional[User]:
     """Get user by session token."""
-    conn = db()
-    # Use consistent ISO format with Z suffix for comparison
-    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
-    row = conn.execute("""
-        SELECT u.* FROM users u
-        JOIN user_sessions s ON u.id = s.user_id
-        WHERE s.token = ? AND s.expires_at > ?
-    """, (token, now)).fetchone()
+    now_dt = datetime.utcnow()
+    now_iso = now_dt.isoformat(timespec="seconds") + "Z"
+    attempts = 3
 
-    if row:
-        # Throttle last_active writes — only update if the stored timestamp is
-        # more than 5 minutes old to avoid a DB write on every single page load.
-        last_active = row["last_active"] if "last_active" in row.keys() else None
-        should_update = True
-        if last_active:
-            try:
-                la_dt = datetime.fromisoformat(last_active.rstrip("Z"))
-                should_update = (datetime.utcnow() - la_dt).total_seconds() > 300
-            except Exception:
-                pass
-        if should_update:
-            conn.execute(
-                "UPDATE user_sessions SET last_active = ? WHERE token = ?", (now, token)
-            )
-            conn.commit()
+    for attempt in range(1, attempts + 1):
+        conn = db()
+        try:
+            row = conn.execute("""
+                SELECT u.*, s.last_active AS session_last_active FROM users u
+                JOIN user_sessions s ON u.id = s.user_id
+                WHERE s.token = ? AND s.expires_at > ?
+            """, (token, now_iso)).fetchone()
 
-    conn.close()
+            if not row:
+                return None
 
-    if not row:
-        return None
+            if _should_touch_session_last_active(row["session_last_active"], now_dt):
+                try:
+                    conn.execute(
+                        "UPDATE user_sessions SET last_active = ? WHERE token = ?", (now_iso, token)
+                    )
+                    conn.commit()
+                except sqlite3.OperationalError as exc:
+                    if _is_db_locked_error(exc):
+                        logger.warning("User session last_active update skipped due to SQLite lock")
+                        conn.rollback()
+                    else:
+                        raise
 
-    return _row_to_user(row)
+            return _row_to_user(row)
+        except sqlite3.OperationalError as exc:
+            if _is_db_locked_error(exc) and attempt < attempts:
+                time.sleep(0.05 * attempt)
+                continue
+            raise
+        finally:
+            conn.close()
+
+    return None
 
 
 def delete_user_session(token: str):
@@ -1945,35 +1976,58 @@ def create_session(
 
 def get_session_by_token(token: str) -> Optional[Session]:
     """Get session by token."""
-    conn = db()
-    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
-    
-    row = conn.execute("""
-        SELECT * FROM sessions WHERE token = ? AND expires_at > ?
-    """, (token, now)).fetchone()
-    
-    if not row:
-        conn.close()
-        return None
-    
-    # Update last_active
-    conn.execute("""
-        UPDATE sessions SET last_active = ? WHERE id = ?
-    """, (now, row["id"]))
-    conn.commit()
-    conn.close()
-    
-    return Session(
-        id=row["id"],
-        account_id=row["account_id"],
-        token=row["token"],
-        device_info=row["device_info"],
-        ip_address=row["ip_address"],
-        user_agent=row["user_agent"],
-        created_at=row["created_at"],
-        expires_at=row["expires_at"],
-        last_active=now
-    )
+    now_dt = datetime.utcnow()
+    now_iso = now_dt.isoformat(timespec="seconds") + "Z"
+    attempts = 3
+
+    for attempt in range(1, attempts + 1):
+        conn = db()
+        try:
+            row = conn.execute("""
+                SELECT * FROM sessions WHERE token = ? AND expires_at > ?
+            """, (token, now_iso)).fetchone()
+
+            if not row:
+                return None
+
+            session_last_active = row["last_active"]
+            if _should_touch_session_last_active(session_last_active, now_dt):
+                try:
+                    conn.execute("""
+                        UPDATE sessions SET last_active = ? WHERE id = ?
+                    """, (now_iso, row["id"]))
+                    conn.commit()
+                    session_last_active = now_iso
+                except sqlite3.OperationalError as exc:
+                    if _is_db_locked_error(exc):
+                        logger.warning(
+                            "Session last_active update skipped due to SQLite lock for session_id=%s",
+                            row["id"],
+                        )
+                        conn.rollback()
+                    else:
+                        raise
+
+            return Session(
+                id=row["id"],
+                account_id=row["account_id"],
+                token=row["token"],
+                device_info=row["device_info"],
+                ip_address=row["ip_address"],
+                user_agent=row["user_agent"],
+                created_at=row["created_at"],
+                expires_at=row["expires_at"],
+                last_active=session_last_active,
+            )
+        except sqlite3.OperationalError as exc:
+            if _is_db_locked_error(exc) and attempt < attempts:
+                time.sleep(0.05 * attempt)
+                continue
+            raise
+        finally:
+            conn.close()
+
+    return None
 
 
 def get_account_sessions(account_id: str) -> List[Session]:

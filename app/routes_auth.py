@@ -123,6 +123,7 @@ def get_db_path():
 
 def db():
     conn = sqlite3.connect(get_db_path(), timeout=30)
+    conn.execute("PRAGMA busy_timeout = 30000")
     conn.row_factory = sqlite3.Row
     return conn
 

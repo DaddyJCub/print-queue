@@ -86,6 +86,25 @@
       </a>
     </div>
 
+    {% if total_count is defined %}
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4 px-4 py-3 rounded-xl bg-zinc-900/60 border border-zinc-800 text-sm text-zinc-400">
+        <div>
+          Showing {{ feedback|length }} of {{ total_count }} feedback items
+          {% if total_pages > 1 %}• Page {{ page }} of {{ total_pages }}{% endif %}
+        </div>
+        {% if total_pages > 1 %}
+          <div class="flex items-center gap-2">
+            {% if page > 1 %}
+              <a href="/admin/feedback?{% if status_filter %}status={{ status_filter }}&{% endif %}{% if type_filter %}type={{ type_filter }}&{% endif %}page={{ page - 1 }}&per_page={{ per_page }}" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition">Prev</a>
+            {% endif %}
+            {% if page < total_pages %}
+              <a href="/admin/feedback?{% if status_filter %}status={{ status_filter }}&{% endif %}{% if type_filter %}type={{ type_filter }}&{% endif %}page={{ page + 1 }}&per_page={{ per_page }}" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition">Next</a>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
     <!-- Feedback List -->
     {% if feedback|length == 0 %}
       {% from '_components/empty_state.html' import empty_state %}
@@ -95,14 +114,45 @@
           message='When users submit feedback, it will appear here.' if not status_filter else 'No ' ~ status_filter ~ ' feedback to show.'
       ) }}
     {% else %}
-      <div class="space-y-3">
-        {% for fb in feedback %}
+      <form method="POST" action="/admin/feedback/bulk" id="feedback-bulk-form" class="space-y-4">
+        <input type="hidden" name="current_status" value="{{ status_filter or '' }}" />
+        <input type="hidden" name="current_type" value="{{ type_filter or '' }}" />
+        <input type="hidden" name="page" value="{{ page }}" />
+        <input type="hidden" name="per_page" value="{{ per_page }}" />
+
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-3 rounded-xl bg-zinc-900/60 border border-zinc-800">
+          <div class="flex flex-wrap items-center gap-3">
+            <label class="inline-flex items-center gap-2 text-sm text-zinc-300">
+              <input type="checkbox" id="feedback-select-all" class="rounded border-zinc-700 bg-zinc-900 text-indigo-500" />
+              Select all on this page
+            </label>
+            <label class="inline-flex items-center gap-2 text-sm text-zinc-400">
+              Apply to
+              <select name="scope" class="rounded-lg bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm text-zinc-200">
+                <option value="selected" selected>selected items</option>
+                <option value="filtered">all filtered feedback</option>
+              </select>
+            </label>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="submit" name="action" value="reviewed" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-medium transition">Mark Reviewed</button>
+            <button type="submit" name="action" value="resolved" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium transition">Mark Resolved</button>
+            <button type="submit" name="action" value="dismissed" class="px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-sm font-medium transition">Dismiss</button>
+            <button type="submit" name="action" value="delete" class="px-3 py-1.5 rounded-lg bg-red-900/40 hover:bg-red-900/60 text-red-300 text-sm font-medium transition" data-confirm="Delete selected feedback permanently?">Delete</button>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          {% for fb in feedback %}
           <div class="feedback-card bg-zinc-800/40 border rounded-xl overflow-hidden
                       {% if fb.status == 'new' %}border-amber-500/50 border-l-4{% else %}border-zinc-800{% endif %}">
             
             <!-- Main Row - Compact -->
             <div class="p-4">
               <div class="flex items-start gap-4">
+                <div class="pt-2 flex-shrink-0">
+                  <input type="checkbox" name="selected_ids" value="{{ fb.id }}" class="feedback-row-select rounded border-zinc-700 bg-zinc-900 text-indigo-500" />
+                </div>
                 <!-- Type Icon -->
                 <div class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-lg
                   {% if fb.type == 'bug' %}bg-red-900/30{% else %}bg-purple-900/30{% endif %}">
@@ -254,8 +304,23 @@
               </form>
             </div>
           </div>
-        {% endfor %}
-      </div>
+          {% endfor %}
+        </div>
+      </form>
+
+      {% if total_pages > 1 %}
+        <div class="mt-6 flex items-center justify-between gap-3 text-sm text-zinc-400">
+          <div>Page {{ page }} of {{ total_pages }}</div>
+          <div class="flex items-center gap-2">
+            {% if page > 1 %}
+              <a href="/admin/feedback?{% if status_filter %}status={{ status_filter }}&{% endif %}{% if type_filter %}type={{ type_filter }}&{% endif %}page={{ page - 1 }}&per_page={{ per_page }}" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition">Prev</a>
+            {% endif %}
+            {% if page < total_pages %}
+              <a href="/admin/feedback?{% if status_filter %}status={{ status_filter }}&{% endif %}{% if type_filter %}type={{ type_filter }}&{% endif %}page={{ page + 1 }}&per_page={{ per_page }}" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition">Next</a>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
     {% endif %}
 
     <!-- Footer -->
@@ -284,6 +349,15 @@
         full.classList.add('hidden');
         btn.textContent = 'Show more';
       }
+    }
+
+    const selectAll = document.getElementById('feedback-select-all');
+    if (selectAll) {
+      selectAll.addEventListener('change', () => {
+        document.querySelectorAll('.feedback-row-select').forEach((checkbox) => {
+          checkbox.checked = selectAll.checked;
+        });
+      });
     }
   </script>
 {% endblock %}

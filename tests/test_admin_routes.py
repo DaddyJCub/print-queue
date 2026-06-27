@@ -10,7 +10,8 @@ Covers:
 """
 import json
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta
+import uuid
 
 # Import test utilities from conftest (auto-loaded by pytest)
 from tests.conftest import (
@@ -530,6 +531,87 @@ class TestAdminFeedback:
         """Admin feedback page should load."""
         response = admin_client.get("/admin/feedback")
         assert response.status_code == 200
+
+    def test_admin_feedback_page_paginates_results(self, admin_client):
+        """Admin feedback page should only render one page of rows at a time."""
+        conn = get_test_db()
+        now = datetime.utcnow()
+
+        for idx in range(55):
+            conn.execute(
+                """
+                INSERT INTO feedback (id, type, name, email, message, page_url, user_agent, status, admin_notes, created_at, resolved_at)
+                VALUES (?, 'bug', ?, ?, ?, ?, ?, 'new', NULL, ?, NULL)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    f"Tester {idx}",
+                    f"tester{idx}@example.com",
+                    f"Feedback item {idx}",
+                    f"https://example.com/{idx}",
+                    "pytest",
+                    (now - timedelta(minutes=idx)).isoformat(timespec="seconds") + "Z",
+                ),
+            )
+        conn.commit()
+        conn.close()
+
+        response = admin_client.get("/admin/feedback")
+        assert response.status_code == 200
+        assert "Showing 50 of 55 feedback items" in response.text
+        assert "Feedback item 0" in response.text
+        assert "Feedback item 54" not in response.text
+
+    def test_admin_feedback_bulk_apply_to_filtered(self, admin_client):
+        """Bulk actions should update all filtered feedback rows."""
+        conn = get_test_db()
+        now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        ids = []
+
+        for idx in range(3):
+            fid = str(uuid.uuid4())
+            ids.append(fid)
+            conn.execute(
+                """
+                INSERT INTO feedback (id, type, name, email, message, page_url, user_agent, status, admin_notes, created_at, resolved_at)
+                VALUES (?, 'bug', ?, ?, ?, ?, ?, 'new', NULL, ?, NULL)
+                """,
+                (
+                    fid,
+                    f"Bulk Tester {idx}",
+                    f"bulk{idx}@example.com",
+                    f"Bulk feedback {idx}",
+                    f"https://example.com/bulk/{idx}",
+                    "pytest",
+                    now,
+                ),
+            )
+        conn.commit()
+        conn.close()
+
+        response = admin_client.post(
+            "/admin/feedback/bulk",
+            data={
+                "action": "dismissed",
+                "scope": "filtered",
+                "current_status": "new",
+                "current_type": "bug",
+                "page": "1",
+                "per_page": "50",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code in (200, 303)
+
+        conn = get_test_db()
+        rows = conn.execute(
+            f"SELECT id, status FROM feedback WHERE id IN ({','.join('?' for _ in ids)})",
+            ids,
+        ).fetchall()
+        conn.close()
+
+        assert len(rows) == 3
+        assert all(row["status"] == "dismissed" for row in rows)
 
 
 class TestAdminBroadcast:

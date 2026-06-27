@@ -133,8 +133,15 @@ def _cleanup_printer_chunk_upload(upload_id: str) -> None:
             pass
 
 @router.get("/admin/feedback", response_class=HTMLResponse)
-def admin_feedback_list(request: Request, status: Optional[str] = None, type: Optional[str] = None, _=Depends(require_admin)):
-    """Admin view of all feedback"""
+def admin_feedback_list(
+    request: Request,
+    status: Optional[str] = None,
+    type: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 50,
+    _=Depends(require_admin),
+):
+    """Admin view of feedback with pagination and filters."""
     conn = db()
     
     # Build query with optional filters
@@ -150,10 +157,32 @@ def admin_feedback_list(request: Request, status: Optional[str] = None, type: Op
         params.append(type)
     
     where_sql = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
-    
+
+    try:
+        page = max(1, int(page))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        per_page = min(max(10, int(per_page)), 100)
+    except (TypeError, ValueError):
+        per_page = 50
+
+    total_count = conn.execute(
+        f"SELECT COUNT(*) AS count FROM feedback{where_sql}",
+        params,
+    ).fetchone()["count"]
+    offset = (page - 1) * per_page
+
     feedback = conn.execute(
-        f"SELECT * FROM feedback{where_sql} ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'reviewed' THEN 1 ELSE 2 END, created_at DESC",
-        params
+        f"""
+        SELECT *
+        FROM feedback
+        {where_sql}
+        ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'reviewed' THEN 1 WHEN 'resolved' THEN 2 ELSE 3 END,
+                 created_at DESC
+        LIMIT ? OFFSET ?
+        """,
+        params + [per_page, offset],
     ).fetchall()
     
     # Count by status
@@ -163,6 +192,7 @@ def admin_feedback_list(request: Request, status: Optional[str] = None, type: Op
     conn.close()
     
     status_counts = {row["status"]: row["count"] for row in counts}
+    total_pages = max(1, (total_count + per_page - 1) // per_page)
     
     return templates.TemplateResponse("admin_feedback.html", {
         "request": request,
@@ -170,8 +200,81 @@ def admin_feedback_list(request: Request, status: Optional[str] = None, type: Op
         "status_filter": status,
         "type_filter": type,
         "status_counts": status_counts,
+        "page": page,
+        "per_page": per_page,
+        "total_count": total_count,
+        "total_pages": total_pages,
         "version": APP_VERSION,
     })
+
+
+@router.post("/admin/feedback/bulk")
+def admin_feedback_bulk_action(
+    request: Request,
+    action: str = Form(...),
+    selected_ids: Optional[List[str]] = Form(None),
+    scope: str = Form("selected"),
+    status: Optional[str] = Form(None),
+    admin_notes: Optional[str] = Form(None),
+    current_status: Optional[str] = Form(None),
+    current_type: Optional[str] = Form(None),
+    page: int = Form(1),
+    per_page: int = Form(50),
+    _=Depends(require_admin),
+):
+    """Bulk update or delete feedback rows."""
+    if action not in ("reviewed", "resolved", "dismissed", "delete"):
+        raise HTTPException(status_code=400, detail="Invalid bulk action")
+
+    conn = db()
+    ids: List[str] = []
+
+    if scope == "filtered":
+        where_clauses = []
+        params: List[Any] = []
+        if current_status and current_status in ("new", "reviewed", "resolved", "dismissed"):
+            where_clauses.append("status = ?")
+            params.append(current_status)
+        if current_type and current_type in ("bug", "suggestion"):
+            where_clauses.append("type = ?")
+            params.append(current_type)
+        where_sql = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        rows = conn.execute(f"SELECT id FROM feedback{where_sql}", params).fetchall()
+        ids = [row["id"] for row in rows]
+    else:
+        ids = [fid for fid in (selected_ids or []) if fid]
+
+    if not ids:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No feedback selected")
+
+    resolved_at = now_iso() if action == "resolved" else None
+    new_status = action if action != "delete" else None
+
+    try:
+        if action == "delete":
+            conn.executemany("DELETE FROM feedback WHERE id = ?", [(fid,) for fid in ids])
+        else:
+            conn.executemany(
+                "UPDATE feedback SET status = ?, admin_notes = COALESCE(NULLIF(?, ''), admin_notes), resolved_at = ? WHERE id = ?",
+                [(new_status, admin_notes, resolved_at, fid) for fid in ids],
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    redirect_url = "/admin/feedback"
+    query_parts = []
+    if current_status:
+        query_parts.append(f"status={urllib.parse.quote(current_status)}")
+    if current_type:
+        query_parts.append(f"type={urllib.parse.quote(current_type)}")
+    query_parts.append(f"page={page}")
+    query_parts.append(f"per_page={per_page}")
+    if query_parts:
+        redirect_url += "?" + "&".join(query_parts)
+
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 @router.post("/admin/feedback/{fid}/status")
