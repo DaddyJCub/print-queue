@@ -6,6 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY agent ./agent
 COPY device ./device
 COPY docs ./docs
 

@@ -865,6 +865,21 @@ async def admin_revoke_agent(agent_id: str, admin=Depends(require_admin)):
     return {"ok": True}
 
 
+@router.delete(ADMIN_PREFIX + "/agents/{agent_id}")
+async def admin_delete_agent(agent_id: str, admin=Depends(require_admin)):
+    conn = db()
+    try:
+        agent = conn.execute("SELECT agent_id FROM printer_agents WHERE agent_id = ? AND revoked = 1", (agent_id,)).fetchone()
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found or not revoked")
+        conn.execute("DELETE FROM printer_agent_tokens WHERE agent_id = ?", (agent_id,))
+        conn.execute("DELETE FROM printer_agents WHERE agent_id = ?", (agent_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
 class CommandRequest(BaseModel):
     action: str
     payload: Optional[Dict[str, Any]] = None
@@ -905,9 +920,16 @@ async def admin_list_commands(agent_id: str, admin=Depends(require_admin)):
     finally:
         conn.close()
     return {"commands": [{
-        "cmd_id": r["cmd_id"], "action": r["action"], "status": r["status"],
-        "error": r["error"], "result": _json_loads(r["result_json"]),
-        "created_at": r["created_at"], "completed_at": r["completed_at"],
+        "cmd_id": r["cmd_id"],
+        "action": r["action"],
+        "status": r["status"],
+        "payload": _json_loads(r["payload_json"]),
+        "error": r["error"],
+        "result": _json_loads(r["result_json"]),
+        "created_at": r["created_at"],
+        "delivered_at": r["delivered_at"],
+        "updated_at": r["updated_at"],
+        "completed_at": r["completed_at"],
     } for r in rows]}
 
 
