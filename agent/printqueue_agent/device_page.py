@@ -96,6 +96,17 @@ _PAGE = r"""<!doctype html>
       <button id="b-resume">Resume</button>
       <button class="danger" id="b-cancel">Cancel</button>
     </div>
+    <div style="margin-top:12px; border-top:1px solid #1d1d21; padding-top:10px;">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <span class="muted">Software updates</span>
+        <span id="u-badge" class="muted">checking...</span>
+      </div>
+      <div id="u-detail" class="muted" style="margin-top:6px">Checking for agent/firmware updates.</div>
+      <div class="row" style="margin-top:8px">
+        <button id="b-update-check">Check now</button>
+        <button class="primary" id="b-update-start" disabled>Update now</button>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -173,6 +184,8 @@ let camFails = 0;
 let knownFiles = new Set();
 let initializedFiles = false;
 let pendingFile = null;
+let pendingUpdateCmdIds = [];
+let updatePollRunning = false;
 
 function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.classList.add("show");
   clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("show"),2200); }
@@ -183,6 +196,86 @@ async function api(path, opts={}){
   return r.headers.get("content-type","").includes("json") ? r.json() : r;
 }
 function fmtBytes(n){ if(!n) return "0"; const u=["B","KB","MB"]; let i=0,v=n; while(v>=1024&&i<2){v/=1024;i++;} return v.toFixed(1)+u[i]; }
+function setUpdateUi(available, badge, detail){
+  const badgeEl = document.getElementById("u-badge");
+  const detailEl = document.getElementById("u-detail");
+  const startBtn = document.getElementById("b-update-start");
+  if (badgeEl) badgeEl.textContent = badge || "—";
+  if (detailEl) detailEl.textContent = detail || "";
+  if (startBtn) startBtn.disabled = !available;
+}
+function describeUpdateState(d){
+  const bits = [];
+  if (d.agent_upgrade_available) bits.push(`agent ${d.current_agent_version || "?"} -> ${d.available_agent_version || "?"}`);
+  if (d.firmware_upgrade_available) bits.push(`fw ${d.current_firmware_version || "?"} -> ${d.available_firmware_version || "?"}`);
+  if (!bits.length) return "Agent and firmware are up to date.";
+  return "Available: " + bits.join("  |  ");
+}
+async function refreshUpdateState(silent){
+  try {
+    const d = await api("/api/update-state");
+    const available = !!(d.agent_upgrade_available || d.firmware_upgrade_available);
+    setUpdateUi(available, available ? "update available" : "up to date", describeUpdateState(d));
+  } catch(e) {
+    setUpdateUi(false, "offline", "Could not check central update service right now.");
+    if (!silent) toast("Could not check updates");
+  }
+}
+async function startSelfUpdate(){
+  const btn = document.getElementById("b-update-start");
+  try {
+    if (btn) btn.disabled = true;
+    const d = await post("/api/update");
+    const queued = d.queued || [];
+    if (!queued.length) {
+      toast("No updates queued");
+      await refreshUpdateState(true);
+      return;
+    }
+    pendingUpdateCmdIds = queued.map(x => x.cmd_id).filter(Boolean);
+    const labels = queued.map(x => `${x.action}${x.version ? ' v'+x.version : ''}`).join(", ");
+    toast("Update queued: " + labels);
+    setUpdateUi(false, "updating", "Update started. Verifying...");
+    pollSelfUpdateVerification();
+  } catch(e) {
+    if (("" + e.message).toLowerCase().includes("already up to date")) {
+      setUpdateUi(false, "up to date", "Agent and firmware are already up to date.");
+      toast("Already up to date");
+      return;
+    }
+    toast("Update failed");
+    refreshUpdateState(true);
+  }
+}
+async function pollSelfUpdateVerification(){
+  if (updatePollRunning || !pendingUpdateCmdIds.length) return;
+  updatePollRunning = true;
+  const deadline = Date.now() + 180000;
+  const query = encodeURIComponent(pendingUpdateCmdIds.join(","));
+  while (Date.now() < deadline) {
+    try {
+      const d = await api(`/api/update-verification?cmd_ids=${query}`);
+      if (d.state === "verified") {
+        setUpdateUi(false, "verified", `Updated: agent ${d.agent_version || "?"}${d.firmware_version ? ' | fw '+d.firmware_version : ''}`);
+        toast("Update verified");
+        pendingUpdateCmdIds = [];
+        updatePollRunning = false;
+        await refreshUpdateState(true);
+        return;
+      }
+      if (d.state === "failed") {
+        setUpdateUi(false, "failed", d.detail || "Update failed");
+        toast("Update verification failed");
+        pendingUpdateCmdIds = [];
+        updatePollRunning = false;
+        return;
+      }
+    } catch(e) {}
+    await new Promise(res => setTimeout(res, 3000));
+  }
+  updatePollRunning = false;
+  setUpdateUi(false, "timeout", "Verification timed out. Check again in a minute.");
+}
 function showNewFileModal(name){
   pendingFile = name;
   document.getElementById("newfile-name").textContent = "File ready: " + name;
@@ -288,6 +381,8 @@ document.getElementById("nf-preheat-start").onclick = async()=>{
   hideNewFileModal();
   refresh();
 };
+document.getElementById("b-update-check").onclick = ()=>refreshUpdateState(false);
+document.getElementById("b-update-start").onclick = ()=>startSelfUpdate();
 function tickCam(){
   const img = document.getElementById("cam");
   fetch("/api/snapshot",{headers:H}).then(r=>{
@@ -296,9 +391,11 @@ function tickCam(){
   }).catch(()=>{});
 }
 refresh(); loadFiles(); tickCam();
+refreshUpdateState(true);
 setInterval(refresh, 2000);
 setInterval(loadFiles, 8000);
 setInterval(tickCam, 3000);
+setInterval(()=>refreshUpdateState(true), 60000);
 </script>
 </body>
 </html>"""

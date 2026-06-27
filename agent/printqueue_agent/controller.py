@@ -191,3 +191,24 @@ class AgentPrinterController:
         except Exception:
             return None
         return (frame, "image/jpeg") if frame else None
+
+    # ── OTA update state/actions (via central server) ────────────
+    def update_state(self) -> Dict[str, Any]:
+        try:
+            return self.agent.client.self_update_state()
+        except Exception as e:
+            raise ControllerError(str(e))
+
+    def start_update(self) -> Dict[str, Any]:
+        try:
+            return self.agent.client.self_update()
+        except Exception as e:
+            raise ControllerError(str(e))
+
+    def verify_update(self, cmd_ids: str) -> Dict[str, Any]:
+        if not cmd_ids:
+            raise ControllerError("cmd_ids required")
+        try:
+            return self.agent.client.self_update_verification(cmd_ids)
+        except Exception as e:
+            raise ControllerError(str(e))

@@ -109,6 +109,12 @@ def make_handler(controller, api_key: str):
                     return self._send_json(controller.state())
                 if path == "/api/files":
                     return self._send_json({"files": controller.list_files()})
+                if path == "/api/update-state":
+                    return self._send_json(controller.update_state())
+                if path == "/api/update-verification":
+                    q = parse_qs(urlparse(self.path).query)
+                    cmd_ids = (q.get("cmd_ids") or [""])[0]
+                    return self._send_json(controller.verify_update(cmd_ids))
                 if path == "/api/snapshot":
                     snap = controller.snapshot()
                     if not snap:
@@ -195,6 +201,8 @@ def make_handler(controller, api_key: str):
                 if path == "/api/files/delete":
                     controller.delete_file(self._read_json().get("file", ""))
                     return self._send_json({"ok": True})
+                if path == "/api/update":
+                    return self._send_json(controller.start_update())
                 return self._send_json({"error": "not found"}, status=404)
             except ControllerError as e:
                 return self._err(e)

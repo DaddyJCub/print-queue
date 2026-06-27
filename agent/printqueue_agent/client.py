@@ -153,3 +153,22 @@ class PrintQueueClient:
                           headers={**self._headers, "Content-Type": "image/jpeg"})
         if r.status_code != 200:
             raise ServerError(f"snapshot failed: {r.status_code} {r.text}")
+
+    # ── local device UI self-update helpers ──────────────────────
+    def self_update_state(self) -> Dict[str, Any]:
+        r = self._request("GET", "/self/update-state")
+        if r.status_code != 200:
+            raise ServerError(f"self/update-state failed: {r.status_code} {r.text}")
+        return r.json()
+
+    def self_update(self) -> Dict[str, Any]:
+        r = self._request("POST", "/self/update")
+        if r.status_code != 200:
+            raise ServerError(f"self/update failed: {r.status_code} {r.text}")
+        return r.json()
+
+    def self_update_verification(self, cmd_ids: str) -> Dict[str, Any]:
+        r = self._request("GET", "/self/update-verification", params={"cmd_ids": cmd_ids})
+        if r.status_code != 200:
+            raise ServerError(f"self/update-verification failed: {r.status_code} {r.text}")
+        return r.json()
