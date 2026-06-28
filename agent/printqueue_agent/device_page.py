@@ -203,16 +203,31 @@ async function api(path, opts={}){
   return r.headers.get("content-type","").includes("json") ? r.json() : r;
 }
 function fmtBytes(n){ if(!n) return "0"; const u=["B","KB","MB"]; let i=0,v=n; while(v>=1024&&i<2){v/=1024;i++;} return v.toFixed(1)+u[i]; }
+function shortVersion(v){
+  const s = String(v || "?");
+  const i = s.indexOf("+auto.");
+  if (i < 0) return { base: s, build: null };
+  return { base: s.slice(0, i), build: s.slice(i + 6) };
+}
+function fmtCheckedAt(iso){
+  if (!iso) return "";
+  const d = new Date(String(iso).replace(' ', 'T'));
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 function renderSub(d){
-  const localV = BOOT.info.agent_version || "?";
+  const local = shortVersion(BOOT.info.agent_version || "?");
   if (!d) {
-    document.getElementById("psub").textContent = (BOOT.info.printer_code||"") + " · local v" + localV;
+    document.getElementById("psub").textContent = (BOOT.info.printer_code||"") + " · local v" + local.base;
     return;
   }
-  const serverV = d.current_agent_version || "?";
-  const availV = d.available_agent_version || serverV;
-  const mode = d.agent_upgrade_available ? `update v${availV} available` : "up to date";
-  document.getElementById("psub").textContent = `${BOOT.info.printer_code||""} · local v${localV} · server v${serverV} · ${mode}`;
+  const server = shortVersion(d.current_agent_version || "?");
+  const avail = shortVersion(d.available_agent_version || d.current_agent_version || "?");
+  const mode = d.agent_upgrade_available ? `update available (v${avail.base})` : "up to date";
+  const buildBits = [];
+  if (local.build) buildBits.push(`local build ${local.build}`);
+  if (server.build) buildBits.push(`server build ${server.build}`);
+  document.getElementById("psub").textContent = `${BOOT.info.printer_code||""} · local v${local.base} · server v${server.base}${buildBits.length ? ' · ' + buildBits.join(' · ') : ''} · ${mode}`;
 }
 function setUpdateUi(available, badge, detail){
   const badgeEl = document.getElementById("u-badge");
@@ -230,8 +245,9 @@ function describeUpdateState(d){
   const bits = [];
   if (d.agent_upgrade_available) bits.push(`agent ${d.current_agent_version || "?"} -> ${d.available_agent_version || "?"}`);
   if (d.firmware_upgrade_available) bits.push(`fw ${d.current_firmware_version || "?"} -> ${d.available_firmware_version || "?"}`);
-  if (!bits.length) return `Agent and firmware are up to date. (agent v${d.current_agent_version || "?"}${d.current_firmware_version ? `, fw ${d.current_firmware_version}` : ""})`;
-  return "Available: " + bits.join("  |  ");
+  const checked = fmtCheckedAt(d.checked_at);
+  if (!bits.length) return `Agent and firmware are up to date. (agent v${d.current_agent_version || "?"}${d.current_firmware_version ? `, fw ${d.current_firmware_version}` : ""}${checked ? `, checked ${checked}` : ""})`;
+  return "Available: " + bits.join("  | ") + (checked ? ` · checked ${checked}` : "");
 }
 async function refreshUpdateState(silent){
   try {

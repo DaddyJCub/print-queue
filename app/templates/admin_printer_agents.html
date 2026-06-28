@@ -93,6 +93,7 @@
   <script>
     const API = "/api/printer-agent/admin";
     const commandPollers = {};
+    const panelState = {};
 
     function copyVal(id) {
       const el = document.getElementById(id);
@@ -129,14 +130,36 @@
       }
     }
 
+    function rememberPanel(agentId, mode) {
+      panelState.openAgentId = agentId || null;
+      panelState.mode = mode || null;
+    }
+
+    function restorePanel() {
+      if (!panelState.openAgentId) return;
+      const panel = document.getElementById("panel-" + panelState.openAgentId);
+      if (!panel) return;
+      panel.classList.remove("hidden");
+      panel.dataset.mode = panelState.mode || panel.dataset.mode || "manage";
+      if (panel.dataset.mode === "manage") {
+        managePanel(panelState.openAgentId, true);
+      } else if (panel.dataset.mode === "jobs") {
+        toggleJobs(panelState.openAgentId, true);
+      } else if (panel.dataset.mode === "send") {
+        sendPanel(panelState.openAgentId);
+      }
+    }
+
     async function load() {
       Object.keys(commandPollers).forEach(stopCommandPoll);
       const r = await fetch(API + "/agents", { credentials: "include" });
       if (!r.ok) { document.getElementById("agentList").innerHTML = '<div class="text-red-400 p-4">Failed to load agents.</div>'; return; }
       const data = await r.json();
+      window.__agents = data.agents || [];
       document.getElementById("ingestToken").value = data.ingest_token || "(none)";
       window.__ingestToken = data.ingest_token || "";
       renderAgents(data.agents || []);
+      restorePanel();
     }
 
     async function loadBackground() {
@@ -181,6 +204,7 @@
               <button onclick="toggleJobs('${a.agent_id}')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">Jobs</button>
               ${a.revoked ? '' : `<button onclick="managePanel('${a.agent_id}')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">Manage</button>`}
               ${(!a.revoked && a.upgrade_available) ? `<button onclick="pushUpdate('${a.agent_id}')" class="rounded-xl bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-200 px-3 py-1.5 text-sm">Upgrade</button>` : ''}
+              ${(!a.revoked) ? `<button onclick="openDevicePage('${a.agent_id}')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">Device page</button>` : ''}
               ${a.revoked ? '' : `<button onclick="revoke('${a.agent_id}')" class="rounded-xl bg-red-900/40 hover:bg-red-900/60 text-red-300 px-3 py-1.5 text-sm">Revoke</button>`}
               ${a.revoked ? `<button onclick="deleteAgent('${a.agent_id}')" class="rounded-xl bg-red-900/60 hover:bg-red-800 text-red-200 px-3 py-1.5 text-sm">Delete</button>` : ''}
             </div>
@@ -191,6 +215,7 @@
 
     async function sendPanel(agentId) {
       stopCommandPoll(agentId);
+      rememberPanel(agentId, "send");
       const panel = document.getElementById("panel-" + agentId);
       panel.classList.remove("hidden");
       panel.innerHTML = '<div class="text-sm text-zinc-500">Loading G-code files…</div>';
@@ -222,6 +247,7 @@
 
     async function toggleJobs(agentId, forceOpen) {
       stopCommandPoll(agentId);
+      rememberPanel(agentId, "jobs");
       const panel = document.getElementById("panel-" + agentId);
       if (!forceOpen && !panel.classList.contains("hidden") && panel.dataset.mode === "jobs") { panel.classList.add("hidden"); return; }
       panel.classList.remove("hidden");
@@ -252,10 +278,12 @@
       else { showToast("Failed: " + (await r.text()), "error"); }
     }
 
-    async function managePanel(agentId) {
+    async function managePanel(agentId, fromRestore) {
+      rememberPanel(agentId, "manage");
       const panel = document.getElementById("panel-" + agentId);
-      if (!panel.classList.contains("hidden") && panel.dataset.mode === "manage") {
+      if (!fromRestore && !panel.classList.contains("hidden") && panel.dataset.mode === "manage") {
         panel.classList.add("hidden");
+        if (!fromRestore) rememberPanel(null, null);
         stopCommandPoll(agentId);
         return;
       }
@@ -296,6 +324,14 @@
       // Pull latest host/network details into settings fields on open.
       cmd(agentId, "get_host_info", false, null, true);
       commandPollers[agentId] = setInterval(() => refreshCommands(agentId), 2000);
+    }
+
+    function openDevicePage(agentId) {
+      const agent = (window.__agents || []).find(a => a.agent_id === agentId);
+      const ip = agent && agent.status && Array.isArray(agent.status.ip_addrs) && agent.status.ip_addrs[0];
+      const url = ip ? `http://${ip}:7130` : `http://<pi-ip>:7130`;
+      window.open(url, "_blank", "noopener,noreferrer");
+      showToast(ip ? "Opened device page" : "Open the Pi device page from the printer's LAN IP", ip ? "success" : "error");
     }
 
     async function cmd(agentId, action, confirmFirst, payload, silent) {
