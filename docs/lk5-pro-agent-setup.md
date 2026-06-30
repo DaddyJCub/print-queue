@@ -89,27 +89,48 @@ a 32 GB microSD, and the USB cable you use today (A → micro‑USB‑B).
 2. **Boot & SSH in**, then update:
    ```bash
    sudo apt update && sudo apt -y upgrade
-   sudo apt -y install python3-pip git
+   sudo apt -y install python3-venv python3-pip curl
    ```
 3. **Serial access** — let the agent open the USB port:
    ```bash
    sudo usermod -aG dialout $USER
    ```
    (log out/in, or reboot, for it to take effect)
-4. **Install the agent:**
+4. **Install the agent** into an isolated virtualenv (download the source from
+   your server — `‹TOKEN›` is the Cura ingest token on the Print Agents page):
    ```bash
-   git clone <your-repo-url> printqueue
-   cd printqueue/agent
-   pip install -r requirements.txt --break-system-packages
+   mkdir -p ~/printqueue && cd ~/printqueue
+   curl -fL --retry 3 -o agent.tgz "https://print.jcubhub.com/api/printer-agent/v1/agent-package.tar.gz?token=<TOKEN>"
+   tar xzf agent.tgz && rm -f agent.tgz && cd agent
+   python3 -m venv .venv
+   .venv/bin/pip install -r requirements.txt
    cp config.example.json config.json
    ```
+   > Using a **venv** avoids the bare-`pip`/`--break-system-packages` pitfalls on
+   > Pi OS and guarantees the service finds its dependencies.
 5. **Configure** `config.json` — set `server_url`, `agent_id`, `claim_code`.
-   Leave `serial_port` as `"auto"` (or run `python3 -m printqueue_agent --list-ports`
+   Leave `serial_port` as `"auto"` (or run `.venv/bin/python -m printqueue_agent --list-ports`
    to find it, e.g. `/dev/ttyUSB0`).
-6. **Run on boot** as a service:
+6. **Run on boot** as a service (note `ExecStart` uses the **venv** Python):
    ```bash
-   sudo cp install/printqueue-agent.service /etc/systemd/system/
-   # edit the User/WorkingDirectory paths in that file if needed
+   INSTALL_DIR="$PWD"
+   sudo tee /etc/systemd/system/printqueue-agent.service >/dev/null <<UNIT
+   [Unit]
+   Description=Print Queue Printer Agent
+   After=network-online.target
+   Wants=network-online.target
+
+   [Service]
+   Type=simple
+   User=$USER
+   WorkingDirectory=$INSTALL_DIR
+   ExecStart=$INSTALL_DIR/.venv/bin/python -m printqueue_agent --config $INSTALL_DIR/config.json
+   Restart=always
+   RestartSec=5
+
+   [Install]
+   WantedBy=multi-user.target
+   UNIT
    sudo systemctl daemon-reload
    sudo systemctl enable --now printqueue-agent
    sudo systemctl status printqueue-agent     # verify it's running

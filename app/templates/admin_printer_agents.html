@@ -581,9 +581,10 @@
           "# Then, in PowerShell, in a folder where you want the agent:",
           `Invoke-WebRequest "${WIZ.serverUrl}/api/printer-agent/v1/agent-package.tar.gz?token=${token}" -OutFile agent.tgz`,
           "tar -xzf agent.tgz; cd agent",
-          "py -m pip install -r requirements.txt",
+          "py -m venv .venv",
+          ".venv\\Scripts\\python -m pip install -r requirements.txt",
           "@'", cfg, "'@ | Set-Content -Encoding utf8 config.json",
-          "py -m printqueue_agent --config config.json",
+          ".venv\\Scripts\\python -m printqueue_agent --config config.json",
           "# To run on boot, see install/windows-service.md",
         ]).join("\n");
       }
@@ -596,12 +597,15 @@
       ].filter(Boolean) : [];
       return tsPi.concat([
         ts.enabled ? "# 2) Install the agent:" : "# Paste this whole block into the Raspberry Pi terminal (over SSH):",
-        "sudo apt-get update && sudo apt-get -y install python3-pip curl",
+        "sudo apt-get update && sudo apt-get -y install python3-venv python3-pip curl",
         "sudo usermod -aG dialout $USER",
         "mkdir -p ~/printqueue && cd ~/printqueue",
-        `curl -fsSL "${WIZ.serverUrl}/api/printer-agent/v1/agent-package.tar.gz?token=${token}" | tar xz`,
+        `curl -fL --retry 3 -o agent.tgz "${WIZ.serverUrl}/api/printer-agent/v1/agent-package.tar.gz?token=${token}"`,
+        "tar xzf agent.tgz && rm -f agent.tgz",
         "cd agent && INSTALL_DIR=\"$PWD\"",
-        "pip install -r requirements.txt --break-system-packages",
+        "# Isolated virtualenv (robust: no system-package conflicts, deps always found):",
+        "python3 -m venv .venv",
+        ".venv/bin/pip install -r requirements.txt",
         "cat > config.json <<'PQEOF'",
         cfg,
         "PQEOF",
@@ -616,7 +620,7 @@
         "Type=simple",
         "User=$USER",
         "WorkingDirectory=$INSTALL_DIR",
-        "ExecStart=/usr/bin/python3 -m printqueue_agent --config $INSTALL_DIR/config.json",
+        "ExecStart=$INSTALL_DIR/.venv/bin/python -m printqueue_agent --config $INSTALL_DIR/config.json",
         "Restart=always",
         "RestartSec=5",
         "# Hardening (defense in depth) — compatible with serial + remote reboot:",
@@ -633,7 +637,8 @@
         "WantedBy=multi-user.target",
         "UNIT",
         "sudo systemctl daemon-reload && sudo systemctl enable --now printqueue-agent",
-        "echo '✅ Agent installed. Check the Print Agents page — it should appear online shortly.'"
+        "# Confirm it started (prints recent logs if not):",
+        "sleep 2; sudo systemctl is-active --quiet printqueue-agent && echo '✅ Agent running — check the Print Agents page.' || { echo '⚠️ Not running yet — recent logs:'; sudo journalctl -u printqueue-agent -n 25 --no-pager; }"
       ]).join("\n");
     }
 

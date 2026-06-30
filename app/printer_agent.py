@@ -1596,8 +1596,9 @@ async def download_agent_package(token: str = ""):
     repo_root = os.path.dirname(agent_dir)
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        skip_dirs = {"__pycache__", ".venv", "venv", ".git", "node_modules"}
         for root, dirs, files in os.walk(agent_dir):
-            dirs[:] = [d for d in dirs if d != "__pycache__" and not d.endswith(".bak")]
+            dirs[:] = [d for d in dirs if d not in skip_dirs and not d.endswith(".bak")]
             for name in files:
                 if name.endswith(".pyc") or name == "config.json":
                     continue

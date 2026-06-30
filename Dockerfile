@@ -9,6 +9,8 @@ COPY app ./app
 COPY agent ./agent
 COPY device ./device
 COPY docs ./docs
+# Agent source is served as a tarball by the guided-setup install command.
+COPY agent ./agent
 
 ENV DB_PATH=/data/app.db
 ENV UPLOAD_DIR=/uploads

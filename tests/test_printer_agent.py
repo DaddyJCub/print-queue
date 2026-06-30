@@ -493,9 +493,12 @@ def test_agent_package_download(client, admin_client):
     names = tf.getnames()
     # The tarball ships the agent package and keeps the "agent/" prefix.
     assert any(n.endswith("agent/printqueue_agent/__init__.py") for n in names)
+    # The module entrypoint must be present (systemd ExecStart runs -m printqueue_agent).
+    assert any(n.endswith("agent/printqueue_agent/__main__.py") for n in names)
     assert any(n.endswith("agent/requirements.txt") for n in names)
-    # Never leaks a local config.json.
+    # Never leaks a local config.json or a stray virtualenv.
     assert not any(n.endswith("config.json") for n in names)
+    assert not any("/.venv/" in n or n.endswith("/.venv") for n in names)
 
 
 def test_agent_package_requires_token(client):
