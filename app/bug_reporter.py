@@ -112,8 +112,8 @@ def _post(payload: dict, *, url: str, secret: str, app_id: str) -> None:
     try:
         body = json.dumps(payload).encode("utf-8")
         sig = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
-        with httpx.Client(timeout=_TIMEOUT) as client:
-            client.post(
+        with httpx.Client(timeout=_TIMEOUT, follow_redirects=False) as client:
+            r = client.post(
                 url,
                 content=body,
                 headers={
@@ -123,8 +123,22 @@ def _post(payload: dict, *, url: str, secret: str, app_id: str) -> None:
                     "X-JCubHub-Report-Contract": "1.0.0",
                 },
             )
+        if r.status_code == 200:
+            logger.debug("bug_report delivered app=%s fingerprint=%s", app_id, payload.get("fingerprint"))
+        elif r.status_code in (301, 302, 303, 307, 308):
+            logger.warning(
+                "bug_report blocked by reverse proxy (redirect to %s) — "
+                "add an Authentik bypass for /api/reports in your proxy config. "
+                "app=%s status=%s",
+                r.headers.get("location", "?"), app_id, r.status_code,
+            )
+        else:
+            logger.warning(
+                "bug_report rejected app=%s status=%s body=%.200s",
+                app_id, r.status_code, r.text,
+            )
     except Exception as exc:  # fail open
-        logger.debug("bug_report post failed: %s", exc)
+        logger.warning("bug_report post failed app=%s error=%s", app_id, exc)
 
 
 def report(
