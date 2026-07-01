@@ -85,7 +85,21 @@ _PAGE = r"""<!doctype html>
   .modal label { color:#c7c7d0; font-size:13px; }
   .modal input[type=number] { width:90px; }
   .modal .actions { display:flex; gap:8px; justify-content:flex-end; }
-  @media (max-width:760px){ .wrap{ grid-template-columns:1fr; } }
+  .offline-note { display:none; align-items:center; gap:9px; background:#2a1414; border-bottom:1px solid #5b2a2a;
+                  color:#fecaca; font-size:12.5px; line-height:1.35; padding:9px 18px; }
+  .offline-note svg { width:15px; height:15px; flex:0 0 auto; }
+  @media (max-width:760px){
+    .wrap{ grid-template-columns:1fr; padding:12px; gap:12px; }
+    header{ padding:12px 14px; gap:10px; }
+    .head-actions{ margin-left:0; width:100%; }
+    .conn{ width:100%; }
+    button{ padding:11px 14px; }               /* larger tap targets */
+    .jog{ max-width:none; }
+    .jog button{ padding:15px 0; font-size:15px; }
+    input[type=number]{ padding:9px; }
+    .estop{ margin-left:auto; }
+    .offline-note{ padding:9px 14px; }
+  }
 </style>
 </head>
 <body>
@@ -111,6 +125,10 @@ _PAGE = r"""<!doctype html>
     <button class="primary" id="b-update-start-top" disabled>Update</button>
   </div>
 </header>
+<div class="offline-note" id="offline-note">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.7 5.1A11 11 0 0 1 21.16 9"/><path d="M5 12.55a11 11 0 0 1 4.2-2.5"/><path d="M8.53 16.11a6 6 0 0 1 6.53-.5"/><line x1="12" y1="20" x2="12.01" y2="20"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+  <span>Offline from Printellect — local printing and controls still work. Software updates, remote jobs, and dashboard camera are paused until the connection returns.</span>
+</div>
 <div class="wrap">
   <div class="card">
     <h2>Status</h2>
@@ -415,6 +433,8 @@ async function refresh(){
   let s; try { s = await api("/api/state"); } catch(e){ setChip("chip-printer", null); setChip("chip-server", null); return; }
   setChip("chip-printer", !!s.connected);
   setChip("chip-server", !!s.server_connected);
+  const off = document.getElementById("offline-note");
+  if (off) off.style.display = (s.server_connected === false) ? "flex" : "none";
   document.getElementById("s-state").textContent = s.state || "—";
   const nz = s.nozzle_temp!=null ? Math.round(s.nozzle_temp)+" / "+Math.round(s.nozzle_target||0)+"°" : "—";
   const bd = s.bed_temp!=null ? Math.round(s.bed_temp)+" / "+Math.round(s.bed_target||0)+"°" : "—";
