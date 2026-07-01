@@ -212,7 +212,9 @@ class Agent:
             timeout = min(timeout, self.cfg.camera.interval_s)
         try:
             ev = self.client.next_event(timeout, want_jobs=want_jobs)
+            self.server_online = True
         except ServerError as e:
+            self.server_online = False
             log.warning("Event poll failed: %s", e)
             time.sleep(min(self.cfg.poll_interval_s, 5))  # back off; avoid hot loop on outage
             return
@@ -227,7 +229,9 @@ class Agent:
         """Pick up and run any queued remote-management commands (polling mode)."""
         try:
             cmd = self.client.next_command()
+            self.server_online = True
         except ServerError as e:
+            self.server_online = False
             log.warning("Command poll failed: %s", e)
             return
         if cmd:

@@ -238,6 +238,16 @@ def test_print_busy_returns_409(server):
     assert pr[0] == 409
 
 
+def test_client_wraps_network_errors_as_servererror():
+    """A fully-unreachable server must raise ServerError (not a raw requests
+    exception), so the agent flips its online indicator to offline."""
+    from printqueue_agent.client import PrintQueueClient, ServerError
+    c = PrintQueueClient("http://127.0.0.1:9", "agent-x", "code", timeout=1)
+    c._token = "tok"  # skip provisioning; exercise the request path directly
+    with pytest.raises(ServerError):
+        c.heartbeat("1.1.0", {"state": "idle"})
+
+
 def test_open_when_no_api_key():
     """With no key configured the control API is open (trusted LAN)."""
     ctrl = FakeController()

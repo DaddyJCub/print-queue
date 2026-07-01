@@ -40,11 +40,14 @@ class PrintQueueClient:
 
     def provision(self, agent_version: str) -> Dict[str, Any]:
         """Exchange the claim code for a bearer token. Idempotent (re-provision rotates the token)."""
-        r = self._session.post(
-            f"{self.api}/provision",
-            json={"agent_id": self.agent_id, "claim_code": self.claim_code, "agent_version": agent_version},
-            verify=self.verify_tls, timeout=self.timeout,
-        )
+        try:
+            r = self._session.post(
+                f"{self.api}/provision",
+                json={"agent_id": self.agent_id, "claim_code": self.claim_code, "agent_version": agent_version},
+                verify=self.verify_tls, timeout=self.timeout,
+            )
+        except requests.RequestException as e:
+            raise ServerError(f"provision failed (network): {e}") from e
         if r.status_code != 200:
             raise ServerError(f"provision failed: {r.status_code} {r.text}")
         data = r.json()
@@ -53,18 +56,27 @@ class PrintQueueClient:
         return data
 
     def _request(self, method: str, path: str, **kwargs) -> requests.Response:
-        """Wrapper that re-provisions on 401 (token revoked/expired)."""
+        """Wrapper that re-provisions on 401 (token revoked/expired).
+
+        Network-level failures (server down, DNS, timeout) are surfaced as
+        ``ServerError`` — not raw ``requests`` exceptions — so callers can treat
+        "server unreachable" the same as an error response (e.g. to flip the
+        agent's online indicator).
+        """
         url = f"{self.api}{path}"
         timeout = kwargs.pop("timeout", self.timeout)  # callers may override (long-poll)
-        r = self._session.request(method, url, headers=self._headers,
-                                  verify=self.verify_tls, timeout=timeout, **kwargs)
-        if r.status_code == 401:
-            log.warning("401 from server — re-provisioning")
-            self._token = None
-            self.provision(kwargs.pop("_agent_version", "unknown") or "unknown")
+        try:
             r = self._session.request(method, url, headers=self._headers,
                                       verify=self.verify_tls, timeout=timeout, **kwargs)
-        return r
+            if r.status_code == 401:
+                log.warning("401 from server — re-provisioning")
+                self._token = None
+                self.provision(kwargs.pop("_agent_version", "unknown") or "unknown")
+                r = self._session.request(method, url, headers=self._headers,
+                                          verify=self.verify_tls, timeout=timeout, **kwargs)
+            return r
+        except requests.RequestException as e:
+            raise ServerError(f"{method} {path} failed (network): {e}") from e
 
     # ── lifecycle ─────────────────────────────────────────────────
     def heartbeat(self, agent_version: str, printer_status: Dict[str, Any]) -> None:

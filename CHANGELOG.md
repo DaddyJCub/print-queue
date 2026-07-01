@@ -20,9 +20,12 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 - Added a **fan-speed slider** (0–100%) with an Off shortcut on the device page.
 - The device page now shows **elapsed and estimated-remaining time** for a running print, not just a byte-percentage.
 - Added **PLA / PETG / All-off temperature quick-presets** so operators don't have to type target temps.
-- Added a **Restart agent** button to the device page, and the page now **auto-reloads after an update or restart** so newly-shipped UI appears without a manual refresh.
+- Added a **Restart agent** button to the device page, and the page now **auto-reloads whenever the agent restarts to a new version** (update or restart) so newly-shipped UI appears without a manual refresh — detected from the live agent version, so it no longer depends on the update-verification poll completing.
+- When the device is **offline from Printellect**, the page now shows a clear notice of what still works locally (printing, controls) and what's paused (updates, remote jobs, dashboard camera).
+- **Mobile touch-ups** on the device page — larger tap targets and a cleaner header/layout on phones.
 
 ### Bug Fixes
+- The **Printellect connection indicator no longer reads "online" while the Pi can't reach the server**. A full network outage previously left the indicator stuck on its last state; network failures now correctly flip the agent to offline (and the long-poll keeps it accurate between heartbeats).
 - Canceling a print job from the admin queue now actually **aborts the print on the printer**. Previously "Cancel job" only marked the job canceled in the database — the physical print ran to completion, and a late status update from the agent could even resurrect the canceled job. The agent now observes the cancellation and stops the SD print, and the server ignores stale updates to a terminal (finished/canceled) job.
 - The admin **"Device page" button now opens the correct URL**. The agent reports its LAN IP and device-UI port in every heartbeat, so the button no longer points at a placeholder address.
 - The Print Agents **command-output panel no longer scrolls back to the top** every couple of seconds while you read output — it only redraws when something actually changed.
