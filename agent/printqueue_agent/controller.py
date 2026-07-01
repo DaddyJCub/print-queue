@@ -90,6 +90,9 @@ class AgentPrinterController:
             st["state"] = "uploading"
             st["progress"] = self._upload_pct
         st["connected"] = bool(printer and printer.connected)
+        # The running agent's version, so the device page can detect a restart to
+        # new code (version changed since the page loaded) and reload itself.
+        st["agent_version"] = self.agent.cfg.agent_version
         # Connectivity to the central Printellect server (from the agent's last
         # heartbeat), so the device page can show a server indicator too.
         st["server_connected"] = bool(getattr(self.agent, "server_online", False))

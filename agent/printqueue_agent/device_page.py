@@ -429,8 +429,17 @@ function setChip(id, state){ // state: true=on, false=off, null=unknown
   const kind = id.indexOf("printer") >= 0 ? "Printer" : "Printellect server";
   el.title = kind + ": " + (state === true ? "connected" : state === false ? "disconnected" : "unknown");
 }
+let bootAgentVersion = (BOOT.info && BOOT.info.agent_version) || null;
 async function refresh(){
   let s; try { s = await api("/api/state"); } catch(e){ setChip("chip-printer", null); setChip("chip-server", null); return; }
+  // If the running agent's version changed from what served this page, it has
+  // restarted with new code (an update or restart) — reload so the new UI shows.
+  // This is the robust path: it doesn't depend on the update-verification poll,
+  // which can time out or be driven by an older page.
+  if (s.agent_version && bootAgentVersion && s.agent_version !== bootAgentVersion){
+    location.reload();
+    return;
+  }
   setChip("chip-printer", !!s.connected);
   setChip("chip-server", !!s.server_connected);
   const off = document.getElementById("offline-note");

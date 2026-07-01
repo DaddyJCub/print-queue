@@ -20,7 +20,7 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 - Added a **fan-speed slider** (0–100%) with an Off shortcut on the device page.
 - The device page now shows **elapsed and estimated-remaining time** for a running print, not just a byte-percentage.
 - Added **PLA / PETG / All-off temperature quick-presets** so operators don't have to type target temps.
-- Added a **Restart agent** button to the device page, and the page now **auto-reloads after an update or restart** so newly-shipped UI appears without a manual refresh.
+- Added a **Restart agent** button to the device page, and the page now **auto-reloads whenever the agent restarts to a new version** (update or restart) so newly-shipped UI appears without a manual refresh — detected from the live agent version, so it no longer depends on the update-verification poll completing.
 - When the device is **offline from Printellect**, the page now shows a clear notice of what still works locally (printing, controls) and what's paused (updates, remote jobs, dashboard camera).
 - **Mobile touch-ups** on the device page — larger tap targets and a cleaner header/layout on phones.
 
