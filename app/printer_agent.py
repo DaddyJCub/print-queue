@@ -585,6 +585,28 @@ async def jobs_stream(request: Request, timeout_s: int = 20):
         await asyncio.sleep(AGENT_STREAM_POLL_STEP_SECONDS)
 
 
+@router.get(API_PREFIX + "/jobs/{job_id}")
+async def job_get(job_id: str, request: Request):
+    """Current server-side status of a job the agent owns.
+
+    The agent polls this while monitoring an SD print so it can observe an admin
+    ``Cancel job`` (which flips the row to ``canceled``) and abort the physical
+    print, rather than running it to completion.
+    """
+    agent = await _agent_from_bearer(request)
+    conn = db()
+    try:
+        job = conn.execute(
+            "SELECT job_id, status, progress FROM printer_agent_jobs WHERE job_id = ? AND agent_id = ?",
+            (job_id, agent["agent_id"]),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"job_id": job["job_id"], "status": job["status"], "progress": job["progress"]}
+
+
 @router.get(API_PREFIX + "/jobs/{job_id}/file")
 async def job_file(job_id: str, request: Request):
     agent = await _agent_from_bearer(request)
@@ -652,6 +674,11 @@ async def job_status(job_id: str, body: JobStatusRequest, request: Request):
         ).fetchone()
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
+
+        # Once a job is terminal (notably admin-canceled), ignore further agent
+        # updates so a late "printing"/"completed" heartbeat can't resurrect it.
+        if job["status"] in JOB_TERMINAL and status != job["status"]:
+            return {"ok": True, "status": job["status"], "ignored": True}
 
         now = now_iso()
         progress = job["progress"]

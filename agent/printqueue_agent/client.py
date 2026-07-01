@@ -81,6 +81,15 @@ class PrintQueueClient:
             raise ServerError(f"jobs/next failed: {r.status_code} {r.text}")
         return r.json()
 
+    def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a job's current server-side status (to observe admin cancel)."""
+        r = self._request("GET", f"/jobs/{job_id}")
+        if r.status_code == 404:
+            return None
+        if r.status_code != 200:
+            raise ServerError(f"get_job failed: {r.status_code} {r.text}")
+        return r.json()
+
     def download_job_file(self, job_id: str, dest_path: str) -> None:
         r = self._request("GET", f"/jobs/{job_id}/file", stream=True)
         if r.status_code != 200:

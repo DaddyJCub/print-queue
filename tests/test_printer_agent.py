@@ -183,6 +183,39 @@ def test_cancel_job(client, admin_client):
     assert next(j for j in jobs if j["job_id"] == job_id)["status"] == "canceled"
 
 
+def test_agent_observes_cancel_and_cannot_resurrect(client, admin_client):
+    """The agent can read a job's status (to abort) and a canceled job stays
+    canceled even if a late 'printing'/'completed' heartbeat arrives."""
+    created = _create_agent(admin_client)
+    agent_id = created["agent_id"]
+    token = _provision(client, agent_id, created["claim_code"]).json()["agent_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    file_id = _make_gcode_file()
+    job_id = admin_client.post(f"{ADMIN}/agents/{agent_id}/jobs", json={"file_id": file_id}).json()["job_id"]
+
+    # Agent claims and starts printing.
+    assert client.get(f"{PREFIX}/jobs/next", headers=headers).status_code == 200
+    assert client.post(f"{PREFIX}/jobs/{job_id}/status", headers=headers,
+                       json={"status": "printing", "progress": 5}).status_code == 200
+
+    # Admin cancels mid-print.
+    assert admin_client.post(f"{ADMIN}/jobs/{job_id}/cancel").status_code == 200
+
+    # Agent polls job status and sees the cancellation.
+    got = client.get(f"{PREFIX}/jobs/{job_id}", headers=headers)
+    assert got.status_code == 200
+    assert got.json()["status"] == "canceled"
+
+    # A late status update is ignored — the job is not resurrected.
+    late = client.post(f"{PREFIX}/jobs/{job_id}/status", headers=headers,
+                       json={"status": "completed", "progress": 100})
+    assert late.status_code == 200
+    assert late.json().get("ignored") is True
+    jobs = admin_client.get(f"{ADMIN}/agents/{agent_id}/jobs").json()["jobs"]
+    assert next(j for j in jobs if j["job_id"] == job_id)["status"] == "canceled"
+
+
 def test_revoked_agent_cannot_use_token(client, admin_client):
     created = _create_agent(admin_client)
     token = _provision(client, created["agent_id"], created["claim_code"]).json()["agent_token"]

@@ -297,6 +297,24 @@ class SerialPrinter:
             except Exception:
                 pass
 
+    def emergency_stop(self) -> None:
+        """Immediately halt the printer (Marlin ``M112``).
+
+        M112 kills the planner and heaters at once — used for the device-page
+        E-STOP. Marlin enters a killed state and may not return a clean ``ok``,
+        so we send it raw and don't block on the response. Recovery needs an
+        ``M999``/reset or a power-cycle.
+        """
+        log.warning("EMERGENCY STOP (M112)")
+        with self._lock:
+            try:
+                self._send_now("M112")
+            finally:
+                try:
+                    self._wait_ok(timeout=3)
+                except Exception:
+                    pass
+
     # ── manual controls (device page) ─────────────────────────────
     def pause_print(self) -> None:
         self.send_command("M25", timeout=15)   # pause SD print
