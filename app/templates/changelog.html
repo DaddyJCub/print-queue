@@ -82,25 +82,32 @@
           <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
-        <h3 class="text-lg font-semibold mb-2 text-white">Printer controls &amp; reliable cancel</h3>
-        <p class="text-sm text-zinc-400 mb-4">The on-printer device page gets the safety and convenience controls operators expect — and canceling a queued print now actually stops the printer.</p>
+        <h3 class="text-lg font-semibold mb-2 text-white">Printer device page: indicators, controls &amp; reliable cancel</h3>
+        <p class="text-sm text-zinc-400 mb-4">A big pass on the on-printer page — clear connection indicators, a friendly name, safety controls, and self-updates that refresh themselves — plus canceling a queued print now truly stops the printer.</p>
 
         <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">✨ What's new</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
-          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>An <strong>Emergency Stop</strong> button on the device page halts the printer immediately.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>Two live <strong>connection indicators</strong> in the header — <strong>Printer</strong> and <strong>Printellect</strong> — as colored status chips, so you can see what's reachable at a glance.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>The page now shows a <strong>friendly printer name</strong> ("Longer LK5 Pro") instead of the internal agent id.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>An <strong>Emergency Stop</strong> button that halts the printer immediately.</span></li>
           <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>A <strong>fan-speed slider</strong> (0–100%) with an Off shortcut.</span></li>
-          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>The device page now shows <strong>elapsed and estimated-remaining time</strong> for a running print, not just a percentage.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span><strong>Elapsed and estimated-remaining time</strong> for a running print, not just a percentage.</span></li>
           <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span><strong>PLA / PETG / All-off</strong> temperature quick-presets so you don't have to type target temps.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>A <strong>Restart agent</strong> button, and the page now <strong>auto-reloads after an update or restart</strong> so new controls appear without a manual refresh.</span></li>
         </ul>
 
         <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🐞 Bug Fixes</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>Canceling a print job from the admin queue now actually <strong>stops the print</strong>. Previously "Cancel job" only marked it canceled while the print ran to completion; the agent now observes the cancellation and aborts the print.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>The admin <strong>"Device page" button opens the correct URL</strong> — the agent now reports its IP with every check-in, so it no longer points at a placeholder address.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>The Print Agents <strong>command-output panel no longer jumps back to the top</strong> while you read it.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>The agent version shown on the device page is no longer stuck at 1.0.0.</span></li>
         </ul>
 
         <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
         <ul class="space-y-2 text-sm text-zinc-300">
           <li class="flex items-start gap-2"><span class="text-zinc-500 mt-1">•</span><span>Emergency Stop needs a printer reset or power-cycle to recover afterward (standard printer-firmware behavior).</span></li>
+          <li class="flex items-start gap-2"><span class="text-zinc-500 mt-1">•</span><span>Applying updated agent software requires an agent restart; over-the-air updates do this automatically and the device page reloads once it's back.</span></li>
         </ul>
       </div>
 

@@ -30,6 +30,9 @@ class LocalUIConfig:
     api_key: str = ""
     # Where uploaded G-code is stored on the host before being sent to the SD.
     spool_dir: str = ""
+    # End-user-facing title shown on the device page. Blank = a friendly printer
+    # model name (e.g. "Longer LK5 Pro") rather than the internal agent id.
+    display_name: str = ""
 
 
 @dataclass
@@ -120,6 +123,7 @@ class AgentConfig:
                 port=int(os.getenv("PQ_LOCAL_UI_PORT", ui_data.get("port", 7130))),
                 api_key=os.getenv("PQ_LOCAL_UI_API_KEY", ui_data.get("api_key", "")),
                 spool_dir=ui_data.get("spool_dir", ""),
+                display_name=ui_data.get("display_name", ""),
             ),
         )
         if not cfg.agent_id or not cfg.claim_code:

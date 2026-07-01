@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import socket
 import tempfile
 import threading
 import time
@@ -48,7 +49,44 @@ class Agent:
         self._ui_server = None
         self._last_heartbeat = 0.0
         self._last_snapshot = 0.0
+        # Whether the last heartbeat/provision reached the server (surfaced as the
+        # "Printellect" connection indicator on the device page).
+        self.server_online = False
+        self._cached_ip: Optional[str] = None
         install_log_ring()
+
+    def _primary_ip(self) -> str:
+        """Best-effort primary LAN IPv4 of this host (cached).
+
+        Used so the server always knows how to reach the on-device page, without
+        depending on a separate host-info command.
+        """
+        if self._cached_ip is not None:
+            return self._cached_ip
+        ip = ""
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(0.5)
+            s.connect(("8.8.8.8", 80))  # no packets sent; just picks the route
+            ip = s.getsockname()[0]
+            s.close()
+        except Exception:
+            try:
+                ip = socket.gethostbyname(socket.gethostname())
+            except Exception:
+                ip = ""
+        self._cached_ip = ip
+        return ip
+
+    def _heartbeat_status(self, status: PrinterStatus) -> dict:
+        """Printer status plus the bits the server needs to link to this device."""
+        d = status.as_dict()
+        ip = self._primary_ip()
+        if ip:
+            d["agent_ip"] = ip
+        if self.cfg.local_ui.enabled:
+            d["device_ui_port"] = self.cfg.local_ui.port
+        return d
 
     def _maybe_start_local_ui(self) -> None:
         """Start the ZMOD-style device-page web server (once)."""
@@ -126,8 +164,10 @@ class Agent:
         while True:
             try:
                 self.client.provision(self.cfg.agent_version)
+                self.server_online = True
                 return
             except Exception as e:
+                self.server_online = False
                 log.warning("Provision failed (%s); retrying in %ss", e, delay)
                 time.sleep(delay)
                 delay = min(delay * 2, 60)
@@ -139,8 +179,10 @@ class Agent:
         now = time.time()
         if now - self._last_heartbeat >= self.cfg.heartbeat_interval_s:
             try:
-                self.client.heartbeat(self.cfg.agent_version, status.as_dict())
+                self.client.heartbeat(self.cfg.agent_version, self._heartbeat_status(status))
+                self.server_online = True
             except ServerError as e:
+                self.server_online = False
                 log.warning("Heartbeat failed: %s", e)
             self._last_heartbeat = now
 
@@ -283,9 +325,10 @@ class Agent:
                     return
                 self._safe_update(job_id, "printing", progress=status.progress or 0)
                 try:
-                    self.client.heartbeat(self.cfg.agent_version, status.as_dict())
+                    self.client.heartbeat(self.cfg.agent_version, self._heartbeat_status(status))
+                    self.server_online = True
                 except ServerError:
-                    pass
+                    self.server_online = False
                 self._maybe_snapshot()
                 last_report = now
 

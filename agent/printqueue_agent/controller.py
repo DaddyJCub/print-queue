@@ -20,6 +20,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 log = logging.getLogger("printqueue.controller")
 
+# End-user-facing model names (the device page is customer-facing, so we never
+# show the internal agent id there unless nothing friendlier is available).
+FRIENDLY_PRINTER_NAMES = {
+    "LK5_PRO": "Longer LK5 Pro",
+}
+
 
 class ControllerError(Exception):
     """Raised for user-facing controller failures (mapped to HTTP 4xx)."""
@@ -61,10 +67,15 @@ class AgentPrinterController:
     # ── identity ──────────────────────────────────────────────────
     def info(self) -> Dict[str, Any]:
         c = self.agent.cfg
+        printer_code = "LK5_PRO"
+        # Prefer an operator-set display name, else the friendly model name;
+        # only fall back to the agent id if we truly have nothing else.
+        display = (getattr(c.local_ui, "display_name", "") or "").strip()
+        name = display or FRIENDLY_PRINTER_NAMES.get(printer_code) or c.agent_id
         return {
-            "name": getattr(c, "name", None) or c.agent_id,
+            "name": name,
             "agent_id": c.agent_id,
-            "printer_code": "LK5_PRO",
+            "printer_code": printer_code,
             "agent_version": c.agent_version,
         }
 
@@ -79,6 +90,9 @@ class AgentPrinterController:
             st["state"] = "uploading"
             st["progress"] = self._upload_pct
         st["connected"] = bool(printer and printer.connected)
+        # Connectivity to the central Printellect server (from the agent's last
+        # heartbeat), so the device page can show a server indicator too.
+        st["server_connected"] = bool(getattr(self.agent, "server_online", False))
         st["print_active"] = self.agent.print_active.is_set()
         if self._active_file:
             st["current_file"] = self._active_file
@@ -178,6 +192,21 @@ class AgentPrinterController:
         self.agent.print_active.clear()
         self._active_file = None
         self._print_start_ts = None
+
+    def restart_agent(self) -> None:
+        """Exit the process so the service manager restarts a fresh agent.
+
+        This is how updated agent code (e.g. a new device page) is applied from
+        the device UI. Refused mid-print so we never drop a running job.
+        """
+        if self.agent.print_active.is_set():
+            raise Busy("Cannot restart while a print is running")
+        printer = self.agent.printer
+        if printer and printer.connected and printer.is_busy():
+            raise Busy("Cannot restart while a print is running")
+        from .commands import _delayed_exit
+        log.info("Agent restart requested from the device page")
+        _delayed_exit(1.0, code=0)
 
     # ── manual controls ───────────────────────────────────────────
     def set_temp(self, target: str, value: float) -> None:

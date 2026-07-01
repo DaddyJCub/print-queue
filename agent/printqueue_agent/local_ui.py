@@ -186,6 +186,8 @@ def make_handler(controller, api_key: str):
                     controller.cancel(); return self._send_json({"ok": True})
                 if path == "/api/estop":
                     controller.estop(); return self._send_json({"ok": True})
+                if path == "/api/restart":
+                    controller.restart_agent(); return self._send_json({"ok": True})
                 if path == "/api/temp":
                     b = self._read_json()
                     controller.set_temp(b.get("target", ""), b.get("value", 0))

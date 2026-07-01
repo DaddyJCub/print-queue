@@ -25,12 +25,20 @@ _PAGE = r"""<!doctype html>
   * { box-sizing: border-box; }
   body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
          background:#0a0a0b; color:#e7e7ea; }
-  header { padding:14px 18px; border-bottom:1px solid #232327; display:flex; align-items:center; gap:12px; }
-  header .dot { width:11px; height:11px; border-radius:50%; background:#52525b; }
-  header .dot.on { background:#34d399; }
+  header { padding:14px 18px; border-bottom:1px solid #232327; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
   header h1 { font-size:17px; margin:0; font-weight:650; }
   header .sub { font-size:12px; color:#8a8a93; }
-  .head-actions { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  .conn { display:flex; gap:8px; flex-wrap:wrap; }
+  .chip { display:inline-flex; align-items:center; gap:7px; background:#141417; border:1px solid #232327;
+          border-radius:999px; padding:5px 11px; font-size:12.5px; color:#9a9aa3; white-space:nowrap;
+          transition:border-color .3s, color .3s; }
+  .chip .cdot { width:9px; height:9px; border-radius:50%; background:#52525b; transition:background .3s, box-shadow .3s; }
+  .chip.on { color:#e7e7ea; border-color:rgba(52,211,153,.35); }
+  .chip.on .cdot { background:#34d399; box-shadow:0 0 8px rgba(52,211,153,.75); }
+  .chip.off { color:#d4d4d8; border-color:rgba(248,113,113,.4); }
+  .chip.off .cdot { background:#f87171; box-shadow:0 0 8px rgba(248,113,113,.55); }
+  .chip svg { width:14px; height:14px; opacity:.8; }
+  .head-actions { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .head-badge { font-size:12px; color:#8a8a93; }
   .wrap { max-width:1100px; margin:0 auto; padding:16px; display:grid; gap:16px;
           grid-template-columns: 1fr 1fr; }
@@ -82,10 +90,19 @@ _PAGE = r"""<!doctype html>
 </head>
 <body>
 <header>
-  <span id="dot" class="dot"></span>
   <div>
     <h1 id="pname">Printer</h1>
     <div class="sub" id="psub"></div>
+  </div>
+  <div class="conn">
+    <span class="chip" id="chip-printer" title="Printer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+      <span class="cdot"></span><span class="clabel">Printer</span>
+    </span>
+    <span class="chip" id="chip-server" title="Printellect server">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+      <span class="cdot"></span><span class="clabel">Printellect</span>
+    </span>
   </div>
   <div class="head-actions">
     <button class="estop" id="b-estop" title="Emergency stop (M112)">⛔ STOP</button>
@@ -119,6 +136,7 @@ _PAGE = r"""<!doctype html>
       <div class="row" style="margin-top:8px">
         <button id="b-update-check">Check now</button>
         <button class="primary" id="b-update-start" disabled>Update now</button>
+        <button id="b-restart" title="Restart the agent to apply updated software">Restart agent</button>
       </div>
     </div>
   </div>
@@ -320,11 +338,12 @@ async function pollSelfUpdateVerification(){
     try {
       const d = await api(`/api/update-verification?cmd_ids=${query}`);
       if (d.state === "verified") {
-        setUpdateUi(false, "verified", `Updated: agent ${d.agent_version || "?"}${d.firmware_version ? ' | fw '+d.firmware_version : ''}`);
-        toast("Update verified");
+        // The agent restarted with new code — reload so the new UI is served.
+        setUpdateUi(false, "verified", `Updated to agent ${d.agent_version || "?"}${d.firmware_version ? ' · fw '+d.firmware_version : ''} — reloading…`);
+        toast("Updated — reloading to apply");
         pendingUpdateCmdIds = [];
         updatePollRunning = false;
-        await refreshUpdateState(true);
+        reloadWhenAgentBack();
         return;
       }
       if (d.state === "failed") {
@@ -339,6 +358,32 @@ async function pollSelfUpdateVerification(){
   }
   updatePollRunning = false;
   setUpdateUi(false, "timeout", "Verification timed out. Check again in a minute.");
+}
+async function reloadWhenAgentBack(maxMs){
+  // Wait for the restarted agent to answer again, then reload so the freshly
+  // served page (with any new UI) replaces this stale one.
+  const deadline = Date.now() + (maxMs || 60000);
+  await new Promise(r => setTimeout(r, 2000));  // let the old process exit first
+  while (Date.now() < deadline){
+    try {
+      const r = await fetch("/api/state", { headers: H, cache: "no-store" });
+      if (r.ok){ location.reload(); return; }
+    } catch(e) {}
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  location.reload();  // fall back to reloading anyway
+}
+async function restartAgent(){
+  if (!confirm("Restart the agent now? The device page will reload automatically once it's back.")) return;
+  try {
+    await post("/api/restart");
+    toast("Restarting agent…");
+    setUpdateUi(false, "restarting", "Agent restarting — the page will reload when it's back.");
+    reloadWhenAgentBack();
+  } catch(e) {
+    // e.g. refused while a print is running.
+    toast(("" + e.message).includes("print") ? "Can't restart during a print" : "Restart failed");
+  }
 }
 function showNewFileModal(name){
   pendingFile = name;
@@ -359,9 +404,17 @@ function hideNewFileModal(){
 document.getElementById("pname").textContent = BOOT.info.name || "Printer";
 renderSub(null);
 
+function setChip(id, state){ // state: true=on, false=off, null=unknown
+  const el = document.getElementById(id); if(!el) return;
+  el.classList.toggle("on", state === true);
+  el.classList.toggle("off", state === false);
+  const kind = id.indexOf("printer") >= 0 ? "Printer" : "Printellect server";
+  el.title = kind + ": " + (state === true ? "connected" : state === false ? "disconnected" : "unknown");
+}
 async function refresh(){
-  let s; try { s = await api("/api/state"); } catch(e){ document.getElementById("dot").classList.remove("on"); return; }
-  document.getElementById("dot").classList.toggle("on", !!s.connected);
+  let s; try { s = await api("/api/state"); } catch(e){ setChip("chip-printer", null); setChip("chip-server", null); return; }
+  setChip("chip-printer", !!s.connected);
+  setChip("chip-server", !!s.server_connected);
   document.getElementById("s-state").textContent = s.state || "—";
   const nz = s.nozzle_temp!=null ? Math.round(s.nozzle_temp)+" / "+Math.round(s.nozzle_target||0)+"°" : "—";
   const bd = s.bed_temp!=null ? Math.round(s.bed_temp)+" / "+Math.round(s.bed_target||0)+"°" : "—";
@@ -470,6 +523,7 @@ document.getElementById("b-update-check").onclick = ()=>refreshUpdateState(false
 document.getElementById("b-update-start").onclick = ()=>startSelfUpdate();
 document.getElementById("b-update-check-top").onclick = ()=>refreshUpdateState(false);
 document.getElementById("b-update-start-top").onclick = ()=>startSelfUpdate();
+document.getElementById("b-restart").onclick = ()=>restartAgent();
 function tickCam(){
   const img = document.getElementById("cam");
   fetch("/api/snapshot",{headers:H}).then(r=>{

@@ -34,6 +34,7 @@ class FakeController:
         self.homed = None
         self.estopped = False
         self.fan = None
+        self.restarted = False
 
     def info(self):
         return {"name": "Garage LK5", "printer_code": "LK5_PRO", "agent_version": "1.0.0"}
@@ -69,6 +70,7 @@ class FakeController:
     def resume(self): self.paused = False
     def cancel(self): self.canceled = True; self.started = None
     def estop(self): self.estopped = True; self.started = None
+    def restart_agent(self): self.restarted = True
     def set_temp(self, t, v): self.temps[t] = v
     def jog(self, a, d): self.jogs.append((a, d))
     def home(self, a=""): self.homed = a
@@ -217,6 +219,14 @@ def test_estop_and_fan(server):
 def test_estop_requires_api_key(server):
     _ctrl, base = server
     assert _req(base, "/api/estop", method="POST")[0] == 401
+
+
+def test_restart_agent(server):
+    ctrl, base = server
+    assert _req(base, "/api/restart", method="POST", headers=AUTH)[0] == 200
+    assert ctrl.restarted is True
+    # And it's guarded behind the API key like the other mutating actions.
+    assert _req(base, "/api/restart", method="POST")[0] == 401
 
 
 def test_print_busy_returns_409(server):

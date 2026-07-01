@@ -328,10 +328,16 @@
 
     function openDevicePage(agentId) {
       const agent = (window.__agents || []).find(a => a.agent_id === agentId);
-      const ip = agent && agent.status && Array.isArray(agent.status.ip_addrs) && agent.status.ip_addrs[0];
-      const url = ip ? `http://${ip}:7130` : `http://<pi-ip>:7130`;
-      window.open(url, "_blank", "noopener,noreferrer");
-      showToast(ip ? "Opened device page" : "Open the Pi device page from the printer's LAN IP", ip ? "success" : "error");
+      const st = (agent && agent.status) || {};
+      // agent_ip comes from every heartbeat; ip_addrs only from a host-info command.
+      const ip = st.agent_ip || (Array.isArray(st.ip_addrs) && st.ip_addrs[0]) || "";
+      const port = st.device_ui_port || 7130;
+      if (!ip) {
+        showToast("No device IP reported yet — wait for the agent to check in, then try again.", "error");
+        return;
+      }
+      window.open(`http://${ip}:${port}`, "_blank", "noopener,noreferrer");
+      showToast("Opening device page…", "success");
     }
 
     async function cmd(agentId, action, confirmFirst, payload, silent) {
@@ -396,6 +402,11 @@
       if (!box) return;
       const r = await fetch(API + `/agents/${agentId}/commands`, { credentials: "include" });
       const cmds = (await r.json()).commands || [];
+      // Only rebuild when something actually changed, so the panel doesn't
+      // scroll back to the top on every 2s poll while you're reading output.
+      const sig = JSON.stringify(cmds.map(c => [c.cmd_id, c.status, c.updated_at, c.completed_at, ((c.result && c.result.logs) || "").length]));
+      if (box.dataset.sig === sig) return;
+      box.dataset.sig = sig;
       hydrateHostSettings(agentId, cmds);
       if (!cmds.length) { box.innerHTML = '<div class="text-zinc-500">No commands yet.</div>'; return; }
       box.innerHTML = cmds.map(c => {
@@ -560,7 +571,7 @@
         serial_port: "auto", baud_rate: 115200, poll_interval_s: 5, heartbeat_interval_s: 15,
         camera: { enabled: false, snapshot_url: "http://localhost:8080/?action=snapshot", device_index: null, interval_s: 10 },
         firmware: { enabled: false, avrdude_path: "avrdude", mcu: "atmega2560", programmer: "wiring", baud: 115200, extra_args: [] },
-        local_ui: { enabled: true, host: "0.0.0.0", port: 7130, api_key: WIZ.apiKey, spool_dir: "" }
+        local_ui: { enabled: true, host: "0.0.0.0", port: 7130, api_key: WIZ.apiKey, spool_dir: "", display_name: "" }
       }, null, 2);
     }
     function buildInstall() {

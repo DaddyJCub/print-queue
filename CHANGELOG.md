@@ -11,20 +11,27 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 ## 0.29.0
 ### Overview / Highlights
-- The on-printer device page gains the safety and convenience controls operators expect, and canceling a queued print now actually stops the printer.
+- A big pass on the on-printer device page: clear connection indicators, a friendly printer name, safety/convenience controls, and self-updates that actually refresh — plus canceling a queued print now truly stops the printer.
 
 ### Enhancements
+- Added two live **connection indicators** to the device-page header — **Printer** (USB link) and **Printellect** (server link) — as colored status chips, so you can tell at a glance what's reachable.
+- The device page now shows a **friendly printer name** ("Longer LK5 Pro") instead of the internal agent id. An optional `local_ui.display_name` overrides it.
 - Added an **Emergency Stop** button to the device page that halts the printer immediately (Marlin `M112`).
 - Added a **fan-speed slider** (0–100%) with an Off shortcut on the device page.
 - The device page now shows **elapsed and estimated-remaining time** for a running print, not just a byte-percentage.
 - Added **PLA / PETG / All-off temperature quick-presets** so operators don't have to type target temps.
+- Added a **Restart agent** button to the device page, and the page now **auto-reloads after an update or restart** so newly-shipped UI appears without a manual refresh.
 
 ### Bug Fixes
 - Canceling a print job from the admin queue now actually **aborts the print on the printer**. Previously "Cancel job" only marked the job canceled in the database — the physical print ran to completion, and a late status update from the agent could even resurrect the canceled job. The agent now observes the cancellation and stops the SD print, and the server ignores stale updates to a terminal (finished/canceled) job.
+- The admin **"Device page" button now opens the correct URL**. The agent reports its LAN IP and device-UI port in every heartbeat, so the button no longer points at a placeholder address.
+- The Print Agents **command-output panel no longer scrolls back to the top** every couple of seconds while you read output — it only redraws when something actually changed.
+- The agent version shown on the device page is no longer stuck at **1.0.0** (it was hardcoded and never bumped); it now reports its real version.
 
 ### Notes / Things to Know
 - Emergency Stop requires a printer reset or power-cycle to recover afterward (standard Marlin `M112` behavior).
 - Cancel/E-Stop from the on-device page already worked; this fixes the central admin-queue cancel path specifically.
+- Applying updated agent **code** requires an agent restart; over-the-air updates restart the agent automatically, and the device page reloads once it's back. The agent package advanced to `1.1.0` and tracks its own version line, independent of the app's `0.x`.
 
 ## 0.28.0
 ### Overview / Highlights
