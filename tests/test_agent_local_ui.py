@@ -32,6 +32,8 @@ class FakeController:
         self.temps = {}
         self.jogs = []
         self.homed = None
+        self.estopped = False
+        self.fan = None
 
     def info(self):
         return {"name": "Garage LK5", "printer_code": "LK5_PRO", "agent_version": "1.0.0"}
@@ -66,10 +68,11 @@ class FakeController:
     def pause(self): self.paused = True
     def resume(self): self.paused = False
     def cancel(self): self.canceled = True; self.started = None
+    def estop(self): self.estopped = True; self.started = None
     def set_temp(self, t, v): self.temps[t] = v
     def jog(self, a, d): self.jogs.append((a, d))
     def home(self, a=""): self.homed = a
-    def set_fan(self, s): pass
+    def set_fan(self, s): self.fan = s
     def snapshot(self): return None
 
 
@@ -200,6 +203,20 @@ def test_temp_and_jog_and_home(server):
     assert ctrl.temps["nozzle"] == 215
     assert ("X", 10) in ctrl.jogs
     assert ctrl.homed == "XY"
+
+
+def test_estop_and_fan(server):
+    ctrl, base = server
+    assert _req(base, "/api/estop", method="POST", headers=AUTH)[0] == 200
+    assert ctrl.estopped is True
+    fan = _req(base, "/api/fan", method="POST", data=json.dumps({"speed": 128}).encode(),
+               headers={**AUTH, "Content-Type": "application/json"})
+    assert fan[0] == 200 and ctrl.fan == 128
+
+
+def test_estop_requires_api_key(server):
+    _ctrl, base = server
+    assert _req(base, "/api/estop", method="POST")[0] == 401
 
 
 def test_print_busy_returns_409(server):

@@ -74,12 +74,102 @@
         </p>
       </div>
 
+      <!-- v0.29.0 -->
+      <div id="v0.29.0" class="bg-gradient-to-br from-zinc-900/80 via-emerald-900/30 to-zinc-900/80 border border-emerald-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-emerald-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.29.0" class="px-3 py-1 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-500 transition">v0.29.0</a>
+          <span class="text-zinc-400 text-sm">June 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Printer controls &amp; reliable cancel</h3>
+        <p class="text-sm text-zinc-400 mb-4">The on-printer device page gets the safety and convenience controls operators expect — and canceling a queued print now actually stops the printer.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">✨ What's new</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>An <strong>Emergency Stop</strong> button on the device page halts the printer immediately.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>A <strong>fan-speed slider</strong> (0–100%) with an Off shortcut.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>The device page now shows <strong>elapsed and estimated-remaining time</strong> for a running print, not just a percentage.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span><strong>PLA / PETG / All-off</strong> temperature quick-presets so you don't have to type target temps.</span></li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🐞 Bug Fixes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>Canceling a print job from the admin queue now actually <strong>stops the print</strong>. Previously "Cancel job" only marked it canceled while the print ran to completion; the agent now observes the cancellation and aborts the print.</span></li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-zinc-500 mt-1">•</span><span>Emergency Stop needs a printer reset or power-cycle to recover afterward (standard printer-firmware behavior).</span></li>
+        </ul>
+      </div>
+
+      <!-- v0.28.0 -->
+      <div id="v0.28.0" class="bg-gradient-to-br from-zinc-900/80 via-indigo-900/20 to-zinc-900/80 border border-indigo-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.28.0" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.28.0</a>
+          <span class="text-zinc-400 text-sm">June 2026</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Fully remote-managed print agent</h3>
+        <p class="text-sm text-zinc-400 mb-4">Manage a networked printer's helper end-to-end from the app — configure the host, push over-the-air updates from the device itself, and detect firmware versions.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🚀 Enhancements</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-indigo-400 mt-1">•</span><span>Configure the agent's mini-computer remotely: set <strong>hostname, timezone, and Wi-Fi</strong>, and pull live host/network info on demand.</span></li>
+          <li class="flex items-start gap-2"><span class="text-indigo-400 mt-1">•</span><span><strong>Over-the-air self-update from the on-device page</strong>: check for updates, apply with one click, and verify the result.</span></li>
+          <li class="flex items-start gap-2"><span class="text-indigo-400 mt-1">•</span><span><strong>Automatic firmware-version detection</strong> with a one-click "update agent (and firmware if newer)" flow.</span></li>
+          <li class="flex items-start gap-2"><span class="text-indigo-400 mt-1">•</span><span>Delete a revoked agent and its history; the command log shows full lifecycle timestamps and hides secrets.</span></li>
+          <li class="flex items-start gap-2"><span class="text-indigo-400 mt-1">•</span><span>The management panel remembers what you had open across background refreshes and links straight to the on-device page.</span></li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🐞 Bug Fixes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-indigo-400 mt-1">•</span><span>Fixed the guided device install wizard so the agent installs and starts reliably.</span></li>
+          <li class="flex items-start gap-2"><span class="text-indigo-400 mt-1">•</span><span>Consistent time-zone handling when displaying timestamps in the admin UI.</span></li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-zinc-500 mt-1">•</span><span>Host configuration applies on Raspberry Pi (Linux) agents; firmware flashing remains opt-in per agent.</span></li>
+        </ul>
+      </div>
+
+      <!-- v0.27.0 -->
+      <div id="v0.27.0" class="bg-gradient-to-br from-zinc-900/80 via-sky-900/20 to-zinc-900/80 border border-sky-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-sky-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.27.0" class="px-3 py-1 bg-sky-600 text-white text-sm font-bold rounded-lg hover:bg-sky-500 transition">v0.27.0</a>
+          <span class="text-zinc-400 text-sm">June 2026</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Automatic bug &amp; error reporting</h3>
+        <p class="text-sm text-zinc-400 mb-4">Problems now surface automatically, with everything configurable from the admin UI.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">✨ What's new</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-sky-400 mt-1">•</span><span>Application errors and bug reports are sent to a central collector for tracking and AI triage.</span></li>
+          <li class="flex items-start gap-2"><span class="text-sky-400 mt-1">•</span><span>Bug reporting is configured <strong>entirely from the admin UI</strong> — no environment variables — and is reachable from the mobile admin menu.</span></li>
+          <li class="flex items-start gap-2"><span class="text-sky-400 mt-1">•</span><span>Added a Support link (home.jcubhub.com/support).</span></li>
+          <li class="flex items-start gap-2"><span class="text-sky-400 mt-1">•</span><span>The admin feedback view now supports pagination and bulk actions.</span></li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🐞 Bug Fixes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-sky-400 mt-1">•</span><span>Report-delivery failures are surfaced as warnings instead of being silently swallowed, so a misconfigured collector is visible.</span></li>
+          <li class="flex items-start gap-2"><span class="text-sky-400 mt-1">•</span><span>More resilient database access under concurrent load (connection busy-timeout).</span></li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-zinc-500 mt-1">•</span><span>If the collector isn't configured, reporting is simply skipped and the app continues normally.</span></li>
+        </ul>
+      </div>
+
       <!-- v0.26.6 -->
       <div id="v0.26.6" class="bg-gradient-to-br from-zinc-900/80 via-amber-900/20 to-zinc-900/80 border border-amber-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-amber-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.26.6" class="px-3 py-1 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-500 transition">v0.26.6</a>
           <span class="text-zinc-400 text-sm">June 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Fresh styles everywhere on release</h3>

@@ -254,6 +254,15 @@ class Agent:
         except ServerError as e:
             log.warning("job update failed: %s", e)
 
+    def _job_canceled(self, job_id: str) -> bool:
+        """True if the server marked this job canceled (admin 'Cancel job')."""
+        try:
+            info = self.client.get_job(job_id)
+        except ServerError as e:
+            log.warning("Job status check failed: %s", e)
+            return False
+        return bool(info and info.get("status") == "canceled")
+
     def _monitor_print(self, job_id: str) -> None:
         """Poll until the SD print finishes (or is canceled server-side)."""
         assert self.printer is not None
@@ -264,6 +273,14 @@ class Agent:
 
             now = time.time()
             if now - last_report >= self.cfg.heartbeat_interval_s:
+                # Honor an admin 'Cancel job' by aborting the physical SD print.
+                if self._job_canceled(job_id):
+                    log.info("Job %s canceled server-side; aborting print", job_id)
+                    try:
+                        self.printer.abort_print()
+                    except Exception as e:
+                        log.warning("Abort after cancel failed: %s", e)
+                    return
                 self._safe_update(job_id, "printing", progress=status.progress or 0)
                 try:
                     self.client.heartbeat(self.cfg.agent_version, status.as_dict())

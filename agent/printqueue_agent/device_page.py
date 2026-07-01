@@ -48,7 +48,11 @@ _PAGE = r"""<!doctype html>
   button.primary { background:#4f46e5; } button.primary:hover { background:#6366f1; }
   button.warn { background:#7c2d12; color:#fed7aa; } button.warn:hover { background:#9a3412; }
   button.danger { background:#7f1d1d; color:#fecaca; } button.danger:hover { background:#991b1b; }
+  button.estop { background:#dc2626; color:#fff; font-weight:700; letter-spacing:.02em;
+                 box-shadow:0 0 0 1px #ef4444 inset; }
+  button.estop:hover { background:#ef4444; }
   button:disabled { opacity:.4; cursor:not-allowed; }
+  input[type=range] { accent-color:#6366f1; }
   .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
   .files { display:flex; flex-direction:column; gap:6px; max-height:260px; overflow:auto; }
   .file { display:flex; align-items:center; justify-content:space-between; gap:8px;
@@ -84,6 +88,7 @@ _PAGE = r"""<!doctype html>
     <div class="sub" id="psub"></div>
   </div>
   <div class="head-actions">
+    <button class="estop" id="b-estop" title="Emergency stop (M112)">⛔ STOP</button>
     <span id="u-head-badge" class="head-badge">checking...</span>
     <button id="b-update-check-top">Check now</button>
     <button class="primary" id="b-update-start-top" disabled>Update</button>
@@ -98,6 +103,8 @@ _PAGE = r"""<!doctype html>
     <div class="stat"><span>File</span><b id="s-file">—</b></div>
     <div class="stat"><span>Progress</span><b id="s-prog">—</b></div>
     <div class="bar"><div id="s-barfill"></div></div>
+    <div class="stat" style="margin-top:8px"><span>Elapsed</span><b id="s-elapsed">—</b></div>
+    <div class="stat"><span>Remaining</span><b id="s-eta">—</b></div>
     <div class="row" style="margin-top:14px">
       <button class="warn" id="b-pause">Pause</button>
       <button id="b-resume">Resume</button>
@@ -140,11 +147,23 @@ _PAGE = r"""<!doctype html>
       <button id="b-noz">Set</button>
       <button id="b-noz-off">Off</button>
     </div>
-    <div class="row">
+    <div class="row" style="margin-bottom:8px">
       <span style="width:60px">Bed</span>
       <input type="number" id="t-bed" value="60" min="0" max="120" />
       <button id="b-bed">Set</button>
       <button id="b-bed-off">Off</button>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <span class="muted" style="width:60px">Presets</span>
+      <button data-preset="pla">PLA</button>
+      <button data-preset="petg">PETG</button>
+      <button data-preset="off">All off</button>
+    </div>
+    <div class="row" style="border-top:1px solid #1d1d21; padding-top:10px">
+      <span style="width:60px">Fan</span>
+      <input type="range" id="fan" min="0" max="100" value="0" step="1" style="flex:1; min-width:120px" />
+      <span id="fan-val" class="muted" style="width:42px; text-align:right">0%</span>
+      <button id="b-fan-off">Off</button>
     </div>
   </div>
 
@@ -203,6 +222,8 @@ async function api(path, opts={}){
   return r.headers.get("content-type","").includes("json") ? r.json() : r;
 }
 function fmtBytes(n){ if(!n) return "0"; const u=["B","KB","MB"]; let i=0,v=n; while(v>=1024&&i<2){v/=1024;i++;} return v.toFixed(1)+u[i]; }
+function fmtDur(s){ if(s==null) return "—"; s=Math.max(0,Math.floor(s)); const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;
+  return h ? `${h}h ${m}m` : (m ? `${m}m ${ss}s` : `${ss}s`); }
 function shortVersion(v){
   const s = String(v || "?");
   const i = s.indexOf("+auto.");
@@ -350,6 +371,8 @@ async function refresh(){
   const p = s.progress!=null ? s.progress : 0;
   document.getElementById("s-prog").textContent = (s.progress!=null ? p+"%" : "—");
   document.getElementById("s-barfill").style.width = p+"%";
+  document.getElementById("s-elapsed").textContent = s.elapsed_s!=null ? fmtDur(s.elapsed_s) : "—";
+  document.getElementById("s-eta").textContent = s.eta_s!=null ? fmtDur(s.eta_s) : "—";
   const printing = s.state==="printing" || s.state==="uploading" || s.print_active;
   document.getElementById("b-pause").disabled = !printing;
   document.getElementById("b-cancel").disabled = !printing;
@@ -400,6 +423,25 @@ document.getElementById("b-noz").onclick = ()=>post("/api/temp",{target:"nozzle"
 document.getElementById("b-bed").onclick = ()=>post("/api/temp",{target:"bed",value:+document.getElementById("t-bed").value}).then(()=>toast("Bed set"));
 document.getElementById("b-noz-off").onclick = ()=>post("/api/temp",{target:"nozzle",value:0}).then(()=>toast("Nozzle off"));
 document.getElementById("b-bed-off").onclick = ()=>post("/api/temp",{target:"bed",value:0}).then(()=>toast("Bed off"));
+const PRESETS = { pla:{noz:200,bed:60}, petg:{noz:240,bed:80}, off:{noz:0,bed:0} };
+document.querySelectorAll("button[data-preset]").forEach(b=>{
+  b.onclick = async()=>{
+    const p = PRESETS[b.dataset.preset]; if(!p) return;
+    document.getElementById("t-noz").value = p.noz;
+    document.getElementById("t-bed").value = p.bed;
+    await post("/api/temp",{target:"nozzle",value:p.noz});
+    await post("/api/temp",{target:"bed",value:p.bed});
+    toast(b.dataset.preset==="off" ? "Heaters off" : b.dataset.preset.toUpperCase()+" preset set");
+  };
+});
+const fanEl = document.getElementById("fan"), fanVal = document.getElementById("fan-val");
+fanEl.oninput = ()=>{ fanVal.textContent = fanEl.value+"%"; };
+fanEl.onchange = ()=>post("/api/fan",{speed:Math.round(fanEl.value*255/100)}).then(()=>toast("Fan "+fanEl.value+"%"));
+document.getElementById("b-fan-off").onclick = ()=>{ fanEl.value=0; fanVal.textContent="0%"; post("/api/fan",{speed:0}).then(()=>toast("Fan off")); };
+document.getElementById("b-estop").onclick = ()=>{
+  if(confirm("EMERGENCY STOP — immediately halt the printer (M112)?\nThe printer will need a reset or power-cycle to recover."))
+    post("/api/estop").then(()=>toast("⛔ Emergency stop sent")).then(refresh);
+};
 document.getElementById("b-home").onclick = ()=>post("/api/home",{axes:""}).then(()=>toast("Homing"));
 document.getElementById("b-homexy").onclick = ()=>post("/api/home",{axes:"XY"}).then(()=>toast("Homing XY"));
 document.querySelectorAll(".jog button[data-ax]").forEach(b=>{

@@ -56,6 +56,7 @@ class AgentPrinterController:
         self.spool_dir = spool
         self._upload_pct: Optional[int] = None
         self._active_file: Optional[str] = None
+        self._print_start_ts: Optional[float] = None
 
     # ── identity ──────────────────────────────────────────────────
     def info(self) -> Dict[str, Any]:
@@ -81,6 +82,19 @@ class AgentPrinterController:
         st["print_active"] = self.agent.print_active.is_set()
         if self._active_file:
             st["current_file"] = self._active_file
+        # Derive elapsed/remaining for any running print so the device page can
+        # show times, not just a byte-percentage. Tracked from when we first
+        # observe the printing state (works regardless of who started it).
+        if st.get("state") == "printing":
+            if self._print_start_ts is None:
+                self._print_start_ts = time.time()
+            elapsed = int(time.time() - self._print_start_ts)
+            st["elapsed_s"] = elapsed
+            prog = st.get("progress")
+            if isinstance(prog, (int, float)) and 0 < prog < 100:
+                st["eta_s"] = int(elapsed * (100 - prog) / prog)
+        else:
+            self._print_start_ts = None
         return st
 
     # ── files ─────────────────────────────────────────────────────
@@ -156,6 +170,14 @@ class AgentPrinterController:
     def cancel(self) -> None:
         self._require_printer().abort_print()
         self._active_file = None
+        self._print_start_ts = None
+
+    def estop(self) -> None:
+        """Emergency stop — halt the printer immediately (M112)."""
+        self._require_printer().emergency_stop()
+        self.agent.print_active.clear()
+        self._active_file = None
+        self._print_start_ts = None
 
     # ── manual controls ───────────────────────────────────────────
     def set_temp(self, target: str, value: float) -> None:

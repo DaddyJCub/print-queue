@@ -9,6 +9,59 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.29.0
+### Overview / Highlights
+- The on-printer device page gains the safety and convenience controls operators expect, and canceling a queued print now actually stops the printer.
+
+### Enhancements
+- Added an **Emergency Stop** button to the device page that halts the printer immediately (Marlin `M112`).
+- Added a **fan-speed slider** (0–100%) with an Off shortcut on the device page.
+- The device page now shows **elapsed and estimated-remaining time** for a running print, not just a byte-percentage.
+- Added **PLA / PETG / All-off temperature quick-presets** so operators don't have to type target temps.
+
+### Bug Fixes
+- Canceling a print job from the admin queue now actually **aborts the print on the printer**. Previously "Cancel job" only marked the job canceled in the database — the physical print ran to completion, and a late status update from the agent could even resurrect the canceled job. The agent now observes the cancellation and stops the SD print, and the server ignores stale updates to a terminal (finished/canceled) job.
+
+### Notes / Things to Know
+- Emergency Stop requires a printer reset or power-cycle to recover afterward (standard Marlin `M112` behavior).
+- Cancel/E-Stop from the on-device page already worked; this fixes the central admin-queue cancel path specifically.
+
+## 0.28.0
+### Overview / Highlights
+- The print agent becomes fully manageable from the app: configure the host, push over-the-air updates from the device itself, detect firmware versions, and manage agents end-to-end.
+
+### Enhancements
+- Remote host configuration for the agent's Raspberry Pi: set **hostname, timezone, and Wi-Fi** (SSID/password) from the admin panel, and pull live host/network info on demand.
+- **Over-the-air self-update from the on-device page**: check for agent/firmware updates, apply them with one click, and verify the result — no admin session needed on the Pi.
+- **Automatic firmware-version detection** from agent heartbeats, with a one-click "update agent (and firmware if newer)" flow and deterministic verification.
+- Admins can **delete a revoked agent** and its history; the command log now shows full lifecycle timestamps (queued → delivered → completed) and redacts secrets.
+- The agent management panel **remembers which panel/agent was open** across background refreshes and links straight to the on-device page.
+
+### Bug Fixes
+- Fixed the guided device install wizard (the agent package is bundled correctly and the virtualenv setup is more robust).
+- Consistent UTC handling when parsing ISO timestamps in the admin UI.
+
+### Notes / Things to Know
+- Host configuration (hostname/timezone/Wi-Fi) applies on Linux agent hosts (Raspberry Pi); it is not available on Windows hosts.
+- Firmware flashing remains opt-in per agent and can brick the board — use with care.
+
+## 0.27.0
+### Overview / Highlights
+- New bug/error reporting pipeline so problems surface automatically, configurable entirely from the admin UI.
+
+### Enhancements
+- Application errors and bug reports are now sent to the **JCubHub CM (Sentinel) collector** for centralized tracking and AI triage.
+- Bug reporting is **configured from the admin UI** — no environment variables required — and is reachable from the mobile admin menu.
+- Added a **Support link** (home.jcubhub.com/support).
+- The admin **feedback view now supports pagination and bulk actions**.
+- Database connections use a **busy-timeout** for better resilience under concurrent access.
+
+### Bug Fixes
+- Bug-reporter delivery failures are now surfaced as **warnings** instead of being silently swallowed, so a misconfigured collector is visible.
+
+### Notes / Things to Know
+- If the collector isn't configured, reporting is simply skipped and the app continues normally.
+
 ## 0.26.6
 ### Overview / Highlights
 - The remaining standalone pages now get fresh styles on each release like the rest of the app.
