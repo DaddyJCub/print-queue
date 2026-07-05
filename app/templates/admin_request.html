@@ -697,8 +697,32 @@
         {% if req["status"] == "PRINTING" and req["printer"] in ["ADVENTURER_4", "AD5X"] and camera_url %}
         <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-6">
           <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-semibold">📷 Live Camera Feed</h2>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 min-w-0 flex-wrap">
+              <h2 class="text-lg font-semibold">📷 Live Camera Feed</h2>
+              {% if watch_event %}
+                {% if watch_event.verdict == 'failure' %}
+                  <span class="px-2 py-0.5 rounded-full text-xs bg-red-900/60 text-red-200"
+                        title="{{ watch_event.reasoning or '' }}">👁️ ⚠ {{ (watch_event.failure_type or 'failure')|replace('_', ' ') }}
+                    {%- if watch_event.confidence is not none %} {{ '%.0f'|format(watch_event.confidence * 100) }}%{% endif %}</span>
+                {% elif watch_event.verdict == 'warning' %}
+                  <span class="px-2 py-0.5 rounded-full text-xs bg-amber-900/60 text-amber-200"
+                        title="{{ watch_event.reasoning or '' }}">👁️ warning</span>
+                {% elif watch_event.verdict == 'ok' %}
+                  <span class="px-2 py-0.5 rounded-full text-xs bg-emerald-900/60 text-emerald-200"
+                        title="{{ watch_event.reasoning or '' }}">👁️ AI: looks OK</span>
+                {% endif %}
+                {% if watch_event.auto_paused %}<span class="text-xs text-sky-300">⏸ paused by Watch</span>{% endif %}
+                {% if watch_event.muted %}<span class="text-xs text-zinc-500">🔇 muted</span>{% endif %}
+              {% endif %}
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              {% if watch_event and not watch_event.muted and watch_event.verdict in ['warning', 'failure'] %}
+              <form method="POST" action="/admin/print-monitor/{{ watch_event.session_id }}/mute" class="inline">
+                <button type="submit" class="text-xs px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition" title="Stop AI alerts for this print">
+                  🔇 Mute AI
+                </button>
+              </form>
+              {% endif %}
               <button onclick="refreshSnapshot()" class="text-xs px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition">
                 ↻ Refresh
               </button>

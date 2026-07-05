@@ -9,6 +9,22 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.30.0
+### Overview / Highlights
+- **Printellect Watch**: AI camera monitoring of active prints. While a print is running, the printer camera is checked about once a minute and each frame is sent to JCubHub Central Management, where the local Ollama vision model looks for failures (spaghetti, bed detachment, blobs, layer shifts, and more). Confirmed failures alert admins by push and email with a snapshot — and can optionally pause the print.
+
+### Enhancements
+- New background monitoring worker that watches every actively printing build. It skips the first layers (configurable warm-up), skips frozen camera feeds, and stays completely out of the way when Central Management is unreachable — monitoring problems never disturb a print.
+- New **Watch** admin page (`/admin/print-monitor`): enable/disable, CM endpoint + secret (reuses the Bug Reporting secret by default), check interval (30s–10min), warm-up delay, alert cooldown, email toggle, and per-printer auto-pause opt-ins — every setting is editable in the UI, no environment variables needed.
+- The Live Camera Feed card on a request now shows the latest AI verdict badge (OK / warning / failure with confidence) and a **Mute AI** button to silence alerts for a known-ugly-but-fine print.
+- Per-printer **auto-pause** (off by default): when the AI confirms a failure, the print is paused — never canceled — so you can inspect and decide. Supported on Moonraker-backed printers; FlashForge printers are alerts-only (their API cannot pause).
+- Recent monitoring sessions with verdicts, confidence, and frame counts are listed on the Watch page.
+
+### Notes / Things to Know
+- Requires JCubHub Central Management with print monitoring enabled and a vision model pulled on the Ollama host (default `qwen2.5vl:7b`).
+- Alerts only fire on **confirmed** failures (CM's escalation policy — optionally verified by a second AI), with a per-print cooldown, so a single glitchy frame won't page you.
+- Frames are only captured while something is printing; nothing is sent when printers are idle.
+
 ## 0.29.0
 ### Overview / Highlights
 - A big pass on the on-printer device page: clear connection indicators, a friendly printer name, safety/convenience controls, and self-updates that actually refresh — plus canceling a queued print now truly stops the printer.
