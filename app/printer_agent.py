@@ -89,6 +89,7 @@ AGENT_COMMAND_ACTIONS = {
     "set_wifi",        # configure Wi-Fi on Linux (nmcli)
     "update_agent",    # download a new agent bundle, self-update, restart (OTA)
     "flash_firmware",  # flash printer firmware (.hex) via avrdude — opt-in on agent
+    "pause_print",     # pause the running print (Printellect Watch failure response)
 }
 COMMAND_STATUSES = {"queued", "delivered", "executing", "completed", "failed"}
 COMMAND_TERMINAL = {"completed", "failed"}
@@ -2051,3 +2052,40 @@ def get_agent_printer_api(printer_code: str) -> Optional[AgentPrinterAPI]:
     if printer_code in AGENT_PRINTER_CODES:
         return AgentPrinterAPI(printer_code)
     return None
+
+
+def enqueue_pause_command(printer_code: str) -> bool:
+    """Queue a pause_print command for the most recently seen agent of a
+    printer (Printellect Watch failure response). Returns True when queued.
+
+    Older agents without the pause_print handler mark the command failed as
+    "Unsupported action" — a no-op on the printer, never a crash.
+    """
+    conn = db()
+    try:
+        agent = conn.execute(
+            "SELECT agent_id FROM printer_agents WHERE printer_code = ? AND revoked = 0 "
+            "ORDER BY last_seen_at DESC LIMIT 1",
+            (printer_code,),
+        ).fetchone()
+        if not agent:
+            return False
+        # One in-flight pause at a time: a duplicate would just fail on the
+        # printer and clutter the command log.
+        pending = conn.execute(
+            "SELECT 1 FROM printer_agent_commands WHERE agent_id = ? AND action = 'pause_print' "
+            "AND status IN ('queued', 'delivered', 'executing') LIMIT 1",
+            (agent["agent_id"],),
+        ).fetchone()
+        if pending:
+            return True
+        now = now_iso()
+        conn.execute(
+            "INSERT INTO printer_agent_commands (cmd_id, agent_id, action, payload_json, status, created_at, updated_at, created_by) "
+            "VALUES (?, ?, 'pause_print', ?, 'queued', ?, ?, ?)",
+            (str(uuid.uuid4()), agent["agent_id"], _json_dumps({"reason": "print_monitor"}), now, now, "print_monitor"),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
