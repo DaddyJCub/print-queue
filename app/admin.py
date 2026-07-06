@@ -554,6 +554,8 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
     queued = _fetch_requests_by_status("APPROVED")
     # Include IN_PROGRESS for multi-build requests that have active builds
     printing_raw = _fetch_requests_by_status(["PRINTING", "IN_PROGRESS"], include_eta_fields=True)
+    # PAUSED = multi-build requests deliberately set aside mid-run to free a printer
+    paused = _fetch_requests_by_status("PAUSED", include_eta_fields=True)
     # BLOCKED requests need attention (failed builds)
     blocked = _fetch_requests_by_status("BLOCKED")
     done_all = _fetch_requests_by_status("DONE")
@@ -603,14 +605,19 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
                 if active_build["started_at"]:
                     printing_started_at = active_build["started_at"]
                 active_est_minutes = active_build["print_time_minutes"] or active_build["slicer_estimate_minutes"]
+            else:
+                # IN_PROGRESS but nothing actually PRINTING (between builds). The
+                # request's pinned printer may be running a DIFFERENT job now, so do
+                # not borrow that printer's live telemetry as if it were ours.
+                active_printer = None
         else:
             try:
                 active_est_minutes = r["print_time_minutes"]
             except Exception:
                 active_est_minutes = None
-        
+
         # Use cached printer status for consistency
-        cached_status = await fetch_printer_status_with_cache(active_printer, timeout=3.0)
+        cached_status = await fetch_printer_status_with_cache(active_printer, timeout=3.0) if active_printer else None
         if cached_status and not cached_status.get("is_offline"):
             printer_progress = cached_status.get("progress")
             current_layer = cached_status.get("current_layer")
@@ -722,6 +729,7 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
         "active_builds_by_printer": active_builds_by_printer,
         "print_match_suggestions": print_match_suggestions,
         "unmatched_prints": unmatched_prints,
+        "paused": paused,
         "printers": PRINTERS,
         "materials": MATERIALS,
         "version": APP_VERSION,

@@ -39,7 +39,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.30.2"
+APP_VERSION = "0.31.0"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -51,6 +51,7 @@ APP_VERSION = "0.30.2"
 #   - 0.x.PATCH = Bug fixes only
 #
 # Changelog:
+# 0.31.0 - [FEATURE] "Set aside" for multi-build requests: pause a request mid-run to free the printer for another job (new PAUSED status + Resume), and build-accurate printer occupancy so an unknown print is no longer masked by a request left IN_PROGRESS between builds.
 # 0.19.0 - [FEATURE] Dashboard home rollout + release hardening: feature-flagged landing page at /, request form moved to /new-request, unified account handling fixes in quote/checkout flows, and multi-replica worker gating for credits/USPS poller.
 # 0.18.0 - [FEATURE] OIDC SSO via Authentik: discovery + authorization-code flow, account linking/unlinking, JWKS token validation, and auto-create on first sign-in
 # 0.17.0 - [FEATURE] Printellect production flow upgrades: /pair deep-link auto-claim + redirect, admin registry management (save/unclaim/delete), admin QR/device.json automation, OTA package-zip upload mode, expanded device control panel, finalized Pico provisioning contract docs
@@ -847,7 +848,7 @@ async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.
     }
 
 # Status flow for admin actions (request-level)
-STATUS_FLOW = ["NEW", "NEEDS_INFO", "APPROVED", "IN_PROGRESS", "PRINTING", "BLOCKED", "DONE", "PICKED_UP", "REJECTED", "CANCELLED"]
+STATUS_FLOW = ["NEW", "NEEDS_INFO", "APPROVED", "IN_PROGRESS", "PAUSED", "PRINTING", "BLOCKED", "DONE", "PICKED_UP", "REJECTED", "CANCELLED"]
 
 # Build-level status flow (for multi-build requests)
 BUILD_STATUS_FLOW = ["PENDING", "READY", "PRINTING", "COMPLETED", "FAILED", "SKIPPED"]
@@ -1772,6 +1773,10 @@ def ensure_migrations():
         cur.execute("ALTER TABLE requests ADD COLUMN failed_builds INTEGER DEFAULT 0")
     if "active_build_id" not in cols:
         cur.execute("ALTER TABLE requests ADD COLUMN active_build_id TEXT")
+    if "paused_at" not in cols:
+        # ISO timestamp set when an admin sets a multi-build request aside mid-run.
+        # Makes the PAUSED status sticky so build syncs don't revert it to IN_PROGRESS.
+        cur.execute("ALTER TABLE requests ADD COLUMN paused_at TEXT")
 
     if "fulfillment_method" not in cols:
         cur.execute("ALTER TABLE requests ADD COLUMN fulfillment_method TEXT NOT NULL DEFAULT 'pickup'")
@@ -2234,31 +2239,43 @@ def now_iso():
 def derive_request_status_from_builds(request_id: str) -> str:
     """
     Derive the parent request status from its builds.
-    Returns: NEW, APPROVED, IN_PROGRESS, BLOCKED, or DONE
+    Returns: NEW, APPROVED, IN_PROGRESS, PAUSED, BLOCKED, or DONE
     """
     conn = db()
     builds = conn.execute(
         "SELECT status FROM builds WHERE request_id = ?", (request_id,)
     ).fetchall()
+    req_row = conn.execute(
+        "SELECT paused_at FROM requests WHERE id = ?", (request_id,)
+    ).fetchone()
     conn.close()
-    
+
+    paused_at = req_row["paused_at"] if req_row else None
+
     if not builds:
         return "APPROVED"  # No builds = single-build legacy mode
-    
+
     statuses = [b["status"] for b in builds]
-    
-    # If any build is FAILED and none are PRINTING, request is BLOCKED
-    if "FAILED" in statuses and "PRINTING" not in statuses:
-        return "BLOCKED"
-    
-    # If any build is PRINTING, request is IN_PROGRESS (or PRINTING for legacy compat)
+
+    # An actively PRINTING build always wins — if the admin "set aside" a request
+    # while its current build was still running, we let that build finish first
+    # (the auto-start-next logic then honours paused_at and stops before the next).
     if "PRINTING" in statuses:
         return "IN_PROGRESS"
-    
-    # If all builds are COMPLETED or SKIPPED, request is DONE
+
+    # If any build is FAILED and none are PRINTING, request is BLOCKED
+    if "FAILED" in statuses:
+        return "BLOCKED"
+
+    # If all builds are COMPLETED or SKIPPED, request is DONE (even if paused_at is
+    # still set — nothing remains to resume).
     terminal = {"COMPLETED", "SKIPPED"}
     if all(s in terminal for s in statuses):
         return "DONE"
+
+    # Deliberately set aside mid-run: sticky PAUSED until an admin resumes it.
+    if paused_at:
+        return "PAUSED"
     
     # If some builds are READY or PENDING, request is IN_PROGRESS
     if "READY" in statuses or "PENDING" in statuses:
@@ -2417,9 +2434,10 @@ def start_build(build_id: str, printer: str, comment: Optional[str] = None) -> D
         "UPDATE requests SET active_build_id = ?, updated_at = ? WHERE id = ?",
         (build_id, now, build["request_id"])
     )
-    # Reset printing email flag and persist printer selection for this build
+    # Reset printing email flag and persist printer selection for this build.
+    # Starting a build inherently resumes the request, so clear any "set aside" flag.
     conn.execute(
-        "UPDATE requests SET printing_email_sent = 0, printer = ? WHERE id = ?",
+        "UPDATE requests SET printing_email_sent = 0, printer = ?, paused_at = NULL WHERE id = ?",
         (printer, build["request_id"])
     )
     
@@ -6973,22 +6991,27 @@ async def poll_printer_status_worker():
                     if not current_file:
                         continue
                     
-                    # Check if there's already a PRINTING/IN_PROGRESS request for this printer,
-                    # or any build actively PRINTING on this printer
+                    # Determine whether this printer is genuinely occupied by a tracked
+                    # print. Occupancy must be based on something ACTUALLY on the bed:
+                    #   - a build in PRINTING status on this printer, or
+                    #   - a legacy single-build request in PRINTING status on this printer.
+                    # We must NOT treat a merely IN_PROGRESS request as occupying the
+                    # printer: a multi-build request sits IN_PROGRESS between builds (and
+                    # PAUSED requests stay pinned to their last printer) with nothing
+                    # running. Counting those as occupied masks a different/unknown print
+                    # started on the same machine.
                     conn = db()
-                    existing_printing = conn.execute(
-                        "SELECT id FROM requests WHERE printer = ? AND status IN ('PRINTING', 'IN_PROGRESS')",
+                    existing_build = conn.execute(
+                        "SELECT id FROM builds WHERE printer = ? AND status = 'PRINTING'",
                         (printer_code,)
                     ).fetchone()
-                    if not existing_printing:
-                        # Also check at build level — a build may be PRINTING on this printer
-                        # even if the request status doesn't reflect it yet
-                        existing_build = conn.execute(
-                            "SELECT id FROM builds WHERE printer = ? AND status = 'PRINTING'",
+                    if not existing_build:
+                        existing_printing = conn.execute(
+                            "SELECT id FROM requests WHERE printer = ? AND status = 'PRINTING'",
                             (printer_code,)
                         ).fetchone()
                     else:
-                        existing_build = None
+                        existing_printing = None
                     conn.close()
                     
                     if existing_printing or existing_build:
@@ -7423,8 +7446,19 @@ async def poll_builds_status_worker():
                         "message": f"Build {build_num}/{total_builds} completed"
                     })
                     
-                    # Auto-start next READY build if there is one
-                    # This ensures continuous printing without admin intervention
+                    # Auto-start next READY build if there is one.
+                    # This ensures continuous printing without admin intervention.
+                    # Note: a request the admin "set aside" mid-run derives to PAUSED
+                    # here (paused_at is set, no PRINTING build), so it intentionally
+                    # falls through this guard — the current build finished and we stop
+                    # instead of auto-starting the next one.
+                    if new_request_status == "PAUSED":
+                        add_poll_debug_log({
+                            "type": "paused_after_build",
+                            "request_id": request_id[:8],
+                            "build_number": build_num,
+                            "message": f"Request set aside — stopped after build {build_num}/{total_builds}"
+                        })
                     if new_request_status == "IN_PROGRESS":
                         try:
                             conn_next = db()

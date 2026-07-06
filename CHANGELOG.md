@@ -9,6 +9,18 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.31.0
+### Overview / Highlights
+- **Set aside a multi-build request**: when you stop a multi-build job after one build to print something else, you can now formally set it aside instead of leaving it stuck "in progress" forever. Set-aside requests move to their own **Set Aside** section on the admin queue with a one-click **Resume**, and their remaining builds are preserved.
+
+### Enhancements
+- New **Set aside** button on multi-build cards in *Printing Now*. If a build is still running, it finishes first; the queue then stops instead of auto-starting the next build, and the request moves to *Set Aside* (new `PAUSED` status).
+- **Resume** returns a set-aside request to the active queue so its remaining builds can be started (manually or by auto-match). Starting any build also implicitly resumes it.
+- Requesters see set-aside jobs stay visible in *My Prints* (labeled Paused) rather than disappearing.
+
+### Fixes
+- **Unknown prints are no longer masked.** Printer "occupancy" is now based on a build that is actually printing — not merely a request left `IN_PROGRESS` between builds. Previously, a request stuck in progress on a printer would hide a different/unknown print started on that same machine (and steal its live progress in *Printing Now*). That job is now correctly detected and surfaced as an Unknown Print.
+
 ## 0.30.2
 ### Bug Fixes
 - **Watch now monitors one print per printer per cycle.** When several jobs are queued as PRINTING on the same printer, Watch was capturing and analyzing the same camera view once per job (e.g. 7 near-identical frames a minute for one printer), needlessly loading the AI model. It now picks the single most-recently-started job per printer — matching physical reality (one camera, one active print).

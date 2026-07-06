@@ -278,7 +278,7 @@
       // Update section header counts after removing items
       function updateSectionCounts() {
         // Count remaining items in each section
-        const sections = ['new-section', 'printing-section', 'approved-section', 'done-section'];
+        const sections = ['new-section', 'printing-section', 'paused-section', 'approved-section', 'done-section'];
         sections.forEach(sectionId => {
           const section = document.getElementById(sectionId);
           if (section) {
@@ -1238,10 +1238,64 @@
               {% endif %}
             </div>
             <div class="flex items-center gap-2 shrink-0">
-              <button onclick="quickStatusChange('{{ r['id'] }}', 'DONE', 'Print completed', this)" 
+              {% if r.total_builds and r.total_builds > 1 and (r.completed_builds or 0) < r.total_builds %}
+              <form method="POST" action="/admin/request/{{ r['id'] }}/pause" class="inline"
+                    onsubmit="return confirm('Set aside this request to print something else? Its current build finishes first; remaining builds wait until you resume.');">
+                <button type="submit"
+                        class="px-3 py-2 rounded-lg bg-amber-700/40 hover:bg-amber-600/50 border border-amber-600/50 text-amber-100 text-sm font-medium transition"
+                        title="Finish the current build, then stop so the printer is free for another job">
+                  ⏸ Set aside
+                </button>
+              </form>
+              {% endif %}
+              <button onclick="quickStatusChange('{{ r['id'] }}', 'DONE', 'Print completed', this)"
                       class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-medium transition shadow-lg shadow-emerald-900/30">
                 ✓ Done
               </button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
+      <!-- PAUSED (Set aside mid-run) -->
+      {% if paused|length > 0 %}
+      <section id="paused-section" class="bg-gradient-to-b from-amber-950/30 to-zinc-900/60 border border-amber-700/40 rounded-2xl overflow-hidden shadow-lg">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-amber-800/30">
+          <div class="flex items-center gap-3">
+            <div class="w-3 h-3 rounded-full bg-amber-500 shadow-lg shadow-amber-500/50"></div>
+            <h2 class="text-lg font-semibold">Set Aside</h2>
+            <span class="text-xs font-medium text-amber-200 bg-amber-600/40 px-2 py-0.5 rounded-full">{{ paused|length }}</span>
+          </div>
+        </div>
+        <div class="divide-y divide-amber-900/30">
+          {% for r in paused %}
+          <div class="request-item flex items-center gap-4 px-5 py-4 hover:bg-amber-900/20 transition">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <a href="/admin/request/{{ r['id'] }}" class="text-base font-bold text-white hover:text-amber-300 truncate">{{ r["print_name"] or 'Untitled' }}</a>
+                {% if r.total_builds and r.total_builds > 1 %}
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-amber-800/50 text-amber-300 border border-amber-700/50">
+                    {{ r.completed_builds or 0 }}/{{ r.total_builds }} builds
+                  </span>
+                {% endif %}
+              </div>
+              <div class="flex items-center gap-2 text-sm text-zinc-400 mt-1">
+                <span class="text-amber-300 font-semibold">Set aside</span>
+                <span class="text-zinc-600">•</span>
+                <span>{{ r["material"] }}</span>
+                {% if r["colors"] %}<span class="text-zinc-600">•</span><span>{{ r["colors"] }}</span>{% endif %}
+                {% if r["printer"] %}<span class="text-zinc-600">•</span><span>was on {{ r["printer"] }}</span>{% endif %}
+              </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <form method="POST" action="/admin/request/{{ r['id'] }}/resume" class="inline">
+                <button type="submit"
+                        class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium transition shadow-lg shadow-amber-900/30">
+                  ▶ Resume
+                </button>
+              </form>
             </div>
           </div>
           {% endfor %}
@@ -1436,7 +1490,7 @@
       {% endif %}
 
       <!-- EMPTY STATE -->
-      {% if new_reqs|length == 0 and printing|length == 0 and queued|length == 0 and done|length == 0 %}
+      {% if new_reqs|length == 0 and printing|length == 0 and paused|length == 0 and queued|length == 0 and done|length == 0 %}
       <div class="text-center py-16">
         <div class="text-6xl mb-4">🎉</div>
         <p class="text-xl font-semibold text-zinc-300">Queue is empty</p>
