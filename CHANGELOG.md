@@ -9,6 +9,10 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.30.1
+### Bug Fixes
+- The **Watch** page is now reachable from the admin menu: added to the More → System section (the v0.30.0 link was added to a legacy nav component that the current UI doesn't render). Also surfaced the existing **Bug Reporting** page there, which had the same problem.
+
 ## 0.30.0
 ### Overview / Highlights
 - **Printellect Watch**: AI camera monitoring of active prints. While a print is running, the printer camera is checked about once a minute and each frame is sent to JCubHub Central Management, where the local Ollama vision model looks for failures (spaghetti, bed detachment, blobs, layer shifts, and more). Confirmed failures alert admins by push and email with a snapshot — and can optionally pause the print.
