@@ -134,6 +134,22 @@ def test_get_active_targets_dual_query():
     assert by_id[single_rid]["build_id"] is None
 
 
+def test_dedupe_targets_by_printer_keeps_newest():
+    # Several PRINTING jobs on one printer (queued batch) must collapse to a
+    # single monitored target — one camera, one active print.
+    targets = [
+        {"session_id": "a", "printer_code": "AD5X", "started_at": "2026-07-06T10:00:00+00:00"},
+        {"session_id": "b", "printer_code": "AD5X", "started_at": "2026-07-06T10:22:00+00:00"},
+        {"session_id": "c", "printer_code": "AD5X", "started_at": "2026-07-06T10:10:00+00:00"},
+        {"session_id": "d", "printer_code": "ADVENTURER_4", "started_at": "2026-07-06T09:00:00+00:00"},
+    ]
+    result = pm.dedupe_targets_by_printer(targets)
+    by_printer = {t["printer_code"]: t["session_id"] for t in result}
+    assert len(result) == 2
+    assert by_printer["AD5X"] == "b"  # most recently started
+    assert by_printer["ADVENTURER_4"] == "d"
+
+
 # ── HMAC submission ──────────────────────────────────────────────────────────
 
 async def test_submit_frame_signs_body(monkeypatch):

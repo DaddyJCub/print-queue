@@ -9,6 +9,10 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.30.2
+### Bug Fixes
+- **Watch now monitors one print per printer per cycle.** When several jobs are queued as PRINTING on the same printer, Watch was capturing and analyzing the same camera view once per job (e.g. 7 near-identical frames a minute for one printer), needlessly loading the AI model. It now picks the single most-recently-started job per printer — matching physical reality (one camera, one active print).
+
 ## 0.30.1
 ### Bug Fixes
 - The **Watch** page is now reachable from the admin menu: added to the More → System section (the v0.30.0 link was added to a legacy nav component that the current UI doesn't render). Also surfaced the existing **Bug Reporting** page there, which had the same problem.
