@@ -32,10 +32,10 @@
 ] %}
 {% set more_groups = [
   ('Comms', [('Feedback','/admin/feedback','feedback'), ('Broadcast','/admin/broadcast','broadcast')]),
-  ('System', [('Settings','/admin/settings','settings'), ('Features','/admin/features','features'), ('Admins','/admin/admins','admins'), ('Audit','/admin/audit','audit'), ('File Sync','/admin/file-sync','file-sync'), ('Debug','/admin/debug','debug')]),
+  ('System', [('Settings','/admin/settings','settings'), ('Watch','/admin/print-monitor','print-monitor'), ('Bug Reporting','/admin/bug-reporting','bug-reporting'), ('Features','/admin/features','features'), ('Admins','/admin/admins','admins'), ('Audit','/admin/audit','audit'), ('File Sync','/admin/file-sync','file-sync'), ('Debug','/admin/debug','debug')]),
   ('Hardware', [('Printers','/admin/printer-settings','printers'), ('Print Agents','/admin/printer-agents','printer-agents'), ('Devices','/admin/printellect/devices','printellect-devices'), ('Releases','/admin/printellect/releases','printellect-releases'), ('OTA Status','/admin/printellect/ota-status','printellect-ota'), ('Docs','/admin/printellect/docs','printellect-docs')])
 ] %}
-{% set more_keys = ['feedback','broadcast','settings','features','admins','audit','file-sync','debug','printers','printer-agents','printellect-devices','printellect-releases','printellect-ota','printellect-docs'] %}
+{% set more_keys = ['feedback','broadcast','settings','print-monitor','bug-reporting','features','admins','audit','file-sync','debug','printers','printer-agents','printellect-devices','printellect-releases','printellect-ota','printellect-docs'] %}
 {% set in_more = ap in more_keys %}
 <div class="sticky z-30 bg-zinc-950/90 backdrop-blur-lg border-b border-zinc-800/60" style="top: calc(3.5rem + var(--safe-area-top));">
   <div class="max-w-7xl mx-auto px-2 sm:px-4">
