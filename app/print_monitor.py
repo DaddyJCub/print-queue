@@ -218,6 +218,23 @@ def get_active_targets() -> List[Dict[str, Any]]:
     return targets
 
 
+def dedupe_targets_by_printer(targets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """One target per printer per cycle.
+
+    A printer has one camera and can only be printing one thing, but the queue
+    can hold several requests/builds marked PRINTING on the same printer at
+    once (queued batch jobs). Monitoring each of them would re-analyze the
+    same camera frame N times per cycle. Pick the most recently started
+    candidate — the one most likely to actually be on the bed.
+    """
+    by_printer: Dict[str, Dict[str, Any]] = {}
+    for target in targets:
+        current = by_printer.get(target["printer_code"])
+        if current is None or (target.get("started_at") or "") > (current.get("started_at") or ""):
+            by_printer[target["printer_code"]] = target
+    return list(by_printer.values())
+
+
 # ------------------------
 # Frame capture
 # ------------------------
@@ -649,7 +666,7 @@ async def print_monitor_worker() -> None:
                 await asyncio.sleep(interval_s)
                 continue
 
-            targets = get_active_targets()
+            targets = dedupe_targets_by_printer(get_active_targets())
             # Sequential on purpose: snapshot capture can hold an MJPEG stream
             # open for several seconds and printers share the LAN.
             for target in targets:
