@@ -359,6 +359,96 @@ def admin_bug_reporting_post(
     return RedirectResponse(url="/admin/bug-reporting?saved=1", status_code=303)
 
 
+# ─────────────────────── Printellect Watch (AI print monitoring) ───────────
+
+# Printers that can actually be auto-paused (FlashForge's API is status-only).
+_WATCH_PAUSABLE = {"AD5X", "LK5_PRO"}
+
+
+@router.get("/admin/print-monitor", response_class=HTMLResponse)
+def admin_print_monitor(request: Request, _=Depends(require_admin), saved: Optional[str] = None):
+    """Configure AI camera monitoring of active prints (analysis runs in CM)."""
+    secret = get_setting("print_monitor_secret", "")
+    printers = [(code, label) for code, label in PRINTERS if code != "ANY"]
+    model = {
+        "enabled": get_bool_setting("print_monitor_enabled", False),
+        "url": get_setting("print_monitor_url", ""),
+        "secret_set": bool((secret or "").strip()),
+        "bug_secret_set": bool((get_setting("bug_report_secret", "") or "").strip()),
+        "interval_seconds": get_setting("print_monitor_interval_seconds", "60"),
+        "warmup_minutes": get_setting("print_monitor_warmup_minutes", "10"),
+        "max_frame_kb": get_setting("print_monitor_max_frame_kb", "1500"),
+        "cooldown_minutes": get_setting("print_monitor_alert_cooldown_minutes", "30"),
+        "notify_email": get_bool_setting("print_monitor_notify_email", True),
+        "autopause": {
+            code: get_bool_setting(f"print_monitor_autopause_{code}", False)
+            for code, _label in printers
+        },
+        "saved": saved == "1",
+    }
+
+    # Live status: latest verdict per active monitoring session.
+    conn = db()
+    recent = conn.execute(
+        """
+        SELECT s.id, s.printer_code, s.state, s.muted, s.auto_paused, s.request_id,
+               s.last_frame_at, s.frames_sent, s.cm_errors,
+               e.verdict, e.failure_type, e.confidence, e.source, e.reasoning, e.created_at AS verdict_at
+        FROM print_monitor_sessions s
+        LEFT JOIN print_monitor_events e ON e.id = (
+            SELECT id FROM print_monitor_events
+            WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1
+        )
+        ORDER BY s.updated_at DESC LIMIT 20
+        """
+    ).fetchall()
+    conn.close()
+
+    return templates.TemplateResponse("admin_print_monitor.html", {
+        "request": request, "s": model, "printers": printers,
+        "pausable": _WATCH_PAUSABLE, "sessions": [dict(r) for r in recent],
+        "version": APP_VERSION,
+    })
+
+
+@router.post("/admin/print-monitor")
+async def admin_print_monitor_post(request: Request, _=Depends(require_admin)):
+    form = await request.form()
+
+    def _clamped(name: str, default: int, lo: int, hi: int) -> str:
+        try:
+            return str(max(lo, min(hi, int(str(form.get(name, default)).strip()))))
+        except (TypeError, ValueError):
+            return str(default)
+
+    set_setting("print_monitor_enabled", "1" if form.get("enabled") else "0")
+    set_setting("print_monitor_url", str(form.get("url", "")).strip())
+    # Write-only secret field: only overwrite when a new value is supplied.
+    secret = str(form.get("secret", "")).strip()
+    if secret:
+        set_setting("print_monitor_secret", secret)
+    set_setting("print_monitor_interval_seconds", _clamped("interval_seconds", 60, 30, 600))
+    set_setting("print_monitor_warmup_minutes", _clamped("warmup_minutes", 10, 0, 120))
+    set_setting("print_monitor_max_frame_kb", _clamped("max_frame_kb", 1500, 50, 5000))
+    set_setting("print_monitor_alert_cooldown_minutes", _clamped("cooldown_minutes", 30, 1, 720))
+    set_setting("print_monitor_notify_email", "1" if form.get("notify_email") else "0")
+    for code, _label in PRINTERS:
+        if code == "ANY":
+            continue
+        enabled = form.get(f"autopause_{code}") and code in _WATCH_PAUSABLE
+        set_setting(f"print_monitor_autopause_{code}", "1" if enabled else "0")
+    return RedirectResponse(url="/admin/print-monitor?saved=1", status_code=303)
+
+
+@router.post("/admin/print-monitor/{session_id}/mute")
+def admin_print_monitor_mute(session_id: str, _=Depends(require_admin)):
+    """Stop alerts for one monitored print (e.g. a known-ugly but fine print)."""
+    from app.print_monitor import mute_session
+    if not mute_session(session_id):
+        raise HTTPException(status_code=404, detail="Monitor session not found")
+    return RedirectResponse(url="/admin/print-monitor", status_code=303)
+
+
 @router.get("/admin/login", response_class=HTMLResponse)
 def admin_login(request: Request, next: Optional[str] = None, bad: Optional[str] = None, legacy: Optional[str] = None):
     # If multi_admin is enabled and not explicitly requesting legacy, redirect to new login

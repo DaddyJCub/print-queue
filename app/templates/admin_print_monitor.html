@@ -1,0 +1,161 @@
+{% extends "admin_base.html" %}
+
+{% block admin_title %}Printellect Watch{% endblock %}
+{% block active_page %}{{ 'print-monitor' }}{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto p-6">
+  {% set active_page = 'print-monitor' %}
+
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold">👁️ Printellect Watch</h1>
+    <p class="text-zinc-400 mt-1 text-sm">
+      AI camera monitoring of active prints. Frames go to JCubHub Central
+      Management, where the local vision model looks for spaghetti, detachment,
+      and other failures. Confirmed failures alert you — and can optionally
+      pause the print.
+    </p>
+  </div>
+
+  {% if s.saved %}
+  <div class="bg-emerald-900/30 border border-emerald-600/50 rounded-xl p-4 mb-6 text-emerald-200 text-sm">
+    ✅ Saved. Changes take effect on the next monitoring cycle.
+  </div>
+  {% endif %}
+
+  <form method="POST" action="/admin/print-monitor"
+        class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-6 space-y-5">
+
+    <label class="flex items-center gap-3 text-sm">
+      <input type="checkbox" name="enabled" value="1"
+             {% if s.enabled %}checked{% endif %}
+             class="h-4 w-4 rounded border-zinc-600 bg-zinc-900" />
+      <span class="font-medium">Enable AI print monitoring</span>
+    </label>
+
+    <div>
+      <label class="block text-sm font-medium mb-1">CM frame endpoint URL</label>
+      <input type="url" name="url" value="{{ s.url }}"
+             placeholder="https://mgmt.jcubhub.com/api/print-monitor/frames"
+             class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
+      <p class="text-xs text-zinc-500 mt-1">The <code>/api/print-monitor/frames</code> endpoint on Central Management.</p>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium mb-1">
+        Shared secret
+        {% if s.secret_set %}<span class="text-emerald-400 text-xs">(set — leave blank to keep)</span>
+        {% elif s.bug_secret_set %}<span class="text-zinc-400 text-xs">(blank = reuse the Bug Reporting secret)</span>{% endif %}
+      </label>
+      <input type="password" name="secret" autocomplete="new-password"
+             placeholder="{% if s.secret_set %}••••••••  leave blank to keep current{% else %}blank = reuse Bug Reporting secret{% endif %}"
+             class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1">Check every (seconds)</label>
+        <input type="number" name="interval_seconds" value="{{ s.interval_seconds }}" min="30" max="600" step="10"
+               class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
+        <p class="text-xs text-zinc-500 mt-1">One frame per active printer per interval. 60s is light; raise it to reduce load.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Warm-up skip (minutes)</label>
+        <input type="number" name="warmup_minutes" value="{{ s.warmup_minutes }}" min="0" max="120"
+               class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
+        <p class="text-xs text-zinc-500 mt-1">Don't judge the first layers — they confuse the AI.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Alert cooldown (minutes)</label>
+        <input type="number" name="cooldown_minutes" value="{{ s.cooldown_minutes }}" min="1" max="720"
+               class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Max frame size (KB)</label>
+        <input type="number" name="max_frame_kb" value="{{ s.max_frame_kb }}" min="50" max="5000" step="50"
+               class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
+      </div>
+    </div>
+
+    <label class="flex items-center gap-3 text-sm">
+      <input type="checkbox" name="notify_email" value="1"
+             {% if s.notify_email %}checked{% endif %}
+             class="h-4 w-4 rounded border-zinc-600 bg-zinc-900" />
+      <span>Also email admins on confirmed failures (with snapshot)</span>
+    </label>
+
+    <div>
+      <div class="text-sm font-medium mb-2">Auto-pause on confirmed failure</div>
+      <p class="text-xs text-zinc-500 mb-3">
+        Off by default. Pauses (never cancels) the print when the AI confirms a
+        failure, so you can inspect and resume or cancel yourself.
+      </p>
+      <div class="space-y-2">
+        {% for code, label in printers %}
+        <label class="flex items-center gap-3 text-sm {% if code not in pausable %}opacity-50{% endif %}">
+          <input type="checkbox" name="autopause_{{ code }}" value="1"
+                 {% if s.autopause.get(code) %}checked{% endif %}
+                 {% if code not in pausable %}disabled{% endif %}
+                 class="h-4 w-4 rounded border-zinc-600 bg-zinc-900" />
+          <span>{{ label }}
+            {% if code not in pausable %}
+            <span class="text-xs text-zinc-500">(pause not supported by this printer's API — alerts only)</span>
+            {% endif %}
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <button type="submit"
+            class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 py-3 font-semibold transition">
+      Save
+    </button>
+  </form>
+
+  {% if sessions %}
+  <div class="mt-8">
+    <h2 class="text-lg font-semibold mb-3">Recent monitoring sessions</h2>
+    <div class="space-y-2">
+      {% for sess in sessions %}
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4 flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="font-medium">{{ sess.printer_code }}</span>
+            {% if sess.verdict == 'failure' %}
+              <span class="px-2 py-0.5 rounded-full text-xs bg-red-900/60 text-red-200">⚠ {{ (sess.failure_type or 'failure')|replace('_', ' ') }}</span>
+            {% elif sess.verdict == 'warning' %}
+              <span class="px-2 py-0.5 rounded-full text-xs bg-amber-900/60 text-amber-200">warning</span>
+            {% elif sess.verdict == 'ok' %}
+              <span class="px-2 py-0.5 rounded-full text-xs bg-emerald-900/60 text-emerald-200">OK</span>
+            {% else %}
+              <span class="px-2 py-0.5 rounded-full text-xs bg-zinc-700 text-zinc-300">{{ sess.verdict or 'no verdict yet' }}</span>
+            {% endif %}
+            {% if sess.confidence is not none %}
+              <span class="text-xs text-zinc-500">{{ '%.0f'|format(sess.confidence * 100) }}%</span>
+            {% endif %}
+            {% if sess.muted %}<span class="text-xs text-zinc-500">🔇 muted</span>{% endif %}
+            {% if sess.auto_paused %}<span class="text-xs text-sky-300">⏸ paused by Watch</span>{% endif %}
+          </div>
+          <div class="text-xs text-zinc-500 mt-1 truncate">
+            {{ sess.frames_sent or 0 }} frames · state {{ sess.state }}{% if sess.cm_errors %} · {{ sess.cm_errors }} CM errors{% endif %}
+            {% if sess.reasoning %} · {{ sess.reasoning }}{% endif %}
+          </div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          {% if sess.request_id %}
+          <a href="/admin/request/{{ sess.request_id }}" class="text-xs text-indigo-400 hover:text-indigo-300">Open</a>
+          {% endif %}
+          {% if not sess.muted and sess.state in ('watching', 'alerted') %}
+          <form method="POST" action="/admin/print-monitor/{{ sess.id }}/mute">
+            <button type="submit" class="text-xs text-zinc-400 hover:text-zinc-200">Mute</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -39,7 +39,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.29.0"
+APP_VERSION = "0.30.0"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -291,6 +291,7 @@ OIDC_DISPLAY_NAME = os.getenv("OIDC_DISPLAY_NAME", "Authentik")
 # Background workers (set false on non-primary replicas to avoid duplicate side effects)
 ENABLE_CREDIT_GRANT_SCHEDULER = os.getenv("ENABLE_CREDIT_GRANT_SCHEDULER", "true").strip().lower() in ("1", "true", "yes")
 ENABLE_USPS_TRACKING_POLLER = os.getenv("ENABLE_USPS_TRACKING_POLLER", "true").strip().lower() in ("1", "true", "yes")
+ENABLE_PRINT_MONITOR = os.getenv("ENABLE_PRINT_MONITOR", "true").strip().lower() in ("1", "true", "yes")
 
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -1575,6 +1576,9 @@ def init_db():
     # Cross-network printer agent tables (e.g. LK5 Pro via Windows PC / Raspberry Pi)
     from app.printer_agent import init_printer_agent_tables
     init_printer_agent_tables(cur)
+    # Printellect Watch — AI camera print-failure monitoring
+    from app.print_monitor import init_print_monitor_tables
+    init_print_monitor_tables(cur)
     # Shipping indexes are created in ensure_migrations() after the column/tables are guaranteed to exist
 
     # ─────────────────────────────────────────────────────────────────────────────
@@ -3130,6 +3134,27 @@ def _startup():
     else:
         logger.info("USPS tracking poller disabled via ENABLE_USPS_TRACKING_POLLER")
 
+    # Start Printellect Watch AI print monitoring (primary replica only; the
+    # runtime on/off switch is the print_monitor_enabled DB setting)
+    if ENABLE_PRINT_MONITOR:
+        import app.print_monitor as _pm
+        _pm.configure(
+            db=db,
+            now_iso=now_iso,
+            get_setting=get_setting,
+            get_bool_setting=get_bool_setting,
+            capture_camera_snapshot=capture_camera_snapshot,
+            is_polling_paused=is_polling_paused,
+            send_push_notification_to_admins=send_push_notification_to_admins,
+            send_email=send_email,
+            parse_email_list=parse_email_list,
+            get_printer_api=get_printer_api,
+            demo_mode=lambda: DEMO_MODE,
+        )
+        _pm.start_print_monitor()
+    else:
+        logger.info("Print monitor disabled via ENABLE_PRINT_MONITOR")
+
 # Mount auth routes
 from app.routes_auth import router as auth_router
 app.include_router(auth_router)
@@ -3252,6 +3277,21 @@ DEFAULT_SETTINGS: Dict[str, str] = {
     "credits_per_rush": "1",
     "credits_auto_grant_day": "1",
     "credits_auto_grant_default_amount": "5",
+
+    # Printellect Watch — AI camera print-failure monitoring (via JCubHub CM)
+    "print_monitor_enabled": "0",
+    "print_monitor_url": "",           # e.g. https://mgmt.jcubhub.com/api/print-monitor/frames
+    "print_monitor_secret": "",        # blank = reuse bug_report_secret
+    "print_monitor_interval_seconds": "60",
+    "print_monitor_warmup_minutes": "10",
+    "print_monitor_max_frame_kb": "1500",
+    "print_monitor_alert_cooldown_minutes": "30",
+    "print_monitor_notify_email": "1",
+    # Per-printer auto-pause on confirmed failure (opt-in; FlashForge-backed
+    # printers cannot pause and ignore this toggle)
+    "print_monitor_autopause_AD5X": "0",
+    "print_monitor_autopause_ADVENTURER_4": "0",
+    "print_monitor_autopause_LK5_PRO": "0",
 }
 
 

@@ -3250,6 +3250,15 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
     from app.payments import is_payments_enabled as _is_payments_enabled
     _payments_enabled = _is_payments_enabled()
 
+    # Latest Printellect Watch AI verdict for the active build (or the request
+    # itself for single-build prints); None when monitoring hasn't run.
+    watch_event = None
+    try:
+        from app.print_monitor import get_latest_event
+        watch_event = get_latest_event(req_dict.get("active_build_id") or rid)
+    except Exception:
+        watch_event = None
+
     response = templates.TemplateResponse("admin_request.html", {
         "request": request,
         "req": req,
@@ -3280,6 +3289,7 @@ def admin_request_detail(request: Request, rid: str, admin=Depends(require_admin
         "max_upload_mb": AUTH_MAX_UPLOAD_MB,
         "camera_url": camera_url,
         "moonraker_available": moonraker_available,
+        "watch_event": watch_event,
         "now": datetime.now().timestamp(),  # For cache-busting
         "accuracy_info": accuracy_info,
         "version": APP_VERSION,

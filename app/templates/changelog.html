@@ -74,12 +74,36 @@
         </p>
       </div>
 
-      <!-- v0.29.0 -->
-      <div id="v0.29.0" class="bg-gradient-to-br from-zinc-900/80 via-emerald-900/30 to-zinc-900/80 border border-emerald-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-emerald-500 mb-4">
+      <!-- v0.30.0 -->
+      <div id="v0.30.0" class="bg-gradient-to-br from-zinc-900/80 via-emerald-900/30 to-zinc-900/80 border border-emerald-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-emerald-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
-          <a href="#v0.29.0" class="px-3 py-1 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-500 transition">v0.29.0</a>
-          <span class="text-zinc-400 text-sm">June 2026</span>
+          <a href="#v0.30.0" class="px-3 py-1 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-500 transition">v0.30.0</a>
+          <span class="text-zinc-400 text-sm">July 2026</span>
           <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Printellect Watch — AI print-failure monitoring</h3>
+        <p class="text-sm text-zinc-400 mb-4">While a print runs, the printer camera is checked about once a minute and an AI vision model looks for spaghetti, bed detachment, and other failures. Confirmed failures alert you with a snapshot — and can optionally pause the print.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">✨ What's new</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>A background <strong>monitoring worker</strong> watches every actively printing build — skipping the first layers and frozen camera feeds — and never disturbs a print when the AI service is unreachable.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>New <strong>Watch</strong> admin page: interval, warm-up, cooldown, email toggle, and per-printer auto-pause — every setting editable in the UI.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>The <strong>Live Camera Feed</strong> card shows the latest AI verdict badge with confidence, plus a <strong>Mute AI</strong> button for known-ugly-but-fine prints.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>Opt-in <strong>auto-pause</strong> on confirmed failures (pause, never cancel) for printers whose API supports it.</span></li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">📝 Notes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-zinc-500 mt-1">•</span><span>Requires JCubHub Central Management with a vision model on the local Ollama host; alerts only fire on confirmed failures with a per-print cooldown.</span></li>
+        </ul>
+      </div>
+
+      <!-- v0.29.0 -->
+      <div id="v0.29.0" class="bg-gradient-to-br from-zinc-900/80 via-indigo-900/20 to-zinc-900/80 border border-indigo-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-indigo-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.29.0" class="px-3 py-1 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-500 transition">v0.29.0</a>
+          <span class="text-zinc-400 text-sm">June 2026</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Printer device page: indicators, controls &amp; reliable cancel</h3>

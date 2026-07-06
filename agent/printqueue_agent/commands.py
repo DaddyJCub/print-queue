@@ -80,6 +80,19 @@ class CommandExecutor:
                 pass
 
     # ── handlers ──────────────────────────────────────────────────
+    def _do_pause_print(self, payload, cmd_id) -> Dict[str, Any]:
+        """Pause the running print (sent by Printellect Watch on a confirmed
+        failure). Pause only — resuming/canceling stays a human decision."""
+        printer = self.agent.printer
+        if not printer or not printer.connected:
+            raise RuntimeError("Printer is offline")
+        printer.pause_print()
+        log.warning(
+            "⏸️ Print paused by server command (reason: %s)",
+            payload.get("reason", "unspecified"),
+        )
+        return {"paused": True, "reason": payload.get("reason")}
+
     def _do_get_logs(self, payload, cmd_id) -> Dict[str, Any]:
         limit = int(payload.get("limit", 200))
         return {"logs": recent_logs(limit), "agent_version": self.agent.cfg.agent_version}
