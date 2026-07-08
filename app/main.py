@@ -409,6 +409,20 @@ templates.env.globals["new_request_url"] = _new_request_url
 # NOTE: app/static must exist in your repo (can be empty with a .gitkeep)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+# ─────────────────────────── HEALTH & VERSION ───────────────────────────
+# Unauthenticated liveness/version probes for Docker healthchecks, Uptime Kuma,
+# and cross-app version reporting. Kept intentionally cheap (no DB access) so a
+# health probe never depends on downstream state. Shape matches the other
+# JCubHub apps: {"status": "ok", "version": ...} and {"version": ..., "name": ...}.
+@app.get("/api/health")
+async def api_health():
+    return JSONResponse({"status": "ok", "version": APP_VERSION})
+
+
+@app.get("/api/version")
+async def api_version():
+    return JSONResponse({"version": APP_VERSION, "name": APP_TITLE})
+
 # ─────────────────────────── ERROR HANDLERS ───────────────────────────
 # Custom error pages for better UX
 
