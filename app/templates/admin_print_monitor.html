@@ -113,6 +113,90 @@
     </button>
   </form>
 
+  <!-- ─────────────── Printer error alerts (Klipper/Moonraker) ─────────────── -->
+  <div class="mt-10 mb-6">
+    <h1 class="text-2xl font-bold">🚨 Printer error alerts</h1>
+    <p class="text-zinc-400 mt-1 text-sm">
+      Watches every Klipper/Moonraker (ZMod) printer and alerts you the moment
+      the machine reports a fault — MCU shutdown, thermal runaway, a
+      disconnected thermistor, "Lost communication with MCU", a Klipper error,
+      an aborted print, or a filament runout/jam. Works even when the AI camera
+      monitor is off.
+    </p>
+  </div>
+
+  <form method="POST" action="/admin/printer-error-alerts"
+        class="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-6 space-y-5">
+
+    <label class="flex items-center gap-3 text-sm">
+      <input type="checkbox" name="err_enabled" value="1"
+             {% if err.enabled %}checked{% endif %}
+             class="h-4 w-4 rounded border-zinc-600 bg-zinc-900" />
+      <span class="font-medium">Enable printer error alerts</span>
+    </label>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1">Check every (seconds)</label>
+        <input type="number" name="err_interval_seconds" value="{{ err.interval_seconds }}" min="10" max="300" step="5"
+               class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
+        <p class="text-xs text-zinc-500 mt-1">How often to poll each printer for faults. 20s is a good default.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Reminder cooldown (minutes)</label>
+        <input type="number" name="err_cooldown_minutes" value="{{ err.cooldown_minutes }}" min="1" max="720"
+               class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
+        <p class="text-xs text-zinc-500 mt-1">While a fault persists, re-alert this often. First alert is always immediate.</p>
+      </div>
+    </div>
+
+    <label class="flex items-center gap-3 text-sm">
+      <input type="checkbox" name="err_notify_email" value="1"
+             {% if err.notify_email %}checked{% endif %}
+             class="h-4 w-4 rounded border-zinc-600 bg-zinc-900" />
+      <span>Also email admins on errors</span>
+    </label>
+
+    <label class="flex items-center gap-3 text-sm">
+      <input type="checkbox" name="err_notify_recovery" value="1"
+             {% if err.notify_recovery %}checked{% endif %}
+             class="h-4 w-4 rounded border-zinc-600 bg-zinc-900" />
+      <span>Send a "recovered" notification when the printer returns to normal</span>
+    </label>
+
+    <button type="submit"
+            class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 py-3 font-semibold transition">
+      Save
+    </button>
+  </form>
+
+  {% if err_events %}
+  <div class="mt-8">
+    <h2 class="text-lg font-semibold mb-3">Recent printer errors</h2>
+    <div class="space-y-2">
+      {% for ev in err_events %}
+      <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-xl p-4">
+        <div class="flex items-center gap-2 text-sm">
+          <span class="font-medium">{{ ev.printer_code }}</span>
+          {% if ev.action == 'recovered' %}
+            <span class="px-2 py-0.5 rounded-full text-xs bg-emerald-900/60 text-emerald-200">✅ recovered</span>
+          {% elif ev.severity == 'warning' %}
+            <span class="px-2 py-0.5 rounded-full text-xs bg-amber-900/60 text-amber-200">⚠ {{ (ev.category or 'warning')|replace('_', ' ') }}</span>
+          {% else %}
+            <span class="px-2 py-0.5 rounded-full text-xs bg-red-900/60 text-red-200">🚨 {{ (ev.category or 'error')|replace('_', ' ') }}</span>
+          {% endif %}
+          {% if ev.action == 'reminded' %}<span class="text-xs text-zinc-500">🔁 reminder</span>{% endif %}
+          <span class="text-xs text-zinc-500 ml-auto">{{ ev.created_at }}</span>
+        </div>
+        {% if ev.message %}
+        <div class="text-xs text-zinc-400 mt-1 break-words">{{ ev.message }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   {% if sessions %}
   <div class="mt-8">
     <h2 class="text-lg font-semibold mb-3">Recent monitoring sessions</h2>

@@ -9,6 +9,16 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.32.0
+### Overview / Highlights
+- **Printer error alerts.** Printellect now watches every Klipper/Moonraker (ZMod) printer for faults and alerts you the moment the machine reports one — so a jam, runout, or a printer that emergency-stopped no longer sits unnoticed on the bed.
+
+### Enhancements
+- New background fault watcher polls each Moonraker-backed printer (default every 20s) and detects **any** reported error via Klipper's own signals: MCU/board shutdowns, thermal runaway, a disconnected thermistor ("ADC out of range"), "Lost communication with MCU", Klipper config/startup errors, prints aborted with an error, and filament **runout/jam** pauses from the IFS/runout sensor.
+- Alerts go out as an **admin push notification and (optionally) email**, with a friendly plain-English headline plus the printer's raw error text so nothing is lost.
+- **Edge-triggered with a cooldown**: one alert when a fault first appears, a reminder every N minutes while it persists, and a "recovered" notice when the printer returns to normal — no per-poll spam.
+- Configurable on the **Printellect Watch** admin page (enable, poll interval, reminder cooldown, email on/off, recovery notice on/off), with a rolling log of recent printer errors. Off by default; runs independently of the AI camera monitor. Per-replica env gate `ENABLE_PRINTER_ERROR_ALERTS`.
+
 ## 0.31.1
 ### Bug Fixes
 - **Watch stops watching once a print is actually done.** Previously, if a build stayed marked as "printing" after it finished or was cancelled at the machine, Watch kept grabbing the (now idle) camera every minute and sending empty-bed frames to the AI — so a session appeared to keep "monitoring" a print that wasn't running. Watch now cross-checks the printer's live status and stops capturing (and ends the session) when the printer clearly isn't printing, while staying safe when the live status is briefly unknown.
