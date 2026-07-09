@@ -72,6 +72,10 @@ def _configure_monitor():
         get_printer_api=lambda code: _PausableAPI() if code == "AD5X" else None,
         demo_mode=lambda: False,
     )
+    # Optional live-status gate deps are opt-in per test; keep them out of the
+    # shared _deps so leakage between tests can't silently stop monitoring.
+    pm._deps.pop("get_cached_printer_status", None)
+    pm._deps.pop("get_printer_last_seen", None)
     yield {"calls": calls, "settings": settings}
 
 
@@ -148,6 +152,81 @@ def test_dedupe_targets_by_printer_keeps_newest():
     assert len(result) == 2
     assert by_printer["AD5X"] == "b"  # most recently started
     assert by_printer["ADVENTURER_4"] == "d"
+
+
+# ── live-status gate ─────────────────────────────────────────────────────────
+
+def test_live_is_printing_unknown_without_helper(_configure_monitor):
+    # No cache helper injected → cannot tell → None (keep monitoring).
+    assert pm._live_is_printing("AD5X") is None
+
+
+def test_live_is_printing_reads_fresh_cache(_configure_monitor):
+    cache = {"AD5X": {"is_printing": True, "status": "PRINTING"}}
+    pm.configure(
+        get_cached_printer_status=lambda code: cache.get(code),
+        get_printer_last_seen=lambda code: now_iso(),
+    )
+    assert pm._live_is_printing("AD5X") is True
+
+    cache["AD5X"] = {"is_printing": False, "status": "READY"}
+    assert pm._live_is_printing("AD5X") is False
+
+    cache["AD5X"] = {"is_printing": False, "status": "PAUSED"}
+    assert pm._live_is_printing("AD5X") is True  # a paused print is still watched
+
+
+def test_live_is_printing_ignores_stale_cache(_configure_monitor):
+    cache = {"AD5X": {"is_printing": False, "status": "READY"}}
+    old = _iso(datetime.now(timezone.utc) - timedelta(minutes=10))
+    pm.configure(
+        get_cached_printer_status=lambda code: cache.get(code),
+        get_printer_last_seen=lambda code: old,
+    )
+    # Cache too old to trust → None so we never wrongly stop a real print.
+    assert pm._live_is_printing("AD5X") is None
+
+
+async def test_process_target_ends_session_when_not_printing(_configure_monitor):
+    captured: list[str] = []
+    cache = {"AD5X": {"is_printing": False, "status": "READY"}}
+    pm.configure(
+        capture_camera_snapshot=lambda code: captured.append(code),
+        get_cached_printer_status=lambda code: cache.get(code),
+        get_printer_last_seen=lambda code: now_iso(),
+    )
+    target = _target(str(uuid.uuid4()), printer="AD5X")
+    pm._load_or_create_session(target)  # a live "watching" session exists
+
+    await pm._process_target(target, 60)
+
+    assert captured == []  # no camera grab for an idle bed
+    session = pm._existing_session(target["session_id"])
+    assert session is not None and session["state"] == "ended"
+
+
+async def test_process_target_captures_when_live_status_confirms_printing(_configure_monitor):
+    captured: list[str] = []
+
+    async def _capture(code):
+        captured.append(code)
+        return b""  # empty → capture_frame yields no frame, nothing submitted
+
+    cache = {"AD5X": {"is_printing": True, "status": "PRINTING"}}
+    pm.configure(
+        capture_camera_snapshot=_capture,
+        get_cached_printer_status=lambda code: cache.get(code),
+        get_printer_last_seen=lambda code: now_iso(),
+    )
+    target = _target(str(uuid.uuid4()), printer="AD5X")
+
+    await pm._process_target(target, 60)
+
+    # Live status agrees it's printing, so the gate did not short-circuit and we
+    # proceeded to attempt a capture.
+    assert captured == ["AD5X"]
+    session = pm._existing_session(target["session_id"])
+    assert session is not None and session["state"] != "ended"
 
 
 # ── HMAC submission ──────────────────────────────────────────────────────────
