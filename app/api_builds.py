@@ -1113,8 +1113,84 @@ def admin_start_next_build(
     result = start_build(next_build["id"], printer, comment)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to start build"))
-    
+
     return RedirectResponse(url=f"/admin/request/{rid}", status_code=303)
+
+
+@router.post("/admin/request/{rid}/pause")
+def admin_pause_request(
+    request: Request,
+    rid: str,
+    _=Depends(require_permission("manage_queue"))
+):
+    """Set aside a multi-build request mid-run so the printer is free for another job.
+
+    Sets the sticky ``paused_at`` flag and re-syncs. If a build is still actively
+    PRINTING, the request stays IN_PROGRESS until that build finishes, then the
+    poller stops instead of auto-starting the next build (see main.py build-poll).
+    Remaining READY/PENDING builds are preserved for later resume.
+    """
+    conn = db()
+    req = conn.execute("SELECT id, status FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    # Only meaningful when there is remaining work to set aside.
+    remaining = conn.execute(
+        "SELECT COUNT(*) AS n FROM builds WHERE request_id = ? AND status IN ('READY', 'PENDING')",
+        (rid,)
+    ).fetchone()
+    if not remaining or remaining["n"] == 0:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Nothing to set aside — no remaining builds")
+
+    old_status = req["status"]
+    now = now_iso()
+    conn.execute("UPDATE requests SET paused_at = ?, updated_at = ? WHERE id = ?", (now, now, rid))
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now, old_status, "PAUSED", "Set aside by admin to free the printer")
+    )
+    conn.commit()
+    conn.close()
+
+    sync_request_status_from_builds(rid)
+    return RedirectResponse(url="/admin", status_code=303)
+
+
+@router.post("/admin/request/{rid}/resume")
+def admin_resume_request(
+    request: Request,
+    rid: str,
+    _=Depends(require_permission("manage_queue"))
+):
+    """Resume a previously set-aside request, returning it to the active queue.
+
+    Clears the sticky ``paused_at`` flag and re-syncs so its remaining builds can
+    be started (manually or via auto-match). Does not start a build itself.
+    """
+    conn = db()
+    req = conn.execute("SELECT id, status, paused_at FROM requests WHERE id = ?", (rid,)).fetchone()
+    if not req:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Request not found")
+    if not req["paused_at"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Request is not set aside")
+
+    old_status = req["status"]
+    now = now_iso()
+    conn.execute("UPDATE requests SET paused_at = NULL, updated_at = ? WHERE id = ?", (now, rid))
+    conn.execute(
+        "INSERT INTO status_events (id, request_id, created_at, from_status, to_status, comment) VALUES (?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), rid, now, old_status, "RESUMED", "Resumed by admin")
+    )
+    conn.commit()
+    conn.close()
+
+    new_status = sync_request_status_from_builds(rid)
+    return RedirectResponse(url="/admin", status_code=303)
 
 
 @router.post("/admin/build/{build_id}/start")

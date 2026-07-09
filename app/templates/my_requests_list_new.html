@@ -583,6 +583,7 @@
   'APPROVED': 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300',
   'PRINTING': 'bg-amber-500/20 border-amber-500/50 text-amber-300',
   'IN_PROGRESS': 'bg-amber-500/20 border-amber-500/50 text-amber-300',
+  'PAUSED': 'bg-amber-500/20 border-amber-500/50 text-amber-300',
   'DONE': 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300',
   'PICKED_UP': 'bg-purple-500/20 border-purple-500/50 text-purple-300',
   'REJECTED': 'bg-red-500/20 border-red-500/50 text-red-300',
@@ -595,6 +596,7 @@
   'APPROVED': '✓',
   'PRINTING': '🖨️',
   'IN_PROGRESS': '🖨️',
+  'PAUSED': '⏸️',
   'DONE': '✅',
   'PICKED_UP': '📦',
   'REJECTED': '❌',
@@ -734,7 +736,7 @@
 
   <!-- Other requests (collapsible sections) -->
   {% set other_requests = requests_list | rejectattr('status', 'in', ['DONE', 'PRINTING', 'IN_PROGRESS']) | list %}
-  {% set active_requests = other_requests | selectattr('status', 'in', ['NEW', 'NEEDS_INFO', 'APPROVED']) | list %}
+  {% set active_requests = other_requests | selectattr('status', 'in', ['NEW', 'NEEDS_INFO', 'APPROVED', 'PAUSED']) | list %}
   {% set closed_requests = other_requests | selectattr('status', 'in', ['PICKED_UP', 'REJECTED', 'CANCELLED']) | list %}
   
   <!-- Active Requests (NEW, NEEDS_INFO, APPROVED) -->
