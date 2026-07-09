@@ -9,6 +9,10 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.30.3
+### Bug Fixes
+- **Watch stops watching once a print is actually done.** Previously, if a build stayed marked as "printing" after it finished or was cancelled at the machine, Watch kept grabbing the (now idle) camera every minute and sending empty-bed frames to the AI — so a session appeared to keep "monitoring" a print that wasn't running. Watch now cross-checks the printer's live status and stops capturing (and ends the session) when the printer clearly isn't printing, while staying safe when the live status is briefly unknown.
+
 ## 0.30.2
 ### Bug Fixes
 - **Watch now monitors one print per printer per cycle.** When several jobs are queued as PRINTING on the same printer, Watch was capturing and analyzing the same camera view once per job (e.g. 7 near-identical frames a minute for one printer), needlessly loading the AI model. It now picks the single most-recently-started job per printer — matching physical reality (one camera, one active print).

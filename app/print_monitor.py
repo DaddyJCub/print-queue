@@ -42,6 +42,10 @@ _SUBMIT_TIMEOUT = 30.0
 # Frames older than this multiple of the poll interval are considered stale
 # (agent offline / camera frozen) and are not submitted.
 _AGENT_SNAPSHOT_MAX_AGE_FACTOR = 2.0
+# The live printer-status cache must be at least this fresh for us to trust it
+# when deciding a build is no longer actually printing. Older than this and we
+# fall back to the build-table status (fail-safe: keep monitoring).
+_LIVE_STATUS_MAX_AGE_SECONDS = 300.0
 
 # Injected from app.main at startup via configure() — avoids a circular import,
 # same pattern as app.bug_reporter.
@@ -54,6 +58,10 @@ def configure(**deps: Callable) -> None:
     db, now_iso, get_setting, get_bool_setting, capture_camera_snapshot,
     is_polling_paused, send_push_notification_to_admins, send_email,
     parse_email_list, get_printer_api, demo_mode (0-arg -> bool)
+
+    Optional keys (defensive live-status gate; monitoring falls back to the
+    build-table status when absent): get_cached_printer_status,
+    get_printer_last_seen.
     """
     _deps.update(deps)
 
@@ -218,6 +226,43 @@ def get_active_targets() -> List[Dict[str, Any]]:
     return targets
 
 
+def _live_is_printing(printer_code: str) -> Optional[bool]:
+    """Defensive cross-check: is the printer *actually* printing right now?
+
+    ``get_active_targets`` trusts the build/request table, but a build can get
+    stuck in PRINTING (finished or cancelled at the machine without the status
+    transitioning), which would make us keep grabbing the camera of an idle bed
+    forever. The status poller keeps a fresh live-status cache; consult it.
+
+    Returns True/False when we have a fresh reading, or None when we cannot tell
+    (no cache, cache too old, helper not injected) — callers treat None as
+    "keep monitoring" so a cold cache never silently stops a real print.
+    """
+    getter = _deps.get("get_cached_printer_status")
+    if getter is None:
+        return None
+    status = getter(printer_code)
+    if not status:
+        return None
+
+    last_seen_getter = _deps.get("get_printer_last_seen")
+    if last_seen_getter is not None:
+        age = _seconds_since(last_seen_getter(printer_code))
+        if age is None or age > _LIVE_STATUS_MAX_AGE_SECONDS:
+            return None  # stale cache — don't act on it
+
+    # A paused print is still an active job we should watch; only a clearly
+    # idle/finished machine counts as "not printing".
+    if status.get("is_printing"):
+        return True
+    machine = str(status.get("status") or "").upper()
+    if machine in ("PAUSED", "BUILDING", "PRINTING", "BUILDING_FROM_SD"):
+        return True
+    if machine in ("READY", "COMPLETE", "BUILD_COMPLETE", "CANCELLED", "ERROR", "OFFLINE"):
+        return False
+    return None  # unknown machine state — stay safe, keep monitoring
+
+
 def dedupe_targets_by_printer(targets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """One target per printer per cycle.
 
@@ -326,6 +371,18 @@ async def submit_frame(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 # ------------------------
 # Session persistence
 # ------------------------
+
+def _existing_session(session_id: str) -> Optional[Dict[str, Any]]:
+    """Return the session row if it already exists, without creating one."""
+    conn = _d("db")()
+    try:
+        row = conn.execute(
+            "SELECT * FROM print_monitor_sessions WHERE id = ?", (session_id,)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
 
 def _load_or_create_session(target: Dict[str, Any]) -> Dict[str, Any]:
     conn = _d("db")()
@@ -440,16 +497,21 @@ def mute_session(session_id: str) -> bool:
 # Verdict handling
 # ------------------------
 
-def _minutes_since(iso_ts: Optional[str]) -> Optional[float]:
+def _seconds_since(iso_ts: Optional[str]) -> Optional[float]:
     if not iso_ts:
         return None
     try:
         ts = datetime.fromisoformat(str(iso_ts).replace("Z", "+00:00"))
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        return (datetime.now(timezone.utc) - ts).total_seconds() / 60.0
+        return (datetime.now(timezone.utc) - ts).total_seconds()
     except (TypeError, ValueError):
         return None
+
+
+def _minutes_since(iso_ts: Optional[str]) -> Optional[float]:
+    seconds = _seconds_since(iso_ts)
+    return None if seconds is None else seconds / 60.0
 
 
 def _should_alert(session: Dict[str, Any]) -> bool:
@@ -600,9 +662,32 @@ async def _process_target(target: Dict[str, Any], interval_s: int) -> None:
     if _d("is_polling_paused")(printer):
         return
 
+    # Defensive: the build row says PRINTING, but if the printer's live status
+    # says it clearly isn't printing (finished/cancelled at the machine, leaving
+    # a stuck PRINTING build), stop watching an idle bed. End the session so it
+    # drops out of CM's active list too. Unknown/stale status -> keep watching.
+    live = _live_is_printing(printer)
+    if live is False:
+        existing = _existing_session(target["session_id"])
+        if existing and existing.get("state") not in ("ended", "muted"):
+            _update_session(target["session_id"], state="ended")
+            logger.info(
+                "print_monitor ending session %s: printer %s is no longer printing",
+                target["session_id"], printer,
+            )
+        return
+
     session = _load_or_create_session(target)
     if session.get("muted"):
         return
+    if session.get("state") == "ended":
+        # Previously ended, but the printer is printing again (a genuinely new
+        # job on the same stuck build id) — resume watching. If we only have an
+        # unknown/stale reading, leave it ended rather than second-guessing.
+        if live is not True:
+            return
+        _update_session(session["id"], state="watching")
+        session["state"] = "watching"
 
     frame = await capture_frame(printer, interval_s)
     if not frame:

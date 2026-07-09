@@ -39,7 +39,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.30.2"
+APP_VERSION = "0.30.3"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -3145,6 +3145,8 @@ def _startup():
             get_bool_setting=get_bool_setting,
             capture_camera_snapshot=capture_camera_snapshot,
             is_polling_paused=is_polling_paused,
+            get_cached_printer_status=get_cached_printer_status,
+            get_printer_last_seen=get_printer_last_seen,
             send_push_notification_to_admins=send_push_notification_to_admins,
             send_email=send_email,
             parse_email_list=parse_email_list,
