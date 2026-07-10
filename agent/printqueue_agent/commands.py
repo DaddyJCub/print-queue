@@ -101,6 +101,10 @@ class CommandExecutor:
         log.info("👋 IDENTIFY — this is agent %s", self.agent.cfg.agent_id)
         return {"identified": True}
 
+    def _do_set_print_mode(self, payload, cmd_id) -> Dict[str, Any]:
+        mode = self.agent.set_print_mode(payload.get("mode", ""))
+        return {"print_mode": mode}
+
     def _do_get_host_info(self, payload, cmd_id) -> Dict[str, Any]:
         def _run(args, timeout=8):
             try:
