@@ -24,6 +24,7 @@ agent backs off instead of interfering.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -120,10 +121,18 @@ class SerialPrinter:
         raise RuntimeError(f"Could not communicate with printer on {self.port}: {last_err}")
 
     def _open_and_handshake(self, baud: int) -> None:
+        # exclusive=True (POSIX) makes a *second* opener fail cleanly instead of
+        # both processes sharing the port and corrupting each other's traffic
+        # ("device reports readiness to read but returned no data / multiple
+        # access on port"). Not supported on Windows, so guard it.
+        kwargs = {"timeout": 2, "write_timeout": 15}
+        if os.name == "posix":
+            kwargs["exclusive"] = True
         try:
-            self._ser = serial.Serial(self.port, baud, timeout=2, write_timeout=15)
+            self._ser = serial.Serial(self.port, baud, **kwargs)
         except Exception as e:
-            raise RuntimeError(f"Could not open {self.port} (in use by another program?): {e}") from e
+            raise RuntimeError(f"Could not open {self.port} (already in use by another "
+                               f"program / a second agent?): {e}") from e
         # The board resets when the port opens (DTR); wait for it to boot.
         self._wait_for_boot(timeout=8.0)
         self._ser.reset_input_buffer()
