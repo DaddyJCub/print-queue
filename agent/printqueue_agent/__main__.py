@@ -15,6 +15,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Print-queue printer agent (LK5 Pro / Marlin)")
     parser.add_argument("--config", default="config.json", help="Path to config.json")
     parser.add_argument("--list-ports", action="store_true", help="List serial ports and exit")
+    parser.add_argument("--doctor", action="store_true",
+                        help="Run connection diagnostics (pinpoints why the printer isn't talking) and exit")
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args(argv)
 
@@ -38,6 +40,11 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as e:
         print(f"Config error: {e}", file=sys.stderr)
         return 2
+
+    if args.doctor:
+        from .diagnostics import run as run_doctor
+        print(run_doctor(cfg))
+        return 0
 
     Agent(cfg, config_path=args.config).run_forever()
     return 0
