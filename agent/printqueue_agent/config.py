@@ -58,6 +58,14 @@ class AgentConfig:
     # Printer / serial
     serial_port: str = "auto"      # "auto" picks the first available port
     baud_rate: int = 115200
+    # How prints run:
+    #   "sd"     – upload the file to the printer's SD then print from it. The
+    #              print survives an agent/host restart, but the upfront SD upload
+    #              over serial is slow (~1 KB/s).
+    #   "stream" – host-stream the gcode straight to the printer; printing starts
+    #              in seconds (no upload), but the agent must stay connected for
+    #              the whole print.
+    print_mode: str = "sd"
 
     # Loop timing
     poll_interval_s: int = 5
@@ -99,6 +107,7 @@ class AgentConfig:
             verify_tls=_as_bool(os.getenv("PQ_VERIFY_TLS"), data.get("verify_tls", True)),
             serial_port=os.getenv("PQ_SERIAL_PORT", data.get("serial_port", "auto")),
             baud_rate=int(os.getenv("PQ_BAUD", data.get("baud_rate", 115200))),
+            print_mode=(os.getenv("PQ_PRINT_MODE", data.get("print_mode", "sd")) or "sd").strip().lower(),
             poll_interval_s=int(data.get("poll_interval_s", 5)),
             heartbeat_interval_s=int(data.get("heartbeat_interval_s", 15)),
             long_poll=_as_bool(os.getenv("PQ_LONG_POLL"), data.get("long_poll", True)),

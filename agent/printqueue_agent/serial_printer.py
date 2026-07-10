@@ -361,6 +361,69 @@ class SerialPrinter:
         self.send_command("M24", timeout=15)
         log.info("SD print started: %s", SD_FILENAME)
 
+    def stream_print(self, gcode_path: str,
+                     on_progress: Optional[Callable[[int], None]] = None,
+                     should_continue: Optional[Callable[[], bool]] = None,
+                     paused: Optional[Callable[[], bool]] = None) -> bool:
+        """Host-stream a gcode file straight to the printer (no SD upload).
+
+        The printer prints as we send; Marlin's per-line ``ok`` is the flow
+        control. Far faster to *start* than an SD upload (no upfront copy), but
+        the connection must stay up for the whole print. Returns True if the file
+        was fully sent, False if canceled via ``should_continue``.
+
+        We do NOT hold the port lock across the whole print — each line self-locks
+        — so status/heartbeat queries can interleave (temps stay live) exactly as
+        OctoPrint polls during a print.
+        """
+        import os
+
+        total = os.path.getsize(gcode_path)
+        sent = 0
+        lines = 0
+        last_pct = -1
+        start = time.time()
+        last_log = start
+        next_log_pct = 0
+
+        log.info("Streaming %s to printer (%d bytes) — prints as it sends.",
+                 os.path.basename(gcode_path), total)
+        with self._lock:
+            self._line_no = 0
+            self.send_command("M110 N0", timeout=15)
+
+        with open(gcode_path, "r", errors="ignore") as fh:
+            for raw in fh:
+                # Hold here while paused (the printer drains its planner buffer
+                # then idles at temp); status queries still interleave meanwhile.
+                while paused is not None and paused():
+                    if should_continue is not None and not should_continue():
+                        break
+                    time.sleep(0.3)
+                if should_continue is not None and not should_continue():
+                    log.info("Stream print canceled at %d%%", last_pct)
+                    return False
+                line = raw.split(";", 1)[0].strip()
+                sent += len(raw)
+                if not line:
+                    continue
+                # Heating/homing lines (M109/M190/G28) can block for minutes;
+                # _wait_ok tolerates the 'busy' keepalive, so a long timeout is safe.
+                self.send_command(line, timeout=600)
+                lines += 1
+                pct = int(sent * 100 / total) if total else 0
+                if on_progress and pct != last_pct:
+                    last_pct = pct
+                    on_progress(pct)
+                now = time.time()
+                if pct >= next_log_pct or now - last_log >= 20:
+                    log.info("Print %2d%% — %d/%d bytes, %d lines sent", pct, sent, total, lines)
+                    last_log = now
+                    next_log_pct = (pct // 10 + 1) * 10
+        dur = time.time() - start
+        log.info("Stream print finished: %d lines, %d bytes in %.0fs", lines, sent, dur)
+        return True
+
     def enable_auto_reports(self, temp_interval_s: int = 5, sd_interval_s: int = 5) -> None:
         """Ask Marlin to stream temp/SD reports so monitoring is low-overhead."""
         try:

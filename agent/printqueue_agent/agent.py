@@ -297,17 +297,43 @@ class Agent:
                 self.client.update_job(job_id, "queued")
                 return
 
-            self.client.update_job(job_id, "uploading", progress=0)
-            self.printer.upload_to_sd(
-                tmp_path,
-                on_progress=lambda p: self._safe_update(job_id, "uploading", progress=p),
-            )
+            if (getattr(self.cfg, "print_mode", "sd") or "sd").lower() == "stream":
+                # Host-stream directly (no slow SD upload); prints as it sends.
+                self.printer.enable_auto_reports(self.cfg.heartbeat_interval_s, self.cfg.poll_interval_s)
+                self.client.update_job(job_id, "printing", progress=0)
+                # Throttle the cancel check: it's called per line, but each is a
+                # server round-trip, so only re-check every few seconds.
+                cc = {"t": 0.0, "canceled": False}
 
-            self.printer.start_sd_print()
-            self.printer.enable_auto_reports(self.cfg.heartbeat_interval_s, self.cfg.poll_interval_s)
-            self.client.update_job(job_id, "printing", progress=0)
+                def _still_wanted() -> bool:
+                    now = time.time()
+                    if now - cc["t"] >= 5:
+                        cc["t"] = now
+                        cc["canceled"] = self._job_canceled(job_id)
+                    return not cc["canceled"]
 
-            self._monitor_print(job_id)
+                completed = self.printer.stream_print(
+                    tmp_path,
+                    on_progress=lambda p: self._safe_update(job_id, "printing", progress=p),
+                    should_continue=_still_wanted,
+                )
+                if completed:
+                    self.client.update_job(job_id, "completed", progress=100)
+                else:
+                    self.printer.abort_print()
+                    self.client.update_job(job_id, "canceled")
+            else:
+                self.client.update_job(job_id, "uploading", progress=0)
+                self.printer.upload_to_sd(
+                    tmp_path,
+                    on_progress=lambda p: self._safe_update(job_id, "uploading", progress=p),
+                )
+
+                self.printer.start_sd_print()
+                self.printer.enable_auto_reports(self.cfg.heartbeat_interval_s, self.cfg.poll_interval_s)
+                self.client.update_job(job_id, "printing", progress=0)
+
+                self._monitor_print(job_id)
         except Exception as e:
             log.exception("Job %s failed: %s", job_id, e)
             try:
