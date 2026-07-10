@@ -64,20 +64,46 @@ def make_handler(controller, api_key: str):
                 key = (q.get("apikey") or [""])[0]
             return key == api_key
 
+        def _write(self, data: bytes) -> None:
+            # The browser polls constantly and often closes a connection before we
+            # finish writing; that's normal, so swallow disconnects quietly.
+            try:
+                self.wfile.write(data)
+            except (BrokenPipeError, ConnectionError):
+                pass
+
         def _send_json(self, obj: Any, status: int = 200) -> None:
             body = json.dumps(obj).encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+            except (BrokenPipeError, ConnectionError):
+                return
+            self._write(body)
 
         def _send_bytes(self, data: bytes, content_type: str, status: int = 200) -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(data)))
+                # Never cache: the device page embeds the current API key, so a stale
+                # cached copy would keep sending an old key and get 401s.
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+            except (BrokenPipeError, ConnectionError):
+                return
+            self._write(data)
+
+        def _unauthorized(self) -> None:
+            # Drain any request body so HTTP/1.1 keep-alive doesn't desync, log it
+            # (visible via `get_logs` / journalctl), then 401.
+            self._read_body()
+            log.warning("Unauthorized %s %s from %s (bad/again missing API key)",
+                        self.command, self.path, self.client_address[0])
+            self._send_json({"error": "unauthorized"}, status=401)
 
         def _read_body(self) -> bytes:
             length = int(self.headers.get("Content-Length", 0) or 0)
@@ -129,6 +155,8 @@ def make_handler(controller, api_key: str):
                 return self._send_json({"error": "not found"}, status=404)
             except ControllerError as e:
                 return self._err(e)
+            except (BrokenPipeError, ConnectionError):
+                return  # client went away mid-response; nothing to do
             except Exception as e:  # pragma: no cover - defensive
                 log.exception("UI GET %s failed", path)
                 return self._send_json({"error": str(e)}, status=500)
@@ -136,7 +164,7 @@ def make_handler(controller, api_key: str):
         def do_DELETE(self):
             path = urlparse(self.path).path
             if not self._authed():
-                return self._send_json({"error": "unauthorized"}, status=401)
+                return self._unauthorized()
             try:
                 if path.startswith("/api/files/"):
                     controller.delete_file(path[len("/api/files/"):])
@@ -148,7 +176,7 @@ def make_handler(controller, api_key: str):
         def do_POST(self):
             path = urlparse(self.path).path
             if not self._authed():
-                return self._send_json({"error": "unauthorized"}, status=401)
+                return self._unauthorized()
             try:
                 # OctoPrint upload: multipart, optional ?print / print=true field.
                 if path == "/api/files/local":
@@ -210,6 +238,8 @@ def make_handler(controller, api_key: str):
                 return self._send_json({"error": "not found"}, status=404)
             except ControllerError as e:
                 return self._err(e)
+            except (BrokenPipeError, ConnectionError):
+                return  # client went away mid-response; nothing to do
             except Exception as e:  # pragma: no cover - defensive
                 log.exception("UI POST %s failed", path)
                 return self._send_json({"error": str(e)}, status=500)

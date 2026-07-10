@@ -82,14 +82,19 @@ class AgentPrinterController:
     # ── state ─────────────────────────────────────────────────────
     def state(self) -> Dict[str, Any]:
         printer = self.agent.printer
-        if printer and printer.connected:
+        connected = bool(printer and printer.connected)
+        # During an upload the serial lock is held for the whole transfer, so
+        # never call query_status() then — it would block this request for
+        # minutes. Report the cached upload progress instead.
+        if self._upload_pct is not None:
+            st = {"state": "uploading", "progress": self._upload_pct}
+        elif self.agent.print_active.is_set():
+            st = {"state": "printing"}
+        elif connected:
             st = printer.query_status().as_dict()
         else:
             st = {"state": "offline"}
-        if self._upload_pct is not None:
-            st["state"] = "uploading"
-            st["progress"] = self._upload_pct
-        st["connected"] = bool(printer and printer.connected)
+        st["connected"] = connected
         # The running agent's version, so the device page can detect a restart to
         # new code (version changed since the page loaded) and reload itself.
         st["agent_version"] = self.agent.cfg.agent_version

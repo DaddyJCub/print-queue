@@ -254,7 +254,11 @@ function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.
 async function api(path, opts={}){
   opts.headers = Object.assign({}, H, opts.headers||{});
   const r = await fetch(path, opts);
-  if(!r.ok){ let m="Error "+r.status; try{ m=(await r.json()).error||m; }catch(e){} toast(m); throw new Error(m); }
+  if(!r.ok){
+    let m="Error "+r.status; try{ m=(await r.json()).error||m; }catch(e){}
+    if(r.status===401){ m="Unauthorized — reload this page (Ctrl+Shift+R); the API key may have changed."; }
+    toast(m); throw new Error(m);
+  }
   return r.headers.get("content-type","").includes("json") ? r.json() : r;
 }
 function fmtBytes(n){ if(!n) return "0"; const u=["B","KB","MB"]; let i=0,v=n; while(v>=1024&&i<2){v/=1024;i++;} return v.toFixed(1)+u[i]; }
