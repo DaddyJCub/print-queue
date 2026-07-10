@@ -107,6 +107,16 @@ class SerialPrinter:
         self._send_now("M110 N0")
         self._wait_ok(timeout=self.connect_timeout)
         log.info("Connected to printer on %s @ %d", self.port, self.baud)
+        # Ask the printer what firmware it runs so it's visible in the logs
+        # (answers "what does my board support?" without guessing).
+        try:
+            resp = self.send_command("M115", timeout=8)
+            for ln in resp.splitlines():
+                if "FIRMWARE_NAME" in ln or "MACHINE_TYPE" in ln:
+                    log.info("Printer firmware: %s", ln.strip()[:200])
+                    break
+        except Exception as e:
+            log.warning("Could not read firmware (M115): %s", e)
 
     def close(self) -> None:
         if self._ser and self._ser.is_open:
@@ -214,14 +224,24 @@ class SerialPrinter:
 
     # ── job execution ─────────────────────────────────────────────
     def upload_to_sd(self, gcode_path: str, on_progress: Optional[Callable[[int], None]] = None) -> None:
-        """Stream a local gcode file to the printer's SD card (M28 ... M29)."""
+        """Stream a local gcode file to the printer's SD card (M28 ... M29).
+
+        Logs progress every 5% (and at least every 15s) so ``journalctl -f`` /
+        the "View logs" panel show exactly where a slow serial upload is at.
+        """
         import os
 
         total = os.path.getsize(gcode_path)
         sent = 0
+        lines = 0
         last_pct = -1
+        start = time.time()
+        last_log = start
+        next_log_pct = 0
 
-        log.info("Uploading %s -> SD:%s (%d bytes)", gcode_path, SD_FILENAME, total)
+        log.info("Uploading %s -> SD:%s (%d bytes). Serial SD writes are slow "
+                 "(~one round-trip per line); this can take several minutes.",
+                 os.path.basename(gcode_path), SD_FILENAME, total)
         # Hold the port for the whole transfer so nothing interleaves commands.
         # M28 MUST be inside the try: if it raises, the finally still releases the
         # lock (otherwise a serial hiccup at print start deadlocks every status
@@ -236,11 +256,20 @@ class SerialPrinter:
                     if not line:
                         continue
                     self.send_command(line, timeout=30)
-                    if on_progress and total:
-                        pct = int(sent * 100 / total)
-                        if pct != last_pct:
-                            last_pct = pct
-                            on_progress(pct)
+                    lines += 1
+                    pct = int(sent * 100 / total) if total else 0
+                    if on_progress and pct != last_pct:
+                        last_pct = pct
+                        on_progress(pct)
+                    now = time.time()
+                    if pct >= next_log_pct or now - last_log >= 15:
+                        elapsed = now - start
+                        rate = sent / elapsed if elapsed > 0 else 0.0  # bytes/s
+                        eta = int((total - sent) / rate) if rate > 0 else 0
+                        log.info("Upload %2d%% — %d/%d bytes, %d lines, %.1f KB/s, ETA %ds",
+                                 pct, sent, total, lines, rate / 1024, eta)
+                        last_log = now
+                        next_log_pct = (pct // 5 + 1) * 5
         finally:
             # Always close the SD file, even on error. Marlin requires lines
             # after M28 to keep the line-number/checksum framing, so close with
@@ -257,7 +286,9 @@ class SerialPrinter:
                     pass
             finally:
                 self._lock.release()
-        log.info("Upload complete: %s", SD_FILENAME)
+        dur = time.time() - start
+        log.info("Upload complete: %s — %d lines, %d bytes in %.0fs (%.1f KB/s)",
+                 SD_FILENAME, lines, sent, dur, (sent / 1024) / dur if dur > 0 else 0.0)
 
     def start_sd_print(self) -> None:
         """Select the uploaded file and begin the (autonomous) SD print."""
