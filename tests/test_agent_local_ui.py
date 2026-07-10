@@ -105,6 +105,19 @@ def test_wait_ok_tolerates_busy(monkeypatch):
     assert "ok" in p._wait_ok(timeout=5).lower()
 
 
+def test_doctor_runs_and_reports():
+    """The --doctor diagnostic must produce a report without crashing."""
+    from printqueue_agent import diagnostics
+
+    class Cfg:
+        server_url = "http://example"
+        serial_port = "/dev/nonexistent-pq-doctor"
+        baud_rate = 115200
+
+    report = diagnostics.run(Cfg())
+    assert "Print-queue agent doctor" in report
+
+
 class FakeController:
     def __init__(self):
         self.files = []
