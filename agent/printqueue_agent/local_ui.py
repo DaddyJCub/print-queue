@@ -206,6 +206,12 @@ def make_handler(controller, api_key: str):
                     body = self._read_json()
                     controller.start_file(body.get("file", ""))
                     return self._send_json({"ok": True})
+                if path == "/api/print-mode":
+                    mode = self._read_json().get("mode", "")
+                    try:
+                        return self._send_json({"ok": True, "print_mode": controller.set_print_mode(mode)})
+                    except ValueError as e:
+                        return self._send_json({"error": str(e)}, status=400)
                 if path == "/api/pause":
                     controller.pause(); return self._send_json({"ok": True})
                 if path == "/api/resume":

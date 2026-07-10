@@ -111,6 +111,7 @@ class AgentPrinterController:
         # heartbeat), so the device page can show a server indicator too.
         st["server_connected"] = bool(getattr(self.agent, "server_online", False))
         st["print_active"] = self.agent.print_active.is_set()
+        st["print_mode"] = getattr(self.agent, "print_mode", "sd")
         if self._active_file:
             st["current_file"] = self._active_file
         # Derive elapsed/remaining for any running print so the device page can
@@ -171,7 +172,10 @@ class AgentPrinterController:
         threading.Thread(target=self._print_worker, args=(path, name), daemon=True).start()
 
     def _stream_mode(self) -> bool:
-        return (getattr(self.agent.cfg, "print_mode", "sd") or "sd").lower() == "stream"
+        return getattr(self.agent, "print_mode", "sd") == "stream"
+
+    def set_print_mode(self, mode: str) -> str:
+        return self.agent.set_print_mode(mode)
 
     def _print_worker(self, path: str, name: str) -> None:
         printer = self.agent.printer

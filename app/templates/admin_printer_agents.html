@@ -291,8 +291,18 @@
       panel.classList.remove("hidden");
       panel.dataset.mode = "manage";
       const defaultTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      const _a = (window.__agents || []).find(a => a.agent_id === agentId);
+      const curMode = (_a && _a.status && _a.status.print_mode) || "sd";
       panel.innerHTML = `
         <div class="text-sm font-medium mb-2">Remote management</div>
+        <div class="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 mb-3">
+          <div class="text-xs text-zinc-400 mb-2">Print mode <span class="text-zinc-600">— applies to the next print</span></div>
+          <div class="flex gap-2 items-center flex-wrap">
+            <button onclick="cmd('${agentId}','set_print_mode',false,{mode:'sd'})" class="rounded-lg ${curMode==='sd'?'bg-indigo-600':'bg-zinc-800 hover:bg-zinc-700'} px-3 py-1.5 text-sm">SD · safe</button>
+            <button onclick="cmd('${agentId}','set_print_mode',false,{mode:'stream'})" class="rounded-lg ${curMode==='stream'?'bg-indigo-600':'bg-zinc-800 hover:bg-zinc-700'} px-3 py-1.5 text-sm">Stream · fast</button>
+            <span class="text-xs text-zinc-500">SD survives a restart (slow start) · Stream starts fast (agent must stay connected)</span>
+          </div>
+        </div>
         <div class="flex flex-wrap gap-2 mb-3">
           <button onclick="cmd('${agentId}','get_logs')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">📄 View logs</button>
           <button onclick="cmd('${agentId}','get_host_info')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">🖥️ Host info</button>

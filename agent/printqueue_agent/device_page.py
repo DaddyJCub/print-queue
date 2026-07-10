@@ -167,10 +167,17 @@ _PAGE = r"""<!doctype html>
 
   <div class="card full">
     <h2>Files</h2>
-    <div class="row" style="margin-bottom:10px">
-      <input type="file" id="up" accept=".gcode,.gco,.g" />
-      <button class="primary" id="b-upload">Upload</button>
-      <span class="muted">Or use Orca's “Send to printer” (OctoPrint host).</span>
+    <div class="row" style="margin-bottom:10px; justify-content:space-between">
+      <div class="row">
+        <input type="file" id="up" accept=".gcode,.gco,.g" />
+        <button class="primary" id="b-upload">Upload</button>
+        <span class="muted">Or use Orca's “Send to printer” (OctoPrint host).</span>
+      </div>
+      <div class="row">
+        <span class="muted">Print mode:</span>
+        <button id="pm-sd" title="Upload to SD then print — survives an agent restart, but slow to start">SD · safe</button>
+        <button id="pm-stream" title="Stream straight to the printer — starts in seconds, but the agent must stay connected">Stream · fast</button>
+      </div>
     </div>
     <div class="files" id="files"></div>
   </div>
@@ -462,6 +469,20 @@ async function refresh(){
   const printing = s.state==="printing" || s.state==="uploading" || s.print_active;
   document.getElementById("b-pause").disabled = !printing;
   document.getElementById("b-cancel").disabled = !printing;
+  if (s.print_mode) setPrintMode(s.print_mode, printing);
+}
+function setPrintMode(mode, printing){
+  const sd=document.getElementById("pm-sd"), st=document.getElementById("pm-stream");
+  if(!sd||!st) return;
+  sd.classList.toggle("primary", mode==="sd");
+  st.classList.toggle("primary", mode==="stream");
+  // Switching mode only affects the NEXT print; disable while one is running.
+  sd.disabled = st.disabled = !!printing;
+}
+async function switchMode(mode){
+  try{ await api("/api/print-mode",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode})});
+       toast(mode==="stream"?"Stream mode — prints start fast":"SD mode — survives restarts"); refresh(); }
+  catch(e){}
 }
 async function loadFiles(){
   let d; try { d = await api("/api/files"); } catch(e){ return; }
@@ -492,6 +513,8 @@ async function loadFiles(){
   });
 }
 function post(path, body){ return api(path,{method:"POST",headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined}); }
+document.getElementById("pm-sd").onclick = ()=>switchMode("sd");
+document.getElementById("pm-stream").onclick = ()=>switchMode("stream");
 
 document.getElementById("b-upload").onclick = async()=>{
   const f = document.getElementById("up").files[0]; if(!f){ toast("Pick a file"); return; }

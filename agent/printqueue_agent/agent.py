@@ -53,7 +53,38 @@ class Agent:
         # "Printellect" connection indicator on the device page).
         self.server_online = False
         self._cached_ip: Optional[str] = None
+        # Live print mode ("sd" | "stream"), switchable at runtime from the device
+        # page / admin and persisted to config.json so it survives a restart.
+        self.print_mode = (getattr(cfg, "print_mode", "sd") or "sd").strip().lower()
         install_log_ring()
+
+    def set_print_mode(self, mode: str) -> str:
+        """Change the print mode at runtime and persist it. Applies to the NEXT
+        print (a running print keeps its mode)."""
+        mode = (mode or "").strip().lower()
+        if mode not in ("sd", "stream"):
+            raise ValueError("print_mode must be 'sd' or 'stream'")
+        self.print_mode = mode
+        self.cfg.print_mode = mode
+        self._persist_config({"print_mode": mode})
+        log.info("Print mode set to %s", mode)
+        return mode
+
+    def _persist_config(self, updates: dict) -> None:
+        """Best-effort merge of key/values into config.json on disk."""
+        if not self.config_path or not os.path.isfile(self.config_path):
+            return
+        try:
+            import json
+            with open(self.config_path, "r") as fh:
+                data = json.load(fh)
+            data.update(updates)
+            tmp = self.config_path + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(data, fh, indent=2)
+            os.replace(tmp, self.config_path)
+        except Exception as e:
+            log.warning("Could not persist config (%s): %s", updates, e)
 
     def _primary_ip(self) -> str:
         """Best-effort primary LAN IPv4 of this host (cached).
@@ -86,6 +117,7 @@ class Agent:
             d["agent_ip"] = ip
         if self.cfg.local_ui.enabled:
             d["device_ui_port"] = self.cfg.local_ui.port
+        d["print_mode"] = self.print_mode
         return d
 
     def _maybe_start_local_ui(self) -> None:
@@ -297,7 +329,7 @@ class Agent:
                 self.client.update_job(job_id, "queued")
                 return
 
-            if (getattr(self.cfg, "print_mode", "sd") or "sd").lower() == "stream":
+            if self.print_mode == "stream":
                 # Host-stream directly (no slow SD upload); prints as it sends.
                 self.printer.enable_auto_reports(self.cfg.heartbeat_interval_s, self.cfg.poll_interval_s)
                 self.client.update_job(job_id, "printing", progress=0)

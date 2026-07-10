@@ -87,6 +87,7 @@ AGENT_COMMAND_ACTIONS = {
     "set_hostname",    # set host name (Linux via hostnamectl)
     "set_timezone",    # set host timezone (Linux via timedatectl)
     "set_wifi",        # configure Wi-Fi on Linux (nmcli)
+    "set_print_mode",  # switch SD vs stream printing at runtime
     "update_agent",    # download a new agent bundle, self-update, restart (OTA)
     "flash_firmware",  # flash printer firmware (.hex) via avrdude — opt-in on agent
     "pause_print",     # pause the running print (Printellect Watch failure response)
