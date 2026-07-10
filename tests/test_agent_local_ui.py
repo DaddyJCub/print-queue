@@ -105,6 +105,35 @@ def test_wait_ok_tolerates_busy(monkeypatch):
     assert "ok" in p._wait_ok(timeout=5).lower()
 
 
+def test_stream_print_sends_all_lines(tmp_path, monkeypatch):
+    """Stream mode must send every gcode line and report completion."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+    sent = []
+    monkeypatch.setattr(p, "send_command", lambda cmd, timeout=30: sent.append(cmd) or "ok")
+    f = tmp_path / "m.gcode"
+    f.write_text("M104 S200\n; comment only\nG28\nG1 X1 Y1\n")
+
+    seen = []
+    ok = p.stream_print(str(f), on_progress=lambda pct: seen.append(pct))
+    assert ok is True
+    assert "M110 N0" in sent          # reset numbering at stream start
+    assert "M104 S200" in sent and "G28" in sent and "G1 X1 Y1" in sent
+    assert "; comment only" not in " ".join(sent)  # comment-only line skipped
+    assert seen and seen[-1] == 100
+
+
+def test_stream_print_cancel_stops_early(tmp_path, monkeypatch):
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+    monkeypatch.setattr(p, "send_command", lambda cmd, timeout=30: "ok")
+    f = tmp_path / "m.gcode"
+    f.write_text("\n".join(f"G1 X{i}" for i in range(100)) + "\n")
+
+    ok = p.stream_print(str(f), should_continue=lambda: False)  # canceled immediately
+    assert ok is False
+
+
 def test_doctor_runs_and_reports():
     """The --doctor diagnostic must produce a report without crashing."""
     from printqueue_agent import diagnostics
