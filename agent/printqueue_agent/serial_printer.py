@@ -223,9 +223,12 @@ class SerialPrinter:
 
         log.info("Uploading %s -> SD:%s (%d bytes)", gcode_path, SD_FILENAME, total)
         # Hold the port for the whole transfer so nothing interleaves commands.
+        # M28 MUST be inside the try: if it raises, the finally still releases the
+        # lock (otherwise a serial hiccup at print start deadlocks every status
+        # query forever).
         self._lock.acquire()
-        self.send_command(f"M28 {SD_FILENAME}", timeout=30)
         try:
+            self.send_command(f"M28 {SD_FILENAME}", timeout=30)
             with open(gcode_path, "r", errors="ignore") as fh:
                 for raw in fh:
                     line = raw.split(";", 1)[0].strip()  # drop comments/whitespace

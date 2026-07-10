@@ -137,6 +137,10 @@ class Agent:
     def _printer_status(self) -> PrinterStatus:
         if not self.printer or not self.printer.connected:
             return PrinterStatus(state="offline")
+        # A print upload holds the serial lock for the whole transfer; querying
+        # then would block the loop (stalling heartbeats). Report printing instead.
+        if self.print_active.is_set():
+            return PrinterStatus(state="printing")
         return self.printer.query_status()
 
     # ── main loop ─────────────────────────────────────────────────

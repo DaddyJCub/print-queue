@@ -20,7 +20,59 @@ if AGENT_DIR not in sys.path:
     sys.path.insert(0, AGENT_DIR)
 
 from printqueue_agent import local_ui  # noqa: E402
+from printqueue_agent import serial_printer as sp  # noqa: E402
 from printqueue_agent.controller import Busy, ControllerError, NotFound  # noqa: E402
+
+
+def test_state_reports_uploading_without_touching_serial(tmp_path):
+    """During an upload the serial lock is held, so state() must report cached
+    upload progress instead of calling (and blocking on) query_status."""
+    from printqueue_agent.controller import AgentPrinterController
+
+    class _UI:  # cfg.local_ui
+        spool_dir = str(tmp_path)
+    class _Cam:
+        enabled = False
+    class _Cfg:
+        agent_id = "agent-x"; agent_version = "1.1.0"; name = "Bench"
+        local_ui = _UI(); camera = _Cam()
+    class _Printer:
+        connected = True
+        def query_status(self):
+            raise AssertionError("query_status must not run during an upload")
+    class _Agent:
+        cfg = _Cfg(); printer = _Printer()
+        print_active = threading.Event(); camera = None
+
+    ctrl = AgentPrinterController(_Agent())
+    ctrl._upload_pct = 42
+    st = ctrl.state()
+    assert st["state"] == "uploading"
+    assert st["progress"] == 42
+    assert st["connected"] is True
+
+
+def test_upload_releases_lock_on_m28_failure(tmp_path, monkeypatch):
+    """Regression: a failed M28 must not leak the serial lock (which would
+    deadlock every subsequent status query forever)."""
+    monkeypatch.setattr(sp, "serial", object())  # bypass the pyserial import guard
+    p = sp.SerialPrinter("/dev/null", 115200)
+
+    def fake_send(cmd, timeout=30):
+        if cmd.startswith("M28"):
+            raise RuntimeError("simulated M28 failure at print start")
+        return "ok"
+
+    monkeypatch.setattr(p, "send_command", fake_send)
+    f = tmp_path / "a.gcode"
+    f.write_text("G28\nG1 X1\n")
+
+    with pytest.raises(RuntimeError):
+        p.upload_to_sd(str(f))
+
+    # The lock must be free despite the failure.
+    assert p._lock.acquire(blocking=False) is True
+    p._lock.release()
 
 
 class FakeController:
