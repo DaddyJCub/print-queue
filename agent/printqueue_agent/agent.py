@@ -180,6 +180,20 @@ class Agent:
         connected = self._ensure_printer()
         status = self._printer_status()
 
+        # A printer that stops answering (reset, USB dropout, 5V back-power glitch)
+        # leaves the port nominally "open", so query_status times out forever and
+        # the agent never recovers. Drop the dead connection so the next tick
+        # reconnects and re-syncs. (Not while a local upload holds the port.)
+        if (status.state == "offline" and self.printer is not None
+                and not self.print_active.is_set()):
+            log.warning("Printer unresponsive — dropping connection to force a reconnect")
+            try:
+                self.printer.close()
+            except Exception:
+                pass
+            self.printer = None
+            connected = False
+
         now = time.time()
         if now - self._last_heartbeat >= self.cfg.heartbeat_interval_s:
             try:
