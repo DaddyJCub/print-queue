@@ -89,24 +89,75 @@ class SerialPrinter:
 
     # ── connection ────────────────────────────────────────────────
     def connect(self) -> None:
-        """Open the port and wait for the printer to be ready.
+        """Open the port and bring the printer to a ready state.
 
-        Raises if the port is busy (another program — e.g. Cura — owns it), so
-        the caller can back off without disturbing an in-progress print.
+        Hardened for the things that plague USB-serial Marlin boards (the LK5 Pro
+        especially): the board resets when the port opens (DTR), so we wait for it
+        to boot; a back-power brownout can drop the first reply, so we retry the
+        handshake; and a wrong baud yields no ``ok``, so we try the configured
+        rate first then common fallbacks.
+
+        Raises if the port is busy (another program owns it) or no baud responds,
+        so the caller can back off without disturbing an in-progress print.
         """
+        bauds: list[int] = []
+        for b in (self.baud, 115200, 250000, 57600):
+            if b and b not in bauds:
+                bauds.append(b)
+
+        last_err: Optional[Exception] = None
+        for baud in bauds:
+            try:
+                self._open_and_handshake(baud)
+                self.baud = baud
+                log.info("Connected to printer on %s @ %d", self.port, baud)
+                self._log_firmware()
+                return
+            except Exception as e:
+                last_err = e
+                log.warning("No response on %s @ %d baud (%s)", self.port, baud, e)
+                self.close()
+        raise RuntimeError(f"Could not communicate with printer on {self.port}: {last_err}")
+
+    def _open_and_handshake(self, baud: int) -> None:
         try:
-            self._ser = serial.Serial(self.port, self.baud, timeout=2)
+            self._ser = serial.Serial(self.port, baud, timeout=2, write_timeout=15)
         except Exception as e:
             raise RuntimeError(f"Could not open {self.port} (in use by another program?): {e}") from e
-
-        # Many boards reset on connect; give Marlin time to boot, then flush.
-        time.sleep(2.0)
+        # The board resets when the port opens (DTR); wait for it to boot.
+        self._wait_for_boot(timeout=8.0)
         self._ser.reset_input_buffer()
-        # Reset line numbering for the checksummed protocol.
         self._line_no = 0
-        self._send_now("M110 N0")
-        self._wait_ok(timeout=self.connect_timeout)
-        log.info("Connected to printer on %s @ %d", self.port, self.baud)
+        # The first M110 after a reset/brownout is sometimes dropped — retry.
+        last: Optional[Exception] = None
+        for _ in range(3):
+            try:
+                self._send_now("M110 N0")
+                self._wait_ok(timeout=8.0)
+                return
+            except Exception as e:
+                last = e
+                time.sleep(0.8)
+        raise RuntimeError(f"no 'ok' to M110 handshake: {last}")
+
+    def _wait_for_boot(self, timeout: float) -> None:
+        """Drain the printer's post-reset boot output. Returns on the Marlin
+        'start' banner, or promptly once the line falls quiet (no-reset boards)."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                line = self._readline()
+            except Exception:
+                return
+            if not line:
+                return  # quiet: boot finished, or the board didn't reset
+            low = line.lower()
+            if low.startswith("start") or "marlin" in low:
+                log.info("Printer booted: %s", line[:120])
+                time.sleep(0.3)
+                return
+
+    def _log_firmware(self) -> None:
         # Ask the printer what firmware it runs so it's visible in the logs
         # (answers "what does my board support?" without guessing).
         try:
@@ -155,6 +206,11 @@ class SerialPrinter:
             if low.startswith("resend") or low.startswith("rs"):
                 # Surface resend requests to the checksummed sender.
                 return "\n".join(buf)
+            if "busy" in low:
+                # "echo:busy: processing" — the printer is alive but working
+                # (e.g. a slow SD write or long move). Extend the deadline so we
+                # don't falsely time out mid-operation, the way OctoPrint does.
+                deadline = time.time() + timeout
         raise TimeoutError("Timed out waiting for 'ok' from printer")
 
     def send_command(self, command: str, timeout: float = 30.0) -> str:

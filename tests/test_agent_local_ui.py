@@ -75,6 +75,36 @@ def test_upload_releases_lock_on_m28_failure(tmp_path, monkeypatch):
     p._lock.release()
 
 
+def test_connect_tries_fallback_bauds(monkeypatch):
+    """A wrong configured baud must fall back to a rate the printer answers on."""
+    monkeypatch.setattr(sp, "serial", object())  # bypass pyserial import guard
+    p = sp.SerialPrinter("/dev/null", 250000)  # configured baud "wrong"
+    tried = []
+
+    def fake_open(baud):
+        tried.append(baud)
+        if baud != 115200:
+            raise RuntimeError("no response")
+
+    monkeypatch.setattr(p, "_open_and_handshake", fake_open)
+    monkeypatch.setattr(p, "_log_firmware", lambda: None)
+    monkeypatch.setattr(p, "close", lambda: None)
+
+    p.connect()
+    assert p.baud == 115200
+    assert tried[0] == 250000  # the configured rate is tried first
+
+
+def test_wait_ok_tolerates_busy(monkeypatch):
+    """'echo:busy: processing' means the printer is alive and working, not dead —
+    it must keep waiting for 'ok' rather than time out."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+    seq = iter(["echo:busy: processing", "echo:busy: processing", "ok T:20 /0"])
+    monkeypatch.setattr(p, "_readline", lambda: next(seq, ""))
+    assert "ok" in p._wait_ok(timeout=5).lower()
+
+
 class FakeController:
     def __init__(self):
         self.files = []
