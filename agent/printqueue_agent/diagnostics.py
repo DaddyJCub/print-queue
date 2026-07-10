@@ -143,10 +143,16 @@ def _probe(port: str, bauds: List[int]) -> List[Tuple[int, str, str]]:
                     if b"ok" in raw.lower():
                         break
             text = raw.decode("ascii", "replace").strip()
-            if b"ok" in raw.lower() or b"FIRMWARE" in raw:
+            low = raw.lower()
+            if b"ok" in low or b"FIRMWARE" in raw:
                 fw = next((ln for ln in text.splitlines() if "FIRMWARE_NAME" in ln), text[:200])
                 results.append((baud, "OK", fw[:200]))
                 return results  # good — stop probing
+            # Valid Marlin chatter (temp auto-reports, echo, banner) but no ack to
+            # our command → the printer transmits but never hears us (one-way).
+            if any(m in low for m in (b"t:", b"b:", b"echo:", b"start", b"marlin")):
+                results.append((baud, "ONE_WAY", text[:120]))
+                return results
             results.append((baud, "GARBAGE" if raw else "SILENT",
                             (repr(text[:120]) if raw else "no bytes received")))
         finally:
@@ -248,6 +254,10 @@ def run(cfg) -> str:
         elif verdict == "OPEN_FAIL":
             lines.append(_fmt("fail", f"{baud} baud: cannot open — {detail}"))
             verdict_summary = "port busy / permission (another process holds it)"
+        elif verdict == "ONE_WAY":
+            lines.append(_fmt("fail", f"{baud} baud: printer TRANSMITS but never acks our commands "
+                                      f"(one-way) — {detail}"))
+            verdict_summary = "one-way (printer talks, doesn't hear us)"
         elif verdict == "GARBAGE":
             lines.append(_fmt("warn", f"{baud} baud: got bytes but no 'ok' (wrong baud?) — {detail}"))
         else:
@@ -258,6 +268,10 @@ def run(cfg) -> str:
     lines.append("Most likely issue:")
     if "healthy" in verdict_summary:
         lines.append(_fmt("ok", f"Serial link is {verdict_summary}. If it drops mid-print, suspect power (undervoltage above)."))
+    elif "one-way" in verdict_summary:
+        lines.append(_fmt("fail", "Printer transmits but doesn't act on our commands. Almost always the USB cable's "
+                                  "TX conductor (swap to a known-good data cable), or the printer is stuck/halted "
+                                  "(power-cycle it fully). Retest afterwards."))
     elif "busy" in verdict_summary:
         holder_is_agent = any("printqueue_agent" in c for _, c in holders) or bool(others)
         if holder_is_agent:
