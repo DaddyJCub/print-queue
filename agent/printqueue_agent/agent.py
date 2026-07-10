@@ -114,7 +114,16 @@ class Agent:
         if self.cfg.serial_port and self.cfg.serial_port != "auto":
             return self.cfg.serial_port
         ports = list_serial_ports()
-        return ports[0] if ports else None
+        if not ports:
+            return None
+        # Prefer a real USB serial adapter (the printer) over the Pi's onboard
+        # UART (/dev/ttyS0, /dev/ttyAMA0), which "auto" would otherwise grab and
+        # then time out on ("readiness to read but returned no data").
+        usb = [p for p in ports if "USB" in p.upper() or "ACM" in p.upper()]
+        chosen = (usb or ports)[0]
+        if usb and chosen != ports[0]:
+            log.info("Auto-selected USB serial port %s (skipped %s)", chosen, ports[0])
+        return chosen
 
     def _ensure_printer(self) -> bool:
         if self.printer and self.printer.connected:
