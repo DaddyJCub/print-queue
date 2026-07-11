@@ -883,6 +883,16 @@ PRINTERS = [
     ("LK5_PRO", "Longer LK5 Pro"),
 ]
 
+
+def display_printer_codes() -> list:
+    """Real printer codes to show live status for (every printer except 'ANY').
+
+    Used by the status-display loops so agent-backed printers (e.g. the LK5 Pro)
+    appear alongside the directly-polled LAN printers instead of being hardcoded
+    out. NOT for FlashForge/Moonraker-only control guards.
+    """
+    return [code for code, _label in PRINTERS if code != "ANY"]
+
 MATERIALS = [
     ("ANY", "Any"),
     ("PLA", "PLA"),
