@@ -113,6 +113,7 @@ class AgentPrinterController:
         st["server_connected"] = bool(getattr(self.agent, "server_online", False))
         st["print_active"] = self.agent.print_active.is_set()
         st["print_mode"] = getattr(self.agent, "print_mode", "sd")
+        st["serial_debug"] = bool(getattr(self.agent, "serial_debug", False))
         if self._active_file:
             st["current_file"] = self._active_file
         # Derive elapsed/remaining for any running print so the device page can
@@ -177,6 +178,9 @@ class AgentPrinterController:
 
     def set_print_mode(self, mode: str) -> str:
         return self.agent.set_print_mode(mode)
+
+    def set_serial_debug(self, enabled) -> bool:
+        return self.agent.set_serial_debug(enabled)
 
     def _print_worker(self, path: str, name: str) -> None:
         printer = self.agent.printer

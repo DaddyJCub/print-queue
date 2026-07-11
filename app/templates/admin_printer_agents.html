@@ -293,6 +293,7 @@
       const defaultTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
       const _a = (window.__agents || []).find(a => a.agent_id === agentId);
       const curMode = (_a && _a.status && _a.status.print_mode) || "sd";
+      const curDebug = !!(_a && _a.status && _a.status.serial_debug);
       panel.innerHTML = `
         <div class="text-sm font-medium mb-2">Remote management</div>
         <div class="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 mb-3">
@@ -301,6 +302,12 @@
             <button onclick="cmd('${agentId}','set_print_mode',false,{mode:'sd'})" class="rounded-lg ${curMode==='sd'?'bg-indigo-600':'bg-zinc-800 hover:bg-zinc-700'} px-3 py-1.5 text-sm">SD · safe</button>
             <button onclick="cmd('${agentId}','set_print_mode',false,{mode:'stream'})" class="rounded-lg ${curMode==='stream'?'bg-indigo-600':'bg-zinc-800 hover:bg-zinc-700'} px-3 py-1.5 text-sm">Stream · fast</button>
             <span class="text-xs text-zinc-500">SD survives a restart (slow start) · Stream starts fast (agent must stay connected)</span>
+          </div>
+          <div class="flex gap-2 items-center flex-wrap mt-2">
+            <span class="text-xs text-zinc-400">Serial log:</span>
+            <button onclick="cmd('${agentId}','set_serial_debug',false,{enabled:true})" class="rounded-lg ${curDebug?'bg-indigo-600':'bg-zinc-800 hover:bg-zinc-700'} px-3 py-1.5 text-sm">On</button>
+            <button onclick="cmd('${agentId}','set_serial_debug',false,{enabled:false})" class="rounded-lg ${!curDebug?'bg-indigo-600':'bg-zinc-800 hover:bg-zinc-700'} px-3 py-1.5 text-sm">Off</button>
+            <span class="text-xs text-zinc-500">logs every TX&gt;/RX&lt; command — use View logs; noisy, turn off when done</span>
           </div>
         </div>
         <div class="flex flex-wrap gap-2 mb-3">

@@ -59,7 +59,20 @@ class Agent:
         # Progress (0-100) of the print the agent is currently driving, so the
         # heartbeat/admin can show it (SD upload, SD print, or stream).
         self.print_progress: Optional[int] = None
+        # Serial trace (TX>/RX< logging), toggleable at runtime.
+        self.serial_debug = bool(getattr(cfg, "serial_debug", False))
         install_log_ring()
+
+    def set_serial_debug(self, enabled) -> bool:
+        """Turn the serial TX>/RX< trace on/off live and persist it."""
+        enabled = bool(enabled)
+        self.serial_debug = enabled
+        self.cfg.serial_debug = enabled
+        if self.printer is not None:
+            self.printer.trace = enabled
+        self._persist_config({"serial_debug": enabled})
+        log.info("Serial trace %s", "ENABLED" if enabled else "disabled")
+        return enabled
 
     def set_print_mode(self, mode: str) -> str:
         """Change the print mode at runtime and persist it. Applies to the NEXT
@@ -121,6 +134,7 @@ class Agent:
         if self.cfg.local_ui.enabled:
             d["device_ui_port"] = self.cfg.local_ui.port
         d["print_mode"] = self.print_mode
+        d["serial_debug"] = self.serial_debug
         return d
 
     def _maybe_start_local_ui(self) -> None:
@@ -169,7 +183,7 @@ class Agent:
             return False
         try:
             self.printer = SerialPrinter(port, self.cfg.baud_rate)
-            self.printer.trace = bool(getattr(self.cfg, "serial_debug", False))
+            self.printer.trace = self.serial_debug
             self.printer.connect()
             self.printer.enable_auto_reports(self.cfg.heartbeat_interval_s, self.cfg.poll_interval_s)
             return True

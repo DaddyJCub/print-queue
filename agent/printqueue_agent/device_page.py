@@ -177,6 +177,7 @@ _PAGE = r"""<!doctype html>
         <span class="muted">Print mode:</span>
         <button id="pm-sd" title="Upload to SD then print — survives an agent restart, but slow to start">SD · safe</button>
         <button id="pm-stream" title="Stream straight to the printer — starts in seconds, but the agent must stay connected">Stream · fast</button>
+        <button id="dbg-toggle" title="Log every serial command (TX>/RX<) to the agent log — noisy; for debugging" style="margin-left:8px">🐞 Serial log</button>
       </div>
     </div>
     <div class="files" id="files"></div>
@@ -470,6 +471,9 @@ async function refresh(){
   document.getElementById("b-pause").disabled = !printing;
   document.getElementById("b-cancel").disabled = !printing;
   if (s.print_mode) setPrintMode(s.print_mode, printing);
+  const dbg=document.getElementById("dbg-toggle");
+  if(dbg && s.serial_debug!=null){ dbg.classList.toggle("primary", !!s.serial_debug);
+    dbg.textContent = s.serial_debug ? "🐞 Serial log: ON" : "🐞 Serial log"; }
 }
 function setPrintMode(mode, printing){
   const sd=document.getElementById("pm-sd"), st=document.getElementById("pm-stream");
@@ -515,6 +519,11 @@ async function loadFiles(){
 function post(path, body){ return api(path,{method:"POST",headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined}); }
 document.getElementById("pm-sd").onclick = ()=>switchMode("sd");
 document.getElementById("pm-stream").onclick = ()=>switchMode("stream");
+document.getElementById("dbg-toggle").onclick = async()=>{
+  const on = !document.getElementById("dbg-toggle").classList.contains("primary");
+  try{ await api("/api/serial-debug",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:on})});
+       toast(on?"Serial log ON — see agent logs":"Serial log off"); refresh(); }catch(e){}
+};
 
 document.getElementById("b-upload").onclick = async()=>{
   const f = document.getElementById("up").files[0]; if(!f){ toast("Pick a file"); return; }
