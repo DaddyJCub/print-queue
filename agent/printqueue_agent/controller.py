@@ -92,9 +92,10 @@ class AgentPrinterController:
         if self._upload_pct is not None:
             st = {"state": "uploading", "progress": self._upload_pct}
         elif self._stream_pct is not None:
-            # Host-streaming: the port lock is free between lines, so a status
-            # query is safe here — the device page keeps live temps + progress.
-            st = printer.query_status().as_dict() if connected else {"state": "printing"}
+            # Host-streaming holds the port waiting for the buffer, so we can't
+            # send M105 here. Use temps cached from Marlin's auto-reports (nulled
+            # if stale) + our line-based progress.
+            st = printer.cached_status().as_dict() if connected else {}
             st["state"] = "printing"
             st["progress"] = self._stream_pct
         elif self.agent.print_active.is_set():
@@ -187,10 +188,15 @@ class AgentPrinterController:
                 self._cancel.clear()
                 self._paused.clear()
                 self._stream_pct = 0
-                printer.enable_auto_reports(self.agent.cfg.heartbeat_interval_s, self.agent.cfg.poll_interval_s)
+                printer.enable_auto_reports(3, self.agent.cfg.poll_interval_s)
+
+                def _prog(p):
+                    self._stream_pct = p
+                    self.agent.print_progress = p
+
                 completed = printer.stream_print(
                     path,
-                    on_progress=lambda p: setattr(self, "_stream_pct", p),
+                    on_progress=_prog,
                     should_continue=lambda: not self._cancel.is_set(),
                     paused=lambda: self._paused.is_set(),
                 )
@@ -202,10 +208,13 @@ class AgentPrinterController:
                     self._active_file = None
                 log.info("Stream print %s: %s", "finished" if completed else "canceled", name)
             else:
+                def _uprog(p):
+                    self._upload_pct = p
+                    self.agent.print_progress = p
                 self._upload_pct = 0
-                printer.upload_to_sd(path, on_progress=lambda p: setattr(self, "_upload_pct", p))
+                printer.upload_to_sd(path, on_progress=_uprog)
                 printer.start_sd_print()
-                printer.enable_auto_reports(self.agent.cfg.heartbeat_interval_s, self.agent.cfg.poll_interval_s)
+                printer.enable_auto_reports(3, self.agent.cfg.poll_interval_s)
                 log.info("Local print started: %s", name)
         except Exception as e:
             log.exception("Local print failed: %s", e)
@@ -213,6 +222,7 @@ class AgentPrinterController:
         finally:
             self._upload_pct = None
             self._stream_pct = None
+            self.agent.print_progress = None
             # SD: print runs autonomously now. Stream: the print just finished.
             self.agent.print_active.clear()
             if streaming:

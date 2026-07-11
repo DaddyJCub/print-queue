@@ -123,6 +123,31 @@ def test_stream_print_sends_all_lines(tmp_path, monkeypatch):
     assert seen and seen[-1] == 100
 
 
+def test_cached_status_nulls_stale_temps(monkeypatch):
+    """Cached temps must be dropped once stale, so no misleadingly old value shows."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+    p._cached.nozzle_temp = 205.0
+    p._cached.bed_temp = 60.0
+    import time as _t
+    p._cached_ts = _t.monotonic()               # just updated → fresh
+    assert p.cached_status(max_age=8).nozzle_temp == 205.0
+    p._cached_ts = _t.monotonic() - 30          # 30s old → stale
+    st = p.cached_status(max_age=8)
+    assert st.nozzle_temp is None and st.bed_temp is None
+
+
+def test_wait_ok_caches_temps_from_autoreport(monkeypatch):
+    """A Marlin temp line (solicited or auto-report) updates the cache."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+    seq = iter(["T:210.5 /210.0 B:60.1 /60.0 @:80", "ok"])
+    monkeypatch.setattr(p, "_readline", lambda: next(seq, ""))
+    p._wait_ok(timeout=5)
+    st = p.cached_status()
+    assert round(st.nozzle_temp) == 210 and round(st.bed_temp) == 60
+
+
 def test_stream_print_cancel_stops_early(tmp_path, monkeypatch):
     monkeypatch.setattr(sp, "serial", object())
     p = sp.SerialPrinter("/dev/null", 115200)
