@@ -56,6 +56,9 @@ class Agent:
         # Live print mode ("sd" | "stream"), switchable at runtime from the device
         # page / admin and persisted to config.json so it survives a restart.
         self.print_mode = (getattr(cfg, "print_mode", "sd") or "sd").strip().lower()
+        # Progress (0-100) of the print the agent is currently driving, so the
+        # heartbeat/admin can show it (SD upload, SD print, or stream).
+        self.print_progress: Optional[int] = None
         install_log_ring()
 
     def set_print_mode(self, mode: str) -> str:
@@ -166,6 +169,7 @@ class Agent:
             return False
         try:
             self.printer = SerialPrinter(port, self.cfg.baud_rate)
+            self.printer.trace = bool(getattr(self.cfg, "serial_debug", False))
             self.printer.connect()
             self.printer.enable_auto_reports(self.cfg.heartbeat_interval_s, self.cfg.poll_interval_s)
             return True
@@ -178,10 +182,15 @@ class Agent:
     def _printer_status(self) -> PrinterStatus:
         if not self.printer or not self.printer.connected:
             return PrinterStatus(state="offline")
-        # A print upload holds the serial lock for the whole transfer; querying
-        # then would block the loop (stalling heartbeats). Report printing instead.
+        # While a print holds the port (upload or stream), don't send M105 — it
+        # would block. Report cached temps (from auto-reports) + our progress so
+        # the server/admin still see live status.
         if self.print_active.is_set():
-            return PrinterStatus(state="printing")
+            st = self.printer.cached_status()
+            st.state = "printing"
+            if self.print_progress is not None:
+                st.progress = self.print_progress
+            return st
         return self.printer.query_status()
 
     # ── main loop ─────────────────────────────────────────────────
@@ -331,7 +340,7 @@ class Agent:
 
             if self.print_mode == "stream":
                 # Host-stream directly (no slow SD upload); prints as it sends.
-                self.printer.enable_auto_reports(self.cfg.heartbeat_interval_s, self.cfg.poll_interval_s)
+                self.printer.enable_auto_reports(3, self.cfg.poll_interval_s)
                 self.client.update_job(job_id, "printing", progress=0)
                 # Throttle the cancel check: it's called per line, but each is a
                 # server round-trip, so only re-check every few seconds.
@@ -344,9 +353,13 @@ class Agent:
                         cc["canceled"] = self._job_canceled(job_id)
                     return not cc["canceled"]
 
+                def _sprog(p):
+                    self.print_progress = p
+                    self._safe_update(job_id, "printing", progress=p)
+
                 completed = self.printer.stream_print(
                     tmp_path,
-                    on_progress=lambda p: self._safe_update(job_id, "printing", progress=p),
+                    on_progress=_sprog,
                     should_continue=_still_wanted,
                 )
                 if completed:
@@ -374,6 +387,7 @@ class Agent:
                 pass
         finally:
             self.print_active.clear()
+            self.print_progress = None
             try:
                 os.remove(tmp_path)
             except OSError:

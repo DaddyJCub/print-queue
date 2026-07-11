@@ -87,6 +87,13 @@ class SerialPrinter:
         # Re-entrant lock: the agent loop and the local-UI server thread share
         # this one port, so every serial round-trip must be serialized.
         self._lock = threading.RLock()
+        # Latest temps/SD parsed from ANY reply (incl. Marlin's auto-reports), so
+        # status can be read without sending M105 — essential during a stream
+        # print when the port is busy waiting for the buffer to accept lines.
+        self._cached = PrinterStatus()
+        self._cached_ts = 0.0  # monotonic time the cached temps were last updated
+        # When True, log every command sent and reply received (serial trace).
+        self.trace = False
 
     # ── connection ────────────────────────────────────────────────
     def connect(self) -> None:
@@ -209,6 +216,13 @@ class SerialPrinter:
             if not line:
                 continue
             buf.append(line)
+            # Capture temps/SD from ANY line — including Marlin's unsolicited
+            # auto-reports (M155) — so status is available without an M105 poll.
+            if "T:" in line:
+                self._parse_temps(line, self._cached)
+                self._cached_ts = time.monotonic()
+            if "SD printing" in line or "Not SD printing" in line:
+                self._parse_sd(line, self._cached)
             low = line.lower()
             if low.startswith("ok"):
                 return "\n".join(buf)
@@ -230,7 +244,11 @@ class SerialPrinter:
                 payload = f"N{self._line_no} {command}"
                 framed = f"{payload}*{_checksum(payload)}"
                 self._send_now(framed)
+                if self.trace:
+                    log.info("TX> %s", command[:140])
                 resp = self._wait_ok(timeout=timeout)
+                if self.trace:
+                    log.info("RX< %s", resp.replace("\n", " | ")[:180])
                 low = resp.lower()
                 if "resend" in low or low.startswith("rs"):
                     # Roll back the line number and retry.
@@ -239,6 +257,22 @@ class SerialPrinter:
                     continue
                 return resp
             raise RuntimeError(f"Repeated resend requests for: {command}")
+
+    def cached_status(self, max_age: float = 8.0) -> "PrinterStatus":
+        """Latest temps parsed from the read stream — no serial I/O, so it's safe
+        to call while a stream print holds the port. Temps older than ``max_age``
+        seconds are returned as None rather than a misleading stale value."""
+        c = self._cached
+        fresh = self._cached_ts > 0 and (time.monotonic() - self._cached_ts) <= max_age
+        return PrinterStatus(
+            state=c.state, progress=c.progress,
+            sd_current=c.sd_current, sd_total=c.sd_total,
+            nozzle_temp=c.nozzle_temp if fresh else None,
+            nozzle_target=c.nozzle_target if fresh else None,
+            bed_temp=c.bed_temp if fresh else None,
+            bed_target=c.bed_target if fresh else None,
+            current_file=c.current_file,
+        )
 
     # ── status ────────────────────────────────────────────────────
     def query_status(self) -> PrinterStatus:
@@ -424,10 +458,13 @@ class SerialPrinter:
         log.info("Stream print finished: %d lines, %d bytes in %.0fs", lines, sent, dur)
         return True
 
-    def enable_auto_reports(self, temp_interval_s: int = 5, sd_interval_s: int = 5) -> None:
-        """Ask Marlin to stream temp/SD reports so monitoring is low-overhead."""
+    def enable_auto_reports(self, temp_interval_s: int = 3, sd_interval_s: int = 5) -> None:
+        """Ask Marlin to stream temp/SD reports so monitoring is low-overhead.
+
+        Temps are capped to <=3s so the cached status stays fresh during a stream
+        print (when we can't send an on-demand M105)."""
         try:
-            self.send_command(f"M155 S{temp_interval_s}", timeout=8)
+            self.send_command(f"M155 S{max(1, min(temp_interval_s, 3))}", timeout=8)
             self.send_command(f"M27 S{sd_interval_s}", timeout=8)
         except Exception as e:
             log.warning("Could not enable auto-reports (non-fatal): %s", e)

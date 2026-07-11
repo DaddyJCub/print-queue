@@ -8,6 +8,7 @@
   "serial_port": "auto",
   "baud_rate": 115200,
   "print_mode": "sd",
+  "serial_debug": false,
 
   "poll_interval_s": 5,
   "heartbeat_interval_s": 15,

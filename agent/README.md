@@ -114,6 +114,22 @@ remotely over the same outbound channel:
 Set `"print_mode": "stream"` for speed on a dedicated always-on Pi; keep `"sd"`
 if resilience to a host restart matters more than upload speed.
 
+## Seeing what's sent over serial
+
+Set `"serial_debug": true` in `config.json` and restart. Every command sent and
+reply received is logged (`TX> …` / `RX< …`) — visible in
+`journalctl -u printqueue-agent -f` and the admin **View logs** panel. It's
+noisy during a print (one line per command); turn it off when you're done.
+
+## Where prints show up
+
+Prints started from the **device page** or **Orca** ("Send to printer") are
+**local** to the agent — they don't appear in the central Printellect *queue*
+(only admin "Send file" jobs do). The agent's live status (state, temps,
+progress) still shows on its **Print Agents** card and the device page. During a
+stream print, temps come from Marlin's ~3s auto-reports (shown only while fresh),
+so nothing stale is displayed.
+
 ## Important notes
 
 - **Cura and the agent can't both be connected to the printer at once** (a USB
