@@ -41,6 +41,7 @@ from app.main import (
     build_email_html,
     send_push_notification_to_admins,
     fetch_printer_status_with_cache,
+    display_printer_codes,
     format_eta_display,
     get_smart_eta,
     first_name_only,
@@ -1475,9 +1476,9 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     # Fetch current printer status using cache with timeout
     # This prevents slow page loads when printers are offline
     printer_status = {}
-    for printer_code in ["ADVENTURER_4", "AD5X"]:
+    for printer_code in display_printer_codes():
         printer_status[printer_code] = await fetch_printer_status_with_cache(printer_code, timeout=3.0)
-    
+
     # First pass: build items and find printing index, fetch real progress for PRINTING
     for idx, r in enumerate(rows):
         r = dict(r)
@@ -1807,10 +1808,7 @@ async def public_queue(request: Request, mine: Optional[str] = None):
         "mine": mine,
         "my_pos": my_pos,
         "counts": counts,
-        "printer_status": {
-            "ADVENTURER_4": printer_status.get("ADVENTURER_4", {}),
-            "AD5X": printer_status.get("AD5X", {}),
-        },
+        "printer_status": printer_status,  # all real printers incl. agent-backed (LK5)
         "version": APP_VERSION,
     })
 
@@ -1866,7 +1864,7 @@ async def queue_data_api(mine: Optional[str] = None):
     
     # Fetch current printer status using cache with timeout
     printer_status = {}
-    for printer_code in ["ADVENTURER_4", "AD5X", "P1S"]:
+    for printer_code in display_printer_codes():
         printer_status[printer_code] = await fetch_printer_status_with_cache(printer_code, timeout=3.0)
     
     # Build items list
