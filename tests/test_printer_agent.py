@@ -318,6 +318,30 @@ def test_command_next_requires_bearer(client):
     assert client.get(f"{PREFIX}/commands/next").status_code == 401
 
 
+def test_single_agent_view_and_remote_controls(client, admin_client):
+    created = _create_agent(admin_client)
+    agent_id = created["agent_id"]
+    # Single-agent status endpoint (used by the remote panel's live poll).
+    r = admin_client.get(f"{ADMIN}/agents/{agent_id}")
+    assert r.status_code == 200 and r.json()["agent_id"] == agent_id
+    assert admin_client.get(f"{ADMIN}/agents/does-not-exist").status_code == 404
+
+    # Remote-control command actions are accepted and queued.
+    for action, payload in [
+        ("resume_print", None),
+        ("cancel_print", None),
+        ("set_temp", {"target": "nozzle", "value": 200}),
+        ("list_files", None),
+        ("start_file", {"file": "cube.gcode"}),
+        ("get_state", None),
+    ]:
+        body = {"action": action}
+        if payload:
+            body["payload"] = payload
+        resp = admin_client.post(f"{ADMIN}/agents/{agent_id}/commands", json=body)
+        assert resp.status_code == 200, f"{action}: {resp.text}"
+
+
 # ─────────────────────────── unified long-poll (events) ───────────────────────────
 
 def test_events_returns_command(client, admin_client):

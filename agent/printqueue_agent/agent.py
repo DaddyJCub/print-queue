@@ -47,6 +47,9 @@ class Agent:
         # central-job loop doesn't grab the serial port at the same time.
         self.print_active = threading.Event()
         self._ui_server = None
+        # Single controller shared by the local device page and remote commands,
+        # so remote control reuses exactly the same code paths.
+        self._controller = None
         self._last_heartbeat = 0.0
         self._last_snapshot = 0.0
         # Whether the last heartbeat/provision reached the server (surfaced as the
@@ -137,14 +140,20 @@ class Agent:
         d["serial_debug"] = self.serial_debug
         return d
 
+    def get_controller(self):
+        """The shared AgentPrinterController (device page + remote commands)."""
+        if self._controller is None:
+            from .controller import AgentPrinterController
+            self._controller = AgentPrinterController(self)
+        return self._controller
+
     def _maybe_start_local_ui(self) -> None:
         """Start the ZMOD-style device-page web server (once)."""
         if self._ui_server is not None or not self.cfg.local_ui.enabled:
             return
         try:
-            from .controller import AgentPrinterController
             from .local_ui import start_in_thread
-            controller = AgentPrinterController(self)
+            controller = self.get_controller()
             self._ui_server = start_in_thread(
                 controller, self.cfg.local_ui.host, self.cfg.local_ui.port, self.cfg.local_ui.api_key,
             )

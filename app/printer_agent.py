@@ -89,6 +89,16 @@ AGENT_COMMAND_ACTIONS = {
     "set_wifi",        # configure Wi-Fi on Linux (nmcli)
     "set_print_mode",  # switch SD vs stream printing at runtime
     "set_serial_debug",  # toggle the serial TX/RX trace log
+    # Remote device control (mirror of the on-Pi device page) — off-network.
+    "resume_print",
+    "cancel_print",
+    "set_temp",        # {target: nozzle|bed, value}
+    "home",            # {axes}
+    "jog",             # {axis, distance}
+    "set_fan",         # {speed}
+    "list_files",      # returns spooled files in the result
+    "start_file",      # {file} — print a spooled file
+    "get_state",       # fresh status snapshot in the result
     "update_agent",    # download a new agent bundle, self-update, restart (OTA)
     "flash_firmware",  # flash printer firmware (.hex) via avrdude — opt-in on agent
     "pause_print",     # pause the running print (Printellect Watch failure response)
@@ -1069,6 +1079,19 @@ async def admin_enqueue_command(agent_id: str, body: CommandRequest, admin=Depen
     finally:
         conn.close()
     return {"ok": True, "cmd_id": cmd_id, "status": "queued"}
+
+
+@router.get(ADMIN_PREFIX + "/agents/{agent_id}")
+async def admin_get_agent(agent_id: str, admin=Depends(require_admin)):
+    """Single-agent view (online + latest heartbeat status) for the remote panel."""
+    conn = db()
+    try:
+        row = conn.execute("SELECT * FROM printer_agents WHERE agent_id = ?", (agent_id,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return _agent_view(row)
 
 
 @router.get(ADMIN_PREFIX + "/agents/{agent_id}/commands")
