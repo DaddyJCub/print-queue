@@ -185,6 +185,7 @@ class FakeController:
         self.fan = None
         self.restarted = False
         self.print_mode = "sd"
+        self.serial_debug = False
 
     def info(self):
         return {"name": "Garage LK5", "printer_code": "LK5_PRO", "agent_version": "1.0.0"}
@@ -221,6 +222,10 @@ class FakeController:
             raise ValueError("bad mode")
         self.print_mode = mode
         return mode
+
+    def set_serial_debug(self, enabled):
+        self.serial_debug = bool(enabled)
+        return self.serial_debug
 
     def pause(self): self.paused = True
     def resume(self): self.paused = False
@@ -309,6 +314,17 @@ def test_print_mode_toggle(server):
     # auth required
     assert _req(base, "/api/print-mode", method="POST",
                 data=json.dumps({"mode": "sd"}).encode())[0] == 401
+
+
+def test_serial_debug_toggle(server):
+    ctrl, base = server
+    st, body = _req(base, "/api/serial-debug", method="POST",
+                    data=json.dumps({"enabled": True}).encode(),
+                    headers={**AUTH, "Content-Type": "application/json"})
+    assert st == 200 and json.loads(body)["serial_debug"] is True
+    assert ctrl.serial_debug is True
+    assert _req(base, "/api/serial-debug", method="POST",
+                data=json.dumps({"enabled": False}).encode())[0] == 401  # auth required
 
 
 def _multipart(fields, fname=None, fdata=b""):

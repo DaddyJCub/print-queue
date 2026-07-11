@@ -212,6 +212,9 @@ def make_handler(controller, api_key: str):
                         return self._send_json({"ok": True, "print_mode": controller.set_print_mode(mode)})
                     except ValueError as e:
                         return self._send_json({"error": str(e)}, status=400)
+                if path == "/api/serial-debug":
+                    on = self._read_json().get("enabled", False)
+                    return self._send_json({"ok": True, "serial_debug": controller.set_serial_debug(on)})
                 if path == "/api/pause":
                     controller.pause(); return self._send_json({"ok": True})
                 if path == "/api/resume":

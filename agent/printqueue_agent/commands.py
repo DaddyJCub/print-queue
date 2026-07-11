@@ -105,6 +105,9 @@ class CommandExecutor:
         mode = self.agent.set_print_mode(payload.get("mode", ""))
         return {"print_mode": mode}
 
+    def _do_set_serial_debug(self, payload, cmd_id) -> Dict[str, Any]:
+        return {"serial_debug": self.agent.set_serial_debug(payload.get("enabled", False))}
+
     def _do_get_host_info(self, payload, cmd_id) -> Dict[str, Any]:
         def _run(args, timeout=8):
             try:
