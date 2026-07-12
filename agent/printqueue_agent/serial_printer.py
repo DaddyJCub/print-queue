@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -251,8 +252,13 @@ class SerialPrinter:
                     log.info("RX< %s", resp.replace("\n", " | ")[:180])
                 low = resp.lower()
                 if "resend" in low or low.startswith("rs"):
-                    # Roll back the line number and retry.
-                    self._line_no -= 1
+                    # Sync to the requested line if provided (e.g. "Resend: 123"
+                    # or "rs 123"). Falling back to -1 keeps legacy behavior.
+                    m = re.search(r"(?:resend\s*:?\s*|\brs\s+)(\d+)", low)
+                    if m:
+                        self._line_no = max(0, int(m.group(1)) - 1)
+                    else:
+                        self._line_no -= 1
                     time.sleep(0.05)
                     continue
                 return resp
@@ -425,6 +431,8 @@ class SerialPrinter:
         with self._lock:
             self._line_no = 0
             self.send_command("M110 N0", timeout=15)
+            # M110 N0 tells Marlin to expect N1 next; keep host counter aligned.
+            self._line_no = 0
 
         with open(gcode_path, "r", errors="ignore") as fh:
             for raw in fh:
@@ -441,6 +449,13 @@ class SerialPrinter:
                 sent += len(raw)
                 if not line:
                     continue
+                uline = line.upper()
+                # Skip common slicer metadata commands that are harmless for the
+                # print but noisy/unsupported on older Marlin (e.g. LK5 stock fw).
+                if (uline.startswith("EXCLUDE_OBJECT_DEFINE")
+                        or uline.startswith("BED_MESH_PROFILE ")
+                        or uline.startswith("M73 ")):
+                    continue
                 # Heating/homing lines (M109/M190/G28) can block for minutes;
                 # _wait_ok tolerates the 'busy' keepalive, so a long timeout is safe.
                 self.send_command(line, timeout=600)
@@ -454,6 +469,8 @@ class SerialPrinter:
                     log.info("Print %2d%% — %d/%d bytes, %d lines sent", pct, sent, total, lines)
                     last_log = now
                     next_log_pct = (pct // 10 + 1) * 10
+        if on_progress and last_pct != 100:
+            on_progress(100)
         dur = time.time() - start
         log.info("Stream print finished: %d lines, %d bytes in %.0fs", lines, sent, dur)
         return True

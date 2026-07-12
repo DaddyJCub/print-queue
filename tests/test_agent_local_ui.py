@@ -105,6 +105,24 @@ def test_wait_ok_tolerates_busy(monkeypatch):
     assert "ok" in p._wait_ok(timeout=5).lower()
 
 
+def test_send_command_resend_syncs_to_requested_line(monkeypatch):
+    """On 'Resend: N', sender must retry from N (not just decrement by one)."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+    framed = []
+
+    monkeypatch.setattr(p, "_send_now", lambda s: framed.append(s))
+    seq = iter(["Error:Line Number is not Last Line Number+1, Last Line: 4\nResend: 5", "ok"])
+    monkeypatch.setattr(p, "_wait_ok", lambda timeout=30: next(seq))
+
+    p._line_no = 10
+    p.send_command("G28", timeout=5)
+
+    assert len(framed) == 2
+    assert framed[0].startswith("N11 G28*")
+    assert framed[1].startswith("N5 G28*")
+
+
 def test_stream_print_sends_all_lines(tmp_path, monkeypatch):
     """Stream mode must send every gcode line and report completion."""
     monkeypatch.setattr(sp, "serial", object())
@@ -121,6 +139,46 @@ def test_stream_print_sends_all_lines(tmp_path, monkeypatch):
     assert "M104 S200" in sent and "G28" in sent and "G1 X1 Y1" in sent
     assert "; comment only" not in " ".join(sent)  # comment-only line skipped
     assert seen and seen[-1] == 100
+
+
+def test_stream_print_resets_counter_after_m110(tmp_path, monkeypatch):
+    """After stream-start M110 N0, host counter must be reset so next line is N1."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+
+    monkeypatch.setattr(p, "send_command", lambda cmd, timeout=30: "ok")
+    f = tmp_path / "m.gcode"
+    f.write_text("G28\n")
+
+    p._line_no = 99
+    ok = p.stream_print(str(f))
+
+    assert ok is True
+    assert p._line_no == 0
+
+
+def test_stream_print_skips_incompatible_metadata_lines(tmp_path, monkeypatch):
+    """Klipper/object metadata lines should be skipped for LK5/Marlin stream mode."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+    sent = []
+    monkeypatch.setattr(p, "send_command", lambda cmd, timeout=30: sent.append(cmd) or "ok")
+
+    f = tmp_path / "m.gcode"
+    f.write_text(
+        "M73 P0 R17\n"
+        "EXCLUDE_OBJECT_DEFINE NAME=obj\n"
+        "BED_MESH_PROFILE LOAD=default\n"
+        "G28\n"
+    )
+
+    ok = p.stream_print(str(f))
+    assert ok is True
+    assert "M110 N0" in sent
+    assert "G28" in sent
+    assert all(not s.startswith("M73 ") for s in sent)
+    assert all(not s.startswith("EXCLUDE_OBJECT_DEFINE") for s in sent)
+    assert all(not s.startswith("BED_MESH_PROFILE ") for s in sent)
 
 
 def test_cached_status_nulls_stale_temps(monkeypatch):
