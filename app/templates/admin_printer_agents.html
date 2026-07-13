@@ -44,7 +44,8 @@
     <!-- Agent software updates (OTA) -->
     <section class="rounded-2xl border border-zinc-800 bg-zinc-800/40 p-4 mb-4">
       <h2 class="text-sm font-semibold text-zinc-300 mb-2">⬆️ Agent software updates</h2>
-      <p class="text-xs text-zinc-500 mb-3">Upload a new agent bundle (a <code class="bg-zinc-800 px-1 rounded">.zip</code> of the <code class="bg-zinc-800 px-1 rounded">printqueue_agent/</code> package — build with <code class="bg-zinc-800 px-1 rounded">python build_bundle.py</code>). Then use <strong>Update agent</strong> under each agent's Manage panel — it self-updates and restarts.</p>
+      <p class="text-xs text-zinc-500 mb-1">Upload a new agent bundle (a <code class="bg-zinc-800 px-1 rounded">.zip</code> of the <code class="bg-zinc-800 px-1 rounded">printqueue_agent/</code> package — build with <code class="bg-zinc-800 px-1 rounded">python build_bundle.py</code>). Then use <strong>Update agent</strong> under each agent's Manage panel — it self-updates and restarts.</p>
+      <p class="text-xs text-amber-300/80 mb-3">The OTA target comes from the <strong>current uploaded bundle</strong> below, not from the web app build version currently running on the server.</p>
       <form id="releaseForm" class="grid md:grid-cols-3 gap-2 items-center">
         <input name="version" required placeholder="Version (e.g. 1.1.0)" class="rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 text-sm" />
         <input name="file" type="file" accept=".zip" required class="text-sm text-zinc-400" />
@@ -662,7 +663,7 @@
         const box = document.getElementById("releaseInfo");
         if (!rels.length) { box.textContent = "No bundle uploaded yet."; return; }
         const cur = rels.find(x => x.is_current) || rels[0];
-        box.innerHTML = "Current bundle: <strong class='text-zinc-200'>v" + esc(cur.version) + "</strong> · " + fmtBytes(cur.size_bytes) + " · uploaded " + timeAgo(cur.created_at);
+        box.innerHTML = "Current OTA bundle target: <strong class='text-zinc-200'>v" + esc(cur.version) + "</strong> · " + fmtBytes(cur.size_bytes) + " · uploaded " + timeAgo(cur.created_at);
       } catch (_) {}
     }
     document.getElementById("releaseForm").addEventListener("submit", async (e) => {

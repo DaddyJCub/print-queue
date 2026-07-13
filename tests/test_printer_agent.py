@@ -502,6 +502,71 @@ def test_push_update_refreshes_stale_auto_release(client, admin_client, tmp_path
     assert nxt.json()["payload"]["version"] == workspace_version
 
 
+def test_list_agents_refreshes_stale_manual_release(admin_client, tmp_path):
+    from app.printer_agent import _read_workspace_agent_version
+
+    workspace_version = _read_workspace_agent_version()
+
+    conn = get_test_db()
+    stale_bundle = tmp_path / "agent-1.1.0.zip"
+    stale_bundle.write_bytes(b"stale")
+    conn.execute("DELETE FROM printer_agent_releases")
+    conn.execute(
+        "INSERT INTO printer_agent_releases "
+        "(version, created_at, created_by, notes, bundle_path, sha256, size_bytes, is_current) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+        (
+            "1.1.0",
+            "2026-01-01T00:00:00Z",
+            "admin-user",
+            "Manual upload",
+            str(stale_bundle),
+            "deadbeef",
+            len(b"stale"),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    created = _create_agent(admin_client)
+    agents = admin_client.get(f"{ADMIN}/agents").json()
+    row = next(a for a in agents["agents"] if a["agent_id"] == created["agent_id"])
+    assert agents["current_release_version"] == workspace_version
+    assert row["upgrade_available"] is True
+    assert row["available_version"] == workspace_version
+
+
+def test_list_releases_refreshes_stale_manual_release(admin_client, tmp_path):
+    from app.printer_agent import _read_workspace_agent_version
+
+    workspace_version = _read_workspace_agent_version()
+
+    conn = get_test_db()
+    stale_bundle = tmp_path / "agent-1.1.0.zip"
+    stale_bundle.write_bytes(b"stale")
+    conn.execute("DELETE FROM printer_agent_releases")
+    conn.execute(
+        "INSERT INTO printer_agent_releases "
+        "(version, created_at, created_by, notes, bundle_path, sha256, size_bytes, is_current) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+        (
+            "1.1.0",
+            "2026-01-01T00:00:00Z",
+            "admin-user",
+            "Manual upload",
+            str(stale_bundle),
+            "deadbeef",
+            len(b"stale"),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    rels = admin_client.get(f"{ADMIN}/agent-releases").json()["releases"]
+    cur = next(r for r in rels if r["is_current"])
+    assert cur["version"] == workspace_version
+
+
 def test_upload_rejects_non_package_zip(admin_client):
     import io
     import zipfile
