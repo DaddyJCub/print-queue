@@ -2195,8 +2195,12 @@
       document.getElementById('send-to-printer-modal').addEventListener('click', (e) => {
         if (e.target.id === 'send-to-printer-modal') hideSendToPrinterModal();
       });
+    </script>
+    {% endif %}
 
+    <script>
       // Send a G-code file to the LK5 Pro via its print agent.
+      // This must be available even when Moonraker UI is disabled.
       async function sendToLk5(fileId, fileName) {
         if (!(await showConfirm('Send "' + fileName + '" to the LK5 Pro? It will print when the printer is idle.', { destructive: false, confirmText: 'Send' }))) return;
         try {
@@ -2216,7 +2220,6 @@
         }
       }
     </script>
-    {% endif %}
 
     <!-- Print Start Modal (Printer/Material Selection) -->
     <div id="print-start-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

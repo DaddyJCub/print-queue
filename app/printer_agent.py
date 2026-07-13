@@ -1191,8 +1191,7 @@ def _ensure_current_release(conn: sqlite3.Connection, created_by: Optional[str])
         return rel
 
     base_version = _read_workspace_agent_version()
-    auto_version = f"{base_version}+auto.{int(time.time())}"
-    built = _build_workspace_agent_bundle(auto_version)
+    built = _build_workspace_agent_bundle(base_version)
 
     conn.execute("UPDATE printer_agent_releases SET is_current = 0")
     conn.execute(
@@ -1200,10 +1199,10 @@ def _ensure_current_release(conn: sqlite3.Connection, created_by: Optional[str])
         "(version, created_at, created_by, notes, bundle_path, sha256, size_bytes, is_current) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
         (
-            auto_version,
+            base_version,
             now_iso(),
             created_by,
-            "Auto-generated from server bundled agent source",
+            "Generated from server bundled agent source",
             built["bundle_path"],
             built["sha256"],
             built["size_bytes"],

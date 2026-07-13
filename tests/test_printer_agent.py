@@ -640,6 +640,7 @@ def test_request_page_shows_lk5_button_only_for_lk5(admin_client):
     r_other = admin_client.get(f"/admin/request/{other['request_id']}")
     assert r_lk5.status_code == 200 and r_other.status_code == 200
     assert "Send to LK5 Pro" in r_lk5.text
+    assert "async function sendToLk5(" in r_lk5.text
     assert "Send to LK5 Pro" not in r_other.text
 
 
