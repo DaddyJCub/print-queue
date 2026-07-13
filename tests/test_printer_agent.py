@@ -419,23 +419,24 @@ def test_upload_and_push_agent_update(client, admin_client):
     headers = {"Authorization": f"Bearer {token}"}
 
     bundle = _make_agent_bundle()
+    uploaded_version = "9.9.9"
     up = admin_client.post(
         f"{ADMIN}/agent-releases",
-        data={"version": "1.1.0"},
+        data={"version": uploaded_version},
         files={"file": ("agent.zip", bundle, "application/zip")},
     )
     assert up.status_code == 200, up.text
 
     rels = admin_client.get(f"{ADMIN}/agent-releases").json()["releases"]
-    assert any(r["version"] == "1.1.0" and r["is_current"] for r in rels)
+    assert any(r["version"] == uploaded_version and r["is_current"] for r in rels)
 
     push = admin_client.post(f"{ADMIN}/agents/{agent_id}/update")
     assert push.status_code == 200, push.text
-    assert push.json()["version"] == "1.1.0"
+    assert push.json()["version"] == uploaded_version
 
     cmd = client.get(f"{PREFIX}/commands/next", headers=headers).json()
     assert cmd["action"] == "update_agent"
-    assert cmd["payload"]["version"] == "1.1.0"
+    assert cmd["payload"]["version"] == uploaded_version
 
     dl = client.get(cmd["payload"]["bundle_url"], headers=headers)
     assert dl.status_code == 200
