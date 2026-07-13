@@ -115,9 +115,13 @@ class SerialPrinter:
                 bauds.append(b)
 
         last_err: Optional[Exception] = None
+        deadline = time.monotonic() + max(1.0, float(self.connect_timeout))
         for baud in bauds:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
             try:
-                self._open_and_handshake(baud)
+                self._open_and_handshake(baud, remaining)
                 self.baud = baud
                 log.info("Connected to printer on %s @ %d", self.port, baud)
                 self._log_firmware()
@@ -128,7 +132,7 @@ class SerialPrinter:
                 self.close()
         raise RuntimeError(f"Could not communicate with printer on {self.port}: {last_err}")
 
-    def _open_and_handshake(self, baud: int) -> None:
+    def _open_and_handshake(self, baud: int, budget_s: Optional[float] = None) -> None:
         # exclusive=True (POSIX) makes a *second* opener fail cleanly instead of
         # both processes sharing the port and corrupting each other's traffic
         # ("device reports readiness to read but returned no data / multiple
@@ -141,8 +145,18 @@ class SerialPrinter:
         except Exception as e:
             raise RuntimeError(f"Could not open {self.port} (already in use by another "
                                f"program / a second agent?): {e}") from e
+        deadline = time.monotonic() + max(0.5, float(budget_s)) if budget_s is not None else None
+
+        def _remaining(default: float) -> float:
+            if deadline is None:
+                return default
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise TimeoutError("connect timeout budget exhausted")
+            return min(default, left)
+
         # The board resets when the port opens (DTR); wait for it to boot.
-        self._wait_for_boot(timeout=8.0)
+        self._wait_for_boot(timeout=_remaining(8.0))
         self._ser.reset_input_buffer()
         self._line_no = 0
         # The first M110 after a reset/brownout is sometimes dropped — retry.
@@ -150,10 +164,12 @@ class SerialPrinter:
         for _ in range(3):
             try:
                 self._send_now("M110 N0")
-                self._wait_ok(timeout=8.0)
+                self._wait_ok(timeout=_remaining(8.0))
                 return
             except Exception as e:
                 last = e
+                if deadline is not None and deadline - time.monotonic() <= 0:
+                    break
                 time.sleep(0.8)
         raise RuntimeError(f"no 'ok' to M110 handshake: {last}")
 

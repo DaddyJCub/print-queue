@@ -81,7 +81,7 @@ def test_connect_tries_fallback_bauds(monkeypatch):
     p = sp.SerialPrinter("/dev/null", 250000)  # configured baud "wrong"
     tried = []
 
-    def fake_open(baud):
+    def fake_open(baud, budget_s=None):
         tried.append(baud)
         if baud != 115200:
             raise RuntimeError("no response")
@@ -93,6 +93,32 @@ def test_connect_tries_fallback_bauds(monkeypatch):
     p.connect()
     assert p.baud == 115200
     assert tried[0] == 250000  # the configured rate is tried first
+
+
+def test_connect_honors_timeout_budget(monkeypatch):
+    """A dead printer must not spend longer than connect_timeout cycling bauds."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 250000, connect_timeout=5.0)
+    tried = []
+    ticks = iter([0.0, 0.0, 3.0, 6.1])
+
+    def fake_monotonic():
+        return next(ticks)
+
+    def fake_open(baud, budget_s=None):
+        tried.append((baud, budget_s))
+        raise RuntimeError("no response")
+
+    monkeypatch.setattr(sp.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(p, "_open_and_handshake", fake_open)
+    monkeypatch.setattr(p, "close", lambda: None)
+
+    with pytest.raises(RuntimeError):
+        p.connect()
+
+    assert len(tried) == 2
+    assert tried[0][0] == 250000
+    assert tried[1][0] == 115200
 
 
 def test_wait_ok_tolerates_busy(monkeypatch):
