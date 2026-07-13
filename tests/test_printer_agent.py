@@ -676,6 +676,24 @@ def test_admin_agents_page_renders(admin_client):
     assert "Print Agents" in r.text
 
 
+def test_admin_agents_list_includes_pending_work_counts(client, admin_client):
+    created = _create_agent(admin_client)
+    file_id = _make_gcode_file(name="pending.gcode")
+
+    r = admin_client.post(f"{ADMIN}/agents/{created['agent_id']}/commands", json={"action": "get_logs"})
+    assert r.status_code == 200
+    r = admin_client.post(f"{ADMIN}/agents/{created['agent_id']}/jobs", json={"file_id": file_id})
+    assert r.status_code == 200
+
+    body = admin_client.get(f"{ADMIN}/agents").json()
+    row = next(a for a in body["agents"] if a["agent_id"] == created["agent_id"])
+    assert row["online"] is False
+    assert row["queued_command_count"] == 1
+    assert row["active_command_count"] == 0
+    assert row["queued_job_count"] == 1
+    assert row["active_job_count"] == 0
+
+
 def test_setup_guide_doc_accessible(admin_client):
     r = admin_client.get("/admin/printellect/docs/lk5-pro-agent-setup.md")
     assert r.status_code == 200

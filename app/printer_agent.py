@@ -967,6 +967,22 @@ async def admin_list_agents(admin=Depends(require_admin)):
             a = _agent_view(r)
             a["upgrade_available"] = _is_version_newer(current_release_version, a.get("agent_version"))
             a["available_version"] = current_release_version if a["upgrade_available"] else None
+            a["queued_command_count"] = conn.execute(
+                "SELECT COUNT(*) FROM printer_agent_commands WHERE agent_id = ? AND status = 'queued'",
+                (a["agent_id"],),
+            ).fetchone()[0]
+            a["active_command_count"] = conn.execute(
+                "SELECT COUNT(*) FROM printer_agent_commands WHERE agent_id = ? AND status IN ('delivered', 'executing')",
+                (a["agent_id"],),
+            ).fetchone()[0]
+            a["queued_job_count"] = conn.execute(
+                "SELECT COUNT(*) FROM printer_agent_jobs WHERE agent_id = ? AND status = 'queued'",
+                (a["agent_id"],),
+            ).fetchone()[0]
+            a["active_job_count"] = conn.execute(
+                "SELECT COUNT(*) FROM printer_agent_jobs WHERE agent_id = ? AND status IN ('claimed', 'uploading', 'printing', 'paused')",
+                (a["agent_id"],),
+            ).fetchone()[0]
             fw = _current_firmware(conn, a.get("printer_code") or "LK5_PRO")
             a["available_firmware_version"] = fw["version"] if fw else None
             current_fw = _extract_firmware_version(a.get("status") or {})

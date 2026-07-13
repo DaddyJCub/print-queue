@@ -237,6 +237,15 @@
       return bits.join(" · ");
     }
 
+    function queueInsight(a) {
+      const bits = [];
+      if (a.queued_command_count) bits.push(`${a.queued_command_count} queued command${a.queued_command_count === 1 ? '' : 's'}`);
+      if (a.active_command_count) bits.push(`${a.active_command_count} active command${a.active_command_count === 1 ? '' : 's'}`);
+      if (a.queued_job_count) bits.push(`${a.queued_job_count} queued print${a.queued_job_count === 1 ? '' : 's'}`);
+      if (a.active_job_count) bits.push(`${a.active_job_count} active print${a.active_job_count === 1 ? '' : 's'}`);
+      return bits.join(' · ');
+    }
+
     function renderAgents(agents) {
       const wrap = document.getElementById("agentList");
       if (!agents.length) { wrap.innerHTML = '<div class="text-center text-zinc-500 py-10 border border-dashed border-zinc-800 rounded-2xl">No agents yet. Register one above.</div>'; return; }
@@ -255,6 +264,7 @@
               <div class="text-xs text-zinc-500 mt-1 font-mono">${esc(a.agent_id)}</div>
               <div class="text-xs text-zinc-400 mt-1">${a.online ? 'Online' : 'Offline'} · last seen ${timeAgo(a.last_seen_at)}${a.agent_version ? ' · v'+esc(a.agent_version) : ''}</div>
               ${statusLine(a.status) ? `<div class="text-xs text-indigo-300 mt-1">${statusLine(a.status)}</div>` : ''}
+              ${queueInsight(a) ? `<div class="text-xs ${a.online ? 'text-zinc-500' : 'text-amber-300'} mt-1">${a.online ? 'Pending:' : 'Offline with pending work:'} ${esc(queueInsight(a))}</div>` : ''}
             </div>
             <div class="flex items-center gap-2 flex-wrap justify-end">
               ${a.revoked ? '' : `<button onclick="sendPanel('${a.agent_id}')" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm">Send file</button>`}

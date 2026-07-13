@@ -364,10 +364,12 @@ class Agent:
             if self.print_mode == "stream":
                 # Host-stream directly (no slow SD upload); prints as it sends.
                 self.printer.enable_auto_reports(3, self.cfg.poll_interval_s)
+                self.print_progress = 0
                 self.client.update_job(job_id, "printing", progress=0)
                 # Throttle the cancel check: it's called per line, but each is a
                 # server round-trip, so only re-check every few seconds.
                 cc = {"t": 0.0, "canceled": False}
+                hb = {"t": 0.0}
 
                 def _still_wanted() -> bool:
                     now = time.time()
@@ -379,6 +381,9 @@ class Agent:
                 def _sprog(p):
                     self.print_progress = p
                     self._safe_update(job_id, "printing", progress=p)
+                    self._maybe_live_heartbeat(hb, "printing", file_name)
+
+                self._maybe_live_heartbeat(hb, "printing", file_name)
 
                 completed = self.printer.stream_print(
                     tmp_path,
@@ -391,10 +396,19 @@ class Agent:
                     self.printer.abort_print()
                     self.client.update_job(job_id, "canceled")
             else:
+                hb = {"t": 0.0}
+                self.print_progress = 0
                 self.client.update_job(job_id, "uploading", progress=0)
+
+                def _uprog(p):
+                    self.print_progress = p
+                    self._safe_update(job_id, "uploading", progress=p)
+                    self._maybe_live_heartbeat(hb, "uploading", file_name)
+
+                self._maybe_live_heartbeat(hb, "uploading", file_name)
                 self.printer.upload_to_sd(
                     tmp_path,
-                    on_progress=lambda p: self._safe_update(job_id, "uploading", progress=p),
+                    on_progress=_uprog,
                 )
 
                 self.printer.start_sd_print()
@@ -421,6 +435,38 @@ class Agent:
             self.client.update_job(job_id, status, **kwargs)
         except ServerError as e:
             log.warning("job update failed: %s", e)
+
+    def _live_status_snapshot(self, state: str, current_file: Optional[str] = None) -> PrinterStatus:
+        """Best-effort status for long-running host-driven phases.
+
+        Uses cached auto-report data instead of serial polls so it is safe while
+        a stream print or SD upload holds the port.
+        """
+        if self.printer and self.printer.connected:
+            st = self.printer.cached_status()
+        else:
+            st = PrinterStatus(state="offline")
+        st.state = state
+        if self.print_progress is not None:
+            st.progress = self.print_progress
+        if current_file:
+            st.current_file = current_file
+        return st
+
+    def _maybe_live_heartbeat(self, gate: dict, state: str, current_file: Optional[str] = None) -> None:
+        now = time.time()
+        if now - gate.get("t", 0.0) < self.cfg.heartbeat_interval_s:
+            return
+        try:
+            self.client.heartbeat(
+                self.cfg.agent_version,
+                self._heartbeat_status(self._live_status_snapshot(state, current_file)),
+            )
+            self.server_online = True
+        except ServerError:
+            self.server_online = False
+        self._maybe_snapshot()
+        gate["t"] = now
 
     def _job_canceled(self, job_id: str) -> bool:
         """True if the server marked this job canceled (admin 'Cancel job')."""
