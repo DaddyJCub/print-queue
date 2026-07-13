@@ -463,6 +463,45 @@ def test_push_update_without_manual_release_autogenerates(client, admin_client):
     assert nxt.json()["action"] == "update_agent"
 
 
+def test_push_update_refreshes_stale_auto_release(client, admin_client, tmp_path):
+    from app.printer_agent import _read_workspace_agent_version
+
+    workspace_version = _read_workspace_agent_version()
+
+    conn = get_test_db()
+    stale_bundle = tmp_path / "agent-1.1.0.zip"
+    stale_bundle.write_bytes(b"stale")
+    conn.execute("DELETE FROM printer_agent_releases")
+    conn.execute(
+        "INSERT INTO printer_agent_releases "
+        "(version, created_at, created_by, notes, bundle_path, sha256, size_bytes, is_current) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+        (
+            "1.1.0",
+            "2026-01-01T00:00:00Z",
+            "system-auto",
+            "Generated from server bundled agent source",
+            str(stale_bundle),
+            "deadbeef",
+            len(b"stale"),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    created = _create_agent(admin_client)
+    token = _provision(client, created["agent_id"], created["claim_code"]).json()["agent_token"]
+
+    r = admin_client.post(f"{ADMIN}/agents/{created['agent_id']}/update")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert any(q.get("action") == "update_agent" and q.get("version") == workspace_version for q in body["queued"])
+
+    nxt = client.get(f"{PREFIX}/commands/next", headers={"Authorization": f"Bearer {token}"})
+    assert nxt.status_code == 200
+    assert nxt.json()["payload"]["version"] == workspace_version
+
+
 def test_upload_rejects_non_package_zip(admin_client):
     import io
     import zipfile

@@ -1185,12 +1185,22 @@ def _build_workspace_agent_bundle(version: str) -> Dict[str, Any]:
     }
 
 
+def _is_auto_generated_release(rel: Optional[sqlite3.Row]) -> bool:
+    if not rel:
+        return False
+    notes = str(rel["notes"] or "")
+    created_by = str(rel["created_by"] or "")
+    return notes == "Generated from server bundled agent source" or created_by == "system-auto"
+
+
 def _ensure_current_release(conn: sqlite3.Connection, created_by: Optional[str]) -> sqlite3.Row:
     rel = _current_release(conn)
-    if rel and rel["bundle_path"] and os.path.isfile(rel["bundle_path"]):
-        return rel
-
     base_version = _read_workspace_agent_version()
+
+    if rel and rel["bundle_path"] and os.path.isfile(rel["bundle_path"]):
+        if not (_is_auto_generated_release(rel) and _is_version_newer(base_version, rel["version"])):
+            return rel
+
     built = _build_workspace_agent_bundle(base_version)
 
     conn.execute("UPDATE printer_agent_releases SET is_current = 0")

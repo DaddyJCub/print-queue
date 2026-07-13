@@ -259,7 +259,7 @@
               ${a.revoked ? '' : `<button onclick="sendPanel('${a.agent_id}')" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm">Send file</button>`}
               <button onclick="toggleJobs('${a.agent_id}')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">Jobs</button>
               ${a.revoked ? '' : `<button onclick="managePanel('${a.agent_id}')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">Manage</button>`}
-              ${(!a.revoked && a.upgrade_available) ? `<button onclick="pushUpdate('${a.agent_id}')" class="rounded-xl bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-200 px-3 py-1.5 text-sm">Upgrade</button>` : ''}
+              ${(!a.revoked && (a.upgrade_available || a.firmware_upgrade_available)) ? `<button onclick="pushUpdate('${a.agent_id}')" class="rounded-xl bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-200 px-3 py-1.5 text-sm">Upgrade</button>` : ''}
               ${(!a.revoked) ? `<button onclick="openRemote('${a.agent_id}')" class="rounded-xl bg-emerald-700/40 hover:bg-emerald-700/60 text-emerald-200 px-3 py-1.5 text-sm">🖥 Remote</button>` : ''}
               ${(!a.revoked) ? `<button onclick="openDevicePage('${a.agent_id}')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">Device page</button>` : ''}
               ${a.revoked ? '' : `<button onclick="revoke('${a.agent_id}')" class="rounded-xl bg-red-900/40 hover:bg-red-900/60 text-red-300 px-3 py-1.5 text-sm">Revoke</button>`}
@@ -351,6 +351,18 @@
       const _a = (window.__agents || []).find(a => a.agent_id === agentId);
       const curMode = (_a && _a.status && _a.status.print_mode) || "sd";
       const curDebug = !!(_a && _a.status && _a.status.serial_debug);
+      const hasAgentUpgrade = !!(_a && _a.upgrade_available);
+      const hasFirmwareUpgrade = !!(_a && _a.firmware_upgrade_available);
+      const updateLabel = hasAgentUpgrade && hasFirmwareUpgrade
+        ? `⬆️ Update agent + firmware`
+        : hasAgentUpgrade
+          ? `⬆️ Update agent${_a && _a.available_version ? ' · v' + esc(_a.available_version) : ''}`
+          : hasFirmwareUpgrade
+            ? `⬆️ Flash firmware${_a && _a.available_firmware_version ? ' · v' + esc(_a.available_firmware_version) : ''}`
+            : `✓ Up to date`;
+      const updateButton = (hasAgentUpgrade || hasFirmwareUpgrade)
+        ? `<button onclick="pushUpdate('${agentId}')" class="rounded-lg bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-200 px-3 py-1.5 text-sm">${updateLabel}</button>`
+        : `<button disabled title="Agent and firmware are already up to date" class="rounded-lg bg-zinc-900 text-zinc-500 px-3 py-1.5 text-sm cursor-not-allowed">${updateLabel}</button>`;
       panel.innerHTML = `
         <div class="text-sm font-medium mb-2">Remote management</div>
         <div class="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 mb-3">
@@ -372,7 +384,7 @@
           <button onclick="cmd('${agentId}','get_host_info')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">🖥️ Host info</button>
           <button onclick="cmd('${agentId}','identify')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">👋 Identify</button>
           <button onclick="cmd('${agentId}','reload_config')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">♻️ Reload config</button>
-          <button onclick="pushUpdate('${agentId}')" class="rounded-lg bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-200 px-3 py-1.5 text-sm">⬆️ Update agent</button>
+          ${updateButton}
           <button onclick="cmd('${agentId}','restart_agent', true)" class="rounded-lg bg-amber-900/40 hover:bg-amber-900/60 text-amber-200 px-3 py-1.5 text-sm">🔁 Restart agent</button>
           <button onclick="cmd('${agentId}','reboot_host', true)" class="rounded-lg bg-amber-900/40 hover:bg-amber-900/60 text-amber-200 px-3 py-1.5 text-sm">⏻ Reboot Pi</button>
           <button onclick="flashFirmware('${agentId}')" class="rounded-lg bg-red-900/40 hover:bg-red-900/60 text-red-200 px-3 py-1.5 text-sm">⚡ Flash firmware</button>
