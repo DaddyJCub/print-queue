@@ -9,6 +9,18 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.32.0
+### Overview / Highlights
+- **Watch quiet-hours failsafe, richer failure alerts, and multi-build names.** Three improvements to AI print monitoring so an overnight failure doesn't run for hours, alerts are more actionable, and multi-build jobs are easy to tell apart.
+
+### Enhancements
+- **Quiet-hours failsafe (auto-pause overnight).** Set an overnight window (default 22:00–07:00, configurable timezone) in *Admin → Print Monitor*. During that window a confirmed failure is paused automatically on pause-capable printers — even if the per-printer auto-pause toggle is off — so a spaghetti print doesn't run all night while you're asleep. You still get the alert.
+- **Failure alerts now include a live camera image preview and quick actions.** Push notifications for a confirmed failure carry a snapshot of the printer plus **View print** and **Pause** buttons that deep-link straight to the printer's controls.
+- **Multi-build names in monitoring.** Frames, alerts and CM sessions for a multi-build request are now labeled `Name (build 2/3)` instead of showing the same name for every build, so you can tell which build is failing.
+
+### Bug Fixes
+- Print-monitor frame images are now stored on a persistent Docker volume in JCubHub CM, so captured frames survive a redeploy instead of disappearing.
+
 ## 0.31.1
 ### Bug Fixes
 - **Watch stops watching once a print is actually done.** Previously, if a build stayed marked as "printing" after it finished or was cancelled at the machine, Watch kept grabbing the (now idle) camera every minute and sending empty-bed frames to the AI — so a session appeared to keep "monitoring" a print that wasn't running. Watch now cross-checks the printer's live status and stops capturing (and ends the session) when the printer clearly isn't printing, while staying safe when the live status is briefly unknown.

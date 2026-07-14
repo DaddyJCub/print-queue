@@ -39,7 +39,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.31.1"
+APP_VERSION = "0.32.0"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -3170,6 +3170,7 @@ def _startup():
             parse_email_list=parse_email_list,
             get_printer_api=get_printer_api,
             demo_mode=lambda: DEMO_MODE,
+            base_url=BASE_URL,
         )
         _pm.start_print_monitor()
     else:
@@ -3312,6 +3313,13 @@ DEFAULT_SETTINGS: Dict[str, str] = {
     "print_monitor_autopause_AD5X": "0",
     "print_monitor_autopause_ADVENTURER_4": "0",
     "print_monitor_autopause_LK5_PRO": "0",
+    # Quiet-hours failsafe: during this overnight window a confirmed failure is
+    # auto-paused even when the per-printer toggle is off (you can't react while
+    # asleep). Window may wrap midnight; times read in the given IANA timezone.
+    "print_monitor_quiet_hours_enabled": "0",
+    "print_monitor_quiet_hours_start": "22:00",
+    "print_monitor_quiet_hours_end": "07:00",
+    "print_monitor_quiet_hours_tz": "America/Chicago",
 }
 
 

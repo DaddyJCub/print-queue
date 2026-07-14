@@ -16,6 +16,10 @@ Config lives in DB settings (admin UI editable, no redeploy):
   print_monitor_alert_cooldown_minutes default 30
   print_monitor_notify_email           "1"/"0"
   print_monitor_autopause_<PRINTER>    "1"/"0" per printer code (default off)
+  print_monitor_quiet_hours_enabled    "1"/"0" — force auto-pause overnight
+  print_monitor_quiet_hours_start      "HH:MM" (e.g. 22:00)
+  print_monitor_quiet_hours_end        "HH:MM" (e.g. 07:00)
+  print_monitor_quiet_hours_tz         IANA tz, default America/Chicago
 
 Env: ENABLE_PRINT_MONITOR gates the worker per replica (like the other pollers).
 """
@@ -170,9 +174,76 @@ def _autopause_enabled(printer_code: str) -> bool:
     return _d("get_bool_setting")(f"print_monitor_autopause_{printer_code}", False)
 
 
+def _quiet_hours_enabled() -> bool:
+    return _d("get_bool_setting")("print_monitor_quiet_hours_enabled", False)
+
+
+def _parse_hhmm(value: str) -> Optional[int]:
+    """"HH:MM" -> minutes since midnight, or None if unparseable."""
+    try:
+        hh, mm = str(value).strip().split(":", 1)
+        h, m = int(hh), int(mm)
+    except (TypeError, ValueError):
+        return None
+    if 0 <= h <= 23 and 0 <= m <= 59:
+        return h * 60 + m
+    return None
+
+
+def _quiet_hours_now() -> bool:
+    """Are we currently inside the configured quiet-hours window?
+
+    Quiet hours are the overnight span when the user is asleep and cannot
+    react to a failure alert, so Printellect should pause a confirmed-failing
+    print itself rather than rely on someone waking up. The window may wrap
+    past midnight (e.g. 22:00 -> 07:00). Times are read in the configured
+    timezone (default America/Chicago). Returns False if disabled or the
+    settings are blank/invalid — a failsafe should never trip on bad config.
+    """
+    if not _quiet_hours_enabled():
+        return False
+    start = _parse_hhmm(_d("get_setting")("print_monitor_quiet_hours_start", "") or "")
+    end = _parse_hhmm(_d("get_setting")("print_monitor_quiet_hours_end", "") or "")
+    if start is None or end is None or start == end:
+        return False
+
+    tz_name = (_d("get_setting")("print_monitor_quiet_hours_tz", "") or "America/Chicago").strip()
+    try:
+        from zoneinfo import ZoneInfo
+
+        now = datetime.now(ZoneInfo(tz_name))
+    except Exception:
+        now = datetime.now()
+    minutes = now.hour * 60 + now.minute
+
+    if start < end:  # same-day window, e.g. 01:00 -> 06:00
+        return start <= minutes < end
+    return minutes >= start or minutes < end  # wraps midnight, e.g. 22:00 -> 07:00
+
+
 # ------------------------
 # Active print discovery (mirrors the two status pollers' dual query)
 # ------------------------
+
+def _build_display_name(base_name: Any, build_number: Any, total_builds: Any) -> str:
+    """Append a "(build N/total)" suffix so a multi-build request's frames,
+    alerts and CM sessions are distinguishable — the user should see
+    "Widget (build 2/3)" rather than three identically named prints. Single
+    builds get no suffix.
+    """
+    name = str(base_name or "").strip() or "Print"
+    try:
+        total = int(total_builds or 1)
+    except (TypeError, ValueError):
+        total = 1
+    try:
+        num = int(build_number) if build_number is not None else None
+    except (TypeError, ValueError):
+        num = None
+    if total > 1 and num is not None:
+        return f"{name} (build {num}/{total})"
+    return name
+
 
 def get_active_targets() -> List[Dict[str, Any]]:
     """One target per actively printing build: multi-build rows come from the
@@ -183,20 +254,25 @@ def get_active_targets() -> List[Dict[str, Any]]:
         build_rows = conn.execute(
             """
             SELECT b.id AS build_id, b.request_id, b.printer, b.started_at,
+                   b.build_number,
                    b.print_name AS build_print_name,
-                   r.print_name AS request_print_name, r.material
+                   r.print_name AS request_print_name, r.material,
+                   r.total_builds
             FROM builds b
             JOIN requests r ON b.request_id = r.id
             WHERE b.status = 'PRINTING' AND b.printer IS NOT NULL
             """
         ).fetchall()
         for row in build_rows:
+            base_name = row["build_print_name"] or row["request_print_name"]
             targets.append({
                 "session_id": row["build_id"],
                 "request_id": row["request_id"],
                 "build_id": row["build_id"],
                 "printer_code": row["printer"],
-                "print_name": row["build_print_name"] or row["request_print_name"],
+                "print_name": _build_display_name(
+                    base_name, row["build_number"], row["total_builds"]
+                ),
                 "material": row["material"],
                 "started_at": row["started_at"],
             })
@@ -543,9 +619,25 @@ def _alert_failure(
     )
     url = f"/admin/request/{target['request_id']}" if target.get("request_id") else "/admin"
 
+    # A live camera snapshot as the push image preview so the alert shows the
+    # actual failing bed, plus quick actions that deep-link to the printer's
+    # controls (pause) and the request page (view). The service worker maps
+    # each action to data.actionUrls.
+    base_url = (_deps.get("base_url") or "").rstrip("/")
+    image_url = None
+    if base_url:
+        ts = int(datetime.now(timezone.utc).timestamp())
+        image_url = f"{base_url}/api/camera/{printer}/snapshot?ts={ts}"
+    actions = [
+        {"action": "view", "title": "View print"},
+        {"action": "pause", "title": "Pause"},
+    ]
+    data = {"url": url, "actionUrls": {"view": url, "pause": url}}
+
     try:
         _d("send_push_notification_to_admins")(
-            title, body, url=url, tag=f"print-monitor-{session['id']}"
+            title, body, url=url, tag=f"print-monitor-{session['id']}",
+            image_url=image_url, actions=actions, data=data,
         )
     except Exception as exc:
         logger.warning("print_monitor push alert failed: %s", exc)
@@ -567,14 +659,21 @@ def _alert_failure(
             logger.warning("print_monitor email alert failed: %s", exc)
 
 
-async def _maybe_auto_pause(session: Dict[str, Any], target: Dict[str, Any]) -> bool:
+async def _maybe_auto_pause(
+    session: Dict[str, Any], target: Dict[str, Any], force: bool = False
+) -> bool:
     """Pause the print once per build when the per-printer opt-in is on.
 
     Never cancels. Direct printers pause via their API (Moonraker has
     pause_print); agent-backed printers get a queued pause_print command.
+
+    ``force`` (quiet-hours failsafe) overrides the per-printer opt-in: during
+    the configured overnight window the user can't react to an alert, so a
+    confirmed failure is paused regardless of the toggle. The once-per-build
+    guard and printer pause-capability still apply.
     """
     printer = target["printer_code"]
-    if session.get("auto_paused") or not _autopause_enabled(printer):
+    if session.get("auto_paused") or (not force and not _autopause_enabled(printer)):
         return False
 
     try:
@@ -630,15 +729,18 @@ async def _handle_response(
         session["alerted_at"] = _d("now_iso")()
         session["state"] = "alerted"
 
-    if await _maybe_auto_pause(session, target):
+    quiet = _quiet_hours_now()
+    if await _maybe_auto_pause(session, target, force=quiet):
         action = "paused"
         _update_session(session["id"], state="paused", auto_paused=1)
         session["auto_paused"] = 1
+        reason = str(failure_type or "failure").replace("_", " ")
+        why = " during quiet hours" if quiet and not _autopause_enabled(target["printer_code"]) else ""
         try:
             _d("send_push_notification_to_admins")(
                 "⏸️ Print paused by Printellect Watch",
                 f"{target.get('print_name') or 'Print'} on {target['printer_code']} was "
-                f"paused after a confirmed {str(failure_type or 'failure').replace('_', ' ')}.",
+                f"paused after a confirmed {reason}{why}.",
                 url=f"/admin/request/{target['request_id']}" if target.get("request_id") else "/admin",
                 tag=f"print-monitor-pause-{session['id']}",
             )

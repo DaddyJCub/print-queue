@@ -74,12 +74,35 @@
         </p>
       </div>
 
+      <!-- v0.32.0 -->
+      <div id="v0.32.0" class="bg-gradient-to-br from-zinc-900/80 via-emerald-900/30 to-zinc-900/80 border border-emerald-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-emerald-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.32.0" class="px-3 py-1 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-500 transition">v0.32.0</a>
+          <span class="text-zinc-400 text-sm">July 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Smarter print-failure monitoring</h3>
+        <p class="text-sm text-zinc-400 mb-4">Three upgrades to Printellect Watch: it can pause a failing print by itself overnight, its alerts now show the camera and offer one-tap actions, and multi-build jobs are labeled per build.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">✨ What's new</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span><strong>Quiet-hours failsafe.</strong> Set an overnight window (default 22:00–07:00) in <em>Admin → Print Monitor</em>. During it, a confirmed failure is <strong>paused automatically</strong> on pause-capable printers — even if per-printer auto-pause is off — so a spaghetti print doesn't run all night while you're asleep. You still get the alert.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span><strong>Richer failure alerts.</strong> Push notifications now include a live camera snapshot preview plus <strong>View print</strong> and <strong>Pause</strong> quick actions that jump straight to the printer's controls.</span></li>
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span><strong>Multi-build names.</strong> Monitoring for a multi-build request now labels each build like <em>Benchy (build 2/3)</em> instead of repeating the same name, so you can tell which build is failing.</span></li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🐞 Bug Fixes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-emerald-400 mt-1">•</span><span>Captured monitoring frames now persist across a redeploy instead of disappearing.</span></li>
+        </ul>
+      </div>
+
       <!-- v0.31.0 -->
       <div id="v0.31.0" class="bg-gradient-to-br from-zinc-900/80 via-emerald-900/30 to-zinc-900/80 border border-emerald-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-emerald-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.31.0" class="px-3 py-1 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-500 transition">v0.31.0</a>
           <span class="text-zinc-400 text-sm">July 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Set aside a multi-build request</h3>

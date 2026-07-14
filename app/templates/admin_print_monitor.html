@@ -107,6 +107,39 @@
       </div>
     </div>
 
+    <div class="border-t border-zinc-700/50 pt-4">
+      <label class="flex items-center gap-3 text-sm mb-2">
+        <input type="checkbox" name="quiet_hours_enabled" value="1"
+               {% if s.quiet_hours_enabled %}checked{% endif %}
+               class="h-4 w-4 rounded border-zinc-600 bg-zinc-900" />
+        <span class="font-medium">Quiet-hours failsafe: auto-pause overnight</span>
+      </label>
+      <p class="text-xs text-zinc-500 mb-3">
+        During these hours a confirmed failure is <strong>paused automatically</strong>
+        (on pause-capable printers) even if the per-printer auto-pause above is off —
+        so a failing print doesn't run all night while you're asleep. You still get the
+        alert. Window may cross midnight (e.g. 22:00 → 07:00).
+      </p>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block text-xs text-zinc-400 mb-1">Start</label>
+          <input type="time" name="quiet_hours_start" value="{{ s.quiet_hours_start }}"
+                 class="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs text-zinc-400 mb-1">End</label>
+          <input type="time" name="quiet_hours_end" value="{{ s.quiet_hours_end }}"
+                 class="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs text-zinc-400 mb-1">Timezone</label>
+          <input type="text" name="quiet_hours_tz" value="{{ s.quiet_hours_tz }}"
+                 placeholder="America/Chicago"
+                 class="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm" />
+        </div>
+      </div>
+    </div>
+
     <button type="submit"
             class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 py-3 font-semibold transition">
       Save

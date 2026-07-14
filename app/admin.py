@@ -384,6 +384,10 @@ def admin_print_monitor(request: Request, _=Depends(require_admin), saved: Optio
             code: get_bool_setting(f"print_monitor_autopause_{code}", False)
             for code, _label in printers
         },
+        "quiet_hours_enabled": get_bool_setting("print_monitor_quiet_hours_enabled", False),
+        "quiet_hours_start": get_setting("print_monitor_quiet_hours_start", "22:00"),
+        "quiet_hours_end": get_setting("print_monitor_quiet_hours_end", "07:00"),
+        "quiet_hours_tz": get_setting("print_monitor_quiet_hours_tz", "America/Chicago"),
         "saved": saved == "1",
     }
 
@@ -421,6 +425,17 @@ async def admin_print_monitor_post(request: Request, _=Depends(require_admin)):
         except (TypeError, ValueError):
             return str(default)
 
+    def _clamped_hhmm(name: str, default: str) -> str:
+        raw = str(form.get(name, default)).strip()
+        try:
+            hh, mm = raw.split(":", 1)
+            h, m = int(hh), int(mm)
+            if 0 <= h <= 23 and 0 <= m <= 59:
+                return f"{h:02d}:{m:02d}"
+        except (TypeError, ValueError):
+            pass
+        return default
+
     set_setting("print_monitor_enabled", "1" if form.get("enabled") else "0")
     set_setting("print_monitor_url", str(form.get("url", "")).strip())
     # Write-only secret field: only overwrite when a new value is supplied.
@@ -437,6 +452,11 @@ async def admin_print_monitor_post(request: Request, _=Depends(require_admin)):
             continue
         enabled = form.get(f"autopause_{code}") and code in _WATCH_PAUSABLE
         set_setting(f"print_monitor_autopause_{code}", "1" if enabled else "0")
+
+    set_setting("print_monitor_quiet_hours_enabled", "1" if form.get("quiet_hours_enabled") else "0")
+    set_setting("print_monitor_quiet_hours_start", _clamped_hhmm("quiet_hours_start", "22:00"))
+    set_setting("print_monitor_quiet_hours_end", _clamped_hhmm("quiet_hours_end", "07:00"))
+    set_setting("print_monitor_quiet_hours_tz", str(form.get("quiet_hours_tz", "America/Chicago")).strip() or "America/Chicago")
     return RedirectResponse(url="/admin/print-monitor?saved=1", status_code=303)
 
 
