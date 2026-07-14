@@ -408,3 +408,71 @@ async def test_autopause_unsupported_printer_alert_only(_configure_monitor):
     await pm._handle_response(session, target, _confirmed_response(), "QUJD")
     assert calls["pause"] == []
     assert len(calls["push"]) == 1  # failure alert still fired
+
+
+# ── quiet-hours failsafe ─────────────────────────────────────────────────────
+
+async def test_quiet_hours_forces_pause_despite_optout(_configure_monitor, monkeypatch):
+    # AD5X auto-pause is OFF, but inside quiet hours a confirmed failure must
+    # still be paused (the user is asleep and can't react to the alert).
+    calls = _configure_monitor["calls"]
+    monkeypatch.setattr(pm, "_quiet_hours_now", lambda: True)
+
+    target = _target(str(uuid.uuid4()), printer="AD5X")
+    session = pm._load_or_create_session(target)
+    await pm._handle_response(session, target, _confirmed_response(), "QUJD")
+
+    assert calls["pause"] == [True]
+    event = pm.get_latest_event(target["session_id"])
+    assert event["action"] == "paused"
+
+
+async def test_outside_quiet_hours_respects_optout(_configure_monitor, monkeypatch):
+    # Same printer with auto-pause off, but outside quiet hours → alert only.
+    calls = _configure_monitor["calls"]
+    monkeypatch.setattr(pm, "_quiet_hours_now", lambda: False)
+
+    target = _target(str(uuid.uuid4()), printer="AD5X")
+    session = pm._load_or_create_session(target)
+    await pm._handle_response(session, target, _confirmed_response(), "QUJD")
+
+    assert calls["pause"] == []
+    assert len(calls["push"]) == 1
+
+
+# ── multi-build naming ───────────────────────────────────────────────────────
+
+def test_active_targets_label_multi_build_with_number():
+    conn = get_test_db()
+    rid = _insert_request(conn, status="IN_PROGRESS", total_builds=3)
+    bid = str(uuid.uuid4())
+    conn.execute(
+        """
+        INSERT INTO builds (id, request_id, build_number, status, printer, print_name,
+                            created_at, updated_at, started_at)
+        VALUES (?, ?, 2, 'PRINTING', 'AD5X', NULL, ?, ?, ?)
+        """,
+        (bid, rid, now_iso(), now_iso(), now_iso()),
+    )
+    conn.commit()
+    conn.close()
+
+    target = next(t for t in pm.get_active_targets() if t["session_id"] == bid)
+    assert target["print_name"] == "Benchy (build 2/3)"
+
+
+def test_active_targets_single_build_has_no_suffix():
+    conn = get_test_db()
+    rid = _insert_request(conn, status="PRINTING", total_builds=1)
+    conn.commit()
+    conn.close()
+
+    target = next(t for t in pm.get_active_targets() if t["session_id"] == rid)
+    assert target["print_name"] == "Benchy"
+
+
+def test_build_display_name_helper():
+    assert pm._build_display_name("Widget", 2, 3) == "Widget (build 2/3)"
+    assert pm._build_display_name("Widget", 1, 1) == "Widget"
+    assert pm._build_display_name("", 2, 3) == "Print (build 2/3)"
+    assert pm._build_display_name("Widget", None, 3) == "Widget"

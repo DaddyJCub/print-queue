@@ -1,5 +1,5 @@
 // Service Worker for Printellect PWA
-const SW_VERSION = '2.9.0';
+const SW_VERSION = '2.10.0';
 const CACHE_NAME = 'print-queue-v11';
 const OFFLINE_URL = '/static/offline.html';
 let ACTIVE_TRIP_USER = null;
@@ -209,9 +209,16 @@ self.addEventListener('notificationclick', (event) => {
   swLog('info', 'Notification clicked:', event.notification.tag);
   event.notification.close();
   
-  const target = (event.action === 'report-problem' && event.notification.data?.reportUrl)
-    ? event.notification.data.reportUrl
-    : (event.notification.data?.url || '/');
+  const data = event.notification.data || {};
+  // Per-action deep links: notifications can supply data.actionUrls = { pause: '/...', view: '/...' }
+  // so an action button opens the right page. Falls back to the report-problem
+  // special case and finally the notification's default url.
+  const actionUrls = data.actionUrls || {};
+  const target =
+    (event.action && actionUrls[event.action]) ||
+    ((event.action === 'report-problem' && data.reportUrl) ? data.reportUrl : null) ||
+    data.url ||
+    '/';
   
   event.waitUntil(
     clients.openWindow(target)
