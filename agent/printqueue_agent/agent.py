@@ -268,7 +268,12 @@ class Agent:
             connected = False
 
         now = time.time()
-        if now - self._last_heartbeat >= self.cfg.heartbeat_interval_s:
+        # Heartbeat faster while printing so the off-network remote panel shows
+        # near-live status (temps/progress) instead of up to heartbeat_interval old.
+        hb_interval = self.cfg.heartbeat_interval_s
+        if self.print_active.is_set():
+            hb_interval = min(hb_interval, 5)
+        if now - self._last_heartbeat >= hb_interval:
             try:
                 self.client.heartbeat(self.cfg.agent_version, self._heartbeat_status(status))
                 self.server_online = True

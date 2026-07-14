@@ -137,6 +137,32 @@
             <button id="rm-pm-sd" onclick="rmCmd('set_print_mode',{mode:'sd'})" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5">SD</button>
             <button id="rm-pm-stream" onclick="rmCmd('set_print_mode',{mode:'stream'})" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5">Stream</button>
           </div>
+          <!-- Jog controls -->
+          <div class="flex items-center justify-between mb-1">
+            <div class="text-xs text-zinc-400">Move (jog)</div>
+            <div class="flex items-center gap-1 text-xs">
+              <span class="text-zinc-500">Step</span>
+              <select id="rm-jog-step" class="rounded bg-zinc-950 border border-zinc-800 p-1">
+                <option value="0.1">0.1</option>
+                <option value="1">1</option>
+                <option value="10" selected>10</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+              <span class="text-zinc-500">mm</span>
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-1 mb-3 max-w-[240px]">
+            <div></div>
+            <button onclick="rmJog('Y',1)" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 py-1.5">Y+</button>
+            <button onclick="rmJog('Z',1)" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 py-1.5">Z+</button>
+            <button onclick="rmJog('X',-1)" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 py-1.5">X−</button>
+            <button onclick="rmCmd('home',{axes:''})" class="rounded-lg bg-zinc-800/60 hover:bg-zinc-700 py-1.5" title="Home all">⌂</button>
+            <button onclick="rmJog('X',1)" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 py-1.5">X+</button>
+            <div></div>
+            <button onclick="rmJog('Y',-1)" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 py-1.5">Y−</button>
+            <button onclick="rmJog('Z',-1)" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 py-1.5">Z−</button>
+          </div>
           <div class="flex items-center justify-between mb-1">
             <div class="text-xs text-zinc-400">Files on the printer host</div>
             <button onclick="rmLoadFiles()" class="text-xs text-indigo-400 hover:underline">↻ Refresh</button>
@@ -487,6 +513,10 @@
     async function rmCancel() { if (await showConfirm("Cancel the print on this printer?")) rmCmd("cancel_print"); }
     function rmTemp(target, inputId) { rmCmd("set_temp", { target, value: +document.getElementById(inputId).value }); }
     function rmTempOff(target) { rmCmd("set_temp", { target, value: 0 }); }
+    function rmJog(axis, dir) {
+      const step = parseFloat(document.getElementById("rm-jog-step").value) || 1;
+      rmCmd("jog", { axis, distance: dir * step });
+    }
     async function rmLoadFiles() {
       const box = document.getElementById("rm-files");
       box.innerHTML = '<div class="text-zinc-500">Requesting file list…</div>';
