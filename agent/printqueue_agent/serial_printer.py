@@ -24,6 +24,8 @@ agent backs off instead of interfering.
 from __future__ import annotations
 
 import logging
+import os
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -86,27 +88,119 @@ class SerialPrinter:
         # Re-entrant lock: the agent loop and the local-UI server thread share
         # this one port, so every serial round-trip must be serialized.
         self._lock = threading.RLock()
+        # Latest temps/SD parsed from ANY reply (incl. Marlin's auto-reports), so
+        # status can be read without sending M105 — essential during a stream
+        # print when the port is busy waiting for the buffer to accept lines.
+        self._cached = PrinterStatus()
+        self._cached_ts = 0.0  # monotonic time the cached temps were last updated
+        # When True, log every command sent and reply received (serial trace).
+        self.trace = False
 
     # ── connection ────────────────────────────────────────────────
     def connect(self) -> None:
-        """Open the port and wait for the printer to be ready.
+        """Open the port and bring the printer to a ready state.
 
-        Raises if the port is busy (another program — e.g. Cura — owns it), so
-        the caller can back off without disturbing an in-progress print.
+        Hardened for the things that plague USB-serial Marlin boards (the LK5 Pro
+        especially): the board resets when the port opens (DTR), so we wait for it
+        to boot; a back-power brownout can drop the first reply, so we retry the
+        handshake; and a wrong baud yields no ``ok``, so we try the configured
+        rate first then common fallbacks.
+
+        Raises if the port is busy (another program owns it) or no baud responds,
+        so the caller can back off without disturbing an in-progress print.
         """
-        try:
-            self._ser = serial.Serial(self.port, self.baud, timeout=2)
-        except Exception as e:
-            raise RuntimeError(f"Could not open {self.port} (in use by another program?): {e}") from e
+        bauds: list[int] = []
+        for b in (self.baud, 115200, 250000, 57600):
+            if b and b not in bauds:
+                bauds.append(b)
 
-        # Many boards reset on connect; give Marlin time to boot, then flush.
-        time.sleep(2.0)
+        last_err: Optional[Exception] = None
+        deadline = time.monotonic() + max(1.0, float(self.connect_timeout))
+        for baud in bauds:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                self._open_and_handshake(baud, remaining)
+                self.baud = baud
+                log.info("Connected to printer on %s @ %d", self.port, baud)
+                self._log_firmware()
+                return
+            except Exception as e:
+                last_err = e
+                log.warning("No response on %s @ %d baud (%s)", self.port, baud, e)
+                self.close()
+        raise RuntimeError(f"Could not communicate with printer on {self.port}: {last_err}")
+
+    def _open_and_handshake(self, baud: int, budget_s: Optional[float] = None) -> None:
+        # exclusive=True (POSIX) makes a *second* opener fail cleanly instead of
+        # both processes sharing the port and corrupting each other's traffic
+        # ("device reports readiness to read but returned no data / multiple
+        # access on port"). Not supported on Windows, so guard it.
+        kwargs = {"timeout": 2, "write_timeout": 15}
+        if os.name == "posix":
+            kwargs["exclusive"] = True
+        try:
+            self._ser = serial.Serial(self.port, baud, **kwargs)
+        except Exception as e:
+            raise RuntimeError(f"Could not open {self.port} (already in use by another "
+                               f"program / a second agent?): {e}") from e
+        deadline = time.monotonic() + max(0.5, float(budget_s)) if budget_s is not None else None
+
+        def _remaining(default: float) -> float:
+            if deadline is None:
+                return default
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise TimeoutError("connect timeout budget exhausted")
+            return min(default, left)
+
+        # The board resets when the port opens (DTR); wait for it to boot.
+        self._wait_for_boot(timeout=_remaining(8.0))
         self._ser.reset_input_buffer()
-        # Reset line numbering for the checksummed protocol.
         self._line_no = 0
-        self._send_now("M110 N0")
-        self._wait_ok(timeout=self.connect_timeout)
-        log.info("Connected to printer on %s @ %d", self.port, self.baud)
+        # The first M110 after a reset/brownout is sometimes dropped — retry.
+        last: Optional[Exception] = None
+        for _ in range(3):
+            try:
+                self._send_now("M110 N0")
+                self._wait_ok(timeout=_remaining(8.0))
+                return
+            except Exception as e:
+                last = e
+                if deadline is not None and deadline - time.monotonic() <= 0:
+                    break
+                time.sleep(0.8)
+        raise RuntimeError(f"no 'ok' to M110 handshake: {last}")
+
+    def _wait_for_boot(self, timeout: float) -> None:
+        """Drain the printer's post-reset boot output. Returns on the Marlin
+        'start' banner, or promptly once the line falls quiet (no-reset boards)."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                line = self._readline()
+            except Exception:
+                return
+            if not line:
+                return  # quiet: boot finished, or the board didn't reset
+            low = line.lower()
+            if low.startswith("start") or "marlin" in low:
+                log.info("Printer booted: %s", line[:120])
+                time.sleep(0.3)
+                return
+
+    def _log_firmware(self) -> None:
+        # Ask the printer what firmware it runs so it's visible in the logs
+        # (answers "what does my board support?" without guessing).
+        try:
+            resp = self.send_command("M115", timeout=8)
+            for ln in resp.splitlines():
+                if "FIRMWARE_NAME" in ln or "MACHINE_TYPE" in ln:
+                    log.info("Printer firmware: %s", ln.strip()[:200])
+                    break
+        except Exception as e:
+            log.warning("Could not read firmware (M115): %s", e)
 
     def close(self) -> None:
         if self._ser and self._ser.is_open:
@@ -139,12 +233,24 @@ class SerialPrinter:
             if not line:
                 continue
             buf.append(line)
+            # Capture temps/SD from ANY line — including Marlin's unsolicited
+            # auto-reports (M155) — so status is available without an M105 poll.
+            if "T:" in line:
+                self._parse_temps(line, self._cached)
+                self._cached_ts = time.monotonic()
+            if "SD printing" in line or "Not SD printing" in line:
+                self._parse_sd(line, self._cached)
             low = line.lower()
             if low.startswith("ok"):
                 return "\n".join(buf)
             if low.startswith("resend") or low.startswith("rs"):
                 # Surface resend requests to the checksummed sender.
                 return "\n".join(buf)
+            if "busy" in low:
+                # "echo:busy: processing" — the printer is alive but working
+                # (e.g. a slow SD write or long move). Extend the deadline so we
+                # don't falsely time out mid-operation, the way OctoPrint does.
+                deadline = time.time() + timeout
         raise TimeoutError("Timed out waiting for 'ok' from printer")
 
     def send_command(self, command: str, timeout: float = 30.0) -> str:
@@ -155,15 +261,40 @@ class SerialPrinter:
                 payload = f"N{self._line_no} {command}"
                 framed = f"{payload}*{_checksum(payload)}"
                 self._send_now(framed)
+                if self.trace:
+                    log.info("TX> %s", command[:140])
                 resp = self._wait_ok(timeout=timeout)
+                if self.trace:
+                    log.info("RX< %s", resp.replace("\n", " | ")[:180])
                 low = resp.lower()
                 if "resend" in low or low.startswith("rs"):
-                    # Roll back the line number and retry.
-                    self._line_no -= 1
+                    # Sync to the requested line if provided (e.g. "Resend: 123"
+                    # or "rs 123"). Falling back to -1 keeps legacy behavior.
+                    m = re.search(r"(?:resend\s*:?\s*|\brs\s+)(\d+)", low)
+                    if m:
+                        self._line_no = max(0, int(m.group(1)) - 1)
+                    else:
+                        self._line_no -= 1
                     time.sleep(0.05)
                     continue
                 return resp
             raise RuntimeError(f"Repeated resend requests for: {command}")
+
+    def cached_status(self, max_age: float = 8.0) -> "PrinterStatus":
+        """Latest temps parsed from the read stream — no serial I/O, so it's safe
+        to call while a stream print holds the port. Temps older than ``max_age``
+        seconds are returned as None rather than a misleading stale value."""
+        c = self._cached
+        fresh = self._cached_ts > 0 and (time.monotonic() - self._cached_ts) <= max_age
+        return PrinterStatus(
+            state=c.state, progress=c.progress,
+            sd_current=c.sd_current, sd_total=c.sd_total,
+            nozzle_temp=c.nozzle_temp if fresh else None,
+            nozzle_target=c.nozzle_target if fresh else None,
+            bed_temp=c.bed_temp if fresh else None,
+            bed_target=c.bed_target if fresh else None,
+            current_file=c.current_file,
+        )
 
     # ── status ────────────────────────────────────────────────────
     def query_status(self) -> PrinterStatus:
@@ -214,18 +345,31 @@ class SerialPrinter:
 
     # ── job execution ─────────────────────────────────────────────
     def upload_to_sd(self, gcode_path: str, on_progress: Optional[Callable[[int], None]] = None) -> None:
-        """Stream a local gcode file to the printer's SD card (M28 ... M29)."""
+        """Stream a local gcode file to the printer's SD card (M28 ... M29).
+
+        Logs progress every 5% (and at least every 15s) so ``journalctl -f`` /
+        the "View logs" panel show exactly where a slow serial upload is at.
+        """
         import os
 
         total = os.path.getsize(gcode_path)
         sent = 0
+        lines = 0
         last_pct = -1
+        start = time.time()
+        last_log = start
+        next_log_pct = 0
 
-        log.info("Uploading %s -> SD:%s (%d bytes)", gcode_path, SD_FILENAME, total)
+        log.info("Uploading %s -> SD:%s (%d bytes). Serial SD writes are slow "
+                 "(~one round-trip per line); this can take several minutes.",
+                 os.path.basename(gcode_path), SD_FILENAME, total)
         # Hold the port for the whole transfer so nothing interleaves commands.
+        # M28 MUST be inside the try: if it raises, the finally still releases the
+        # lock (otherwise a serial hiccup at print start deadlocks every status
+        # query forever).
         self._lock.acquire()
-        self.send_command(f"M28 {SD_FILENAME}", timeout=30)
         try:
+            self.send_command(f"M28 {SD_FILENAME}", timeout=30)
             with open(gcode_path, "r", errors="ignore") as fh:
                 for raw in fh:
                     line = raw.split(";", 1)[0].strip()  # drop comments/whitespace
@@ -233,11 +377,20 @@ class SerialPrinter:
                     if not line:
                         continue
                     self.send_command(line, timeout=30)
-                    if on_progress and total:
-                        pct = int(sent * 100 / total)
-                        if pct != last_pct:
-                            last_pct = pct
-                            on_progress(pct)
+                    lines += 1
+                    pct = int(sent * 100 / total) if total else 0
+                    if on_progress and pct != last_pct:
+                        last_pct = pct
+                        on_progress(pct)
+                    now = time.time()
+                    if pct >= next_log_pct or now - last_log >= 15:
+                        elapsed = now - start
+                        rate = sent / elapsed if elapsed > 0 else 0.0  # bytes/s
+                        eta = int((total - sent) / rate) if rate > 0 else 0
+                        log.info("Upload %2d%% — %d/%d bytes, %d lines, %.1f KB/s, ETA %ds",
+                                 pct, sent, total, lines, rate / 1024, eta)
+                        last_log = now
+                        next_log_pct = (pct // 5 + 1) * 5
         finally:
             # Always close the SD file, even on error. Marlin requires lines
             # after M28 to keep the line-number/checksum framing, so close with
@@ -254,7 +407,9 @@ class SerialPrinter:
                     pass
             finally:
                 self._lock.release()
-        log.info("Upload complete: %s", SD_FILENAME)
+        dur = time.time() - start
+        log.info("Upload complete: %s — %d lines, %d bytes in %.0fs (%.1f KB/s)",
+                 SD_FILENAME, lines, sent, dur, (sent / 1024) / dur if dur > 0 else 0.0)
 
     def start_sd_print(self) -> None:
         """Select the uploaded file and begin the (autonomous) SD print."""
@@ -262,10 +417,87 @@ class SerialPrinter:
         self.send_command("M24", timeout=15)
         log.info("SD print started: %s", SD_FILENAME)
 
-    def enable_auto_reports(self, temp_interval_s: int = 5, sd_interval_s: int = 5) -> None:
-        """Ask Marlin to stream temp/SD reports so monitoring is low-overhead."""
+    def stream_print(self, gcode_path: str,
+                     on_progress: Optional[Callable[[int], None]] = None,
+                     should_continue: Optional[Callable[[], bool]] = None,
+                     paused: Optional[Callable[[], bool]] = None) -> bool:
+        """Host-stream a gcode file straight to the printer (no SD upload).
+
+        The printer prints as we send; Marlin's per-line ``ok`` is the flow
+        control. Far faster to *start* than an SD upload (no upfront copy), but
+        the connection must stay up for the whole print. Returns True if the file
+        was fully sent, False if canceled via ``should_continue``.
+
+        We do NOT hold the port lock across the whole print — each line self-locks
+        — so status/heartbeat queries can interleave (temps stay live) exactly as
+        OctoPrint polls during a print.
+        """
+        import os
+
+        total = os.path.getsize(gcode_path)
+        sent = 0
+        lines = 0
+        last_pct = -1
+        start = time.time()
+        last_log = start
+        next_log_pct = 0
+
+        log.info("Streaming %s to printer (%d bytes) — prints as it sends.",
+                 os.path.basename(gcode_path), total)
+        with self._lock:
+            self._line_no = 0
+            self.send_command("M110 N0", timeout=15)
+            # M110 N0 tells Marlin to expect N1 next; keep host counter aligned.
+            self._line_no = 0
+
+        with open(gcode_path, "r", errors="ignore") as fh:
+            for raw in fh:
+                # Hold here while paused (the printer drains its planner buffer
+                # then idles at temp); status queries still interleave meanwhile.
+                while paused is not None and paused():
+                    if should_continue is not None and not should_continue():
+                        break
+                    time.sleep(0.3)
+                if should_continue is not None and not should_continue():
+                    log.info("Stream print canceled at %d%%", last_pct)
+                    return False
+                line = raw.split(";", 1)[0].strip()
+                sent += len(raw)
+                if not line:
+                    continue
+                uline = line.upper()
+                # Skip common slicer metadata commands that are harmless for the
+                # print but noisy/unsupported on older Marlin (e.g. LK5 stock fw).
+                if (uline.startswith("EXCLUDE_OBJECT_DEFINE")
+                        or uline.startswith("BED_MESH_PROFILE ")
+                        or uline.startswith("M73 ")):
+                    continue
+                # Heating/homing lines (M109/M190/G28) can block for minutes;
+                # _wait_ok tolerates the 'busy' keepalive, so a long timeout is safe.
+                self.send_command(line, timeout=600)
+                lines += 1
+                pct = int(sent * 100 / total) if total else 0
+                if on_progress and pct != last_pct:
+                    last_pct = pct
+                    on_progress(pct)
+                now = time.time()
+                if pct >= next_log_pct or now - last_log >= 20:
+                    log.info("Print %2d%% — %d/%d bytes, %d lines sent", pct, sent, total, lines)
+                    last_log = now
+                    next_log_pct = (pct // 10 + 1) * 10
+        if on_progress and last_pct != 100:
+            on_progress(100)
+        dur = time.time() - start
+        log.info("Stream print finished: %d lines, %d bytes in %.0fs", lines, sent, dur)
+        return True
+
+    def enable_auto_reports(self, temp_interval_s: int = 3, sd_interval_s: int = 5) -> None:
+        """Ask Marlin to stream temp/SD reports so monitoring is low-overhead.
+
+        Temps are capped to <=3s so the cached status stays fresh during a stream
+        print (when we can't send an on-demand M105)."""
         try:
-            self.send_command(f"M155 S{temp_interval_s}", timeout=8)
+            self.send_command(f"M155 S{max(1, min(temp_interval_s, 3))}", timeout=8)
             self.send_command(f"M27 S{sd_interval_s}", timeout=8)
         except Exception as e:
             log.warning("Could not enable auto-reports (non-fatal): %s", e)

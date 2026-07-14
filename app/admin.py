@@ -391,6 +391,21 @@ def admin_print_monitor(request: Request, _=Depends(require_admin), saved: Optio
         "saved": saved == "1",
     }
 
+    # Printer error alerts (Klipper/Moonraker fault watcher) — separate feature
+    # sharing this admin page since both are printer-health monitoring.
+    err_model = {
+        "enabled": get_bool_setting("printer_error_alerts_enabled", False),
+        "interval_seconds": get_setting("printer_error_alerts_interval_seconds", "20"),
+        "cooldown_minutes": get_setting("printer_error_alerts_cooldown_minutes", "30"),
+        "notify_email": get_bool_setting("printer_error_alerts_notify_email", True),
+        "notify_recovery": get_bool_setting("printer_error_alerts_notify_recovery", True),
+    }
+    try:
+        from app.printer_error_alerts import get_recent_events
+        err_events = get_recent_events(15)
+    except Exception:
+        err_events = []
+
     # Live status: latest verdict per active monitoring session.
     conn = db()
     recent = conn.execute(
@@ -411,6 +426,7 @@ def admin_print_monitor(request: Request, _=Depends(require_admin), saved: Optio
     return templates.TemplateResponse("admin_print_monitor.html", {
         "request": request, "s": model, "printers": printers,
         "pausable": _WATCH_PAUSABLE, "sessions": [dict(r) for r in recent],
+        "err": err_model, "err_events": err_events,
         "version": APP_VERSION,
     })
 
@@ -457,6 +473,25 @@ async def admin_print_monitor_post(request: Request, _=Depends(require_admin)):
     set_setting("print_monitor_quiet_hours_start", _clamped_hhmm("quiet_hours_start", "22:00"))
     set_setting("print_monitor_quiet_hours_end", _clamped_hhmm("quiet_hours_end", "07:00"))
     set_setting("print_monitor_quiet_hours_tz", str(form.get("quiet_hours_tz", "America/Chicago")).strip() or "America/Chicago")
+    return RedirectResponse(url="/admin/print-monitor?saved=1", status_code=303)
+
+
+@router.post("/admin/printer-error-alerts")
+async def admin_printer_error_alerts_post(request: Request, _=Depends(require_admin)):
+    """Save the Klipper/Moonraker error-alert settings (shares the monitor page)."""
+    form = await request.form()
+
+    def _clamped(name: str, default: int, lo: int, hi: int) -> str:
+        try:
+            return str(max(lo, min(hi, int(str(form.get(name, default)).strip()))))
+        except (TypeError, ValueError):
+            return str(default)
+
+    set_setting("printer_error_alerts_enabled", "1" if form.get("err_enabled") else "0")
+    set_setting("printer_error_alerts_interval_seconds", _clamped("err_interval_seconds", 20, 10, 300))
+    set_setting("printer_error_alerts_cooldown_minutes", _clamped("err_cooldown_minutes", 30, 1, 720))
+    set_setting("printer_error_alerts_notify_email", "1" if form.get("err_notify_email") else "0")
+    set_setting("printer_error_alerts_notify_recovery", "1" if form.get("err_notify_recovery") else "0")
     return RedirectResponse(url="/admin/print-monitor?saved=1", status_code=303)
 
 

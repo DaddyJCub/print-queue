@@ -9,7 +9,7 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
-## 0.32.0
+## 0.33.0
 ### Overview / Highlights
 - **Watch quiet-hours failsafe, richer failure alerts, and multi-build names.** Three improvements to AI print monitoring so an overnight failure doesn't run for hours, alerts are more actionable, and multi-build jobs are easy to tell apart.
 
@@ -20,6 +20,16 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 ### Bug Fixes
 - Print-monitor frame images are now stored on a persistent Docker volume in JCubHub CM, so captured frames survive a redeploy instead of disappearing.
+
+## 0.32.0
+### Overview / Highlights
+- **Printer error alerts.** Printellect now watches every Klipper/Moonraker (ZMod) printer for faults and alerts you the moment the machine reports one — so a jam, runout, or a printer that emergency-stopped no longer sits unnoticed on the bed.
+
+### Enhancements
+- New background fault watcher polls each Moonraker-backed printer (default every 20s) and detects **any** reported error via Klipper's own signals: MCU/board shutdowns, thermal runaway, a disconnected thermistor ("ADC out of range"), "Lost communication with MCU", Klipper config/startup errors, prints aborted with an error, and filament **runout/jam** pauses from the IFS/runout sensor.
+- Alerts go out as an **admin push notification and (optionally) email**, with a friendly plain-English headline plus the printer's raw error text so nothing is lost.
+- **Edge-triggered with a cooldown**: one alert when a fault first appears, a reminder every N minutes while it persists, and a "recovered" notice when the printer returns to normal — no per-poll spam.
+- Configurable on the **Printellect Watch** admin page (enable, poll interval, reminder cooldown, email on/off, recovery notice on/off), with a rolling log of recent printer errors. Off by default; runs independently of the AI camera monitor. Per-replica env gate `ENABLE_PRINTER_ERROR_ALERTS`.
 
 ## 0.31.1
 ### Bug Fixes

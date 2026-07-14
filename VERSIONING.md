@@ -28,6 +28,17 @@ The classification of changes (major vs patch) is decided at the end of each dev
 - Intermediate commits during development do not bump the version
 - QA is the validation gate for all versioned releases
 
+## Print Agent Versioning (Required)
+
+The print agent uses its own semantic version in `agent/printqueue_agent/__init__.py`.
+
+- Any change to print agent code under `agent/printqueue_agent/` must include a manual version bump
+- Do not use build metadata suffixes like `+auto.*`
+- Use plain semantic versions only (for example: `1.1.0`, `1.1.1`, `1.2.0`)
+- If no behavior changed, do not bump the version
+
+This is required so OTA/update comparisons and release communication remain predictable.
+
 ## Changelog Requirements
 
 Every version release must include a detailed changelog with the following sections:

@@ -2330,7 +2330,9 @@ def get_slicer_accuracy_api(printer: str = None, material: str = None, _=Depends
 @router.get("/api/version")
 def get_version():
     """Get application version"""
-    return {"version": APP_VERSION, "title": APP_TITLE}
+    # `title` is the original key (kept for backward compatibility); `name` is
+    # added so the shape matches the other JCubHub apps' /api/version.
+    return {"version": APP_VERSION, "title": APP_TITLE, "name": APP_TITLE}
 
 
 @router.get("/api/admin/check")

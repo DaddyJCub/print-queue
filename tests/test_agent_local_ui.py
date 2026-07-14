@@ -20,7 +20,240 @@ if AGENT_DIR not in sys.path:
     sys.path.insert(0, AGENT_DIR)
 
 from printqueue_agent import local_ui  # noqa: E402
+from printqueue_agent import serial_printer as sp  # noqa: E402
 from printqueue_agent.controller import Busy, ControllerError, NotFound  # noqa: E402
+
+
+def test_state_reports_uploading_without_touching_serial(tmp_path):
+    """During an upload the serial lock is held, so state() must report cached
+    upload progress instead of calling (and blocking on) query_status."""
+    from printqueue_agent.controller import AgentPrinterController
+
+    class _UI:  # cfg.local_ui
+        spool_dir = str(tmp_path)
+    class _Cam:
+        enabled = False
+    class _Cfg:
+        agent_id = "agent-x"; agent_version = "1.1.0"; name = "Bench"
+        local_ui = _UI(); camera = _Cam()
+    class _Printer:
+        connected = True
+        def query_status(self):
+            raise AssertionError("query_status must not run during an upload")
+    class _Agent:
+        cfg = _Cfg(); printer = _Printer()
+        print_active = threading.Event(); camera = None
+
+    ctrl = AgentPrinterController(_Agent())
+    ctrl._upload_pct = 42
+    st = ctrl.state()
+    assert st["state"] == "uploading"
+    assert st["progress"] == 42
+    assert st["connected"] is True
+
+
+def test_upload_releases_lock_on_m28_failure(tmp_path, monkeypatch):
+    """Regression: a failed M28 must not leak the serial lock (which would
+    deadlock every subsequent status query forever)."""
+    monkeypatch.setattr(sp, "serial", object())  # bypass the pyserial import guard
+    p = sp.SerialPrinter("/dev/null", 115200)
+
+    def fake_send(cmd, timeout=30):
+        if cmd.startswith("M28"):
+            raise RuntimeError("simulated M28 failure at print start")
+        return "ok"
+
+    monkeypatch.setattr(p, "send_command", fake_send)
+    f = tmp_path / "a.gcode"
+    f.write_text("G28\nG1 X1\n")
+
+    with pytest.raises(RuntimeError):
+        p.upload_to_sd(str(f))
+
+    # The lock must be free despite the failure.
+    assert p._lock.acquire(blocking=False) is True
+    p._lock.release()
+
+
+def test_connect_tries_fallback_bauds(monkeypatch):
+    """A wrong configured baud must fall back to a rate the printer answers on."""
+    monkeypatch.setattr(sp, "serial", object())  # bypass pyserial import guard
+    p = sp.SerialPrinter("/dev/null", 250000)  # configured baud "wrong"
+    tried = []
+
+    def fake_open(baud, budget_s=None):
+        tried.append(baud)
+        if baud != 115200:
+            raise RuntimeError("no response")
+
+    monkeypatch.setattr(p, "_open_and_handshake", fake_open)
+    monkeypatch.setattr(p, "_log_firmware", lambda: None)
+    monkeypatch.setattr(p, "close", lambda: None)
+
+    p.connect()
+    assert p.baud == 115200
+    assert tried[0] == 250000  # the configured rate is tried first
+
+
+def test_connect_honors_timeout_budget(monkeypatch):
+    """A dead printer must not spend longer than connect_timeout cycling bauds."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 250000, connect_timeout=5.0)
+    tried = []
+    ticks = iter([0.0, 0.0, 3.0, 6.1])
+
+    def fake_monotonic():
+        return next(ticks)
+
+    def fake_open(baud, budget_s=None):
+        tried.append((baud, budget_s))
+        raise RuntimeError("no response")
+
+    monkeypatch.setattr(sp.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(p, "_open_and_handshake", fake_open)
+    monkeypatch.setattr(p, "close", lambda: None)
+
+    with pytest.raises(RuntimeError):
+        p.connect()
+
+    assert len(tried) == 2
+    assert tried[0][0] == 250000
+    assert tried[1][0] == 115200
+
+
+def test_wait_ok_tolerates_busy(monkeypatch):
+    """'echo:busy: processing' means the printer is alive and working, not dead —
+    it must keep waiting for 'ok' rather than time out."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+    seq = iter(["echo:busy: processing", "echo:busy: processing", "ok T:20 /0"])
+    monkeypatch.setattr(p, "_readline", lambda: next(seq, ""))
+    assert "ok" in p._wait_ok(timeout=5).lower()
+
+
+def test_send_command_resend_syncs_to_requested_line(monkeypatch):
+    """On 'Resend: N', sender must retry from N (not just decrement by one)."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+    framed = []
+
+    monkeypatch.setattr(p, "_send_now", lambda s: framed.append(s))
+    seq = iter(["Error:Line Number is not Last Line Number+1, Last Line: 4\nResend: 5", "ok"])
+    monkeypatch.setattr(p, "_wait_ok", lambda timeout=30: next(seq))
+
+    p._line_no = 10
+    p.send_command("G28", timeout=5)
+
+    assert len(framed) == 2
+    assert framed[0].startswith("N11 G28*")
+    assert framed[1].startswith("N5 G28*")
+
+
+def test_stream_print_sends_all_lines(tmp_path, monkeypatch):
+    """Stream mode must send every gcode line and report completion."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+    sent = []
+    monkeypatch.setattr(p, "send_command", lambda cmd, timeout=30: sent.append(cmd) or "ok")
+    f = tmp_path / "m.gcode"
+    f.write_text("M104 S200\n; comment only\nG28\nG1 X1 Y1\n")
+
+    seen = []
+    ok = p.stream_print(str(f), on_progress=lambda pct: seen.append(pct))
+    assert ok is True
+    assert "M110 N0" in sent          # reset numbering at stream start
+    assert "M104 S200" in sent and "G28" in sent and "G1 X1 Y1" in sent
+    assert "; comment only" not in " ".join(sent)  # comment-only line skipped
+    assert seen and seen[-1] == 100
+
+
+def test_stream_print_resets_counter_after_m110(tmp_path, monkeypatch):
+    """After stream-start M110 N0, host counter must be reset so next line is N1."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+
+    monkeypatch.setattr(p, "send_command", lambda cmd, timeout=30: "ok")
+    f = tmp_path / "m.gcode"
+    f.write_text("G28\n")
+
+    p._line_no = 99
+    ok = p.stream_print(str(f))
+
+    assert ok is True
+    assert p._line_no == 0
+
+
+def test_stream_print_skips_incompatible_metadata_lines(tmp_path, monkeypatch):
+    """Klipper/object metadata lines should be skipped for LK5/Marlin stream mode."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+    sent = []
+    monkeypatch.setattr(p, "send_command", lambda cmd, timeout=30: sent.append(cmd) or "ok")
+
+    f = tmp_path / "m.gcode"
+    f.write_text(
+        "M73 P0 R17\n"
+        "EXCLUDE_OBJECT_DEFINE NAME=obj\n"
+        "BED_MESH_PROFILE LOAD=default\n"
+        "G28\n"
+    )
+
+    ok = p.stream_print(str(f))
+    assert ok is True
+    assert "M110 N0" in sent
+    assert "G28" in sent
+    assert all(not s.startswith("M73 ") for s in sent)
+    assert all(not s.startswith("EXCLUDE_OBJECT_DEFINE") for s in sent)
+    assert all(not s.startswith("BED_MESH_PROFILE ") for s in sent)
+
+
+def test_cached_status_nulls_stale_temps(monkeypatch):
+    """Cached temps must be dropped once stale, so no misleadingly old value shows."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+    p._cached.nozzle_temp = 205.0
+    p._cached.bed_temp = 60.0
+    import time as _t
+    p._cached_ts = _t.monotonic()               # just updated → fresh
+    assert p.cached_status(max_age=8).nozzle_temp == 205.0
+    p._cached_ts = _t.monotonic() - 30          # 30s old → stale
+    st = p.cached_status(max_age=8)
+    assert st.nozzle_temp is None and st.bed_temp is None
+
+
+def test_wait_ok_caches_temps_from_autoreport(monkeypatch):
+    """A Marlin temp line (solicited or auto-report) updates the cache."""
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+    seq = iter(["T:210.5 /210.0 B:60.1 /60.0 @:80", "ok"])
+    monkeypatch.setattr(p, "_readline", lambda: next(seq, ""))
+    p._wait_ok(timeout=5)
+    st = p.cached_status()
+    assert round(st.nozzle_temp) == 210 and round(st.bed_temp) == 60
+
+
+def test_stream_print_cancel_stops_early(tmp_path, monkeypatch):
+    monkeypatch.setattr(sp, "serial", object())
+    p = sp.SerialPrinter("/dev/null", 115200)
+    monkeypatch.setattr(p, "send_command", lambda cmd, timeout=30: "ok")
+    f = tmp_path / "m.gcode"
+    f.write_text("\n".join(f"G1 X{i}" for i in range(100)) + "\n")
+
+    ok = p.stream_print(str(f), should_continue=lambda: False)  # canceled immediately
+    assert ok is False
+
+
+def test_doctor_runs_and_reports():
+    """The --doctor diagnostic must produce a report without crashing."""
+    from printqueue_agent import diagnostics
+
+    class Cfg:
+        server_url = "http://example"
+        serial_port = "/dev/nonexistent-pq-doctor"
+        baud_rate = 115200
+
+    report = diagnostics.run(Cfg())
+    assert "Print-queue agent doctor" in report
 
 
 class FakeController:
@@ -35,6 +268,8 @@ class FakeController:
         self.estopped = False
         self.fan = None
         self.restarted = False
+        self.print_mode = "sd"
+        self.serial_debug = False
 
     def info(self):
         return {"name": "Garage LK5", "printer_code": "LK5_PRO", "agent_version": "1.0.0"}
@@ -65,6 +300,16 @@ class FakeController:
         if fn not in self.files:
             raise NotFound("nope")
         self.files.remove(fn)
+
+    def set_print_mode(self, mode):
+        if mode not in ("sd", "stream"):
+            raise ValueError("bad mode")
+        self.print_mode = mode
+        return mode
+
+    def set_serial_debug(self, enabled):
+        self.serial_debug = bool(enabled)
+        return self.serial_debug
 
     def pause(self): self.paused = True
     def resume(self): self.paused = False
@@ -136,6 +381,34 @@ def test_control_requires_api_key(server):
 def test_api_key_via_query_param(server):
     _ctrl, base = server
     assert _req(base, "/api/cancel?apikey=secret", method="POST")[0] == 200
+
+
+def test_print_mode_toggle(server):
+    ctrl, base = server
+    st, body = _req(base, "/api/print-mode", method="POST",
+                    data=json.dumps({"mode": "stream"}).encode(),
+                    headers={**AUTH, "Content-Type": "application/json"})
+    assert st == 200 and json.loads(body)["print_mode"] == "stream"
+    assert ctrl.print_mode == "stream"
+    # invalid mode is rejected
+    bad = _req(base, "/api/print-mode", method="POST",
+               data=json.dumps({"mode": "bogus"}).encode(),
+               headers={**AUTH, "Content-Type": "application/json"})
+    assert bad[0] == 400
+    # auth required
+    assert _req(base, "/api/print-mode", method="POST",
+                data=json.dumps({"mode": "sd"}).encode())[0] == 401
+
+
+def test_serial_debug_toggle(server):
+    ctrl, base = server
+    st, body = _req(base, "/api/serial-debug", method="POST",
+                    data=json.dumps({"enabled": True}).encode(),
+                    headers={**AUTH, "Content-Type": "application/json"})
+    assert st == 200 and json.loads(body)["serial_debug"] is True
+    assert ctrl.serial_debug is True
+    assert _req(base, "/api/serial-debug", method="POST",
+                data=json.dumps({"enabled": False}).encode())[0] == 401  # auth required
 
 
 def _multipart(fields, fname=None, fdata=b""):

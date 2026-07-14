@@ -61,8 +61,11 @@ class AgentPrinterController:
         os.makedirs(spool, exist_ok=True)
         self.spool_dir = spool
         self._upload_pct: Optional[int] = None
+        self._stream_pct: Optional[int] = None
         self._active_file: Optional[str] = None
         self._print_start_ts: Optional[float] = None
+        self._cancel = threading.Event()
+        self._paused = threading.Event()
 
     # ── identity ──────────────────────────────────────────────────
     def info(self) -> Dict[str, Any]:
@@ -82,14 +85,26 @@ class AgentPrinterController:
     # ── state ─────────────────────────────────────────────────────
     def state(self) -> Dict[str, Any]:
         printer = self.agent.printer
-        if printer and printer.connected:
+        connected = bool(printer and printer.connected)
+        # During an upload the serial lock is held for the whole transfer, so
+        # never call query_status() then — it would block this request for
+        # minutes. Report the cached upload progress instead.
+        if self._upload_pct is not None:
+            st = {"state": "uploading", "progress": self._upload_pct}
+        elif self._stream_pct is not None:
+            # Host-streaming holds the port waiting for the buffer, so we can't
+            # send M105 here. Use temps cached from Marlin's auto-reports (nulled
+            # if stale) + our line-based progress.
+            st = printer.cached_status().as_dict() if connected else {}
+            st["state"] = "printing"
+            st["progress"] = self._stream_pct
+        elif self.agent.print_active.is_set():
+            st = {"state": "printing"}
+        elif connected:
             st = printer.query_status().as_dict()
         else:
             st = {"state": "offline"}
-        if self._upload_pct is not None:
-            st["state"] = "uploading"
-            st["progress"] = self._upload_pct
-        st["connected"] = bool(printer and printer.connected)
+        st["connected"] = connected
         # The running agent's version, so the device page can detect a restart to
         # new code (version changed since the page loaded) and reload itself.
         st["agent_version"] = self.agent.cfg.agent_version
@@ -97,6 +112,8 @@ class AgentPrinterController:
         # heartbeat), so the device page can show a server indicator too.
         st["server_connected"] = bool(getattr(self.agent, "server_online", False))
         st["print_active"] = self.agent.print_active.is_set()
+        st["print_mode"] = getattr(self.agent, "print_mode", "sd")
+        st["serial_debug"] = bool(getattr(self.agent, "serial_debug", False))
         if self._active_file:
             st["current_file"] = self._active_file
         # Derive elapsed/remaining for any running print so the device page can
@@ -156,21 +173,65 @@ class AgentPrinterController:
         self._active_file = name
         threading.Thread(target=self._print_worker, args=(path, name), daemon=True).start()
 
+    def _stream_mode(self) -> bool:
+        return getattr(self.agent, "print_mode", "sd") == "stream"
+
+    def set_print_mode(self, mode: str) -> str:
+        return self.agent.set_print_mode(mode)
+
+    def set_serial_debug(self, enabled) -> bool:
+        return self.agent.set_serial_debug(enabled)
+
     def _print_worker(self, path: str, name: str) -> None:
         printer = self.agent.printer
+        streaming = self._stream_mode()
         try:
-            self._upload_pct = 0
-            printer.upload_to_sd(path, on_progress=lambda p: setattr(self, "_upload_pct", p))
-            printer.start_sd_print()
-            printer.enable_auto_reports(self.agent.cfg.heartbeat_interval_s, self.agent.cfg.poll_interval_s)
-            log.info("Local print started: %s", name)
+            if streaming:
+                # Host-stream: prints as it sends (no slow SD upload). print_active
+                # stays set for the whole print since stream_print blocks until done.
+                self._cancel.clear()
+                self._paused.clear()
+                self._stream_pct = 0
+                printer.enable_auto_reports(3, self.agent.cfg.poll_interval_s)
+
+                def _prog(p):
+                    self._stream_pct = p
+                    self.agent.print_progress = p
+
+                completed = printer.stream_print(
+                    path,
+                    on_progress=_prog,
+                    should_continue=lambda: not self._cancel.is_set(),
+                    paused=lambda: self._paused.is_set(),
+                )
+                if not completed:
+                    try:
+                        printer.abort_print()  # canceled: stop heating + motion
+                    except Exception:
+                        pass
+                    self._active_file = None
+                log.info("Stream print %s: %s", "finished" if completed else "canceled", name)
+            else:
+                def _uprog(p):
+                    self._upload_pct = p
+                    self.agent.print_progress = p
+                self._upload_pct = 0
+                printer.upload_to_sd(path, on_progress=_uprog)
+                printer.start_sd_print()
+                printer.enable_auto_reports(3, self.agent.cfg.poll_interval_s)
+                log.info("Local print started: %s", name)
         except Exception as e:
             log.exception("Local print failed: %s", e)
             self._active_file = None
         finally:
             self._upload_pct = None
-            # The print now runs autonomously from SD; release the loop guard.
+            self._stream_pct = None
+            self.agent.print_progress = None
+            # SD: print runs autonomously now. Stream: the print just finished.
             self.agent.print_active.clear()
+            if streaming:
+                self._active_file = None
+                self._print_start_ts = None
 
     def _require_printer(self):
         printer = self.agent.printer
@@ -179,12 +240,20 @@ class AgentPrinterController:
         return printer
 
     def pause(self) -> None:
-        self._require_printer().pause_print()
+        if self._stream_pct is not None:
+            self._paused.set()  # stream: hold at the next line
+        else:
+            self._require_printer().pause_print()
 
     def resume(self) -> None:
-        self._require_printer().resume_print()
+        if self._stream_pct is not None:
+            self._paused.clear()
+        else:
+            self._require_printer().resume_print()
 
     def cancel(self) -> None:
+        self._cancel.set()  # stop a running stream
+        self._paused.clear()
         self._require_printer().abort_print()
         self._active_file = None
         self._print_start_ts = None

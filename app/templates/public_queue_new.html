@@ -318,6 +318,38 @@
     </div>
     {% endif %}
   </div>
+  <!-- Agent-backed printers (e.g. LK5 Pro) — rendered generically from status -->
+  {% for pname, pdata in printer_status.items() if pname not in ['ADVENTURER_4', 'AD5X'] %}
+  <div class="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3">
+    <div class="flex items-center justify-between mb-1">
+      <span class="text-sm font-medium">🖨 {{ {'LK5_PRO': 'Longer LK5 Pro'}.get(pname, pname) }}</span>
+      {% if pdata.status %}
+      <span class="text-xs px-2 py-0.5 rounded-full
+        {% if pdata.is_offline %}bg-zinc-700/50 text-zinc-400
+        {% elif pdata.is_printing %}bg-emerald-500/20 text-emerald-300
+        {% elif pdata.status == 'READY' %}bg-green-500/20 text-green-300
+        {% else %}bg-amber-500/20 text-amber-300{% endif %}">
+        {% if pdata.is_offline %}Offline{% else %}{{ pdata.status }}{% endif %}</span>
+      {% else %}
+      <span class="text-xs px-2 py-0.5 rounded-full bg-zinc-700/50 text-zinc-400">Offline</span>
+      {% endif %}
+    </div>
+    {% if pdata.is_printing %}
+      {% if pdata.current_file %}<p class="truncate text-zinc-500 text-xs">📄 {{ pdata.current_file }}</p>{% endif %}
+      {% if pdata.progress is not none %}
+      <div class="flex items-center gap-2 mt-1">
+        <div class="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+          <div class="h-full bg-emerald-500 transition-all" style="width: {{ pdata.progress }}%"></div>
+        </div>
+        <span class="text-emerald-300 text-xs font-medium">{{ pdata.progress }}%</span>
+      </div>
+      {% endif %}
+    {% endif %}
+    {% if pdata.temp %}
+    <div class="text-xs text-zinc-400 mt-1">🌡 <span class="text-zinc-200">{{ pdata.temp }}°C</span>{% if pdata.target_temp %} <span class="text-zinc-500">/ {{ pdata.target_temp }}°C</span>{% endif %}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
   </div><!-- Close grid -->
 </details>
 

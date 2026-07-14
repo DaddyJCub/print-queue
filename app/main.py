@@ -39,7 +39,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.32.0"
+APP_VERSION = "0.33.0"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -51,6 +51,7 @@ APP_VERSION = "0.32.0"
 #   - 0.x.PATCH = Bug fixes only
 #
 # Changelog:
+# 0.32.0 - [FEATURE] Printer error alerts: a Klipper/Moonraker (ZMod) fault watcher polls every Moonraker-backed printer and alerts admins (push + email) on any reported error — MCU shutdown, thermal runaway, disconnected thermistor (ADC out of range), lost MCU comms, Klipper errors, aborted prints, and filament runout/jam pauses. Edge-triggered with a cooldown reminder and a recovery notice; admin-configurable on the Printellect Watch page.
 # 0.31.0 - [FEATURE] "Set aside" for multi-build requests: pause a request mid-run to free the printer for another job (new PAUSED status + Resume), and build-accurate printer occupancy so an unknown print is no longer masked by a request left IN_PROGRESS between builds.
 # 0.19.0 - [FEATURE] Dashboard home rollout + release hardening: feature-flagged landing page at /, request form moved to /new-request, unified account handling fixes in quote/checkout flows, and multi-replica worker gating for credits/USPS poller.
 # 0.18.0 - [FEATURE] OIDC SSO via Authentik: discovery + authorization-code flow, account linking/unlinking, JWKS token validation, and auto-create on first sign-in
@@ -293,6 +294,7 @@ OIDC_DISPLAY_NAME = os.getenv("OIDC_DISPLAY_NAME", "Authentik")
 ENABLE_CREDIT_GRANT_SCHEDULER = os.getenv("ENABLE_CREDIT_GRANT_SCHEDULER", "true").strip().lower() in ("1", "true", "yes")
 ENABLE_USPS_TRACKING_POLLER = os.getenv("ENABLE_USPS_TRACKING_POLLER", "true").strip().lower() in ("1", "true", "yes")
 ENABLE_PRINT_MONITOR = os.getenv("ENABLE_PRINT_MONITOR", "true").strip().lower() in ("1", "true", "yes")
+ENABLE_PRINTER_ERROR_ALERTS = os.getenv("ENABLE_PRINTER_ERROR_ALERTS", "true").strip().lower() in ("1", "true", "yes")
 
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -410,6 +412,16 @@ templates.env.globals["new_request_url"] = _new_request_url
 
 # NOTE: app/static must exist in your repo (can be empty with a .gitkeep)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+# ─────────────────────────── HEALTH ───────────────────────────
+# Unauthenticated liveness probe for Docker healthchecks and Uptime Kuma. Kept
+# intentionally cheap (no DB access) so a health probe never depends on
+# downstream state. Shape matches the other JCubHub apps.
+# NOTE: /api/version already exists in app/api_builds.py — do not redefine it
+# here or it would shadow the established contract.
+@app.get("/api/health")
+async def api_health():
+    return JSONResponse({"status": "ok", "version": APP_VERSION})
 
 # ─────────────────────────── ERROR HANDLERS ───────────────────────────
 # Custom error pages for better UX
@@ -870,6 +882,16 @@ PRINTERS = [
     ("AD5X", "FlashForge AD5X"),
     ("LK5_PRO", "Longer LK5 Pro"),
 ]
+
+
+def display_printer_codes() -> list:
+    """Real printer codes to show live status for (every printer except 'ANY').
+
+    Used by the status-display loops so agent-backed printers (e.g. the LK5 Pro)
+    appear alongside the directly-polled LAN printers instead of being hardcoded
+    out. NOT for FlashForge/Moonraker-only control guards.
+    """
+    return [code for code, _label in PRINTERS if code != "ANY"]
 
 MATERIALS = [
     ("ANY", "Any"),
@@ -1580,6 +1602,9 @@ def init_db():
     # Printellect Watch — AI camera print-failure monitoring
     from app.print_monitor import init_print_monitor_tables
     init_print_monitor_tables(cur)
+    # Printer error alerts — Klipper/Moonraker fault watcher
+    from app.printer_error_alerts import init_printer_error_tables
+    init_printer_error_tables(cur)
     # Shipping indexes are created in ensure_migrations() after the column/tables are guaranteed to exist
 
     # ─────────────────────────────────────────────────────────────────────────────
@@ -3175,6 +3200,27 @@ def _startup():
         _pm.start_print_monitor()
     else:
         logger.info("Print monitor disabled via ENABLE_PRINT_MONITOR")
+
+    # Start printer error-alert watcher (Klipper/Moonraker fault monitoring;
+    # runtime on/off switch is the printer_error_alerts_enabled DB setting)
+    if ENABLE_PRINTER_ERROR_ALERTS:
+        import app.printer_error_alerts as _pea
+        _pea.configure(
+            db=db,
+            now_iso=now_iso,
+            get_setting=get_setting,
+            get_bool_setting=get_bool_setting,
+            get_printer_api=get_printer_api,
+            get_printer_codes=get_printer_codes,
+            is_polling_paused=is_polling_paused,
+            send_push_notification_to_admins=send_push_notification_to_admins,
+            send_email=send_email,
+            parse_email_list=parse_email_list,
+            demo_mode=lambda: DEMO_MODE,
+        )
+        _pea.start_printer_error_alerts()
+    else:
+        logger.info("Printer error alerts disabled via ENABLE_PRINTER_ERROR_ALERTS")
 
 # Mount auth routes
 from app.routes_auth import router as auth_router
@@ -5504,7 +5550,7 @@ class MoonrakerAPI:
                 url = (
                     f"{self.base_url}/printer/objects/query"
                     "?print_stats&virtual_sdcard&extruder&heater_bed&toolhead"
-                    "&display_status&gcode_move"
+                    "&display_status&gcode_move&webhooks&idle_timeout"
                 )
                 r = await client.get(url, headers=self._headers())
                 if r.status_code == 200:
@@ -5530,9 +5576,73 @@ class MoonrakerAPI:
         print_stats = objects.get("print_stats", {})
         state = print_stats.get("state", "standby")
         mapped_status = self._STATE_MAP.get(state, "UNKNOWN")
-        
+
         return {"MachineStatus": mapped_status}
-    
+
+    async def get_error_state(self) -> Optional[Dict[str, Any]]:
+        """Detect any fault the Klipper/Moonraker (ZMod) stack is reporting.
+
+        Returns a normalized dict when something is wrong, else None:
+            {
+              "severity": "error" | "warning",
+              "source":   "klipper" | "print",   # which subsystem reported it
+              "state":    raw state string,       # shutdown/error/paused/...
+              "message":  human-readable reason,  # Klipper's own error text
+            }
+
+        Signals consulted (in priority order):
+          * webhooks.state — Klipper host/MCU health. ``shutdown`` (thermal
+            runaway, "Lost communication with MCU", ADC out of range, "Timer
+            too close") and ``error`` (config/startup failures) are hard faults.
+          * print_stats.state == "error" — the active print aborted with a
+            Klipper error (print_stats.message carries the reason).
+          * print_stats.state == "paused" with a filament-related message —
+            a runout/jam pause from the IFS/runout sensor (warning severity).
+
+        Purely REST-based; no websocket. Fail-safe: on a malformed reply we
+        return None (healthy) rather than crying wolf.
+        """
+        objects = await self._query_objects()
+        if not objects:
+            return None
+
+        webhooks = objects.get("webhooks", {}) or {}
+        wh_state = str(webhooks.get("state", "") or "").lower()
+        wh_msg = str(webhooks.get("state_message", "") or "").strip()
+        # ``ready``/``startup`` are healthy or transient; only shutdown/error fault.
+        if wh_state in ("shutdown", "error"):
+            return {
+                "severity": "error",
+                "source": "klipper",
+                "state": wh_state,
+                "message": wh_msg or f"Klipper reported state '{wh_state}'.",
+            }
+
+        print_stats = objects.get("print_stats", {}) or {}
+        ps_state = str(print_stats.get("state", "") or "").lower()
+        ps_msg = str(print_stats.get("message", "") or "").strip()
+        if ps_state == "error":
+            return {
+                "severity": "error",
+                "source": "print",
+                "state": ps_state,
+                "message": ps_msg or "Print aborted with a Klipper error.",
+            }
+
+        # A pause carrying a filament-ish message is almost always a runout/jam
+        # trip from the sensor rather than an intentional user pause.
+        if ps_state == "paused" and ps_msg:
+            low = ps_msg.lower()
+            if any(k in low for k in ("runout", "run out", "filament", "jam", "clog", "tangle")):
+                return {
+                    "severity": "warning",
+                    "source": "print",
+                    "state": ps_state,
+                    "message": ps_msg,
+                }
+
+        return None
+
     async def get_progress(self) -> Optional[Dict[str, Any]]:
         """Get print progress in FlashForge-compatible format."""
         objects = await self._query_objects()
@@ -6193,6 +6303,17 @@ def _apply_observed_printing_gate(
     if newly_confirmed:
         confirmed = True
     return newly_confirmed, (should_complete and confirmed)
+
+
+def get_printer_codes(with_labels: bool = False):
+    """Return real printer codes (everything in PRINTERS except the ANY sentinel).
+
+    with_labels=True returns (code, label) tuples; otherwise just the codes.
+    Used by the error-alert worker to sweep every configured printer.
+    """
+    if with_labels:
+        return [(code, label) for code, label in PRINTERS if code != "ANY"]
+    return [code for code, _label in PRINTERS if code != "ANY"]
 
 
 def get_printer_api(printer_code: str):

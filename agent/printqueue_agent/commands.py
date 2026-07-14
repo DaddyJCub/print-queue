@@ -101,6 +101,52 @@ class CommandExecutor:
         log.info("👋 IDENTIFY — this is agent %s", self.agent.cfg.agent_id)
         return {"identified": True}
 
+    def _do_set_print_mode(self, payload, cmd_id) -> Dict[str, Any]:
+        mode = self.agent.set_print_mode(payload.get("mode", ""))
+        return {"print_mode": mode}
+
+    def _do_set_serial_debug(self, payload, cmd_id) -> Dict[str, Any]:
+        return {"serial_debug": self.agent.set_serial_debug(payload.get("enabled", False))}
+
+    # ── remote device control (mirror of the local device page) ──────
+    def _do_resume_print(self, payload, cmd_id) -> Dict[str, Any]:
+        self.agent.get_controller().resume()
+        return {"resumed": True}
+
+    def _do_cancel_print(self, payload, cmd_id) -> Dict[str, Any]:
+        self.agent.get_controller().cancel()
+        return {"canceled": True}
+
+    def _do_set_temp(self, payload, cmd_id) -> Dict[str, Any]:
+        target = payload.get("target", "")
+        value = payload.get("value", 0)
+        self.agent.get_controller().set_temp(target, value)
+        return {"target": target, "value": value}
+
+    def _do_home(self, payload, cmd_id) -> Dict[str, Any]:
+        self.agent.get_controller().home(payload.get("axes", ""))
+        return {"homed": payload.get("axes", "all")}
+
+    def _do_jog(self, payload, cmd_id) -> Dict[str, Any]:
+        self.agent.get_controller().jog(payload.get("axis", ""), payload.get("distance", 0))
+        return {"axis": payload.get("axis"), "distance": payload.get("distance")}
+
+    def _do_set_fan(self, payload, cmd_id) -> Dict[str, Any]:
+        self.agent.get_controller().set_fan(payload.get("speed", 0))
+        return {"speed": payload.get("speed")}
+
+    def _do_list_files(self, payload, cmd_id) -> Dict[str, Any]:
+        return {"files": self.agent.get_controller().list_files()}
+
+    def _do_start_file(self, payload, cmd_id) -> Dict[str, Any]:
+        name = payload.get("file", "")
+        self.agent.get_controller().start_file(name)
+        return {"started": name}
+
+    def _do_get_state(self, payload, cmd_id) -> Dict[str, Any]:
+        """Fresh status on demand (snappier than waiting for the next heartbeat)."""
+        return {"state": self.agent.get_controller().state()}
+
     def _do_get_host_info(self, payload, cmd_id) -> Dict[str, Any]:
         def _run(args, timeout=8):
             try:

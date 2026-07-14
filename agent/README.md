@@ -95,6 +95,41 @@ remotely over the same outbound channel:
   serial port and runs avrdude (`-c wiring -p atmega2560` for the LK5 Pro). It
   refuses to flash while a print is running.
 
+## Print mode: SD vs stream
+
+`print_mode` in `config.json` controls how prints run:
+
+- **`"sd"`** (default) — the agent uploads the sliced file to the printer's SD
+  card, then prints from it. The print survives an agent/host restart, but the
+  SD-over-serial upload is **slow** (~1 KB/s: minutes for a small file, much more
+  for a big one) because Marlin writes each line to the card one round-trip at a
+  time.
+- **`"stream"`** — the agent host-streams the gcode straight to the printer, so
+  **printing starts in seconds** (no upfront upload), like OctoPrint/Cura direct
+  print. You keep full visibility and control from the device page while it runs
+  (live temps, progress, pause/resume/cancel, set-temp). Trade-off: the **agent
+  must stay connected for the whole print** — if the Pi/agent drops, the print
+  stops (there's no SD copy to fall back on).
+
+Set `"print_mode": "stream"` for speed on a dedicated always-on Pi; keep `"sd"`
+if resilience to a host restart matters more than upload speed.
+
+## Seeing what's sent over serial
+
+Set `"serial_debug": true` in `config.json` and restart. Every command sent and
+reply received is logged (`TX> …` / `RX< …`) — visible in
+`journalctl -u printqueue-agent -f` and the admin **View logs** panel. It's
+noisy during a print (one line per command); turn it off when you're done.
+
+## Where prints show up
+
+Prints started from the **device page** or **Orca** ("Send to printer") are
+**local** to the agent — they don't appear in the central Printellect *queue*
+(only admin "Send file" jobs do). The agent's live status (state, temps,
+progress) still shows on its **Print Agents** card and the device page. During a
+stream print, temps come from Marlin's ~3s auto-reports (shown only while fresh),
+so nothing stale is displayed.
+
 ## Important notes
 
 - **Cura and the agent can't both be connected to the printer at once** (a USB

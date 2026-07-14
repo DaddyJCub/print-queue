@@ -44,7 +44,8 @@
     <!-- Agent software updates (OTA) -->
     <section class="rounded-2xl border border-zinc-800 bg-zinc-800/40 p-4 mb-4">
       <h2 class="text-sm font-semibold text-zinc-300 mb-2">⬆️ Agent software updates</h2>
-      <p class="text-xs text-zinc-500 mb-3">Upload a new agent bundle (a <code class="bg-zinc-800 px-1 rounded">.zip</code> of the <code class="bg-zinc-800 px-1 rounded">printqueue_agent/</code> package — build with <code class="bg-zinc-800 px-1 rounded">python build_bundle.py</code>). Then use <strong>Update agent</strong> under each agent's Manage panel — it self-updates and restarts.</p>
+      <p class="text-xs text-zinc-500 mb-1">Upload a new agent bundle (a <code class="bg-zinc-800 px-1 rounded">.zip</code> of the <code class="bg-zinc-800 px-1 rounded">printqueue_agent/</code> package — build with <code class="bg-zinc-800 px-1 rounded">python build_bundle.py</code>). Then use <strong>Update agent</strong> under each agent's Manage panel — it self-updates and restarts.</p>
+      <p class="text-xs text-amber-300/80 mb-3">The OTA target comes from the <strong>current uploaded bundle</strong> below, not from the web app build version currently running on the server.</p>
       <form id="releaseForm" class="grid md:grid-cols-3 gap-2 items-center">
         <input name="version" required placeholder="Version (e.g. 1.1.0)" class="rounded-xl bg-zinc-950 border border-zinc-800 p-2.5 text-sm" />
         <input name="file" type="file" accept=".zip" required class="text-sm text-zinc-400" />
@@ -86,6 +87,88 @@
       <div class="flex justify-between mt-6 shrink-0">
         <button id="wizBack" onclick="wizGo(-1)" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-4 py-2 text-sm">Back</button>
         <button id="wizNext" onclick="wizGo(1)" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-5 py-2 text-sm font-semibold">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Remote device control (mirrors the on-Pi device page, off-network) -->
+  <div id="remoteModal" class="hidden fixed inset-0 bg-black/70 z-[9999] flex items-center justify-center p-4">
+    <div style="max-height:92vh" class="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between p-4 border-b border-zinc-800">
+        <div class="flex items-center gap-2">
+          <span id="rm-dot" class="w-2.5 h-2.5 rounded-full bg-zinc-600"></span>
+          <h3 id="rm-name" class="font-semibold">Remote device</h3>
+          <span class="text-xs text-zinc-500">· mirrored via Printellect</span>
+        </div>
+        <button onclick="closeRemote()" class="text-zinc-500 hover:text-zinc-200 text-xl leading-none">✕</button>
+      </div>
+      <div class="p-4 overflow-auto grid md:grid-cols-2 gap-4 text-sm">
+        <!-- Camera + status -->
+        <div>
+          <img id="rm-cam" class="w-full rounded-xl bg-black mb-2" alt="camera" style="display:none" />
+          <div id="rm-cam-msg" class="text-xs text-zinc-500 mb-2" style="display:none">No camera.</div>
+          <div class="flex justify-between py-1 border-b border-zinc-800"><span>State</span><b id="rm-state">—</b></div>
+          <div class="flex justify-between py-1 border-b border-zinc-800"><span>Nozzle</span><b id="rm-noz">—</b></div>
+          <div class="flex justify-between py-1 border-b border-zinc-800"><span>Bed</span><b id="rm-bed">—</b></div>
+          <div class="flex justify-between py-1 border-b border-zinc-800"><span>File</span><b id="rm-file" class="truncate max-w-[60%]">—</b></div>
+          <div class="flex justify-between py-1"><span>Progress</span><b id="rm-prog">—</b></div>
+          <div class="h-2 bg-zinc-800 rounded mt-1 overflow-hidden"><div id="rm-bar" class="h-full bg-indigo-500" style="width:0%"></div></div>
+          <div class="flex gap-2 mt-3">
+            <button onclick="rmCmd('pause_print')" class="rounded-lg bg-amber-900/40 hover:bg-amber-900/60 text-amber-200 px-3 py-1.5">Pause</button>
+            <button onclick="rmCmd('resume_print')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5">Resume</button>
+            <button onclick="rmCancel()" class="rounded-lg bg-red-900/40 hover:bg-red-900/60 text-red-200 px-3 py-1.5">Cancel</button>
+          </div>
+          <div class="text-[11px] text-zinc-500 mt-2">Actions run over the outbound channel — usually within a second or two.</div>
+        </div>
+        <!-- Controls -->
+        <div>
+          <div class="text-xs text-zinc-400 mb-1">Temperatures</div>
+          <div class="flex gap-2 items-center mb-1"><span class="w-12">Nozzle</span>
+            <input id="rm-tnoz" type="number" value="210" class="w-20 rounded bg-zinc-950 border border-zinc-800 p-1.5" />
+            <button onclick="rmTemp('nozzle','rm-tnoz')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5">Set</button>
+            <button onclick="rmTempOff('nozzle')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-2 py-1.5">Off</button></div>
+          <div class="flex gap-2 items-center mb-3"><span class="w-12">Bed</span>
+            <input id="rm-tbed" type="number" value="60" class="w-20 rounded bg-zinc-950 border border-zinc-800 p-1.5" />
+            <button onclick="rmTemp('bed','rm-tbed')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5">Set</button>
+            <button onclick="rmTempOff('bed')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-2 py-1.5">Off</button></div>
+          <div class="flex gap-2 items-center mb-3">
+            <button onclick="rmCmd('home',{axes:''})" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5">⌂ Home all</button>
+            <span class="text-xs text-zinc-400">Mode:</span>
+            <button id="rm-pm-sd" onclick="rmCmd('set_print_mode',{mode:'sd'})" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5">SD</button>
+            <button id="rm-pm-stream" onclick="rmCmd('set_print_mode',{mode:'stream'})" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5">Stream</button>
+          </div>
+          <!-- Jog controls -->
+          <div class="flex items-center justify-between mb-1">
+            <div class="text-xs text-zinc-400">Move (jog)</div>
+            <div class="flex items-center gap-1 text-xs">
+              <span class="text-zinc-500">Step</span>
+              <select id="rm-jog-step" class="rounded bg-zinc-950 border border-zinc-800 p-1">
+                <option value="0.1">0.1</option>
+                <option value="1">1</option>
+                <option value="10" selected>10</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+              <span class="text-zinc-500">mm</span>
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-1 mb-3 max-w-[240px]">
+            <div></div>
+            <button onclick="rmJog('Y',1)" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 py-1.5">Y+</button>
+            <button onclick="rmJog('Z',1)" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 py-1.5">Z+</button>
+            <button onclick="rmJog('X',-1)" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 py-1.5">X−</button>
+            <button onclick="rmCmd('home',{axes:''})" class="rounded-lg bg-zinc-800/60 hover:bg-zinc-700 py-1.5" title="Home all">⌂</button>
+            <button onclick="rmJog('X',1)" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 py-1.5">X+</button>
+            <div></div>
+            <button onclick="rmJog('Y',-1)" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 py-1.5">Y−</button>
+            <button onclick="rmJog('Z',-1)" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 py-1.5">Z−</button>
+          </div>
+          <div class="flex items-center justify-between mb-1">
+            <div class="text-xs text-zinc-400">Files on the printer host</div>
+            <button onclick="rmLoadFiles()" class="text-xs text-indigo-400 hover:underline">↻ Refresh</button>
+          </div>
+          <div id="rm-files" class="flex flex-col gap-1 max-h-48 overflow-auto text-xs"><div class="text-zinc-500">Click Refresh to list files.</div></div>
+        </div>
       </div>
     </div>
   </div>
@@ -180,6 +263,15 @@
       return bits.join(" · ");
     }
 
+    function queueInsight(a) {
+      const bits = [];
+      if (a.queued_command_count) bits.push(`${a.queued_command_count} queued command${a.queued_command_count === 1 ? '' : 's'}`);
+      if (a.active_command_count) bits.push(`${a.active_command_count} active command${a.active_command_count === 1 ? '' : 's'}`);
+      if (a.queued_job_count) bits.push(`${a.queued_job_count} queued print${a.queued_job_count === 1 ? '' : 's'}`);
+      if (a.active_job_count) bits.push(`${a.active_job_count} active print${a.active_job_count === 1 ? '' : 's'}`);
+      return bits.join(' · ');
+    }
+
     function renderAgents(agents) {
       const wrap = document.getElementById("agentList");
       if (!agents.length) { wrap.innerHTML = '<div class="text-center text-zinc-500 py-10 border border-dashed border-zinc-800 rounded-2xl">No agents yet. Register one above.</div>'; return; }
@@ -198,12 +290,14 @@
               <div class="text-xs text-zinc-500 mt-1 font-mono">${esc(a.agent_id)}</div>
               <div class="text-xs text-zinc-400 mt-1">${a.online ? 'Online' : 'Offline'} · last seen ${timeAgo(a.last_seen_at)}${a.agent_version ? ' · v'+esc(a.agent_version) : ''}</div>
               ${statusLine(a.status) ? `<div class="text-xs text-indigo-300 mt-1">${statusLine(a.status)}</div>` : ''}
+              ${queueInsight(a) ? `<div class="text-xs ${a.online ? 'text-zinc-500' : 'text-amber-300'} mt-1">${a.online ? 'Pending:' : 'Offline with pending work:'} ${esc(queueInsight(a))}</div>` : ''}
             </div>
             <div class="flex items-center gap-2 flex-wrap justify-end">
               ${a.revoked ? '' : `<button onclick="sendPanel('${a.agent_id}')" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm">Send file</button>`}
               <button onclick="toggleJobs('${a.agent_id}')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">Jobs</button>
               ${a.revoked ? '' : `<button onclick="managePanel('${a.agent_id}')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">Manage</button>`}
-              ${(!a.revoked && a.upgrade_available) ? `<button onclick="pushUpdate('${a.agent_id}')" class="rounded-xl bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-200 px-3 py-1.5 text-sm">Upgrade</button>` : ''}
+              ${(!a.revoked && (a.upgrade_available || a.firmware_upgrade_available)) ? `<button onclick="pushUpdate('${a.agent_id}')" class="rounded-xl bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-200 px-3 py-1.5 text-sm">Upgrade</button>` : ''}
+              ${(!a.revoked) ? `<button onclick="openRemote('${a.agent_id}')" class="rounded-xl bg-emerald-700/40 hover:bg-emerald-700/60 text-emerald-200 px-3 py-1.5 text-sm">🖥 Remote</button>` : ''}
               ${(!a.revoked) ? `<button onclick="openDevicePage('${a.agent_id}')" class="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">Device page</button>` : ''}
               ${a.revoked ? '' : `<button onclick="revoke('${a.agent_id}')" class="rounded-xl bg-red-900/40 hover:bg-red-900/60 text-red-300 px-3 py-1.5 text-sm">Revoke</button>`}
               ${a.revoked ? `<button onclick="deleteAgent('${a.agent_id}')" class="rounded-xl bg-red-900/60 hover:bg-red-800 text-red-200 px-3 py-1.5 text-sm">Delete</button>` : ''}
@@ -291,14 +385,43 @@
       panel.classList.remove("hidden");
       panel.dataset.mode = "manage";
       const defaultTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      const _a = (window.__agents || []).find(a => a.agent_id === agentId);
+      const curMode = (_a && _a.status && _a.status.print_mode) || "sd";
+      const curDebug = !!(_a && _a.status && _a.status.serial_debug);
+      const hasAgentUpgrade = !!(_a && _a.upgrade_available);
+      const hasFirmwareUpgrade = !!(_a && _a.firmware_upgrade_available);
+      const updateLabel = hasAgentUpgrade && hasFirmwareUpgrade
+        ? `⬆️ Update agent + firmware`
+        : hasAgentUpgrade
+          ? `⬆️ Update agent${_a && _a.available_version ? ' · v' + esc(_a.available_version) : ''}`
+          : hasFirmwareUpgrade
+            ? `⬆️ Flash firmware${_a && _a.available_firmware_version ? ' · v' + esc(_a.available_firmware_version) : ''}`
+            : `✓ Up to date`;
+      const updateButton = (hasAgentUpgrade || hasFirmwareUpgrade)
+        ? `<button onclick="pushUpdate('${agentId}')" class="rounded-lg bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-200 px-3 py-1.5 text-sm">${updateLabel}</button>`
+        : `<button disabled title="Agent and firmware are already up to date" class="rounded-lg bg-zinc-900 text-zinc-500 px-3 py-1.5 text-sm cursor-not-allowed">${updateLabel}</button>`;
       panel.innerHTML = `
         <div class="text-sm font-medium mb-2">Remote management</div>
+        <div class="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 mb-3">
+          <div class="text-xs text-zinc-400 mb-2">Print mode <span class="text-zinc-600">— applies to the next print</span></div>
+          <div class="flex gap-2 items-center flex-wrap">
+            <button onclick="cmd('${agentId}','set_print_mode',false,{mode:'sd'})" class="rounded-lg ${curMode==='sd'?'bg-indigo-600':'bg-zinc-800 hover:bg-zinc-700'} px-3 py-1.5 text-sm">SD · safe</button>
+            <button onclick="cmd('${agentId}','set_print_mode',false,{mode:'stream'})" class="rounded-lg ${curMode==='stream'?'bg-indigo-600':'bg-zinc-800 hover:bg-zinc-700'} px-3 py-1.5 text-sm">Stream · fast</button>
+            <span class="text-xs text-zinc-500">SD survives a restart (slow start) · Stream starts fast (agent must stay connected)</span>
+          </div>
+          <div class="flex gap-2 items-center flex-wrap mt-2">
+            <span class="text-xs text-zinc-400">Serial log:</span>
+            <button onclick="cmd('${agentId}','set_serial_debug',false,{enabled:true})" class="rounded-lg ${curDebug?'bg-indigo-600':'bg-zinc-800 hover:bg-zinc-700'} px-3 py-1.5 text-sm">On</button>
+            <button onclick="cmd('${agentId}','set_serial_debug',false,{enabled:false})" class="rounded-lg ${!curDebug?'bg-indigo-600':'bg-zinc-800 hover:bg-zinc-700'} px-3 py-1.5 text-sm">Off</button>
+            <span class="text-xs text-zinc-500">logs every TX&gt;/RX&lt; command — use View logs; noisy, turn off when done</span>
+          </div>
+        </div>
         <div class="flex flex-wrap gap-2 mb-3">
           <button onclick="cmd('${agentId}','get_logs')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">📄 View logs</button>
           <button onclick="cmd('${agentId}','get_host_info')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">🖥️ Host info</button>
           <button onclick="cmd('${agentId}','identify')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">👋 Identify</button>
           <button onclick="cmd('${agentId}','reload_config')" class="rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-sm">♻️ Reload config</button>
-          <button onclick="pushUpdate('${agentId}')" class="rounded-lg bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-200 px-3 py-1.5 text-sm">⬆️ Update agent</button>
+          ${updateButton}
           <button onclick="cmd('${agentId}','restart_agent', true)" class="rounded-lg bg-amber-900/40 hover:bg-amber-900/60 text-amber-200 px-3 py-1.5 text-sm">🔁 Restart agent</button>
           <button onclick="cmd('${agentId}','reboot_host', true)" class="rounded-lg bg-amber-900/40 hover:bg-amber-900/60 text-amber-200 px-3 py-1.5 text-sm">⏻ Reboot Pi</button>
           <button onclick="flashFirmware('${agentId}')" class="rounded-lg bg-red-900/40 hover:bg-red-900/60 text-red-200 px-3 py-1.5 text-sm">⚡ Flash firmware</button>
@@ -339,6 +462,83 @@
       window.open(`http://${ip}:${port}`, "_blank", "noopener,noreferrer");
       showToast("Opening device page…", "success");
     }
+
+    // ───────────────────────── Remote device control ─────────────────────────
+    let remoteId = null, remotePollers = [];
+    function openRemote(agentId) {
+      remoteId = agentId;
+      document.getElementById("remoteModal").classList.remove("hidden");
+      rmRefresh(); rmCamTick();
+      remotePollers.push(setInterval(rmRefresh, 3000));
+      remotePollers.push(setInterval(rmCamTick, 4000));
+    }
+    function closeRemote() {
+      document.getElementById("remoteModal").classList.add("hidden");
+      remotePollers.forEach(clearInterval); remotePollers = []; remoteId = null;
+    }
+    async function rmRefresh() {
+      if (!remoteId) return;
+      let a; try { a = await (await fetch(API + `/agents/${remoteId}`, { credentials: "include" })).json(); } catch (e) { return; }
+      const s = a.status || {};
+      document.getElementById("rm-dot").className = "w-2.5 h-2.5 rounded-full " + (a.online ? "bg-emerald-400" : "bg-zinc-600");
+      document.getElementById("rm-name").textContent = a.name || a.agent_id;
+      document.getElementById("rm-state").textContent = a.online ? (s.state || "—") : "offline";
+      const t = (c, tg) => (c != null ? Math.round(c) + " / " + Math.round(tg || 0) + "°" : "—");
+      document.getElementById("rm-noz").textContent = t(s.nozzle_temp, s.nozzle_target);
+      document.getElementById("rm-bed").textContent = t(s.bed_temp, s.bed_target);
+      document.getElementById("rm-file").textContent = s.current_file || "—";
+      const p = s.progress != null ? s.progress : 0;
+      document.getElementById("rm-prog").textContent = s.progress != null ? p + "%" : "—";
+      document.getElementById("rm-bar").style.width = p + "%";
+      document.getElementById("rm-pm-sd").className = "rounded-lg px-2.5 py-1.5 " + (s.print_mode === "sd" ? "bg-indigo-600" : "bg-zinc-800 hover:bg-zinc-700");
+      document.getElementById("rm-pm-stream").className = "rounded-lg px-2.5 py-1.5 " + (s.print_mode === "stream" ? "bg-indigo-600" : "bg-zinc-800 hover:bg-zinc-700");
+    }
+    function rmCamTick() {
+      if (!remoteId) return;
+      const img = document.getElementById("rm-cam");
+      const test = new Image();
+      test.onload = () => { img.src = test.src; img.style.display = "block"; document.getElementById("rm-cam-msg").style.display = "none"; };
+      test.onerror = () => { img.style.display = "none"; document.getElementById("rm-cam-msg").style.display = "block"; };
+      test.src = API + `/agents/${remoteId}/snapshot.jpg?t=` + Date.now();
+    }
+    async function rmEnqueue(action, payload) {
+      const r = await fetch(API + `/agents/${remoteId}/commands`, {
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, payload: payload || {} }),
+      });
+      if (!r.ok) { showToast("Failed: " + (await r.text()), "error"); return null; }
+      return (await r.json()).cmd_id;
+    }
+    function rmCmd(action, payload) { rmEnqueue(action, payload).then(id => { if (id) showToast("Sent: " + action.replace(/_/g, " "), "success"); }); }
+    async function rmCancel() { if (await showConfirm("Cancel the print on this printer?")) rmCmd("cancel_print"); }
+    function rmTemp(target, inputId) { rmCmd("set_temp", { target, value: +document.getElementById(inputId).value }); }
+    function rmTempOff(target) { rmCmd("set_temp", { target, value: 0 }); }
+    function rmJog(axis, dir) {
+      const step = parseFloat(document.getElementById("rm-jog-step").value) || 1;
+      rmCmd("jog", { axis, distance: dir * step });
+    }
+    async function rmLoadFiles() {
+      const box = document.getElementById("rm-files");
+      box.innerHTML = '<div class="text-zinc-500">Requesting file list…</div>';
+      const id = await rmEnqueue("list_files", {});
+      if (!id) return;
+      // Poll the command result (the agent runs it on its next poll — ~1-2s).
+      let tries = 0;
+      const iv = setInterval(async () => {
+        tries++;
+        const cmds = (await (await fetch(API + `/agents/${remoteId}/commands`, { credentials: "include" })).json()).commands || [];
+        const done = cmds.find(c => c.cmd_id === id && (c.status === "completed" || c.status === "failed"));
+        if (done || tries > 15) {
+          clearInterval(iv);
+          const files = (done && done.result && done.result.files) || [];
+          if (!files.length) { box.innerHTML = '<div class="text-zinc-500">No files (or agent offline).</div>'; return; }
+          box.innerHTML = files.map(f => `<div class="flex items-center justify-between bg-zinc-950/60 rounded px-2 py-1.5">
+            <span class="truncate">${esc(f.name)} <span class="text-zinc-500">· ${fmtBytes(f.size)}</span></span>
+            <button onclick="rmPrint('${esc(f.name)}')" class="rounded bg-indigo-600 hover:bg-indigo-500 px-2 py-1 shrink-0">Print</button></div>`).join("");
+        }
+      }, 1200);
+    }
+    async function rmPrint(name) { if (await showConfirm("Start printing " + name + "?", { destructive: false, confirmText: "Print" })) rmCmd("start_file", { file: name }); }
 
     async function cmd(agentId, action, confirmFirst, payload, silent) {
       const labels = {
@@ -503,7 +703,7 @@
         const box = document.getElementById("releaseInfo");
         if (!rels.length) { box.textContent = "No bundle uploaded yet."; return; }
         const cur = rels.find(x => x.is_current) || rels[0];
-        box.innerHTML = "Current bundle: <strong class='text-zinc-200'>v" + esc(cur.version) + "</strong> · " + fmtBytes(cur.size_bytes) + " · uploaded " + timeAgo(cur.created_at);
+        box.innerHTML = "Current OTA bundle target: <strong class='text-zinc-200'>v" + esc(cur.version) + "</strong> · " + fmtBytes(cur.size_bytes) + " · uploaded " + timeAgo(cur.created_at);
       } catch (_) {}
     }
     document.getElementById("releaseForm").addEventListener("submit", async (e) => {

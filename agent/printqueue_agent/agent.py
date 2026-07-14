@@ -47,13 +47,63 @@ class Agent:
         # central-job loop doesn't grab the serial port at the same time.
         self.print_active = threading.Event()
         self._ui_server = None
+        # Single controller shared by the local device page and remote commands,
+        # so remote control reuses exactly the same code paths.
+        self._controller = None
         self._last_heartbeat = 0.0
         self._last_snapshot = 0.0
         # Whether the last heartbeat/provision reached the server (surfaced as the
         # "Printellect" connection indicator on the device page).
         self.server_online = False
         self._cached_ip: Optional[str] = None
+        # Live print mode ("sd" | "stream"), switchable at runtime from the device
+        # page / admin and persisted to config.json so it survives a restart.
+        self.print_mode = (getattr(cfg, "print_mode", "sd") or "sd").strip().lower()
+        # Progress (0-100) of the print the agent is currently driving, so the
+        # heartbeat/admin can show it (SD upload, SD print, or stream).
+        self.print_progress: Optional[int] = None
+        # Serial trace (TX>/RX< logging), toggleable at runtime.
+        self.serial_debug = bool(getattr(cfg, "serial_debug", False))
         install_log_ring()
+
+    def set_serial_debug(self, enabled) -> bool:
+        """Turn the serial TX>/RX< trace on/off live and persist it."""
+        enabled = bool(enabled)
+        self.serial_debug = enabled
+        self.cfg.serial_debug = enabled
+        if self.printer is not None:
+            self.printer.trace = enabled
+        self._persist_config({"serial_debug": enabled})
+        log.info("Serial trace %s", "ENABLED" if enabled else "disabled")
+        return enabled
+
+    def set_print_mode(self, mode: str) -> str:
+        """Change the print mode at runtime and persist it. Applies to the NEXT
+        print (a running print keeps its mode)."""
+        mode = (mode or "").strip().lower()
+        if mode not in ("sd", "stream"):
+            raise ValueError("print_mode must be 'sd' or 'stream'")
+        self.print_mode = mode
+        self.cfg.print_mode = mode
+        self._persist_config({"print_mode": mode})
+        log.info("Print mode set to %s", mode)
+        return mode
+
+    def _persist_config(self, updates: dict) -> None:
+        """Best-effort merge of key/values into config.json on disk."""
+        if not self.config_path or not os.path.isfile(self.config_path):
+            return
+        try:
+            import json
+            with open(self.config_path, "r") as fh:
+                data = json.load(fh)
+            data.update(updates)
+            tmp = self.config_path + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(data, fh, indent=2)
+            os.replace(tmp, self.config_path)
+        except Exception as e:
+            log.warning("Could not persist config (%s): %s", updates, e)
 
     def _primary_ip(self) -> str:
         """Best-effort primary LAN IPv4 of this host (cached).
@@ -86,16 +136,24 @@ class Agent:
             d["agent_ip"] = ip
         if self.cfg.local_ui.enabled:
             d["device_ui_port"] = self.cfg.local_ui.port
+        d["print_mode"] = self.print_mode
+        d["serial_debug"] = self.serial_debug
         return d
+
+    def get_controller(self):
+        """The shared AgentPrinterController (device page + remote commands)."""
+        if self._controller is None:
+            from .controller import AgentPrinterController
+            self._controller = AgentPrinterController(self)
+        return self._controller
 
     def _maybe_start_local_ui(self) -> None:
         """Start the ZMOD-style device-page web server (once)."""
         if self._ui_server is not None or not self.cfg.local_ui.enabled:
             return
         try:
-            from .controller import AgentPrinterController
             from .local_ui import start_in_thread
-            controller = AgentPrinterController(self)
+            controller = self.get_controller()
             self._ui_server = start_in_thread(
                 controller, self.cfg.local_ui.host, self.cfg.local_ui.port, self.cfg.local_ui.api_key,
             )
@@ -114,7 +172,16 @@ class Agent:
         if self.cfg.serial_port and self.cfg.serial_port != "auto":
             return self.cfg.serial_port
         ports = list_serial_ports()
-        return ports[0] if ports else None
+        if not ports:
+            return None
+        # Prefer a real USB serial adapter (the printer) over the Pi's onboard
+        # UART (/dev/ttyS0, /dev/ttyAMA0), which "auto" would otherwise grab and
+        # then time out on ("readiness to read but returned no data").
+        usb = [p for p in ports if "USB" in p.upper() or "ACM" in p.upper()]
+        chosen = (usb or ports)[0]
+        if usb and chosen != ports[0]:
+            log.info("Auto-selected USB serial port %s (skipped %s)", chosen, ports[0])
+        return chosen
 
     def _ensure_printer(self) -> bool:
         if self.printer and self.printer.connected:
@@ -125,6 +192,7 @@ class Agent:
             return False
         try:
             self.printer = SerialPrinter(port, self.cfg.baud_rate)
+            self.printer.trace = self.serial_debug
             self.printer.connect()
             self.printer.enable_auto_reports(self.cfg.heartbeat_interval_s, self.cfg.poll_interval_s)
             return True
@@ -137,6 +205,15 @@ class Agent:
     def _printer_status(self) -> PrinterStatus:
         if not self.printer or not self.printer.connected:
             return PrinterStatus(state="offline")
+        # While a print holds the port (upload or stream), don't send M105 — it
+        # would block. Report cached temps (from auto-reports) + our progress so
+        # the server/admin still see live status.
+        if self.print_active.is_set():
+            st = self.printer.cached_status()
+            st.state = "printing"
+            if self.print_progress is not None:
+                st.progress = self.print_progress
+            return st
         return self.printer.query_status()
 
     # ── main loop ─────────────────────────────────────────────────
@@ -176,8 +253,27 @@ class Agent:
         connected = self._ensure_printer()
         status = self._printer_status()
 
+        # A printer that stops answering (reset, USB dropout, 5V back-power glitch)
+        # leaves the port nominally "open", so query_status times out forever and
+        # the agent never recovers. Drop the dead connection so the next tick
+        # reconnects and re-syncs. (Not while a local upload holds the port.)
+        if (status.state == "offline" and self.printer is not None
+                and not self.print_active.is_set()):
+            log.warning("Printer unresponsive — dropping connection to force a reconnect")
+            try:
+                self.printer.close()
+            except Exception:
+                pass
+            self.printer = None
+            connected = False
+
         now = time.time()
-        if now - self._last_heartbeat >= self.cfg.heartbeat_interval_s:
+        # Heartbeat faster while printing so the off-network remote panel shows
+        # near-live status (temps/progress) instead of up to heartbeat_interval old.
+        hb_interval = self.cfg.heartbeat_interval_s
+        if self.print_active.is_set():
+            hb_interval = min(hb_interval, 5)
+        if now - self._last_heartbeat >= hb_interval:
             try:
                 self.client.heartbeat(self.cfg.agent_version, self._heartbeat_status(status))
                 self.server_online = True
@@ -270,17 +366,61 @@ class Agent:
                 self.client.update_job(job_id, "queued")
                 return
 
-            self.client.update_job(job_id, "uploading", progress=0)
-            self.printer.upload_to_sd(
-                tmp_path,
-                on_progress=lambda p: self._safe_update(job_id, "uploading", progress=p),
-            )
+            if self.print_mode == "stream":
+                # Host-stream directly (no slow SD upload); prints as it sends.
+                self.printer.enable_auto_reports(3, self.cfg.poll_interval_s)
+                self.print_progress = 0
+                self.client.update_job(job_id, "printing", progress=0)
+                # Throttle the cancel check: it's called per line, but each is a
+                # server round-trip, so only re-check every few seconds.
+                cc = {"t": 0.0, "canceled": False}
+                hb = {"t": 0.0}
 
-            self.printer.start_sd_print()
-            self.printer.enable_auto_reports(self.cfg.heartbeat_interval_s, self.cfg.poll_interval_s)
-            self.client.update_job(job_id, "printing", progress=0)
+                def _still_wanted() -> bool:
+                    now = time.time()
+                    if now - cc["t"] >= 5:
+                        cc["t"] = now
+                        cc["canceled"] = self._job_canceled(job_id)
+                    return not cc["canceled"]
 
-            self._monitor_print(job_id)
+                def _sprog(p):
+                    self.print_progress = p
+                    self._safe_update(job_id, "printing", progress=p)
+                    self._maybe_live_heartbeat(hb, "printing", file_name)
+
+                self._maybe_live_heartbeat(hb, "printing", file_name)
+
+                completed = self.printer.stream_print(
+                    tmp_path,
+                    on_progress=_sprog,
+                    should_continue=_still_wanted,
+                )
+                if completed:
+                    self.client.update_job(job_id, "completed", progress=100)
+                else:
+                    self.printer.abort_print()
+                    self.client.update_job(job_id, "canceled")
+            else:
+                hb = {"t": 0.0}
+                self.print_progress = 0
+                self.client.update_job(job_id, "uploading", progress=0)
+
+                def _uprog(p):
+                    self.print_progress = p
+                    self._safe_update(job_id, "uploading", progress=p)
+                    self._maybe_live_heartbeat(hb, "uploading", file_name)
+
+                self._maybe_live_heartbeat(hb, "uploading", file_name)
+                self.printer.upload_to_sd(
+                    tmp_path,
+                    on_progress=_uprog,
+                )
+
+                self.printer.start_sd_print()
+                self.printer.enable_auto_reports(self.cfg.heartbeat_interval_s, self.cfg.poll_interval_s)
+                self.client.update_job(job_id, "printing", progress=0)
+
+                self._monitor_print(job_id)
         except Exception as e:
             log.exception("Job %s failed: %s", job_id, e)
             try:
@@ -289,6 +429,7 @@ class Agent:
                 pass
         finally:
             self.print_active.clear()
+            self.print_progress = None
             try:
                 os.remove(tmp_path)
             except OSError:
@@ -299,6 +440,38 @@ class Agent:
             self.client.update_job(job_id, status, **kwargs)
         except ServerError as e:
             log.warning("job update failed: %s", e)
+
+    def _live_status_snapshot(self, state: str, current_file: Optional[str] = None) -> PrinterStatus:
+        """Best-effort status for long-running host-driven phases.
+
+        Uses cached auto-report data instead of serial polls so it is safe while
+        a stream print or SD upload holds the port.
+        """
+        if self.printer and self.printer.connected:
+            st = self.printer.cached_status()
+        else:
+            st = PrinterStatus(state="offline")
+        st.state = state
+        if self.print_progress is not None:
+            st.progress = self.print_progress
+        if current_file:
+            st.current_file = current_file
+        return st
+
+    def _maybe_live_heartbeat(self, gate: dict, state: str, current_file: Optional[str] = None) -> None:
+        now = time.time()
+        if now - gate.get("t", 0.0) < self.cfg.heartbeat_interval_s:
+            return
+        try:
+            self.client.heartbeat(
+                self.cfg.agent_version,
+                self._heartbeat_status(self._live_status_snapshot(state, current_file)),
+            )
+            self.server_online = True
+        except ServerError:
+            self.server_online = False
+        self._maybe_snapshot()
+        gate["t"] = now
 
     def _job_canceled(self, job_id: str) -> bool:
         """True if the server marked this job canceled (admin 'Cancel job')."""

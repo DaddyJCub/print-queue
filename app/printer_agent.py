@@ -87,6 +87,18 @@ AGENT_COMMAND_ACTIONS = {
     "set_hostname",    # set host name (Linux via hostnamectl)
     "set_timezone",    # set host timezone (Linux via timedatectl)
     "set_wifi",        # configure Wi-Fi on Linux (nmcli)
+    "set_print_mode",  # switch SD vs stream printing at runtime
+    "set_serial_debug",  # toggle the serial TX/RX trace log
+    # Remote device control (mirror of the on-Pi device page) — off-network.
+    "resume_print",
+    "cancel_print",
+    "set_temp",        # {target: nozzle|bed, value}
+    "home",            # {axes}
+    "jog",             # {axis, distance}
+    "set_fan",         # {speed}
+    "list_files",      # returns spooled files in the result
+    "start_file",      # {file} — print a spooled file
+    "get_state",       # fresh status snapshot in the result
     "update_agent",    # download a new agent bundle, self-update, restart (OTA)
     "flash_firmware",  # flash printer firmware (.hex) via avrdude — opt-in on agent
     "pause_print",     # pause the running print (Printellect Watch failure response)
@@ -948,13 +960,29 @@ async def admin_list_agents(admin=Depends(require_admin)):
     try:
         rows = conn.execute("SELECT * FROM printer_agents ORDER BY created_at DESC").fetchall()
         ingest_token = get_or_create_ingest_token(conn)
-        rel = _current_release(conn)
+        rel = _ensure_current_release(conn, created_by="system-auto")
         current_release_version = rel["version"] if rel else None
         agents: List[Dict[str, Any]] = []
         for r in rows:
             a = _agent_view(r)
             a["upgrade_available"] = _is_version_newer(current_release_version, a.get("agent_version"))
             a["available_version"] = current_release_version if a["upgrade_available"] else None
+            a["queued_command_count"] = conn.execute(
+                "SELECT COUNT(*) FROM printer_agent_commands WHERE agent_id = ? AND status = 'queued'",
+                (a["agent_id"],),
+            ).fetchone()[0]
+            a["active_command_count"] = conn.execute(
+                "SELECT COUNT(*) FROM printer_agent_commands WHERE agent_id = ? AND status IN ('delivered', 'executing')",
+                (a["agent_id"],),
+            ).fetchone()[0]
+            a["queued_job_count"] = conn.execute(
+                "SELECT COUNT(*) FROM printer_agent_jobs WHERE agent_id = ? AND status = 'queued'",
+                (a["agent_id"],),
+            ).fetchone()[0]
+            a["active_job_count"] = conn.execute(
+                "SELECT COUNT(*) FROM printer_agent_jobs WHERE agent_id = ? AND status IN ('claimed', 'uploading', 'printing', 'paused')",
+                (a["agent_id"],),
+            ).fetchone()[0]
             fw = _current_firmware(conn, a.get("printer_code") or "LK5_PRO")
             a["available_firmware_version"] = fw["version"] if fw else None
             current_fw = _extract_firmware_version(a.get("status") or {})
@@ -1069,6 +1097,19 @@ async def admin_enqueue_command(agent_id: str, body: CommandRequest, admin=Depen
     return {"ok": True, "cmd_id": cmd_id, "status": "queued"}
 
 
+@router.get(ADMIN_PREFIX + "/agents/{agent_id}")
+async def admin_get_agent(agent_id: str, admin=Depends(require_admin)):
+    """Single-agent view (online + latest heartbeat status) for the remote panel."""
+    conn = db()
+    try:
+        row = conn.execute("SELECT * FROM printer_agents WHERE agent_id = ?", (agent_id,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return _agent_view(row)
+
+
 @router.get(ADMIN_PREFIX + "/agents/{agent_id}/commands")
 async def admin_list_commands(agent_id: str, admin=Depends(require_admin)):
     conn = db()
@@ -1162,12 +1203,13 @@ def _build_workspace_agent_bundle(version: str) -> Dict[str, Any]:
 
 def _ensure_current_release(conn: sqlite3.Connection, created_by: Optional[str]) -> sqlite3.Row:
     rel = _current_release(conn)
-    if rel and rel["bundle_path"] and os.path.isfile(rel["bundle_path"]):
-        return rel
-
     base_version = _read_workspace_agent_version()
-    auto_version = f"{base_version}+auto.{int(time.time())}"
-    built = _build_workspace_agent_bundle(auto_version)
+
+    if rel and rel["bundle_path"] and os.path.isfile(rel["bundle_path"]):
+        if not _is_version_newer(base_version, rel["version"]):
+            return rel
+
+    built = _build_workspace_agent_bundle(base_version)
 
     conn.execute("UPDATE printer_agent_releases SET is_current = 0")
     conn.execute(
@@ -1175,10 +1217,10 @@ def _ensure_current_release(conn: sqlite3.Connection, created_by: Optional[str])
         "(version, created_at, created_by, notes, bundle_path, sha256, size_bytes, is_current) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
         (
-            auto_version,
+            base_version,
             now_iso(),
             created_by,
-            "Auto-generated from server bundled agent source",
+            "Generated from server bundled agent source",
             built["bundle_path"],
             built["sha256"],
             built["size_bytes"],
@@ -1412,6 +1454,7 @@ async def admin_upload_agent_release(
 async def admin_list_agent_releases(admin=Depends(require_admin)):
     conn = db()
     try:
+        _ensure_current_release(conn, created_by="system-auto")
         rows = conn.execute(
             "SELECT version, created_at, notes, sha256, size_bytes, is_current FROM printer_agent_releases "
             "ORDER BY created_at DESC LIMIT 50"

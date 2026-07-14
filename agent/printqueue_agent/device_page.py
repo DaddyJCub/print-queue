@@ -167,10 +167,18 @@ _PAGE = r"""<!doctype html>
 
   <div class="card full">
     <h2>Files</h2>
-    <div class="row" style="margin-bottom:10px">
-      <input type="file" id="up" accept=".gcode,.gco,.g" />
-      <button class="primary" id="b-upload">Upload</button>
-      <span class="muted">Or use Orca's “Send to printer” (OctoPrint host).</span>
+    <div class="row" style="margin-bottom:10px; justify-content:space-between">
+      <div class="row">
+        <input type="file" id="up" accept=".gcode,.gco,.g" />
+        <button class="primary" id="b-upload">Upload</button>
+        <span class="muted">Or use Orca's “Send to printer” (OctoPrint host).</span>
+      </div>
+      <div class="row">
+        <span class="muted">Print mode:</span>
+        <button id="pm-sd" title="Upload to SD then print — survives an agent restart, but slow to start">SD · safe</button>
+        <button id="pm-stream" title="Stream straight to the printer — starts in seconds, but the agent must stay connected">Stream · fast</button>
+        <button id="dbg-toggle" title="Log every serial command (TX>/RX<) to the agent log — noisy; for debugging" style="margin-left:8px">🐞 Serial log</button>
+      </div>
     </div>
     <div class="files" id="files"></div>
   </div>
@@ -254,7 +262,11 @@ function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.
 async function api(path, opts={}){
   opts.headers = Object.assign({}, H, opts.headers||{});
   const r = await fetch(path, opts);
-  if(!r.ok){ let m="Error "+r.status; try{ m=(await r.json()).error||m; }catch(e){} toast(m); throw new Error(m); }
+  if(!r.ok){
+    let m="Error "+r.status; try{ m=(await r.json()).error||m; }catch(e){}
+    if(r.status===401){ m="Unauthorized — reload this page (Ctrl+Shift+R); the API key may have changed."; }
+    toast(m); throw new Error(m);
+  }
   return r.headers.get("content-type","").includes("json") ? r.json() : r;
 }
 function fmtBytes(n){ if(!n) return "0"; const u=["B","KB","MB"]; let i=0,v=n; while(v>=1024&&i<2){v/=1024;i++;} return v.toFixed(1)+u[i]; }
@@ -458,6 +470,23 @@ async function refresh(){
   const printing = s.state==="printing" || s.state==="uploading" || s.print_active;
   document.getElementById("b-pause").disabled = !printing;
   document.getElementById("b-cancel").disabled = !printing;
+  if (s.print_mode) setPrintMode(s.print_mode, printing);
+  const dbg=document.getElementById("dbg-toggle");
+  if(dbg && s.serial_debug!=null){ dbg.classList.toggle("primary", !!s.serial_debug);
+    dbg.textContent = s.serial_debug ? "🐞 Serial log: ON" : "🐞 Serial log"; }
+}
+function setPrintMode(mode, printing){
+  const sd=document.getElementById("pm-sd"), st=document.getElementById("pm-stream");
+  if(!sd||!st) return;
+  sd.classList.toggle("primary", mode==="sd");
+  st.classList.toggle("primary", mode==="stream");
+  // Switching mode only affects the NEXT print; disable while one is running.
+  sd.disabled = st.disabled = !!printing;
+}
+async function switchMode(mode){
+  try{ await api("/api/print-mode",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode})});
+       toast(mode==="stream"?"Stream mode — prints start fast":"SD mode — survives restarts"); refresh(); }
+  catch(e){}
 }
 async function loadFiles(){
   let d; try { d = await api("/api/files"); } catch(e){ return; }
@@ -488,6 +517,13 @@ async function loadFiles(){
   });
 }
 function post(path, body){ return api(path,{method:"POST",headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined}); }
+document.getElementById("pm-sd").onclick = ()=>switchMode("sd");
+document.getElementById("pm-stream").onclick = ()=>switchMode("stream");
+document.getElementById("dbg-toggle").onclick = async()=>{
+  const on = !document.getElementById("dbg-toggle").classList.contains("primary");
+  try{ await api("/api/serial-debug",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:on})});
+       toast(on?"Serial log ON — see agent logs":"Serial log off"); refresh(); }catch(e){}
+};
 
 document.getElementById("b-upload").onclick = async()=>{
   const f = document.getElementById("up").files[0]; if(!f){ toast("Pick a file"); return; }

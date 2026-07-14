@@ -318,6 +318,30 @@ def test_command_next_requires_bearer(client):
     assert client.get(f"{PREFIX}/commands/next").status_code == 401
 
 
+def test_single_agent_view_and_remote_controls(client, admin_client):
+    created = _create_agent(admin_client)
+    agent_id = created["agent_id"]
+    # Single-agent status endpoint (used by the remote panel's live poll).
+    r = admin_client.get(f"{ADMIN}/agents/{agent_id}")
+    assert r.status_code == 200 and r.json()["agent_id"] == agent_id
+    assert admin_client.get(f"{ADMIN}/agents/does-not-exist").status_code == 404
+
+    # Remote-control command actions are accepted and queued.
+    for action, payload in [
+        ("resume_print", None),
+        ("cancel_print", None),
+        ("set_temp", {"target": "nozzle", "value": 200}),
+        ("list_files", None),
+        ("start_file", {"file": "cube.gcode"}),
+        ("get_state", None),
+    ]:
+        body = {"action": action}
+        if payload:
+            body["payload"] = payload
+        resp = admin_client.post(f"{ADMIN}/agents/{agent_id}/commands", json=body)
+        assert resp.status_code == 200, f"{action}: {resp.text}"
+
+
 # ─────────────────────────── unified long-poll (events) ───────────────────────────
 
 def test_events_returns_command(client, admin_client):
@@ -395,23 +419,24 @@ def test_upload_and_push_agent_update(client, admin_client):
     headers = {"Authorization": f"Bearer {token}"}
 
     bundle = _make_agent_bundle()
+    uploaded_version = "9.9.9"
     up = admin_client.post(
         f"{ADMIN}/agent-releases",
-        data={"version": "1.1.0"},
+        data={"version": uploaded_version},
         files={"file": ("agent.zip", bundle, "application/zip")},
     )
     assert up.status_code == 200, up.text
 
     rels = admin_client.get(f"{ADMIN}/agent-releases").json()["releases"]
-    assert any(r["version"] == "1.1.0" and r["is_current"] for r in rels)
+    assert any(r["version"] == uploaded_version and r["is_current"] for r in rels)
 
     push = admin_client.post(f"{ADMIN}/agents/{agent_id}/update")
     assert push.status_code == 200, push.text
-    assert push.json()["version"] == "1.1.0"
+    assert push.json()["version"] == uploaded_version
 
     cmd = client.get(f"{PREFIX}/commands/next", headers=headers).json()
     assert cmd["action"] == "update_agent"
-    assert cmd["payload"]["version"] == "1.1.0"
+    assert cmd["payload"]["version"] == uploaded_version
 
     dl = client.get(cmd["payload"]["bundle_url"], headers=headers)
     assert dl.status_code == 200
@@ -437,6 +462,110 @@ def test_push_update_without_manual_release_autogenerates(client, admin_client):
     nxt = client.get(f"{PREFIX}/commands/next", headers={"Authorization": f"Bearer {token}"})
     assert nxt.status_code == 200
     assert nxt.json()["action"] == "update_agent"
+
+
+def test_push_update_refreshes_stale_auto_release(client, admin_client, tmp_path):
+    from app.printer_agent import _read_workspace_agent_version
+
+    workspace_version = _read_workspace_agent_version()
+
+    conn = get_test_db()
+    stale_bundle = tmp_path / "agent-1.1.0.zip"
+    stale_bundle.write_bytes(b"stale")
+    conn.execute("DELETE FROM printer_agent_releases")
+    conn.execute(
+        "INSERT INTO printer_agent_releases "
+        "(version, created_at, created_by, notes, bundle_path, sha256, size_bytes, is_current) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+        (
+            "1.1.0",
+            "2026-01-01T00:00:00Z",
+            "system-auto",
+            "Generated from server bundled agent source",
+            str(stale_bundle),
+            "deadbeef",
+            len(b"stale"),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    created = _create_agent(admin_client)
+    token = _provision(client, created["agent_id"], created["claim_code"]).json()["agent_token"]
+
+    r = admin_client.post(f"{ADMIN}/agents/{created['agent_id']}/update")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert any(q.get("action") == "update_agent" and q.get("version") == workspace_version for q in body["queued"])
+
+    nxt = client.get(f"{PREFIX}/commands/next", headers={"Authorization": f"Bearer {token}"})
+    assert nxt.status_code == 200
+    assert nxt.json()["payload"]["version"] == workspace_version
+
+
+def test_list_agents_refreshes_stale_manual_release(admin_client, tmp_path):
+    from app.printer_agent import _read_workspace_agent_version
+
+    workspace_version = _read_workspace_agent_version()
+
+    conn = get_test_db()
+    stale_bundle = tmp_path / "agent-1.1.0.zip"
+    stale_bundle.write_bytes(b"stale")
+    conn.execute("DELETE FROM printer_agent_releases")
+    conn.execute(
+        "INSERT INTO printer_agent_releases "
+        "(version, created_at, created_by, notes, bundle_path, sha256, size_bytes, is_current) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+        (
+            "1.1.0",
+            "2026-01-01T00:00:00Z",
+            "admin-user",
+            "Manual upload",
+            str(stale_bundle),
+            "deadbeef",
+            len(b"stale"),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    created = _create_agent(admin_client)
+    agents = admin_client.get(f"{ADMIN}/agents").json()
+    row = next(a for a in agents["agents"] if a["agent_id"] == created["agent_id"])
+    assert agents["current_release_version"] == workspace_version
+    assert row["upgrade_available"] is True
+    assert row["available_version"] == workspace_version
+
+
+def test_list_releases_refreshes_stale_manual_release(admin_client, tmp_path):
+    from app.printer_agent import _read_workspace_agent_version
+
+    workspace_version = _read_workspace_agent_version()
+
+    conn = get_test_db()
+    stale_bundle = tmp_path / "agent-1.1.0.zip"
+    stale_bundle.write_bytes(b"stale")
+    conn.execute("DELETE FROM printer_agent_releases")
+    conn.execute(
+        "INSERT INTO printer_agent_releases "
+        "(version, created_at, created_by, notes, bundle_path, sha256, size_bytes, is_current) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+        (
+            "1.1.0",
+            "2026-01-01T00:00:00Z",
+            "admin-user",
+            "Manual upload",
+            str(stale_bundle),
+            "deadbeef",
+            len(b"stale"),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    rels = admin_client.get(f"{ADMIN}/agent-releases").json()["releases"]
+    cur = next(r for r in rels if r["is_current"])
+    assert cur["version"] == workspace_version
 
 
 def test_upload_rejects_non_package_zip(admin_client):
@@ -547,6 +676,24 @@ def test_admin_agents_page_renders(admin_client):
     assert "Print Agents" in r.text
 
 
+def test_admin_agents_list_includes_pending_work_counts(client, admin_client):
+    created = _create_agent(admin_client)
+    file_id = _make_gcode_file(name="pending.gcode")
+
+    r = admin_client.post(f"{ADMIN}/agents/{created['agent_id']}/commands", json={"action": "get_logs"})
+    assert r.status_code == 200
+    r = admin_client.post(f"{ADMIN}/agents/{created['agent_id']}/jobs", json={"file_id": file_id})
+    assert r.status_code == 200
+
+    body = admin_client.get(f"{ADMIN}/agents").json()
+    row = next(a for a in body["agents"] if a["agent_id"] == created["agent_id"])
+    assert row["online"] is False
+    assert row["queued_command_count"] == 1
+    assert row["active_command_count"] == 0
+    assert row["queued_job_count"] == 1
+    assert row["active_job_count"] == 0
+
+
 def test_setup_guide_doc_accessible(admin_client):
     r = admin_client.get("/admin/printellect/docs/lk5-pro-agent-setup.md")
     assert r.status_code == 200
@@ -616,6 +763,7 @@ def test_request_page_shows_lk5_button_only_for_lk5(admin_client):
     r_other = admin_client.get(f"/admin/request/{other['request_id']}")
     assert r_lk5.status_code == 200 and r_other.status_code == 200
     assert "Send to LK5 Pro" in r_lk5.text
+    assert "async function sendToLk5(" in r_lk5.text
     assert "Send to LK5 Pro" not in r_other.text
 
 
