@@ -107,6 +107,44 @@ def test_heartbeat_updates_status(client, admin_client):
     assert me["status"]["progress"] == 42
 
 
+@pytest.mark.asyncio
+async def test_agent_printer_api_is_printing_and_complete(client, admin_client):
+    """AgentPrinterAPI must expose is_printing()/is_complete() like the other
+    printer adapters, so the build-poll loop doesn't crash with
+    'AgentPrinterAPI' object has no attribute 'is_printing'.
+    """
+    from app.printer_agent import AgentPrinterAPI
+
+    created = _create_agent(admin_client, printer_code="LK5_PRO")
+    token = _provision(client, created["agent_id"], created["claim_code"]).json()["agent_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    api = AgentPrinterAPI("LK5_PRO")
+
+    def _beat(printer):
+        r = client.post(f"{PREFIX}/heartbeat", headers=headers,
+                        json={"agent_version": "1.0.0", "printer": printer})
+        assert r.status_code == 200
+
+    # Actively printing.
+    _beat({"state": "printing", "progress": 42})
+    assert await api.is_printing() is True
+    assert await api.is_complete() is False
+
+    # Paused is not "printing" (mirrors FlashForge/Moonraker).
+    _beat({"state": "paused", "progress": 42})
+    assert await api.is_printing() is False
+
+    # Idle at 100% reads as complete.
+    _beat({"state": "idle", "progress": 100})
+    assert await api.is_printing() is False
+    assert await api.is_complete() is True
+
+    # Idle mid-progress is neither printing nor complete.
+    _beat({"state": "idle", "progress": 10})
+    assert await api.is_printing() is False
+    assert await api.is_complete() is False
+
+
 # ─────────────────────────── job lifecycle ───────────────────────────
 
 def test_full_job_lifecycle(client, admin_client):

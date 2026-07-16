@@ -9,6 +9,10 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.34.1
+### Bug Fixes
+- **Build polling no longer crashes for agent-backed printers.** The status poller called `is_printing()` / `is_complete()` on every printer API, but the agent adapter (`AgentPrinterAPI`, used for the Longer LK5 Pro and any Printellect-agent printer) never implemented them, so each poll raised `'AgentPrinterAPI' object has no attribute 'is_printing'` and the agent printer was skipped. Added both methods, mirroring the FlashForge/Moonraker semantics (a paused print is not "printing"; idle at 100% reads as complete), so agent printers auto-complete and auto-match like directly-connected ones.
+
 ## 0.34.0
 ### Overview / Highlights
 - **Agent-backed printers now appear on the admin Queue dashboard.** The Longer LK5 Pro (and any printer connected through a Printellect agent) now gets its own live status card on *Admin → Queue*, alongside the directly-connected printers — so an active print is visible at a glance instead of only showing on the public queue.

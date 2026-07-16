@@ -2062,6 +2062,37 @@ class AgentPrinterAPI:
         }.get(state, "READY")
         return {"MachineStatus": machine}
 
+    async def is_printing(self) -> bool:
+        """Whether the agent-backed printer is actively printing.
+
+        Mirrors ``FlashForgePrinterAPI.is_printing``/``MoonrakerAPI.is_printing``
+        so the build-poll loop can treat every printer API the same way. A
+        paused print is not "printing" (matches the other adapters).
+        """
+        status = await self.get_status()
+        if not status:
+            return False
+        machine_status = status.get("MachineStatus", "READY").strip().upper()
+        if machine_status == "READY" or "COMPLETED" in machine_status:
+            return False
+        return "BUILDING" in machine_status or "PRINTING" in machine_status
+
+    async def is_complete(self) -> bool:
+        """Whether the agent-backed printer just finished a print.
+
+        Agents report a coarse state (printing/paused/idle/ready), so a finished
+        print surfaces as READY at 100%. Mirrors the other printer adapters.
+        """
+        status = await self.get_status()
+        if not status:
+            return False
+        machine_status = status.get("MachineStatus", "").strip().upper()
+        if "COMPLETED" in machine_status:
+            return True
+        if machine_status == "READY":
+            return await self.get_percent_complete() == 100
+        return False
+
     async def get_percent_complete(self) -> Optional[int]:
         status = self._latest()
         if not status:
