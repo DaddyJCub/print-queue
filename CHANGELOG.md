@@ -9,6 +9,17 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.34.0
+### Overview / Highlights
+- **Agent-backed printers now appear on the admin Queue dashboard.** The Longer LK5 Pro (and any printer connected through a Printellect agent) now gets its own live status card on *Admin → Queue*, alongside the directly-connected printers — so an active print is visible at a glance instead of only showing on the public queue.
+
+### Enhancements
+- New status card shows the printer's state, current file, progress bar, layer count and nozzle/bed temperatures, with a camera button when a camera is attached.
+- Each agent printer card links to **Manage** (the Printer Agents remote panel) for pause, resume, cancel, jog and temperature controls.
+
+### Bug Fixes
+- The admin Queue dashboard was hardcoded to two printers, so an agent-backed printer that was actively printing had no card and no visibility there. It now lists every printer, matching the public queue.
+
 ## 0.33.0
 ### Overview / Highlights
 - **Watch quiet-hours failsafe, richer failure alerts, and multi-build names.** Three improvements to AI print monitoring so an overnight failure doesn't run for hours, alerts are more actionable, and multi-build jobs are easy to tell apart.

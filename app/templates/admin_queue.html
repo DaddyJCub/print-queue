@@ -635,7 +635,66 @@
         </div>
         {% endif %}
       </div>
-      
+
+      <!-- Agent-backed printers (e.g. LK5 Pro) — rendered generically from live
+           status. Full pause/jog/cancel controls live on the Printer Agents
+           page (mirrored via Printellect), linked from each card. -->
+      {% for pname, pdata in printer_status.items() if pname not in ['ADVENTURER_4', 'AD5X'] %}
+      <div class="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-medium text-sm">🖨 {{ {'LK5_PRO': 'Longer LK5 Pro'}.get(pname, pname.replace('_', ' ').title()) }}</span>
+          {% if pdata.is_offline %}
+            <span class="status-badge px-2 py-0.5 rounded text-xs bg-zinc-700/50 text-zinc-400">Offline</span>
+          {% elif pdata.get('is_paused') %}
+            <span class="status-badge px-2 py-0.5 rounded text-xs bg-amber-500/20 text-amber-300">Paused</span>
+          {% elif pdata.status %}
+            <span class="status-badge px-2 py-0.5 rounded text-xs
+              {% if pdata.is_printing %}bg-emerald-500/20 text-emerald-300
+              {% elif pdata.status == 'READY' %}bg-green-500/20 text-green-300
+              {% else %}bg-amber-500/20 text-amber-300{% endif %}">
+              {{ pdata.status }}
+            </span>
+          {% else %}
+            <span class="status-badge px-2 py-0.5 rounded text-xs bg-zinc-700/50 text-zinc-400">Unknown</span>
+          {% endif %}
+        </div>
+
+        <div class="print-info {% if not pdata.is_printing and not pdata.get('is_paused') %}hidden{% endif %}">
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <span class="file-name text-zinc-300 truncate">{{ pdata.current_file or 'Unknown' }}</span>
+            <span class="progress-text text-emerald-300 font-medium">{{ pdata.progress or 0 }}%</span>
+          </div>
+          <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div class="progress-bar h-full {% if pdata.get('is_paused') %}bg-amber-500{% else %}bg-emerald-500{% endif %} transition-all duration-500"
+                 style="width: {{ pdata.progress or 0 }}%"></div>
+          </div>
+          {% if pdata.current_layer is not none and pdata.total_layers %}
+          <div class="text-xs text-zinc-500 mt-1.5">🧱 {{ pdata.current_layer }}/{{ pdata.total_layers }}</div>
+          {% endif %}
+        </div>
+
+        <div class="flex items-center justify-between text-xs text-zinc-500 mt-2 {% if pdata.is_printing or pdata.get('is_paused') %}pt-2 border-t border-zinc-800{% endif %}">
+          <span class="temp-text">
+            {% if pdata.temp %}🌡 {{ pdata.temp }}°C{% if pdata.target_temp %} <span class="text-zinc-600">/ {{ pdata.target_temp }}°C</span>{% endif %}{% endif %}
+          </span>
+          <div class="flex items-center gap-2">
+            {% if pdata.camera_url %}
+            <button type="button" onclick="toggleAdminCamera('{{ pname }}')" id="admin-cam-btn-{{ pname }}"
+                    class="text-indigo-400 hover:text-indigo-300 text-xs">
+              <span class="btn-text">📷 Camera</span>
+            </button>
+            {% endif %}
+            <a href="/admin/printer-agents" class="text-indigo-400 hover:text-indigo-300 text-xs">⚙ Manage</a>
+          </div>
+        </div>
+        {% if pdata.camera_url %}
+        <div id="admin-cam-{{ pname }}" class="hidden mt-2">
+          <img id="admin-cam-img-{{ pname }}" class="w-full rounded-lg bg-zinc-800" alt="Camera" />
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+
       <!-- Auto-refresh -->
       <div class="mt-2 flex justify-end gap-3 text-xs text-zinc-500">
         <label class="flex items-center gap-1.5 cursor-pointer">

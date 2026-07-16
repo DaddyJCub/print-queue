@@ -25,6 +25,7 @@ from app.main import (
     BASE_URL,
     AUTH_MAX_UPLOAD_MB,
     PRINTERS,
+    display_printer_codes,
     MATERIALS,
     format_eta_display,
     get_smart_eta,
@@ -736,9 +737,12 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
     ).fetchall()
     conn.close()
 
-    # Fetch printer status using cache with timeout
+    # Fetch printer status using cache with timeout. display_printer_codes()
+    # includes agent-backed printers (e.g. the LK5 Pro) so they get a status
+    # card here alongside the directly-polled LAN printers, matching the public
+    # queue — otherwise an actively printing agent printer has no card in admin.
     printer_status = {}
-    for printer_code in ["ADVENTURER_4", "AD5X"]:
+    for printer_code in display_printer_codes():
         printer_status[printer_code] = await fetch_printer_status_with_cache(printer_code, timeout=3.0)
 
     # Active build per printer (for pause button on dashboard)
@@ -777,10 +781,7 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
         "blocked": blocked,
         "done": done,
         "closed": closed,
-        "printer_status": {
-            "ADVENTURER_4": printer_status.get("ADVENTURER_4", {}),
-            "AD5X": printer_status.get("AD5X", {}),
-        },
+        "printer_status": printer_status,
         "active_builds_by_printer": active_builds_by_printer,
         "print_match_suggestions": print_match_suggestions,
         "unmatched_prints": unmatched_prints,
