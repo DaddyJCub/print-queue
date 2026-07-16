@@ -9,9 +9,9 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
-## 0.34.1
+## 0.34.2
 ### Bug Fixes
-- **Build polling no longer crashes for agent-backed printers.** The status poller called `is_printing()` / `is_complete()` on every printer API, but the agent adapter (`AgentPrinterAPI`, used for the Longer LK5 Pro and any Printellect-agent printer) never implemented them, so each poll raised `'AgentPrinterAPI' object has no attribute 'is_printing'` and the agent printer was skipped. Added both methods, mirroring the FlashForge/Moonraker semantics (a paused print is not "printing"; idle at 100% reads as complete), so agent printers auto-complete and auto-match like directly-connected ones.
+- **Reverted the 0.34.1 agent-printer poll change to stop a production crash loop.** Adding `is_printing()`/`is_complete()` to `AgentPrinterAPI` let the LK5_PRO agent printer flow through the full status-poll and camera/AI print-monitor pipeline for the first time; under that concurrent load the process began aborting with native heap corruption (`malloc_consolidate(): invalid chunk size`). Reverting restores the prior stable behavior (the agent printer's build poll is skipped rather than auto-completing). The underlying concurrency bug is still under investigation.
 
 ## 0.34.0
 ### Overview / Highlights
