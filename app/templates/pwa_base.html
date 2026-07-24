@@ -1106,13 +1106,18 @@
     });
   };
 
-  // Intercept forms with data-confirm attribute (capture phase so it runs first)
+  // Intercept forms with data-confirm attribute (capture phase so it runs first).
+  // Optional data-confirm-title / data-confirm-text / data-destructive tune the modal.
   document.addEventListener('submit', function(e) {
     var msg = e.target.dataset.confirm;
     if (!msg) return;
     e.preventDefault();
     var form = e.target;
-    showConfirm(msg).then(function(ok) {
+    showConfirm(msg, {
+      title:       form.dataset.confirmTitle || undefined,
+      confirmText: form.dataset.confirmText  || undefined,
+      destructive: form.dataset.destructive !== 'false',
+    }).then(function(ok) {
       if (ok) form.submit();
     });
   }, true);

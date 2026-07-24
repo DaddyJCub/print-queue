@@ -9,6 +9,11 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.34.3
+### Bug Fixes
+- **Fixed the "Set aside" button on the admin Queue dashboard.** It was the last action still using the raw browser `confirm()` pop-up; after a later change added the app's own confirmation modal everywhere else, clicking **OK** on that native pop-up no longer submitted the form, so setting a job aside appeared to do nothing. It now uses the same styled confirmation modal as the rest of the app.
+- **Set-aside now gives immediate feedback while the current build finishes.** When a job is set aside mid-print, its current build is allowed to finish first, so the request correctly stays under *Printing Now* rather than jumping straight to *Set Aside* — which looked like nothing had happened. The card now shows a **⏸ Set aside pending** badge so it's clear the request has been set aside and will stop before its next build.
+
 ## 0.34.2
 ### Bug Fixes
 - **Reverted the 0.34.1 agent-printer poll change to stop a production crash loop.** Adding `is_printing()`/`is_complete()` to `AgentPrinterAPI` let the LK5_PRO agent printer flow through the full status-poll and camera/AI print-monitor pipeline for the first time; under that concurrent load the process began aborting with native heap corruption (`malloc_consolidate(): invalid chunk size`). Reverting restores the prior stable behavior (the agent printer's build poll is skipped rather than auto-completing). The underlying concurrency bug is still under investigation.

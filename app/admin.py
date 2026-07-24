@@ -565,9 +565,10 @@ def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
     conn = db()
     if include_eta_fields:
         rows = conn.execute(
-            f"""SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors, 
+            f"""SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors,
                       r.link_url, r.status, r.priority, r.special_notes, r.printing_started_at,
                       r.print_name, r.total_builds, r.completed_builds, r.failed_builds,
+                      r.paused_at,
                       r.fulfillment_method,
                       (SELECT rs.shipping_status FROM request_shipping rs WHERE rs.request_id = r.id) as shipping_status,
                       (SELECT rs.tracking_number FROM request_shipping rs WHERE rs.request_id = r.id) as shipping_tracking_number,
