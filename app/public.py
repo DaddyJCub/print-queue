@@ -1473,11 +1473,14 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     items = []
     printing_idx = None
     
-    # Fetch current printer status using cache with timeout
-    # This prevents slow page loads when printers are offline
-    printer_status = {}
-    for printer_code in display_printer_codes():
-        printer_status[printer_code] = await fetch_printer_status_with_cache(printer_code, timeout=3.0)
+    # Fetch current printer status using cache with timeout, all printers in
+    # parallel — a sequential loop made an offline/slow printer stall the whole
+    # page for its full timeout, once per printer.
+    codes = display_printer_codes()
+    statuses = await asyncio.gather(
+        *[fetch_printer_status_with_cache(c, timeout=3.0) for c in codes]
+    )
+    printer_status = dict(zip(codes, statuses))
 
     # First pass: build items and find printing index, fetch real progress for PRINTING
     for idx, r in enumerate(rows):
@@ -1861,12 +1864,14 @@ async def queue_data_api(mine: Optional[str] = None):
     conn.close()
 
     items = []
-    
-    # Fetch current printer status using cache with timeout
-    printer_status = {}
-    for printer_code in display_printer_codes():
-        printer_status[printer_code] = await fetch_printer_status_with_cache(printer_code, timeout=3.0)
-    
+
+    # Fetch current printer status using cache with timeout, all printers in parallel.
+    codes = display_printer_codes()
+    statuses = await asyncio.gather(
+        *[fetch_printer_status_with_cache(c, timeout=3.0) for c in codes]
+    )
+    printer_status = dict(zip(codes, statuses))
+
     # Build items list
     for idx, r in enumerate(rows):
         r = dict(r)

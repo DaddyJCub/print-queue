@@ -9,6 +9,13 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.34.4
+### Performance
+- **The admin and public queue pages now load much faster, especially when a printer is offline.** Live printer status was fetched one printer at a time, and the "cache" only kicked in after a printer had already failed — so each render waited on every printer in series, and an offline or slow printer stalled the whole page for its full timeout (repeatedly, since the same printer was polled several times per render).
+  - Printer statuses are now fetched **in parallel** on both the admin dashboard and the public `/queue`, so total wait is roughly one printer's response time instead of the sum of all of them.
+  - A short **freshness window** (5s for a live result, 3s for an offline one) reuses the last status instead of re-hitting the printer, which collapses the duplicate polls a single render made, absorbs rapid auto-refreshes and concurrent viewers, and stops a permanently-offline printer (e.g. an agent printer that's powered down) from costing a network timeout on every load.
+  - The admin dashboard no longer polls every printer twice per render — the status cards and the "Printing Now" ETA calculations now share one set of results.
+
 ## 0.34.3
 ### Bug Fixes
 - **Fixed the "Set aside" button on the admin Queue dashboard.** It was the last action still using the raw browser `confirm()` pop-up; after a later change added the app's own confirmation modal everywhere else, clicking **OK** on that native pop-up no longer submitted the form, so setting a job aside appeared to do nothing. It now uses the same styled confirmation modal as the rest of the app.
