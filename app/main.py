@@ -39,7 +39,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.34.2"
+APP_VERSION = "0.34.4"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -603,6 +603,22 @@ Traceback:
 _printer_status_cache: Dict[str, Dict[str, Any]] = {}
 _printer_failure_count: Dict[str, int] = {}
 _printer_last_seen: Dict[str, str] = {}  # Timestamp of last successful poll
+# Short "freshness" window (monotonic deadline per printer). The last result we
+# returned for a printer — whether a live success or an offline fallback — is
+# reused for this many seconds instead of re-hitting the printer. This collapses
+# the many duplicate status calls a single queue-page render makes (once per
+# display printer + once per printing request), absorbs rapid reloads / concurrent
+# viewers, and — importantly — stops a permanently-offline printer from costing a
+# full network timeout on every single load. Kept short so status stays live.
+_printer_status_fresh_until: Dict[str, float] = {}
+_printer_status_last_result: Dict[str, Dict[str, Any]] = {}
+_PRINTER_STATUS_FRESH_TTL = 5.0  # seconds (live successes)
+_PRINTER_STATUS_OFFLINE_TTL = 3.0  # seconds (offline — shorter so recovery shows sooner)
+
+def _remember_printer_status(printer_code: str, result: Dict[str, Any], ttl: float):
+    """Record the last returned status + freshness deadline for the fast path."""
+    _printer_status_last_result[printer_code] = result
+    _printer_status_fresh_until[printer_code] = time.monotonic() + ttl
 
 # Printer connection locks - prevents polling during print operations
 # Uses asyncio.Lock for each printer to prevent simultaneous connections
@@ -671,6 +687,7 @@ def update_printer_status_cache(printer_code: str, status: Dict[str, Any]):
     """Update cached printer status on successful poll"""
     _printer_status_cache[printer_code] = status
     _printer_last_seen[printer_code] = now_iso()
+    _remember_printer_status(printer_code, status, _PRINTER_STATUS_FRESH_TTL)
     _printer_failure_count[printer_code] = 0  # Reset failure count on success
 
 def record_printer_failure(printer_code: str) -> int:
@@ -713,7 +730,18 @@ async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.
             "is_cached": False,
             "is_offline": False,
         }
-    
+
+    # Fresh-cache fast path: if we returned a result for this printer within the
+    # freshness window, reuse it instead of making another round of network calls.
+    # This is what makes the queue pages load fast — a single render otherwise
+    # fetches the same printer several times, and offline/slow printers cost a full
+    # timeout on every call. Return a copy so callers can't mutate the cached entry.
+    fresh_until = _printer_status_fresh_until.get(printer_code)
+    if fresh_until is not None and time.monotonic() < fresh_until:
+        last = _printer_status_last_result.get(printer_code)
+        if last is not None:
+            return {**last, "camera_url": camera_url}
+
     # Try live API first with short timeout
     try:
         printer_api = get_printer_api(printer_code)
@@ -834,30 +862,36 @@ async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.
     
     if cached:
         # Return cached status with offline indicator
-        return {
+        offline_result = {
             **cached,
             "camera_url": camera_url,  # Always include camera
             "is_cached": True,
             "is_offline": True,
             "last_seen": last_seen,
         }
-    
-    # No cache available - return minimal offline status
-    return {
-        "status": None,
-        "temp": None,
-        "target_temp": None,
-        "progress": None,
-        "healthy": None,
-        "is_printing": False,
-        "current_file": None,
-        "current_layer": None,
-        "total_layers": None,
-        "camera_url": camera_url,
-        "is_cached": False,
-        "is_offline": True,
-        "last_seen": None,
-    }
+    else:
+        # No cache available - return minimal offline status
+        offline_result = {
+            "status": None,
+            "temp": None,
+            "target_temp": None,
+            "progress": None,
+            "healthy": None,
+            "is_printing": False,
+            "current_file": None,
+            "current_layer": None,
+            "total_layers": None,
+            "camera_url": camera_url,
+            "is_cached": False,
+            "is_offline": True,
+            "last_seen": None,
+        }
+
+    # Briefly reuse the offline result so a down printer doesn't cost a full
+    # network timeout on every subsequent load/refresh (shorter window than a
+    # live success so recovery still shows up quickly).
+    _remember_printer_status(printer_code, offline_result, _PRINTER_STATUS_OFFLINE_TTL)
+    return offline_result
 
 # Status flow for admin actions (request-level)
 STATUS_FLOW = ["NEW", "NEEDS_INFO", "APPROVED", "IN_PROGRESS", "PAUSED", "PRINTING", "BLOCKED", "DONE", "PICKED_UP", "REJECTED", "CANCELLED"]

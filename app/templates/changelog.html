@@ -74,12 +74,47 @@
         </p>
       </div>
 
+      <!-- v0.34.4 -->
+      <div id="v0.34.4" class="bg-gradient-to-br from-zinc-900/80 via-amber-900/20 to-zinc-900/80 border border-amber-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-amber-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.34.4" class="px-3 py-1 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-500 transition">v0.34.4</a>
+          <span class="text-zinc-400 text-sm">July 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Faster-loading queue pages</h3>
+        <p class="text-sm text-zinc-400 mb-4">The admin and public queue pages were slow to load — especially when a printer was offline. They now fetch printer status in parallel and briefly reuse recent results, so the page comes up quickly instead of waiting on each printer one at a time.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">⚡ Performance</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-1">•</span><span><strong>Printers are polled in parallel.</strong> Both queue pages now query every printer at once instead of one after another, so the wait is about a single printer's response time rather than the sum of all of them.</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-1">•</span><span><strong>An offline printer no longer stalls the page.</strong> Recent status is briefly reused, so a powered-down or unreachable printer doesn't cost a network timeout on every load and refresh.</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-1">•</span><span><strong>No more double-polling.</strong> The admin dashboard's status cards and "Printing Now" time estimates now share one set of results instead of each fetching their own.</span></li>
+        </ul>
+      </div>
+
+      <!-- v0.34.3 -->
+      <div id="v0.34.3" class="bg-gradient-to-br from-zinc-900/80 via-amber-900/20 to-zinc-900/80 border border-amber-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-amber-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.34.3" class="px-3 py-1 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-500 transition">v0.34.3</a>
+          <span class="text-zinc-400 text-sm">July 2026</span>
+          <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">"Set aside" button works again</h3>
+        <p class="text-sm text-zinc-400 mb-4">Setting a multi-build job aside from <em>Printing Now</em> was showing the old browser pop-up, and clicking OK did nothing. It now uses the app's own confirmation and clearly shows the job has been set aside.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">🐞 Bug Fixes</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-1">•</span><span><strong>Set aside now confirms and submits.</strong> It was the last action still using the raw browser <code>confirm()</code> pop-up; once the app added its own styled confirmation everywhere else, clicking OK on that pop-up stopped submitting. It now uses the same in-app confirmation modal as the rest of the dashboard.</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-1">•</span><span><strong>Clear feedback while the current build finishes.</strong> A set-aside job keeps its running build to the end, so it stays under <em>Printing Now</em> rather than jumping to <em>Set Aside</em> — which looked like nothing happened. The card now shows a <strong>⏸ Set aside pending</strong> badge so you know it registered.</span></li>
+        </ul>
+      </div>
+
       <!-- v0.34.0 -->
       <div id="v0.34.0" class="bg-gradient-to-br from-zinc-900/80 via-emerald-900/30 to-zinc-900/80 border border-emerald-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-emerald-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.34.0" class="px-3 py-1 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-500 transition">v0.34.0</a>
           <span class="text-zinc-400 text-sm">July 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-lg border border-blue-500/50">🚀 Feature</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">LK5 Pro now shows on the admin Queue</h3>
