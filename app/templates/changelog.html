@@ -74,12 +74,29 @@
         </p>
       </div>
 
+      <!-- v0.34.5 -->
+      <div id="v0.34.5" class="bg-gradient-to-br from-zinc-900/80 via-amber-900/20 to-zinc-900/80 border border-amber-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-amber-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.34.5" class="px-3 py-1 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-500 transition">v0.34.5</a>
+          <span class="text-zinc-400 text-sm">July 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Queue pages load instantly now</h3>
+        <p class="text-sm text-zinc-400 mb-4">The previous round helped, but a live measurement showed the queue could still take several seconds to load whenever the status cache was cold (right after a redeploy, or after sitting idle). The pages no longer wait on printers at all — a background task keeps printer status ready in the background so the page renders straight from memory.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">⚡ Performance</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-1">•</span><span><strong>Printer status is fetched in the background.</strong> A background task refreshes every printer every few seconds, so the queue pages read status from memory instead of contacting printers while you wait.</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-1">•</span><span><strong>No more multi-second cold loads.</strong> A fresh restart or an idle period used to make the next visitor pay the full printer round-trip; now the page comes up in about its normal database-and-render time regardless of printer state.</span></li>
+        </ul>
+      </div>
+
       <!-- v0.34.4 -->
       <div id="v0.34.4" class="bg-gradient-to-br from-zinc-900/80 via-amber-900/20 to-zinc-900/80 border border-amber-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-amber-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.34.4" class="px-3 py-1 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-500 transition">v0.34.4</a>
           <span class="text-zinc-400 text-sm">July 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Faster-loading queue pages</h3>

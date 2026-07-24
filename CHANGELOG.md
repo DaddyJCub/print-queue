@@ -9,6 +9,12 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.34.5
+### Performance
+- **Queue pages no longer wait on printers at all.** Even after the 0.34.4 parallelization, a live measurement showed cold loads of the public queue taking 3–7 seconds while warm loads took ~0.5s: every page render still made live printer network calls in the request path, so any time the in-memory cache was cold (right after a redeploy, or once it expired between visits) the visitor paid the full printer round-trip — and a redeploy wipes that cache.
+  - A **background status warmer** now polls every printer out-of-band (every ~8s) and stores the result in a shared cache. Page renders read that cache directly and **never block on printer I/O** — the only exception is the brief moment right after startup before the warmer's first pass, and even then only for printers with nothing cached yet.
+  - Net effect: the admin dashboard and public `/queue` render from memory in roughly their database-and-template time regardless of whether printers are online, slow, or offline. An offline printer can no longer stall a page load.
+
 ## 0.34.4
 ### Performance
 - **The admin and public queue pages now load much faster, especially when a printer is offline.** Live printer status was fetched one printer at a time, and the "cache" only kicked in after a printer had already failed — so each render waited on every printer in series, and an offline or slow printer stalled the whole page for its full timeout (repeatedly, since the same printer was polled several times per render).

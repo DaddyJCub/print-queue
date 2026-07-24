@@ -39,7 +39,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.34.4"
+APP_VERSION = "0.34.5"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -700,12 +700,15 @@ def get_printer_failure_count(printer_code: str) -> int:
     return _printer_failure_count.get(printer_code, 0)
 
 
-async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.0) -> Dict[str, Any]:
+async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.0, force_live: bool = False) -> Dict[str, Any]:
     """
     Fetch printer status with cache fallback and timeout.
     Returns status dict with 'is_cached' flag if using cached data.
     Always includes camera_url even if offline.
-    
+
+    ``force_live`` skips the short freshness fast path and always makes the live
+    calls — used by the background warmer so it actually refreshes each cycle.
+
     In DEMO_MODE, returns fake printer data instead of polling real printers.
     """
     camera_url = get_camera_url(printer_code)
@@ -736,11 +739,12 @@ async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.
     # This is what makes the queue pages load fast — a single render otherwise
     # fetches the same printer several times, and offline/slow printers cost a full
     # timeout on every call. Return a copy so callers can't mutate the cached entry.
-    fresh_until = _printer_status_fresh_until.get(printer_code)
-    if fresh_until is not None and time.monotonic() < fresh_until:
-        last = _printer_status_last_result.get(printer_code)
-        if last is not None:
-            return {**last, "camera_url": camera_url}
+    if not force_live:
+        fresh_until = _printer_status_fresh_until.get(printer_code)
+        if fresh_until is not None and time.monotonic() < fresh_until:
+            last = _printer_status_last_result.get(printer_code)
+            if last is not None:
+                return {**last, "camera_url": camera_url}
 
     # Try live API first with short timeout
     try:
@@ -892,6 +896,78 @@ async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.
     # live success so recovery still shows up quickly).
     _remember_printer_status(printer_code, offline_result, _PRINTER_STATUS_OFFLINE_TTL)
     return offline_result
+
+
+def get_warm_printer_status(printer_code: str) -> Optional[Dict[str, Any]]:
+    """Non-blocking read of the last known status for a printer.
+
+    Returns whatever the background warmer (or a prior live fetch) last stored,
+    or ``None`` if nothing has been cached yet. Never touches the network, so
+    page renders don't block on printer I/O.
+    """
+    last = _printer_status_last_result.get(printer_code)
+    if last is None:
+        return None
+    return {**last, "camera_url": get_camera_url(printer_code)}
+
+
+async def get_display_printer_statuses() -> Dict[str, Dict[str, Any]]:
+    """Status for every display printer, for page rendering — without blocking.
+
+    Reads the warm cache kept fresh by ``warm_display_status_worker``. Only for
+    printers with nothing cached yet (e.g. the first moments after startup) does
+    it fall back to a live fetch, and those run in parallel. On a warmed process
+    this makes no network calls at all, so queue pages render from memory.
+    """
+    codes = display_printer_codes()
+    result: Dict[str, Dict[str, Any]] = {}
+    missing: List[str] = []
+    for code in codes:
+        warm = get_warm_printer_status(code)
+        if warm is not None:
+            result[code] = warm
+        else:
+            missing.append(code)
+    if missing:
+        fetched = await asyncio.gather(
+            *[fetch_printer_status_with_cache(c, timeout=3.0) for c in missing]
+        )
+        result.update(dict(zip(missing, fetched)))
+    return result
+
+
+# Background warmer cadence — how often the display-status cache is refreshed
+# out-of-band. Short enough that queue pages show near-live status, long enough
+# that it's a light touch on the printers (the auto-complete poller runs at 30s).
+_STATUS_WARM_INTERVAL = 8  # seconds
+
+async def warm_display_status_worker():
+    """Keep the display-status cache warm so queue pages never block on printer I/O.
+
+    Polls every display printer in parallel on a short interval and stores the
+    result in the shared status cache that ``get_display_printer_statuses`` reads.
+    Printers with polling paused (e.g. mid print-send) are skipped so we don't
+    interfere — they keep their last known status until polling resumes.
+    """
+    if DEMO_MODE:
+        # Demo fetches are local/instant; routes fall back to them on demand.
+        while True:
+            await asyncio.sleep(60)
+
+    print("[STATUS-WARM] Display status warmer started")
+    while True:
+        try:
+            if get_bool_setting("enable_printer_polling", True):
+                codes = [c for c in display_printer_codes() if not is_polling_paused(c)]
+                if codes:
+                    await asyncio.gather(
+                        *[fetch_printer_status_with_cache(c, timeout=3.0, force_live=True) for c in codes],
+                        return_exceptions=True,
+                    )
+        except Exception as e:
+            logger.warning(f"[STATUS-WARM] Error: {e}")
+        await asyncio.sleep(_STATUS_WARM_INTERVAL)
+
 
 # Status flow for admin actions (request-level)
 STATUS_FLOW = ["NEW", "NEEDS_INFO", "APPROVED", "IN_PROGRESS", "PAUSED", "PRINTING", "BLOCKED", "DONE", "PICKED_UP", "REJECTED", "CANCELLED"]
@@ -7707,10 +7783,12 @@ def start_printer_polling():
     def run_async():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        # Run both legacy request-level polling and new build-level polling
+        # Run request-level polling, build-level polling, and the display-status
+        # warmer (keeps queue pages from blocking on live printer I/O).
         loop.run_until_complete(asyncio.gather(
             poll_printer_status_worker(),
-            poll_builds_status_worker()
+            poll_builds_status_worker(),
+            warm_display_status_worker()
         ))
 
     thread = threading.Thread(target=run_async, daemon=True)
