@@ -39,7 +39,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.34.5"
+APP_VERSION = "0.34.6"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -320,6 +320,53 @@ class ExceptionLoggingMiddleware(BaseHTTPMiddleware):
             raise
 
 app.add_middleware(ExceptionLoggingMiddleware)
+
+# ── Performance / stall instrumentation ────────────────────────────────────
+# Per-process identity so multi-replica behaviour is visible in logs and from
+# the outside (X-Instance response header). Helps tell "one slow replica" apart
+# from "the whole app stalls".
+INSTANCE_ID = f"{os.getenv('HOSTNAME', 'host')}:{os.getpid()}"
+
+class PerfLoggingMiddleware(BaseHTTPMiddleware):
+    """Measure per-request server time, log slow ones, and expose timing/identity
+    via response headers so load can be characterised without server access."""
+    async def dispatch(self, request: StarletteRequest, call_next):
+        t0 = time.monotonic()
+        response = await call_next(request)
+        dt = time.monotonic() - t0
+        if dt > 1.0:
+            logger.warning(f"[SLOW-REQ] {dt:.2f}s {request.method} {request.url.path} inst={INSTANCE_ID}")
+        try:
+            response.headers["X-Instance"] = INSTANCE_ID
+            response.headers["X-Elapsed"] = f"{dt:.3f}"
+        except Exception:
+            pass
+        return response
+
+app.add_middleware(PerfLoggingMiddleware)
+
+
+async def _event_loop_lag_monitor():
+    """Detect blocking of the main event loop.
+
+    Sleeps a fixed interval and logs when the actual elapsed time greatly exceeds
+    it — which only happens if some synchronous/blocking work stalled the loop
+    (e.g. a blocking socket call in an async path). This is the definitive signal
+    for "the whole server froze for N seconds".
+    """
+    interval = 0.5
+    while True:
+        t0 = time.monotonic()
+        await asyncio.sleep(interval)
+        lag = time.monotonic() - t0 - interval
+        if lag > 0.5:
+            logger.warning(f"[LOOP-LAG] main event loop blocked ~{lag:.2f}s inst={INSTANCE_ID}")
+
+
+@app.on_event("startup")
+async def _start_loop_lag_monitor():
+    # Runs on the main uvicorn event loop (the one serving requests).
+    asyncio.create_task(_event_loop_lag_monitor())
 
 # Security middleware for CSRF, rate limiting, and security headers
 from app.security import (
@@ -5427,106 +5474,121 @@ class FlashForgeAPI:
             print(f"[PRINTER] Error fetching head location from {self.printer_ip}: {e}")
         return None
 
+    def _extended_status_socket_once(self) -> Optional[Dict[str, Any]]:
+        """One blocking M-code socket exchange. Runs in a thread-pool executor so
+        the raw blocking socket calls never stall the async event loop. Raises
+        ConnectionRefusedError/OSError on connection failure (caller retries)."""
+        import socket
+        result: Dict[str, Any] = {}
+        sock = None
+        try:
+            # M119 gives us CurrentFile and detailed status
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(3)
+            sock.connect((self.printer_ip, 8899))
+
+            # Control request
+            sock.send(b"~M601 S1\r\n")
+            sock.recv(1024)
+
+            # M119 for status + current file
+            sock.send(b"~M119\r\n")
+            response = b""
+            try:
+                while True:
+                    chunk = sock.recv(2048)
+                    if not chunk:
+                        break
+                    response += chunk
+                    if b"ok\r\n" in response or b"ok\n" in response:
+                        break
+            except socket.timeout:
+                pass
+
+            m119_text = response.decode('utf-8', errors='ignore')
+
+            # Parse M119 response
+            for line in m119_text.split('\n'):
+                line = line.strip()
+                if line.startswith('CurrentFile:'):
+                    result['current_file'] = line.replace('CurrentFile:', '').strip()
+                elif line.startswith('MachineStatus:'):
+                    result['machine_status'] = line.replace('MachineStatus:', '').strip()
+                elif line.startswith('LED:'):
+                    result['led'] = line.replace('LED:', '').strip()
+                elif line.startswith('Status:'):
+                    result['status_flags'] = line.replace('Status:', '').strip()
+
+            # M27 for layer info
+            sock.send(b"~M27\r\n")
+            response = b""
+            try:
+                while True:
+                    chunk = sock.recv(2048)
+                    if not chunk:
+                        break
+                    response += chunk
+                    if b"ok\r\n" in response or b"ok\n" in response:
+                        break
+            except socket.timeout:
+                pass
+
+            m27_text = response.decode('utf-8', errors='ignore')
+
+            # Parse M27 response for layer info
+            for line in m27_text.split('\n'):
+                line = line.strip()
+                if line.startswith('Layer:'):
+                    layer_part = line.replace('Layer:', '').strip()
+                    if '/' in layer_part:
+                        parts = layer_part.split('/')
+                        result['current_layer'] = int(parts[0].strip())
+                        result['total_layers'] = int(parts[1].strip())
+                elif line.startswith('SD printing byte'):
+                    # "SD printing byte 32/100"
+                    pass  # Already have progress from other endpoint
+
+            return result if result else None
+        finally:
+            if sock:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+
     async def get_extended_status(self) -> Optional[Dict[str, Any]]:
         """Get extended status including current filename and layer info via direct M-codes.
-        
-        Uses a printer lock to prevent conflicts with print send operations.
+
+        Uses a printer lock to prevent conflicts with print send operations. The
+        blocking socket exchange runs in a thread-pool executor so it never stalls
+        the async event loop (a slow/offline printer used to block the loop — and
+        therefore every request on the process — for the socket's full timeout).
         Has built-in retry logic with delays to handle transient connection issues.
         """
-        import socket
-        result = {}
-        
         # Get the printer lock to prevent simultaneous connections
         printer_code = "ADVENTURER_4" if "198" in self.printer_ip else "AD5X"  # Derive from IP
         lock = get_printer_lock(printer_code)
-        
+
         # Check if polling is paused for this printer
         if is_polling_paused(printer_code):
             print(f"[PRINTER] Polling paused for {printer_code}, skipping extended status")
             return None
-        
+
         max_retries = 2
         retry_delay = 1.0  # seconds between retries
-        
+
         # Try to acquire lock with timeout - do this ONCE before retry loop
         try:
             await asyncio.wait_for(lock.acquire(), timeout=5.0)
         except asyncio.TimeoutError:
             print(f"[PRINTER] Could not acquire lock for {self.printer_ip}, another operation in progress")
             return None
-        
+
+        loop = asyncio.get_running_loop()
         try:
             for attempt in range(max_retries + 1):
-                sock = None
                 try:
-                    # M119 gives us CurrentFile and detailed status
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.settimeout(3)
-                    sock.connect((self.printer_ip, 8899))
-                    
-                    # Control request
-                    sock.send(b"~M601 S1\r\n")
-                    sock.recv(1024)
-                    
-                    # M119 for status + current file
-                    sock.send(b"~M119\r\n")
-                    response = b""
-                    try:
-                        while True:
-                            chunk = sock.recv(2048)
-                            if not chunk:
-                                break
-                            response += chunk
-                            if b"ok\r\n" in response or b"ok\n" in response:
-                                break
-                    except socket.timeout:
-                        pass
-                    
-                    m119_text = response.decode('utf-8', errors='ignore')
-                    
-                    # Parse M119 response
-                    for line in m119_text.split('\n'):
-                        line = line.strip()
-                        if line.startswith('CurrentFile:'):
-                            result['current_file'] = line.replace('CurrentFile:', '').strip()
-                        elif line.startswith('MachineStatus:'):
-                            result['machine_status'] = line.replace('MachineStatus:', '').strip()
-                        elif line.startswith('LED:'):
-                            result['led'] = line.replace('LED:', '').strip()
-                        elif line.startswith('Status:'):
-                            result['status_flags'] = line.replace('Status:', '').strip()
-                    
-                    # M27 for layer info
-                    sock.send(b"~M27\r\n")
-                    response = b""
-                    try:
-                        while True:
-                            chunk = sock.recv(2048)
-                            if not chunk:
-                                break
-                            response += chunk
-                            if b"ok\r\n" in response or b"ok\n" in response:
-                                break
-                    except socket.timeout:
-                        pass
-                    
-                    m27_text = response.decode('utf-8', errors='ignore')
-                    
-                    # Parse M27 response for layer info
-                    for line in m27_text.split('\n'):
-                        line = line.strip()
-                        if line.startswith('Layer:'):
-                            layer_part = line.replace('Layer:', '').strip()
-                            if '/' in layer_part:
-                                parts = layer_part.split('/')
-                                result['current_layer'] = int(parts[0].strip())
-                                result['total_layers'] = int(parts[1].strip())
-                        elif line.startswith('SD printing byte'):
-                            # "SD printing byte 32/100"
-                            pass  # Already have progress from other endpoint
-                    
-                    return result if result else None
-                    
+                    return await loop.run_in_executor(None, self._extended_status_socket_once)
                 except (ConnectionRefusedError, OSError) as e:
                     if attempt < max_retries:
                         print(f"[PRINTER] Connection failed to {self.printer_ip} (attempt {attempt + 1}/{max_retries + 1}), retrying in {retry_delay}s: {e}")
@@ -5538,13 +5600,7 @@ class FlashForgeAPI:
                 except Exception as e:
                     print(f"[PRINTER] Error fetching extended status from {self.printer_ip}: {e}")
                     return None
-                finally:
-                    if sock:
-                        try:
-                            sock.close()
-                        except:
-                            pass
-            
+
             return None
         finally:
             # Always release the lock when done (success or failure)
