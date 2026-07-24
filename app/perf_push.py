@@ -1,11 +1,13 @@
 """
 Push this app's performance snapshot to central-management over the *existing*
-bug-report channel — same URL host, same per-app HMAC secret, same headers.
+bug-report channel — the same POST /api/reports endpoint, same per-app HMAC
+secret, same headers, with X-JCubHub-Kind: perf-snapshot so cm stores it as
+metrics instead of a bug.
 
-There is no new configuration and no new outbound connection type: if the app is
-already set up to report bugs to cm (BUG_REPORT_URL / BUG_REPORT_SECRET /
-BUG_APP_ID), it will also push perf snapshots to cm's /api/perf/ingest. cm's
-single UI toggle decides whether to record them.
+There is no new configuration, no new endpoint, and no new proxy bypass: if the
+app is already set up to report bugs to cm (BUG_REPORT_URL / BUG_REPORT_SECRET /
+BUG_APP_ID), it will also push perf snapshots. cm's single UI toggle decides
+whether to record them.
 """
 
 from __future__ import annotations
@@ -15,7 +17,6 @@ import hashlib
 import hmac
 import json
 import logging
-from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -28,26 +29,11 @@ _INTERVAL_SECONDS = 60
 _TIMEOUT_SECONDS = 5.0
 
 
-def _derive_ingest_url(report_url: str) -> str | None:
-    """Turn <base>/api/reports into <base>/api/perf/ingest."""
-    parts = urlsplit(report_url or "")
-    if not parts.scheme or not parts.netloc:
-        return None
-    path = parts.path.rstrip("/")
-    if not path.endswith("/api/reports"):
-        return None
-    new_path = path[: -len("/api/reports")] + "/api/perf/ingest"
-    return urlunsplit((parts.scheme, parts.netloc, new_path, "", ""))
-
-
 async def _push_once() -> None:
     url = _report_url()
     secret = _report_secret()
     app_id = _app_id()
     if not url or not secret:
-        return
-    ingest_url = _derive_ingest_url(url)
-    if not ingest_url:
         return
     collector = perf.get_collector()
     if collector is None:
@@ -57,12 +43,13 @@ async def _push_once() -> None:
     sig = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
     async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS, follow_redirects=False) as client:
         await client.post(
-            ingest_url,
+            url,
             content=body,
             headers={
                 "Content-Type": "application/json",
                 "X-JCubHub-App": app_id,
                 "X-JCubHub-Signature": f"sha256={sig}",
+                "X-JCubHub-Kind": "perf-snapshot",
             },
         )
 
