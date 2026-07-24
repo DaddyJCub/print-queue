@@ -341,6 +341,14 @@ from app import perf as _perf
 
 _perf_collector = _perf.install(app, app_name="print-queue", app_version=APP_VERSION)
 
+
+@app.on_event("startup")
+async def _start_perf_push() -> None:
+    # Push perf snapshots to cm over the existing bug-report channel.
+    from app import perf_push
+
+    perf_push.start()
+
 # --- Serve /sw.js from site root for PWA ---
 from fastapi.responses import FileResponse
 templates = Jinja2Templates(directory="app/templates")
