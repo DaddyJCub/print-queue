@@ -335,6 +335,12 @@ app.add_middleware(RateLimitMiddleware)
 # CSRF middleware adds tokens to requests
 app.add_middleware(CSRFMiddleware)
 
+# Performance metrics: times every request, samples process health, and exposes
+# GET /api/perf (JSON, for central-management) and GET /api/perf.txt (copy/paste).
+from app import perf as _perf
+
+_perf_collector = _perf.install(app, app_name="print-queue", app_version=APP_VERSION)
+
 # --- Serve /sw.js from site root for PWA ---
 from fastapi.responses import FileResponse
 templates = Jinja2Templates(directory="app/templates")
