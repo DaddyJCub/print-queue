@@ -74,12 +74,29 @@
         </p>
       </div>
 
+      <!-- v0.34.6 -->
+      <div id="v0.34.6" class="bg-gradient-to-br from-zinc-900/80 via-amber-900/20 to-zinc-900/80 border border-amber-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-amber-500 mb-4">
+        <div class="flex items-center gap-3 mb-3 flex-wrap">
+          <a href="#v0.34.6" class="px-3 py-1 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-500 transition">v0.34.6</a>
+          <span class="text-zinc-400 text-sm">July 2026</span>
+          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
+          <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2 text-white">Fixed the intermittent site-wide freeze</h3>
+        <p class="text-sm text-zinc-400 mb-4">The remaining "sometimes slow" loads turned out to affect every page, not just the queue. A blocking printer-status read was running directly on the server's main loop, so whenever a FlashForge printer was slow or offline it briefly froze the whole site for everyone. That work now runs off to the side.</p>
+
+        <h4 class="text-sm font-semibold text-zinc-300 mb-2 mt-4">⚡ Performance</h4>
+        <ul class="space-y-2 text-sm text-zinc-300">
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-1">•</span><span><strong>A slow printer can no longer freeze the site.</strong> The direct-socket read for FlashForge printers now runs in a background thread, so its timeout never stalls page requests.</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 mt-1">•</span><span><strong>Added stall detection.</strong> The server now logs if its request loop is ever blocked, so this class of slowdown gets caught early.</span></li>
+        </ul>
+      </div>
+
       <!-- v0.34.5 -->
       <div id="v0.34.5" class="bg-gradient-to-br from-zinc-900/80 via-amber-900/20 to-zinc-900/80 border border-amber-500/30 rounded-2xl p-5 scroll-mt-6 target:ring-2 target:ring-amber-500 mb-4">
         <div class="flex items-center gap-3 mb-3 flex-wrap">
           <a href="#v0.34.5" class="px-3 py-1 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-500 transition">v0.34.5</a>
           <span class="text-zinc-400 text-sm">July 2026</span>
-          <span class="px-2 py-1 bg-emerald-600/20 text-emerald-300 text-xs rounded-lg border border-emerald-500/50 font-medium">✨ Latest</span>
           <span class="px-2 py-1 bg-amber-600/20 text-amber-300 text-xs rounded-lg border border-amber-500/50">🔧 Patch</span>
         </div>
         <h3 class="text-lg font-semibold mb-2 text-white">Queue pages load instantly now</h3>

@@ -9,6 +9,12 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.34.6
+### Performance
+- **Fixed the intermittent site-wide freeze.** Measuring live revealed the real cause of the "sometimes slow" loads was not the queue page at all — it hit *every* route (even the near-static changelog). A single blocking operation was stalling the whole server: FlashForge printer status is read over a raw socket, and that blocking socket call ran directly on the async event loop. Whenever a FlashForge printer was slow or offline (e.g. during the admin dashboard's 15-second auto-refresh), the socket's timeout froze the entire process — so every visitor's request stalled for several seconds at once.
+  - The blocking socket exchange now runs in a background thread pool, so it can never stall request handling. A slow or offline printer no longer freezes the site.
+- **Added lightweight performance instrumentation** to catch regressions like this: an event-loop stall monitor that logs when the server is blocked, slow-request logging, and `X-Instance` / `X-Elapsed` response headers for measuring server time and per-replica behaviour from the outside.
+
 ## 0.34.5
 ### Performance
 - **Queue pages no longer wait on printers at all.** Even after the 0.34.4 parallelization, a live measurement showed cold loads of the public queue taking 3–7 seconds while warm loads took ~0.5s: every page render still made live printer network calls in the request path, so any time the in-memory cache was cold (right after a redeploy, or once it expired between visits) the visitor paid the full printer round-trip — and a redeploy wipes that cache.
