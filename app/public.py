@@ -41,6 +41,7 @@ from app.main import (
     build_email_html,
     send_push_notification_to_admins,
     fetch_printer_status_with_cache,
+    get_display_printer_statuses,
     display_printer_codes,
     format_eta_display,
     get_smart_eta,
@@ -1473,14 +1474,10 @@ async def public_queue(request: Request, mine: Optional[str] = None):
     items = []
     printing_idx = None
     
-    # Fetch current printer status using cache with timeout, all printers in
-    # parallel — a sequential loop made an offline/slow printer stall the whole
-    # page for its full timeout, once per printer.
-    codes = display_printer_codes()
-    statuses = await asyncio.gather(
-        *[fetch_printer_status_with_cache(c, timeout=3.0) for c in codes]
-    )
-    printer_status = dict(zip(codes, statuses))
+    # Read printer status from the warm cache (kept fresh by the background
+    # status warmer). This does not block on live printer I/O, so an offline or
+    # slow printer no longer stalls the page for its network timeout.
+    printer_status = await get_display_printer_statuses()
 
     # First pass: build items and find printing index, fetch real progress for PRINTING
     for idx, r in enumerate(rows):
@@ -1865,12 +1862,9 @@ async def queue_data_api(mine: Optional[str] = None):
 
     items = []
 
-    # Fetch current printer status using cache with timeout, all printers in parallel.
-    codes = display_printer_codes()
-    statuses = await asyncio.gather(
-        *[fetch_printer_status_with_cache(c, timeout=3.0) for c in codes]
-    )
-    printer_status = dict(zip(codes, statuses))
+    # Read printer status from the warm cache (non-blocking; kept fresh by the
+    # background status warmer).
+    printer_status = await get_display_printer_statuses()
 
     # Build items list
     for idx, r in enumerate(rows):

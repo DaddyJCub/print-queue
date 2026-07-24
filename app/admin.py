@@ -11,6 +11,7 @@ from app.main import (
     db,
     require_admin,
     fetch_printer_status_with_cache,
+    get_display_printer_statuses,
     get_poll_debug_log,
     _printer_status_cache,
     _printer_failure_count,
@@ -644,16 +645,11 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
         for ab in ab_rows:
             active_builds_map[ab["request_id"]] = ab
 
-    # Fetch live status for every display printer once, in parallel, and reuse it
-    # for both the printing-request enrichment below and the status cards further
-    # down. Previously this was a sequential loop (and the printing loop fetched
-    # again per request), so an offline/slow printer stalled the whole dashboard
-    # for its full timeout, repeatedly.
-    printer_codes = display_printer_codes()
-    printer_statuses = await asyncio.gather(
-        *[fetch_printer_status_with_cache(c, timeout=3.0) for c in printer_codes]
-    )
-    printer_status = dict(zip(printer_codes, printer_statuses))
+    # Read printer status from the warm cache (kept fresh by the background status
+    # warmer) and reuse it for both the printing-request enrichment below and the
+    # status cards further down. This is a non-blocking in-memory read, so an
+    # offline/slow printer no longer stalls the dashboard for its network timeout.
+    printer_status = await get_display_printer_statuses()
 
     printing = []
     for r in printing_raw:
