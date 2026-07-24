@@ -9,6 +9,30 @@ This project follows the repository versioning policy in [VERSIONING.md](VERSION
 
 > Note: The project originally shipped under `1.x.x`. In December 2025, versioning was reset to `0.x.y` to better reflect pre-`1.0.0` status. Earlier `1.x.x` entries are preserved below as historical releases.
 
+## 0.34.6
+### Performance
+- **Fixed the intermittent site-wide freeze.** Measuring live revealed the real cause of the "sometimes slow" loads was not the queue page at all — it hit *every* route (even the near-static changelog). A single blocking operation was stalling the whole server: FlashForge printer status is read over a raw socket, and that blocking socket call ran directly on the async event loop. Whenever a FlashForge printer was slow or offline (e.g. during the admin dashboard's 15-second auto-refresh), the socket's timeout froze the entire process — so every visitor's request stalled for several seconds at once.
+  - The blocking socket exchange now runs in a background thread pool, so it can never stall request handling. A slow or offline printer no longer freezes the site.
+- **Added lightweight performance instrumentation** to catch regressions like this: an event-loop stall monitor that logs when the server is blocked, slow-request logging, and `X-Instance` / `X-Elapsed` response headers for measuring server time and per-replica behaviour from the outside.
+
+## 0.34.5
+### Performance
+- **Queue pages no longer wait on printers at all.** Even after the 0.34.4 parallelization, a live measurement showed cold loads of the public queue taking 3–7 seconds while warm loads took ~0.5s: every page render still made live printer network calls in the request path, so any time the in-memory cache was cold (right after a redeploy, or once it expired between visits) the visitor paid the full printer round-trip — and a redeploy wipes that cache.
+  - A **background status warmer** now polls every printer out-of-band (every ~8s) and stores the result in a shared cache. Page renders read that cache directly and **never block on printer I/O** — the only exception is the brief moment right after startup before the warmer's first pass, and even then only for printers with nothing cached yet.
+  - Net effect: the admin dashboard and public `/queue` render from memory in roughly their database-and-template time regardless of whether printers are online, slow, or offline. An offline printer can no longer stall a page load.
+
+## 0.34.4
+### Performance
+- **The admin and public queue pages now load much faster, especially when a printer is offline.** Live printer status was fetched one printer at a time, and the "cache" only kicked in after a printer had already failed — so each render waited on every printer in series, and an offline or slow printer stalled the whole page for its full timeout (repeatedly, since the same printer was polled several times per render).
+  - Printer statuses are now fetched **in parallel** on both the admin dashboard and the public `/queue`, so total wait is roughly one printer's response time instead of the sum of all of them.
+  - A short **freshness window** (5s for a live result, 3s for an offline one) reuses the last status instead of re-hitting the printer, which collapses the duplicate polls a single render made, absorbs rapid auto-refreshes and concurrent viewers, and stops a permanently-offline printer (e.g. an agent printer that's powered down) from costing a network timeout on every load.
+  - The admin dashboard no longer polls every printer twice per render — the status cards and the "Printing Now" ETA calculations now share one set of results.
+
+## 0.34.3
+### Bug Fixes
+- **Fixed the "Set aside" button on the admin Queue dashboard.** It was the last action still using the raw browser `confirm()` pop-up; after a later change added the app's own confirmation modal everywhere else, clicking **OK** on that native pop-up no longer submitted the form, so setting a job aside appeared to do nothing. It now uses the same styled confirmation modal as the rest of the app.
+- **Set-aside now gives immediate feedback while the current build finishes.** When a job is set aside mid-print, its current build is allowed to finish first, so the request correctly stays under *Printing Now* rather than jumping straight to *Set Aside* — which looked like nothing had happened. The card now shows a **⏸ Set aside pending** badge so it's clear the request has been set aside and will stop before its next build.
+
 ## 0.34.2
 ### Bug Fixes
 - **Reverted the 0.34.1 agent-printer poll change to stop a production crash loop.** Adding `is_printing()`/`is_complete()` to `AgentPrinterAPI` let the LK5_PRO agent printer flow through the full status-poll and camera/AI print-monitor pipeline for the first time; under that concurrent load the process began aborting with native heap corruption (`malloc_consolidate(): invalid chunk size`). Reverting restores the prior stable behavior (the agent printer's build poll is skipped rather than auto-completing). The underlying concurrency bug is still under investigation.

@@ -1297,9 +1297,17 @@
               {% endif %}
             </div>
             <div class="flex items-center gap-2 shrink-0">
-              {% if r.total_builds and r.total_builds > 1 and (r.completed_builds or 0) < r.total_builds %}
+              {% if r.paused_at %}
+              <span class="px-3 py-2 rounded-lg bg-amber-700/30 border border-amber-600/40 text-amber-200 text-sm font-medium"
+                    title="Set aside — the current build finishes first, then the queue stops so the printer is free">
+                ⏸ Set aside pending
+              </span>
+              {% elif r.total_builds and r.total_builds > 1 and (r.completed_builds or 0) < r.total_builds %}
               <form method="POST" action="/admin/request/{{ r['id'] }}/pause" class="inline"
-                    onsubmit="return confirm('Set aside this request to print something else? Its current build finishes first; remaining builds wait until you resume.');">
+                    data-confirm="Set aside this request to print something else? Its current build finishes first; remaining builds wait until you resume."
+                    data-confirm-title="Set aside request"
+                    data-confirm-text="Set aside"
+                    data-destructive="false">
                 <button type="submit"
                         class="px-3 py-2 rounded-lg bg-amber-700/40 hover:bg-amber-600/50 border border-amber-600/50 text-amber-100 text-sm font-medium transition"
                         title="Finish the current build, then stop so the printer is free for another job">

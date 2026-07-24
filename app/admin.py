@@ -1,4 +1,4 @@
-import os, secrets, uuid, hashlib, urllib.parse, json
+import os, secrets, uuid, hashlib, urllib.parse, json, asyncio
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
@@ -11,6 +11,7 @@ from app.main import (
     db,
     require_admin,
     fetch_printer_status_with_cache,
+    get_display_printer_statuses,
     get_poll_debug_log,
     _printer_status_cache,
     _printer_failure_count,
@@ -565,9 +566,10 @@ def _fetch_requests_by_status(statuses, include_eta_fields: bool = False):
     conn = db()
     if include_eta_fields:
         rows = conn.execute(
-            f"""SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors, 
+            f"""SELECT r.id, r.created_at, r.requester_name, r.printer, r.material, r.colors,
                       r.link_url, r.status, r.priority, r.special_notes, r.printing_started_at,
                       r.print_name, r.total_builds, r.completed_builds, r.failed_builds,
+                      r.paused_at,
                       r.fulfillment_method,
                       (SELECT rs.shipping_status FROM request_shipping rs WHERE rs.request_id = r.id) as shipping_status,
                       (SELECT rs.tracking_number FROM request_shipping rs WHERE rs.request_id = r.id) as shipping_tracking_number,
@@ -643,6 +645,12 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
         for ab in ab_rows:
             active_builds_map[ab["request_id"]] = ab
 
+    # Read printer status from the warm cache (kept fresh by the background status
+    # warmer) and reuse it for both the printing-request enrichment below and the
+    # status cards further down. This is a non-blocking in-memory read, so an
+    # offline/slow printer no longer stalls the dashboard for its network timeout.
+    printer_status = await get_display_printer_statuses()
+
     printing = []
     for r in printing_raw:
         # Get current progress from printer for smart ETA calculation
@@ -672,8 +680,14 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
             except Exception:
                 active_est_minutes = None
 
-        # Use cached printer status for consistency
-        cached_status = await fetch_printer_status_with_cache(active_printer, timeout=3.0) if active_printer else None
+        # Reuse the status prefetched above (fall back to a fetch only for a printer
+        # that isn't in the display list, e.g. a legacy/decommissioned printer code).
+        if not active_printer:
+            cached_status = None
+        elif active_printer in printer_status:
+            cached_status = printer_status[active_printer]
+        else:
+            cached_status = await fetch_printer_status_with_cache(active_printer, timeout=3.0)
         if cached_status and not cached_status.get("is_offline"):
             printer_progress = cached_status.get("progress")
             current_layer = cached_status.get("current_layer")
@@ -737,13 +751,9 @@ async def admin_dashboard(request: Request, admin=Depends(require_admin)):
     ).fetchall()
     conn.close()
 
-    # Fetch printer status using cache with timeout. display_printer_codes()
-    # includes agent-backed printers (e.g. the LK5 Pro) so they get a status
-    # card here alongside the directly-polled LAN printers, matching the public
-    # queue — otherwise an actively printing agent printer has no card in admin.
-    printer_status = {}
-    for printer_code in display_printer_codes():
-        printer_status[printer_code] = await fetch_printer_status_with_cache(printer_code, timeout=3.0)
+    # printer_status was already fetched in parallel above (display_printer_codes()
+    # includes agent-backed printers like the LK5 Pro, so they get a status card
+    # here alongside the directly-polled LAN printers, matching the public queue).
 
     # Active build per printer (for pause button on dashboard)
     active_builds_by_printer = {}

@@ -39,7 +39,7 @@ from app.auth import (
 from app.models import AuditAction
 
 # ─────────────────────────── VERSION ───────────────────────────
-APP_VERSION = "0.34.2"
+APP_VERSION = "0.34.6"
 #
 # VERSIONING SCHEME (Semantic Versioning - semver.org):
 # We use 0.x.y because this software is in initial development, not yet a stable public release.
@@ -320,6 +320,53 @@ class ExceptionLoggingMiddleware(BaseHTTPMiddleware):
             raise
 
 app.add_middleware(ExceptionLoggingMiddleware)
+
+# ── Performance / stall instrumentation ────────────────────────────────────
+# Per-process identity so multi-replica behaviour is visible in logs and from
+# the outside (X-Instance response header). Helps tell "one slow replica" apart
+# from "the whole app stalls".
+INSTANCE_ID = f"{os.getenv('HOSTNAME', 'host')}:{os.getpid()}"
+
+class PerfLoggingMiddleware(BaseHTTPMiddleware):
+    """Measure per-request server time, log slow ones, and expose timing/identity
+    via response headers so load can be characterised without server access."""
+    async def dispatch(self, request: StarletteRequest, call_next):
+        t0 = time.monotonic()
+        response = await call_next(request)
+        dt = time.monotonic() - t0
+        if dt > 1.0:
+            logger.warning(f"[SLOW-REQ] {dt:.2f}s {request.method} {request.url.path} inst={INSTANCE_ID}")
+        try:
+            response.headers["X-Instance"] = INSTANCE_ID
+            response.headers["X-Elapsed"] = f"{dt:.3f}"
+        except Exception:
+            pass
+        return response
+
+app.add_middleware(PerfLoggingMiddleware)
+
+
+async def _event_loop_lag_monitor():
+    """Detect blocking of the main event loop.
+
+    Sleeps a fixed interval and logs when the actual elapsed time greatly exceeds
+    it — which only happens if some synchronous/blocking work stalled the loop
+    (e.g. a blocking socket call in an async path). This is the definitive signal
+    for "the whole server froze for N seconds".
+    """
+    interval = 0.5
+    while True:
+        t0 = time.monotonic()
+        await asyncio.sleep(interval)
+        lag = time.monotonic() - t0 - interval
+        if lag > 0.5:
+            logger.warning(f"[LOOP-LAG] main event loop blocked ~{lag:.2f}s inst={INSTANCE_ID}")
+
+
+@app.on_event("startup")
+async def _start_loop_lag_monitor():
+    # Runs on the main uvicorn event loop (the one serving requests).
+    asyncio.create_task(_event_loop_lag_monitor())
 
 # Security middleware for CSRF, rate limiting, and security headers
 from app.security import (
@@ -617,6 +664,22 @@ Traceback:
 _printer_status_cache: Dict[str, Dict[str, Any]] = {}
 _printer_failure_count: Dict[str, int] = {}
 _printer_last_seen: Dict[str, str] = {}  # Timestamp of last successful poll
+# Short "freshness" window (monotonic deadline per printer). The last result we
+# returned for a printer — whether a live success or an offline fallback — is
+# reused for this many seconds instead of re-hitting the printer. This collapses
+# the many duplicate status calls a single queue-page render makes (once per
+# display printer + once per printing request), absorbs rapid reloads / concurrent
+# viewers, and — importantly — stops a permanently-offline printer from costing a
+# full network timeout on every single load. Kept short so status stays live.
+_printer_status_fresh_until: Dict[str, float] = {}
+_printer_status_last_result: Dict[str, Dict[str, Any]] = {}
+_PRINTER_STATUS_FRESH_TTL = 5.0  # seconds (live successes)
+_PRINTER_STATUS_OFFLINE_TTL = 3.0  # seconds (offline — shorter so recovery shows sooner)
+
+def _remember_printer_status(printer_code: str, result: Dict[str, Any], ttl: float):
+    """Record the last returned status + freshness deadline for the fast path."""
+    _printer_status_last_result[printer_code] = result
+    _printer_status_fresh_until[printer_code] = time.monotonic() + ttl
 
 # Printer connection locks - prevents polling during print operations
 # Uses asyncio.Lock for each printer to prevent simultaneous connections
@@ -685,6 +748,7 @@ def update_printer_status_cache(printer_code: str, status: Dict[str, Any]):
     """Update cached printer status on successful poll"""
     _printer_status_cache[printer_code] = status
     _printer_last_seen[printer_code] = now_iso()
+    _remember_printer_status(printer_code, status, _PRINTER_STATUS_FRESH_TTL)
     _printer_failure_count[printer_code] = 0  # Reset failure count on success
 
 def record_printer_failure(printer_code: str) -> int:
@@ -697,12 +761,15 @@ def get_printer_failure_count(printer_code: str) -> int:
     return _printer_failure_count.get(printer_code, 0)
 
 
-async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.0) -> Dict[str, Any]:
+async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.0, force_live: bool = False) -> Dict[str, Any]:
     """
     Fetch printer status with cache fallback and timeout.
     Returns status dict with 'is_cached' flag if using cached data.
     Always includes camera_url even if offline.
-    
+
+    ``force_live`` skips the short freshness fast path and always makes the live
+    calls — used by the background warmer so it actually refreshes each cycle.
+
     In DEMO_MODE, returns fake printer data instead of polling real printers.
     """
     camera_url = get_camera_url(printer_code)
@@ -727,7 +794,19 @@ async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.
             "is_cached": False,
             "is_offline": False,
         }
-    
+
+    # Fresh-cache fast path: if we returned a result for this printer within the
+    # freshness window, reuse it instead of making another round of network calls.
+    # This is what makes the queue pages load fast — a single render otherwise
+    # fetches the same printer several times, and offline/slow printers cost a full
+    # timeout on every call. Return a copy so callers can't mutate the cached entry.
+    if not force_live:
+        fresh_until = _printer_status_fresh_until.get(printer_code)
+        if fresh_until is not None and time.monotonic() < fresh_until:
+            last = _printer_status_last_result.get(printer_code)
+            if last is not None:
+                return {**last, "camera_url": camera_url}
+
     # Try live API first with short timeout
     try:
         printer_api = get_printer_api(printer_code)
@@ -848,30 +927,108 @@ async def fetch_printer_status_with_cache(printer_code: str, timeout: float = 3.
     
     if cached:
         # Return cached status with offline indicator
-        return {
+        offline_result = {
             **cached,
             "camera_url": camera_url,  # Always include camera
             "is_cached": True,
             "is_offline": True,
             "last_seen": last_seen,
         }
-    
-    # No cache available - return minimal offline status
-    return {
-        "status": None,
-        "temp": None,
-        "target_temp": None,
-        "progress": None,
-        "healthy": None,
-        "is_printing": False,
-        "current_file": None,
-        "current_layer": None,
-        "total_layers": None,
-        "camera_url": camera_url,
-        "is_cached": False,
-        "is_offline": True,
-        "last_seen": None,
-    }
+    else:
+        # No cache available - return minimal offline status
+        offline_result = {
+            "status": None,
+            "temp": None,
+            "target_temp": None,
+            "progress": None,
+            "healthy": None,
+            "is_printing": False,
+            "current_file": None,
+            "current_layer": None,
+            "total_layers": None,
+            "camera_url": camera_url,
+            "is_cached": False,
+            "is_offline": True,
+            "last_seen": None,
+        }
+
+    # Briefly reuse the offline result so a down printer doesn't cost a full
+    # network timeout on every subsequent load/refresh (shorter window than a
+    # live success so recovery still shows up quickly).
+    _remember_printer_status(printer_code, offline_result, _PRINTER_STATUS_OFFLINE_TTL)
+    return offline_result
+
+
+def get_warm_printer_status(printer_code: str) -> Optional[Dict[str, Any]]:
+    """Non-blocking read of the last known status for a printer.
+
+    Returns whatever the background warmer (or a prior live fetch) last stored,
+    or ``None`` if nothing has been cached yet. Never touches the network, so
+    page renders don't block on printer I/O.
+    """
+    last = _printer_status_last_result.get(printer_code)
+    if last is None:
+        return None
+    return {**last, "camera_url": get_camera_url(printer_code)}
+
+
+async def get_display_printer_statuses() -> Dict[str, Dict[str, Any]]:
+    """Status for every display printer, for page rendering — without blocking.
+
+    Reads the warm cache kept fresh by ``warm_display_status_worker``. Only for
+    printers with nothing cached yet (e.g. the first moments after startup) does
+    it fall back to a live fetch, and those run in parallel. On a warmed process
+    this makes no network calls at all, so queue pages render from memory.
+    """
+    codes = display_printer_codes()
+    result: Dict[str, Dict[str, Any]] = {}
+    missing: List[str] = []
+    for code in codes:
+        warm = get_warm_printer_status(code)
+        if warm is not None:
+            result[code] = warm
+        else:
+            missing.append(code)
+    if missing:
+        fetched = await asyncio.gather(
+            *[fetch_printer_status_with_cache(c, timeout=3.0) for c in missing]
+        )
+        result.update(dict(zip(missing, fetched)))
+    return result
+
+
+# Background warmer cadence — how often the display-status cache is refreshed
+# out-of-band. Short enough that queue pages show near-live status, long enough
+# that it's a light touch on the printers (the auto-complete poller runs at 30s).
+_STATUS_WARM_INTERVAL = 8  # seconds
+
+async def warm_display_status_worker():
+    """Keep the display-status cache warm so queue pages never block on printer I/O.
+
+    Polls every display printer in parallel on a short interval and stores the
+    result in the shared status cache that ``get_display_printer_statuses`` reads.
+    Printers with polling paused (e.g. mid print-send) are skipped so we don't
+    interfere — they keep their last known status until polling resumes.
+    """
+    if DEMO_MODE:
+        # Demo fetches are local/instant; routes fall back to them on demand.
+        while True:
+            await asyncio.sleep(60)
+
+    print("[STATUS-WARM] Display status warmer started")
+    while True:
+        try:
+            if get_bool_setting("enable_printer_polling", True):
+                codes = [c for c in display_printer_codes() if not is_polling_paused(c)]
+                if codes:
+                    await asyncio.gather(
+                        *[fetch_printer_status_with_cache(c, timeout=3.0, force_live=True) for c in codes],
+                        return_exceptions=True,
+                    )
+        except Exception as e:
+            logger.warning(f"[STATUS-WARM] Error: {e}")
+        await asyncio.sleep(_STATUS_WARM_INTERVAL)
+
 
 # Status flow for admin actions (request-level)
 STATUS_FLOW = ["NEW", "NEEDS_INFO", "APPROVED", "IN_PROGRESS", "PAUSED", "PRINTING", "BLOCKED", "DONE", "PICKED_UP", "REJECTED", "CANCELLED"]
@@ -5331,106 +5488,121 @@ class FlashForgeAPI:
             print(f"[PRINTER] Error fetching head location from {self.printer_ip}: {e}")
         return None
 
+    def _extended_status_socket_once(self) -> Optional[Dict[str, Any]]:
+        """One blocking M-code socket exchange. Runs in a thread-pool executor so
+        the raw blocking socket calls never stall the async event loop. Raises
+        ConnectionRefusedError/OSError on connection failure (caller retries)."""
+        import socket
+        result: Dict[str, Any] = {}
+        sock = None
+        try:
+            # M119 gives us CurrentFile and detailed status
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(3)
+            sock.connect((self.printer_ip, 8899))
+
+            # Control request
+            sock.send(b"~M601 S1\r\n")
+            sock.recv(1024)
+
+            # M119 for status + current file
+            sock.send(b"~M119\r\n")
+            response = b""
+            try:
+                while True:
+                    chunk = sock.recv(2048)
+                    if not chunk:
+                        break
+                    response += chunk
+                    if b"ok\r\n" in response or b"ok\n" in response:
+                        break
+            except socket.timeout:
+                pass
+
+            m119_text = response.decode('utf-8', errors='ignore')
+
+            # Parse M119 response
+            for line in m119_text.split('\n'):
+                line = line.strip()
+                if line.startswith('CurrentFile:'):
+                    result['current_file'] = line.replace('CurrentFile:', '').strip()
+                elif line.startswith('MachineStatus:'):
+                    result['machine_status'] = line.replace('MachineStatus:', '').strip()
+                elif line.startswith('LED:'):
+                    result['led'] = line.replace('LED:', '').strip()
+                elif line.startswith('Status:'):
+                    result['status_flags'] = line.replace('Status:', '').strip()
+
+            # M27 for layer info
+            sock.send(b"~M27\r\n")
+            response = b""
+            try:
+                while True:
+                    chunk = sock.recv(2048)
+                    if not chunk:
+                        break
+                    response += chunk
+                    if b"ok\r\n" in response or b"ok\n" in response:
+                        break
+            except socket.timeout:
+                pass
+
+            m27_text = response.decode('utf-8', errors='ignore')
+
+            # Parse M27 response for layer info
+            for line in m27_text.split('\n'):
+                line = line.strip()
+                if line.startswith('Layer:'):
+                    layer_part = line.replace('Layer:', '').strip()
+                    if '/' in layer_part:
+                        parts = layer_part.split('/')
+                        result['current_layer'] = int(parts[0].strip())
+                        result['total_layers'] = int(parts[1].strip())
+                elif line.startswith('SD printing byte'):
+                    # "SD printing byte 32/100"
+                    pass  # Already have progress from other endpoint
+
+            return result if result else None
+        finally:
+            if sock:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+
     async def get_extended_status(self) -> Optional[Dict[str, Any]]:
         """Get extended status including current filename and layer info via direct M-codes.
-        
-        Uses a printer lock to prevent conflicts with print send operations.
+
+        Uses a printer lock to prevent conflicts with print send operations. The
+        blocking socket exchange runs in a thread-pool executor so it never stalls
+        the async event loop (a slow/offline printer used to block the loop — and
+        therefore every request on the process — for the socket's full timeout).
         Has built-in retry logic with delays to handle transient connection issues.
         """
-        import socket
-        result = {}
-        
         # Get the printer lock to prevent simultaneous connections
         printer_code = "ADVENTURER_4" if "198" in self.printer_ip else "AD5X"  # Derive from IP
         lock = get_printer_lock(printer_code)
-        
+
         # Check if polling is paused for this printer
         if is_polling_paused(printer_code):
             print(f"[PRINTER] Polling paused for {printer_code}, skipping extended status")
             return None
-        
+
         max_retries = 2
         retry_delay = 1.0  # seconds between retries
-        
+
         # Try to acquire lock with timeout - do this ONCE before retry loop
         try:
             await asyncio.wait_for(lock.acquire(), timeout=5.0)
         except asyncio.TimeoutError:
             print(f"[PRINTER] Could not acquire lock for {self.printer_ip}, another operation in progress")
             return None
-        
+
+        loop = asyncio.get_running_loop()
         try:
             for attempt in range(max_retries + 1):
-                sock = None
                 try:
-                    # M119 gives us CurrentFile and detailed status
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.settimeout(3)
-                    sock.connect((self.printer_ip, 8899))
-                    
-                    # Control request
-                    sock.send(b"~M601 S1\r\n")
-                    sock.recv(1024)
-                    
-                    # M119 for status + current file
-                    sock.send(b"~M119\r\n")
-                    response = b""
-                    try:
-                        while True:
-                            chunk = sock.recv(2048)
-                            if not chunk:
-                                break
-                            response += chunk
-                            if b"ok\r\n" in response or b"ok\n" in response:
-                                break
-                    except socket.timeout:
-                        pass
-                    
-                    m119_text = response.decode('utf-8', errors='ignore')
-                    
-                    # Parse M119 response
-                    for line in m119_text.split('\n'):
-                        line = line.strip()
-                        if line.startswith('CurrentFile:'):
-                            result['current_file'] = line.replace('CurrentFile:', '').strip()
-                        elif line.startswith('MachineStatus:'):
-                            result['machine_status'] = line.replace('MachineStatus:', '').strip()
-                        elif line.startswith('LED:'):
-                            result['led'] = line.replace('LED:', '').strip()
-                        elif line.startswith('Status:'):
-                            result['status_flags'] = line.replace('Status:', '').strip()
-                    
-                    # M27 for layer info
-                    sock.send(b"~M27\r\n")
-                    response = b""
-                    try:
-                        while True:
-                            chunk = sock.recv(2048)
-                            if not chunk:
-                                break
-                            response += chunk
-                            if b"ok\r\n" in response or b"ok\n" in response:
-                                break
-                    except socket.timeout:
-                        pass
-                    
-                    m27_text = response.decode('utf-8', errors='ignore')
-                    
-                    # Parse M27 response for layer info
-                    for line in m27_text.split('\n'):
-                        line = line.strip()
-                        if line.startswith('Layer:'):
-                            layer_part = line.replace('Layer:', '').strip()
-                            if '/' in layer_part:
-                                parts = layer_part.split('/')
-                                result['current_layer'] = int(parts[0].strip())
-                                result['total_layers'] = int(parts[1].strip())
-                        elif line.startswith('SD printing byte'):
-                            # "SD printing byte 32/100"
-                            pass  # Already have progress from other endpoint
-                    
-                    return result if result else None
-                    
+                    return await loop.run_in_executor(None, self._extended_status_socket_once)
                 except (ConnectionRefusedError, OSError) as e:
                     if attempt < max_retries:
                         print(f"[PRINTER] Connection failed to {self.printer_ip} (attempt {attempt + 1}/{max_retries + 1}), retrying in {retry_delay}s: {e}")
@@ -5442,13 +5614,7 @@ class FlashForgeAPI:
                 except Exception as e:
                     print(f"[PRINTER] Error fetching extended status from {self.printer_ip}: {e}")
                     return None
-                finally:
-                    if sock:
-                        try:
-                            sock.close()
-                        except:
-                            pass
-            
+
             return None
         finally:
             # Always release the lock when done (success or failure)
@@ -7687,10 +7853,12 @@ def start_printer_polling():
     def run_async():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        # Run both legacy request-level polling and new build-level polling
+        # Run request-level polling, build-level polling, and the display-status
+        # warmer (keeps queue pages from blocking on live printer I/O).
         loop.run_until_complete(asyncio.gather(
             poll_printer_status_worker(),
-            poll_builds_status_worker()
+            poll_builds_status_worker(),
+            warm_display_status_worker()
         ))
 
     thread = threading.Thread(target=run_async, daemon=True)
